@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! UDP port scanner with ICMP detection
 //!
 //! This module implements UDP port scanning using raw sockets to detect

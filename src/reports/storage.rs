@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 /// Report file storage utilities
 
 use anyhow::Result;

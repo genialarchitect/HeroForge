@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use anyhow::Result;
 use crate::cve::{CveConfig, CveScanner};
 use crate::types::{HostInfo, ScanConfig, Severity, Vulnerability};

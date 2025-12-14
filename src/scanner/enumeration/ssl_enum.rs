@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use super::types::{EnumDepth, EnumerationResult, Finding, FindingType, ServiceType};
 use crate::types::{ScanProgressMessage, ScanTarget};
 use anyhow::Result;

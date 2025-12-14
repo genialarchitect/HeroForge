@@ -285,7 +285,7 @@ async fn enumerate_paths(
 }
 
 /// Determine finding type based on path and status code
-fn determine_finding_type(path: &str, status_code: u16) -> FindingType {
+fn determine_finding_type(path: &str, _status_code: u16) -> FindingType {
     let path_lower = path.to_lowercase();
 
     // Check for admin panels

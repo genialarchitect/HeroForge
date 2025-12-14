@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::types::{Severity, Vulnerability};
 use log::debug;
 use once_cell::sync::Lazy;

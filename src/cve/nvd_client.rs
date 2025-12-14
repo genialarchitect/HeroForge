@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::types::{Severity, Vulnerability};
 use anyhow::Result;
 use log::{debug, info, warn};
@@ -177,7 +179,7 @@ fn convert_nvd_cve(nvd_vuln: NvdVulnerability, product: &str) -> Option<Vulnerab
         .unwrap_or_else(|| "No description available.".to_string());
 
     // Get CVSS score and severity
-    let (cvss_score, severity) = extract_cvss(&cve.metrics);
+    let (_cvss_score, severity) = extract_cvss(&cve.metrics);
 
     // Create title from CVE ID and first line of description
     let title = format!(

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::types::{Severity, Vulnerability};
 use anyhow::Result;
 use chrono::{Duration, Utc};

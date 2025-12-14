@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 /// Risk scoring utilities
 /// Note: Primary risk scoring is implemented in types.rs (ReportSummary::from_hosts)
 /// This module provides additional risk analysis functions if needed.

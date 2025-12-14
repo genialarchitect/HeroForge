@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 pub mod cache;
 pub mod nvd_client;
 pub mod offline_db;

@@ -174,7 +174,7 @@ async fn test_anonymous_bind(target_ip: &str, port: u16, timeout: Duration) -> R
             // Check for successful bind response
             // LDAPMessage { messageID, CHOICE { bindResponse [APPLICATION 1] ... }}
             // Success is resultCode = 0
-            let success = response.iter().skip(5).take(20).any(|&b| b == 0x61)  // BindResponse tag
+            let _success = response.iter().skip(5).take(20).any(|&b| b == 0x61)  // BindResponse tag
                 && response.iter().skip(10).take(10).any(|&b| b == 0x0a);  // ENUMERATED for resultCode
 
             return Ok(Some(AnonBindResult {

@@ -122,7 +122,7 @@ async fn get_hostname(ip: &IpAddr) -> Option<String> {
     // Try reverse DNS lookup
     match tokio::net::lookup_host(format!("{}:0", ip)).await {
         Ok(mut addrs) => {
-            if let Some(addr) = addrs.next() {
+            if let Some(_addr) = addrs.next() {
                 // This doesn't actually give us the hostname, need a proper reverse lookup
                 // For now, return None - we can improve this later with trust-dns-resolver
                 None

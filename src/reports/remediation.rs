@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 /// Remediation recommendation database and utilities
 /// Note: Primary remediation logic is in types.rs (RemediationRecommendation)
 /// This module provides the remediation knowledge base.

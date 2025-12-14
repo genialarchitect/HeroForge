@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::types::ScanProgressMessage;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
