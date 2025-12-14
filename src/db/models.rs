@@ -89,6 +89,8 @@ pub struct CreateScanRequest {
     /// Number of UDP probe retries (default: 2)
     #[serde(default = "default_udp_retries")]
     pub udp_retries: u8,
+    /// Optional target group ID to associate with this scan
+    pub target_group_id: Option<String>,
 }
 
 fn default_udp_retries() -> u8 {
@@ -211,4 +213,156 @@ pub struct ReportTemplate {
     pub description: String,
     pub default_sections: Vec<String>,
     pub supports_formats: Vec<String>,
+}
+
+// Scan Template Models
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct ScanTemplate {
+    pub id: String,
+    pub user_id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub config: String, // JSON string of scan configuration
+    pub is_default: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateTemplateRequest {
+    pub name: String,
+    pub description: Option<String>,
+    pub config: ScanTemplateConfig,
+    pub is_default: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateTemplateRequest {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub config: Option<ScanTemplateConfig>,
+    pub is_default: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScanTemplateConfig {
+    pub port_range: (u16, u16),
+    pub threads: usize,
+    pub enable_os_detection: bool,
+    pub enable_service_detection: bool,
+    pub enable_vuln_scan: bool,
+    pub enable_enumeration: bool,
+    pub enum_depth: Option<String>,
+    pub enum_services: Option<Vec<String>>,
+    pub scan_type: Option<String>,
+    pub udp_port_range: Option<(u16, u16)>,
+    #[serde(default = "default_udp_retries")]
+    pub udp_retries: u8,
+    pub target_group_id: Option<String>,
+}
+
+// Target Group Models
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct TargetGroup {
+    pub id: String,
+    pub user_id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub targets: String, // JSON array of target strings
+    pub color: String,   // Hex color code for UI (e.g., "#3b82f6")
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateTargetGroupRequest {
+    pub name: String,
+    pub description: Option<String>,
+    pub targets: Vec<String>,
+    pub color: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateTargetGroupRequest {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub targets: Option<Vec<String>>,
+    pub color: Option<String>,
+}
+
+// Scheduled Scan Models
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct ScheduledScan {
+    pub id: String,
+    pub user_id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub config: String, // JSON string of scan configuration
+    pub schedule_type: String, // "daily", "weekly", "monthly", "cron"
+    pub schedule_value: String, // time for daily, day+time for weekly, or cron expression
+    pub next_run_at: DateTime<Utc>,
+    pub last_run_at: Option<DateTime<Utc>>,
+    pub last_scan_id: Option<String>,
+    pub is_active: bool,
+    pub run_count: i32,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateScheduledScanRequest {
+    pub name: String,
+    pub description: Option<String>,
+    pub config: ScheduledScanConfig,
+    pub schedule_type: String,
+    pub schedule_value: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateScheduledScanRequest {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub config: Option<ScheduledScanConfig>,
+    pub schedule_type: Option<String>,
+    pub schedule_value: Option<String>,
+    pub is_active: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScheduledScanConfig {
+    pub targets: Vec<String>,
+    pub port_range: (u16, u16),
+    pub threads: usize,
+    pub enable_os_detection: bool,
+    pub enable_service_detection: bool,
+    pub enable_vuln_scan: bool,
+    pub enable_enumeration: bool,
+    pub enum_depth: Option<String>,
+    pub enum_services: Option<Vec<String>>,
+    pub scan_type: Option<String>,
+    pub udp_port_range: Option<(u16, u16)>,
+    #[serde(default = "default_udp_retries")]
+    pub udp_retries: u8,
+}
+
+// Notification Settings Models
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct NotificationSettings {
+    pub user_id: String,
+    pub email_on_scan_complete: bool,
+    pub email_on_critical_vuln: bool,
+    pub email_address: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateNotificationSettingsRequest {
+    pub email_on_scan_complete: Option<bool>,
+    pub email_on_critical_vuln: Option<bool>,
+    pub email_address: Option<String>,
 }

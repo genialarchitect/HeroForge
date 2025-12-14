@@ -1,4 +1,9 @@
-pub mod auth;
-pub mod scans;
 pub mod admin;
+pub mod auth;
+pub mod compare;
+pub mod notifications;
 pub mod reports;
+pub mod scans;
+pub mod scheduled_scans;
+pub mod target_groups;
+pub mod templates;

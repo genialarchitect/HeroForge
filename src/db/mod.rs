@@ -6,7 +6,7 @@ pub mod migrations;
 use sqlx::sqlite::SqlitePool;
 use anyhow::Result;
 use uuid::Uuid;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 
 pub async fn init_database(database_url: &str) -> Result<SqlitePool> {
     use sqlx::sqlite::SqlitePoolOptions;
@@ -591,4 +591,533 @@ pub async fn get_all_reports(pool: &SqlitePool) -> Result<Vec<models::Report>> {
     .await?;
 
     Ok(reports)
+}
+
+// ============================================================================
+// Scan Template Management Functions
+// ============================================================================
+
+/// Create a new scan template
+pub async fn create_template(
+    pool: &SqlitePool,
+    user_id: &str,
+    request: &models::CreateTemplateRequest,
+) -> Result<models::ScanTemplate> {
+    let id = Uuid::new_v4().to_string();
+    let now = Utc::now();
+    let config_json = serde_json::to_string(&request.config)?;
+
+    let template = sqlx::query_as::<_, models::ScanTemplate>(
+        r#"
+        INSERT INTO scan_templates (id, user_id, name, description, config, is_default, created_at, updated_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+        RETURNING *
+        "#,
+    )
+    .bind(&id)
+    .bind(user_id)
+    .bind(&request.name)
+    .bind(&request.description)
+    .bind(&config_json)
+    .bind(request.is_default)
+    .bind(now)
+    .bind(now)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(template)
+}
+
+/// Get all templates for a user
+pub async fn get_user_templates(pool: &SqlitePool, user_id: &str) -> Result<Vec<models::ScanTemplate>> {
+    let templates = sqlx::query_as::<_, models::ScanTemplate>(
+        "SELECT * FROM scan_templates WHERE user_id = ?1 ORDER BY is_default DESC, created_at DESC",
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(templates)
+}
+
+/// Get a template by ID
+pub async fn get_template_by_id(pool: &SqlitePool, template_id: &str) -> Result<Option<models::ScanTemplate>> {
+    let template = sqlx::query_as::<_, models::ScanTemplate>("SELECT * FROM scan_templates WHERE id = ?1")
+        .bind(template_id)
+        .fetch_optional(pool)
+        .await?;
+
+    Ok(template)
+}
+
+/// Update a template
+pub async fn update_template(
+    pool: &SqlitePool,
+    template_id: &str,
+    request: &models::UpdateTemplateRequest,
+) -> Result<models::ScanTemplate> {
+    let now = Utc::now();
+
+    if let Some(name) = &request.name {
+        sqlx::query("UPDATE scan_templates SET name = ?1, updated_at = ?2 WHERE id = ?3")
+            .bind(name)
+            .bind(now)
+            .bind(template_id)
+            .execute(pool)
+            .await?;
+    }
+
+    if let Some(description) = &request.description {
+        sqlx::query("UPDATE scan_templates SET description = ?1, updated_at = ?2 WHERE id = ?3")
+            .bind(description)
+            .bind(now)
+            .bind(template_id)
+            .execute(pool)
+            .await?;
+    }
+
+    if let Some(config) = &request.config {
+        let config_json = serde_json::to_string(config)?;
+        sqlx::query("UPDATE scan_templates SET config = ?1, updated_at = ?2 WHERE id = ?3")
+            .bind(&config_json)
+            .bind(now)
+            .bind(template_id)
+            .execute(pool)
+            .await?;
+    }
+
+    if let Some(is_default) = request.is_default {
+        sqlx::query("UPDATE scan_templates SET is_default = ?1, updated_at = ?2 WHERE id = ?3")
+            .bind(is_default)
+            .bind(now)
+            .bind(template_id)
+            .execute(pool)
+            .await?;
+    }
+
+    let template = sqlx::query_as::<_, models::ScanTemplate>("SELECT * FROM scan_templates WHERE id = ?1")
+        .bind(template_id)
+        .fetch_one(pool)
+        .await?;
+
+    Ok(template)
+}
+
+/// Delete a template
+pub async fn delete_template(pool: &SqlitePool, template_id: &str) -> Result<()> {
+    sqlx::query("DELETE FROM scan_templates WHERE id = ?1")
+        .bind(template_id)
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+// ============================================================================
+// Target Group Management Functions
+// ============================================================================
+
+/// Create a new target group
+pub async fn create_target_group(
+    pool: &SqlitePool,
+    user_id: &str,
+    request: &models::CreateTargetGroupRequest,
+) -> Result<models::TargetGroup> {
+    let id = Uuid::new_v4().to_string();
+    let now = Utc::now();
+    let targets_json = serde_json::to_string(&request.targets)?;
+
+    let group = sqlx::query_as::<_, models::TargetGroup>(
+        r#"
+        INSERT INTO target_groups (id, user_id, name, description, targets, color, created_at, updated_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+        RETURNING *
+        "#,
+    )
+    .bind(&id)
+    .bind(user_id)
+    .bind(&request.name)
+    .bind(&request.description)
+    .bind(&targets_json)
+    .bind(&request.color)
+    .bind(now)
+    .bind(now)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(group)
+}
+
+/// Get all target groups for a user
+pub async fn get_user_target_groups(
+    pool: &SqlitePool,
+    user_id: &str,
+) -> Result<Vec<models::TargetGroup>> {
+    let groups = sqlx::query_as::<_, models::TargetGroup>(
+        "SELECT * FROM target_groups WHERE user_id = ?1 ORDER BY created_at DESC",
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(groups)
+}
+
+/// Get a target group by ID
+pub async fn get_target_group_by_id(
+    pool: &SqlitePool,
+    group_id: &str,
+) -> Result<Option<models::TargetGroup>> {
+    let group = sqlx::query_as::<_, models::TargetGroup>(
+        "SELECT * FROM target_groups WHERE id = ?1",
+    )
+    .bind(group_id)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(group)
+}
+
+/// Update a target group
+pub async fn update_target_group(
+    pool: &SqlitePool,
+    group_id: &str,
+    request: &models::UpdateTargetGroupRequest,
+) -> Result<models::TargetGroup> {
+    let now = Utc::now();
+
+    if let Some(name) = &request.name {
+        sqlx::query("UPDATE target_groups SET name = ?1, updated_at = ?2 WHERE id = ?3")
+            .bind(name)
+            .bind(now)
+            .bind(group_id)
+            .execute(pool)
+            .await?;
+    }
+
+    if let Some(description) = &request.description {
+        sqlx::query("UPDATE target_groups SET description = ?1, updated_at = ?2 WHERE id = ?3")
+            .bind(description)
+            .bind(now)
+            .bind(group_id)
+            .execute(pool)
+            .await?;
+    }
+
+    if let Some(targets) = &request.targets {
+        let targets_json = serde_json::to_string(targets)?;
+        sqlx::query("UPDATE target_groups SET targets = ?1, updated_at = ?2 WHERE id = ?3")
+            .bind(&targets_json)
+            .bind(now)
+            .bind(group_id)
+            .execute(pool)
+            .await?;
+    }
+
+    if let Some(color) = &request.color {
+        sqlx::query("UPDATE target_groups SET color = ?1, updated_at = ?2 WHERE id = ?3")
+            .bind(color)
+            .bind(now)
+            .bind(group_id)
+            .execute(pool)
+            .await?;
+    }
+
+    let group = sqlx::query_as::<_, models::TargetGroup>(
+        "SELECT * FROM target_groups WHERE id = ?1",
+    )
+    .bind(group_id)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(group)
+}
+
+/// Delete a target group
+pub async fn delete_target_group(pool: &SqlitePool, group_id: &str) -> Result<()> {
+    sqlx::query("DELETE FROM target_groups WHERE id = ?1")
+        .bind(group_id)
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+// ============================================================================
+// Scheduled Scans Functions
+// ============================================================================
+
+/// Create a new scheduled scan
+pub async fn create_scheduled_scan(
+    pool: &SqlitePool,
+    user_id: &str,
+    request: &models::CreateScheduledScanRequest,
+) -> Result<models::ScheduledScan> {
+    let id = Uuid::new_v4().to_string();
+    let now = Utc::now();
+    let config_json = serde_json::to_string(&request.config)?;
+    let next_run_at = calculate_next_run(&request.schedule_type, &request.schedule_value)?;
+
+    let scan = sqlx::query_as::<_, models::ScheduledScan>(
+        r#"
+        INSERT INTO scheduled_scans (id, user_id, name, description, config, schedule_type, schedule_value, next_run_at, is_active, run_count, created_at, updated_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 1, 0, ?9, ?10)
+        RETURNING *
+        "#,
+    )
+    .bind(&id)
+    .bind(user_id)
+    .bind(&request.name)
+    .bind(&request.description)
+    .bind(&config_json)
+    .bind(&request.schedule_type)
+    .bind(&request.schedule_value)
+    .bind(next_run_at)
+    .bind(now)
+    .bind(now)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(scan)
+}
+
+/// Get all scheduled scans for a user
+pub async fn get_user_scheduled_scans(
+    pool: &SqlitePool,
+    user_id: &str,
+) -> Result<Vec<models::ScheduledScan>> {
+    let scans = sqlx::query_as::<_, models::ScheduledScan>(
+        "SELECT * FROM scheduled_scans WHERE user_id = ?1 ORDER BY created_at DESC",
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(scans)
+}
+
+/// Get a scheduled scan by ID
+pub async fn get_scheduled_scan_by_id(
+    pool: &SqlitePool,
+    id: &str,
+) -> Result<Option<models::ScheduledScan>> {
+    let scan = sqlx::query_as::<_, models::ScheduledScan>(
+        "SELECT * FROM scheduled_scans WHERE id = ?1",
+    )
+    .bind(id)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(scan)
+}
+
+/// Update a scheduled scan
+pub async fn update_scheduled_scan(
+    pool: &SqlitePool,
+    id: &str,
+    request: &models::UpdateScheduledScanRequest,
+) -> Result<models::ScheduledScan> {
+    let now = Utc::now();
+
+    // Fetch current scan to merge updates
+    let current = get_scheduled_scan_by_id(pool, id).await?
+        .ok_or_else(|| anyhow::anyhow!("Scheduled scan not found"))?;
+
+    let name = request.name.as_ref().unwrap_or(&current.name);
+    let description = request.description.clone().or(current.description);
+    let config = request.config.as_ref()
+        .map(|c| serde_json::to_string(c).unwrap_or_default())
+        .unwrap_or(current.config);
+    let schedule_type = request.schedule_type.as_ref().unwrap_or(&current.schedule_type);
+    let schedule_value = request.schedule_value.as_ref().unwrap_or(&current.schedule_value);
+    let is_active = request.is_active.unwrap_or(current.is_active);
+
+    // Recalculate next_run_at if schedule changed
+    let next_run_at = if request.schedule_type.is_some() || request.schedule_value.is_some() {
+        calculate_next_run(schedule_type, schedule_value)?
+    } else {
+        current.next_run_at
+    };
+
+    let scan = sqlx::query_as::<_, models::ScheduledScan>(
+        r#"
+        UPDATE scheduled_scans
+        SET name = ?1, description = ?2, config = ?3, schedule_type = ?4,
+            schedule_value = ?5, is_active = ?6, next_run_at = ?7, updated_at = ?8
+        WHERE id = ?9
+        RETURNING *
+        "#,
+    )
+    .bind(name)
+    .bind(&description)
+    .bind(&config)
+    .bind(schedule_type)
+    .bind(schedule_value)
+    .bind(is_active)
+    .bind(next_run_at)
+    .bind(now)
+    .bind(id)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(scan)
+}
+
+/// Delete a scheduled scan
+pub async fn delete_scheduled_scan(pool: &SqlitePool, id: &str) -> Result<()> {
+    sqlx::query("DELETE FROM scheduled_scans WHERE id = ?1")
+        .bind(id)
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+/// Helper function for schedule calculation
+fn calculate_next_run(schedule_type: &str, schedule_value: &str) -> Result<DateTime<Utc>> {
+    use chrono::{Duration, NaiveTime};
+
+    let now = Utc::now();
+
+    match schedule_type {
+        "daily" => {
+            // schedule_value format: "HH:MM" (e.g., "02:00")
+            let time = NaiveTime::parse_from_str(schedule_value, "%H:%M")
+                .map_err(|_| anyhow::anyhow!("Invalid time format, expected HH:MM"))?;
+            let mut next = now.date_naive().and_time(time).and_utc();
+            if next <= now {
+                next = next + Duration::days(1);
+            }
+            Ok(next)
+        }
+        "weekly" => {
+            // schedule_value format: "DAY HH:MM" (e.g., "monday 02:00")
+            let parts: Vec<&str> = schedule_value.split_whitespace().collect();
+            if parts.len() != 2 {
+                return Err(anyhow::anyhow!("Invalid weekly format, expected 'DAY HH:MM'"));
+            }
+            let _day = parts[0].to_lowercase();
+            let time = NaiveTime::parse_from_str(parts[1], "%H:%M")
+                .map_err(|_| anyhow::anyhow!("Invalid time format"))?;
+            // Simplified: just add 7 days from now at the specified time
+            let next = now.date_naive().and_time(time).and_utc() + Duration::days(7);
+            Ok(next)
+        }
+        "monthly" => {
+            // schedule_value format: "DD HH:MM" (e.g., "01 02:00" for 1st of month)
+            let parts: Vec<&str> = schedule_value.split_whitespace().collect();
+            if parts.len() != 2 {
+                return Err(anyhow::anyhow!("Invalid monthly format, expected 'DD HH:MM'"));
+            }
+            let time = NaiveTime::parse_from_str(parts[1], "%H:%M")
+                .map_err(|_| anyhow::anyhow!("Invalid time format"))?;
+            // Simplified: add 30 days
+            let next = now.date_naive().and_time(time).and_utc() + Duration::days(30);
+            Ok(next)
+        }
+        _ => {
+            // Default: run in 24 hours
+            Ok(now + Duration::days(1))
+        }
+    }
+}
+
+// ============================================================================
+// Notification Settings Functions
+// ============================================================================
+
+/// Get notification settings for a user (creates default if not exists)
+pub async fn get_notification_settings(
+    pool: &SqlitePool,
+    user_id: &str,
+) -> Result<models::NotificationSettings> {
+    // Try to get existing settings
+    if let Some(settings) = sqlx::query_as::<_, models::NotificationSettings>(
+        "SELECT * FROM notification_settings WHERE user_id = ?1",
+    )
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?
+    {
+        return Ok(settings);
+    }
+
+    // If not exists, get user email and create default settings
+    let user = sqlx::query_as::<_, models::User>("SELECT * FROM users WHERE id = ?1")
+        .bind(user_id)
+        .fetch_one(pool)
+        .await?;
+
+    let now = Utc::now();
+    let settings = sqlx::query_as::<_, models::NotificationSettings>(
+        r#"
+        INSERT INTO notification_settings (user_id, email_on_scan_complete, email_on_critical_vuln, email_address, created_at, updated_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+        RETURNING *
+        "#,
+    )
+    .bind(user_id)
+    .bind(false) // Default: don't send on scan complete
+    .bind(true)  // Default: send on critical vulnerabilities
+    .bind(&user.email)
+    .bind(now)
+    .bind(now)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(settings)
+}
+
+/// Update notification settings for a user
+pub async fn update_notification_settings(
+    pool: &SqlitePool,
+    user_id: &str,
+    request: &models::UpdateNotificationSettingsRequest,
+) -> Result<models::NotificationSettings> {
+    let now = Utc::now();
+
+    // Ensure settings exist first
+    let _ = get_notification_settings(pool, user_id).await?;
+
+    if let Some(email_on_scan_complete) = request.email_on_scan_complete {
+        sqlx::query(
+            "UPDATE notification_settings SET email_on_scan_complete = ?1, updated_at = ?2 WHERE user_id = ?3",
+        )
+        .bind(email_on_scan_complete)
+        .bind(now)
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+    }
+
+    if let Some(email_on_critical_vuln) = request.email_on_critical_vuln {
+        sqlx::query(
+            "UPDATE notification_settings SET email_on_critical_vuln = ?1, updated_at = ?2 WHERE user_id = ?3",
+        )
+        .bind(email_on_critical_vuln)
+        .bind(now)
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+    }
+
+    if let Some(email_address) = &request.email_address {
+        sqlx::query(
+            "UPDATE notification_settings SET email_address = ?1, updated_at = ?2 WHERE user_id = ?3",
+        )
+        .bind(email_address)
+        .bind(now)
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+    }
+
+    let settings = sqlx::query_as::<_, models::NotificationSettings>(
+        "SELECT * FROM notification_settings WHERE user_id = ?1",
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(settings)
 }

@@ -207,3 +207,166 @@ export interface ReportTemplate {
   default_sections: string[];
   supports_formats: string[];
 }
+
+// Scan Comparison Types
+
+export interface ScanDiff {
+  new_hosts: string[];
+  removed_hosts: string[];
+  host_changes: HostDiff[];
+  summary: DiffSummary;
+}
+
+export interface DiffSummary {
+  total_new_hosts: number;
+  total_removed_hosts: number;
+  total_hosts_changed: number;
+  total_new_ports: number;
+  total_closed_ports: number;
+  total_new_vulnerabilities: number;
+  total_resolved_vulnerabilities: number;
+  total_service_changes: number;
+}
+
+export interface HostDiff {
+  ip: string;
+  hostname: string | null;
+  new_ports: PortInfo[];
+  closed_ports: PortInfo[];
+  new_vulnerabilities: Vulnerability[];
+  resolved_vulnerabilities: Vulnerability[];
+  service_changes: ServiceChange[];
+  os_change: OsChange | null;
+}
+
+export interface ServiceChange {
+  port: number;
+  protocol: string;
+  old_service: string | null;
+  new_service: string | null;
+  old_version: string | null;
+  new_version: string | null;
+  change_type: ServiceChangeType;
+}
+
+export type ServiceChangeType =
+  | 'NewService'
+  | 'ServiceChanged'
+  | 'VersionChanged'
+  | 'ServiceRemoved';
+
+export interface OsChange {
+  old_os: string;
+  new_os: string;
+  old_confidence: number;
+  new_confidence: number;
+}
+
+export interface ScanComparisonResponse {
+  scan1: {
+    id: string;
+    name: string;
+    created_at: string;
+  };
+  scan2: {
+    id: string;
+    name: string;
+    created_at: string;
+  };
+  diff: ScanDiff;
+}
+
+// Target Groups
+
+export interface TargetGroup {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string | null;
+  targets: string; // JSON array string
+  color: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateTargetGroupRequest {
+  name: string;
+  description?: string;
+  targets: string[];
+  color: string;
+}
+
+export interface UpdateTargetGroupRequest {
+  name?: string;
+  description?: string;
+  targets?: string[];
+  color?: string;
+}
+
+// Scheduled Scans
+
+export interface ScheduledScan {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string | null;
+  config: string; // JSON string
+  schedule_type: 'daily' | 'weekly' | 'monthly' | 'cron';
+  schedule_value: string;
+  next_run_at: string;
+  last_run_at: string | null;
+  last_scan_id: string | null;
+  is_active: boolean;
+  run_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ScheduledScanConfig {
+  targets: string[];
+  port_range: [number, number];
+  threads: number;
+  enable_os_detection: boolean;
+  enable_service_detection: boolean;
+  enable_vuln_scan: boolean;
+  enable_enumeration: boolean;
+  enum_depth?: string;
+  enum_services?: string[];
+  scan_type?: string;
+  udp_port_range?: [number, number];
+  udp_retries?: number;
+}
+
+export interface CreateScheduledScanRequest {
+  name: string;
+  description?: string;
+  config: ScheduledScanConfig;
+  schedule_type: string;
+  schedule_value: string;
+}
+
+export interface UpdateScheduledScanRequest {
+  name?: string;
+  description?: string;
+  config?: ScheduledScanConfig;
+  schedule_type?: string;
+  schedule_value?: string;
+  is_active?: boolean;
+}
+
+// Notification Settings
+
+export interface NotificationSettings {
+  user_id: string;
+  email_on_scan_complete: boolean;
+  email_on_critical_vuln: boolean;
+  email_address: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UpdateNotificationSettingsRequest {
+  email_on_scan_complete?: boolean;
+  email_on_critical_vuln?: boolean;
+  email_address?: string;
+}

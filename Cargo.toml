@@ -59,6 +59,9 @@ futures-util = "0.3"
 jsonwebtoken = "9.3"
 bcrypt = "0.15"
 
+# Email notifications
+lettre = "0.11"
+
 # Database
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "postgres", "mysql", "chrono", "uuid"] }
 

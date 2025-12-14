@@ -1,4 +1,5 @@
 use anyhow::Result;
+pub mod comparison;
 pub mod enumeration;
 pub mod host_discovery;
 pub mod os_fingerprint;

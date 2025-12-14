@@ -9,6 +9,10 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     create_system_settings_table(pool).await?;
     create_cve_cache_table(pool).await?;
     create_reports_table(pool).await?;
+    create_scheduled_scans_table(pool).await?;
+    create_scan_templates_table(pool).await?;
+    create_target_groups_table(pool).await?;
+    create_notification_settings_table(pool).await?;
     seed_default_roles(pool).await?;
     seed_default_settings(pool).await?;
     Ok(())
@@ -226,6 +230,130 @@ async fn seed_default_settings(pool: &SqlitePool) -> Result<()> {
             ('max_scans_per_user', '100', 'Maximum scans per user', datetime('now')),
             ('scan_retention_days', '90', 'Auto-delete scans older than N days', datetime('now')),
             ('allow_registration', 'true', 'Allow new user registration', datetime('now'))
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Create scheduled_scans table for recurring scan jobs
+async fn create_scheduled_scans_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS scheduled_scans (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            config TEXT NOT NULL,
+            schedule_type TEXT NOT NULL,
+            schedule_value TEXT NOT NULL,
+            next_run_at TEXT NOT NULL,
+            last_run_at TEXT,
+            last_scan_id TEXT,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            run_count INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (last_scan_id) REFERENCES scan_results(id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for efficient queries
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_scheduled_scans_user_id ON scheduled_scans(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_scheduled_scans_next_run ON scheduled_scans(next_run_at)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_scheduled_scans_active ON scheduled_scans(is_active)")
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+/// Create scan_templates table for reusable scan configurations
+async fn create_scan_templates_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS scan_templates (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            config TEXT NOT NULL,
+            is_default INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for efficient queries
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_scan_templates_user_id ON scan_templates(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_scan_templates_is_default ON scan_templates(is_default)")
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+/// Create target_groups table for organizing scan targets
+async fn create_target_groups_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS target_groups (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            targets TEXT NOT NULL,
+            color TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for efficient queries
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_target_groups_user_id ON target_groups(user_id)")
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+/// Create notification_settings table for user email notification preferences
+async fn create_notification_settings_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS notification_settings (
+            user_id TEXT PRIMARY KEY,
+            email_on_scan_complete INTEGER NOT NULL DEFAULT 0,
+            email_on_critical_vuln INTEGER NOT NULL DEFAULT 1,
+            email_address TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
         "#,
     )
     .execute(pool)
