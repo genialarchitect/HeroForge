@@ -25,6 +25,8 @@ pub enum ServiceType {
     Ldap,
     Snmp,
     Rdp,
+    Vnc,
+    Telnet,
     Database(DbType),
 }
 
@@ -170,6 +172,15 @@ pub enum FindingType {
     RdpEncryptionLevel,
     RdpBlueKeep,
 
+    // VNC findings
+    VncVersion,
+    VncSecurityType,
+    VncNoAuth,
+
+    // Telnet findings
+    TelnetBanner,
+    TelnetOption,
+
     // General findings
     Misconfiguration,
     InformationDisclosure,
@@ -204,6 +215,8 @@ impl std::fmt::Display for ServiceType {
             ServiceType::Ldap => write!(f, "LDAP"),
             ServiceType::Snmp => write!(f, "SNMP"),
             ServiceType::Rdp => write!(f, "RDP"),
+            ServiceType::Vnc => write!(f, "VNC"),
+            ServiceType::Telnet => write!(f, "Telnet"),
             ServiceType::Database(db) => write!(f, "{:?}", db),
         }
     }
@@ -288,6 +301,11 @@ impl std::fmt::Display for FindingType {
             FindingType::RdpNlaRequired => write!(f, "NLA Requirement"),
             FindingType::RdpEncryptionLevel => write!(f, "RDP Encryption Level"),
             FindingType::RdpBlueKeep => write!(f, "BlueKeep Vulnerability"),
+            FindingType::VncVersion => write!(f, "VNC Version"),
+            FindingType::VncSecurityType => write!(f, "VNC Security Type"),
+            FindingType::VncNoAuth => write!(f, "VNC No Authentication"),
+            FindingType::TelnetBanner => write!(f, "Telnet Banner"),
+            FindingType::TelnetOption => write!(f, "Telnet Option"),
             FindingType::Misconfiguration => write!(f, "Misconfiguration"),
             FindingType::InformationDisclosure => write!(f, "Information Disclosure"),
             FindingType::Vulnerability => write!(f, "Vulnerability"),

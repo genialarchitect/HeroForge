@@ -11,6 +11,8 @@ pub mod ldap_enum;
 pub mod snmp_enum;
 pub mod ssl_enum;
 pub mod rdp_enum;
+pub mod vnc_enum;
+pub mod telnet_enum;
 
 use crate::types::{HostInfo, ScanConfig, ScanProgressMessage, ScanTarget};
 use anyhow::Result;
@@ -245,6 +247,26 @@ async fn enumerate_service_by_port(
             )
             .await
         }
+        ServiceType::Vnc => {
+            vnc_enum::enumerate_vnc(
+                target,
+                port,
+                config.enum_depth,
+                config.timeout,
+                progress_tx.clone(),
+            )
+            .await
+        }
+        ServiceType::Telnet => {
+            telnet_enum::enumerate_telnet(
+                target,
+                port,
+                config.enum_depth,
+                config.timeout,
+                progress_tx.clone(),
+            )
+            .await
+        }
     };
 
     // Send completion message
@@ -344,6 +366,17 @@ fn determine_service_type(service_name: &str, port: u16) -> ServiceType {
        || name_lower.contains("remote desktop") || name_lower.contains("terminal")
        || port == 3389 {
         return ServiceType::Rdp;
+    }
+
+    // Check for VNC
+    if name_lower.contains("vnc") || name_lower.contains("rfb")
+       || (port >= 5900 && port <= 5910) {
+        return ServiceType::Vnc;
+    }
+
+    // Check for Telnet
+    if name_lower.contains("telnet") || port == 23 || port == 2323 {
+        return ServiceType::Telnet;
     }
 
     // Default to HTTPS for SSL ports

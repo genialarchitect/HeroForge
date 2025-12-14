@@ -395,6 +395,7 @@ fn generate_service_enumeration(data: &ReportData) -> String {
     );
 
     let mut has_enumeration = false;
+    let mut security_findings: Vec<(String, String, String, String)> = Vec::new();
 
     for host in &data.hosts {
         for port in &host.ports {
@@ -404,26 +405,91 @@ fn generate_service_enumeration(data: &ReportData) -> String {
                         has_enumeration = true;
 
                         html.push_str(&format!(
-                            r#"<h3>{}:{} ({})</h3><table class="data-table"><thead><tr><th>Finding Type</th><th>Value</th><th>Confidence</th></tr></thead><tbody>"#,
+                            r#"<h3>{}:{} ({})</h3><table class="data-table"><thead><tr><th>Finding Type</th><th>Value</th><th>Confidence</th><th>Severity</th></tr></thead><tbody>"#,
                             host.target.ip,
                             port.port,
                             html_escape(&service.name)
                         ));
 
                         for finding in &enum_result.findings {
+                            // Check for severity in metadata
+                            let severity = finding.metadata.get("severity")
+                                .map(|s| s.as_str())
+                                .unwrap_or("-");
+                            let severity_class = match severity.to_lowercase().as_str() {
+                                "critical" => "severity-critical",
+                                "high" => "severity-high",
+                                "medium" => "severity-medium",
+                                "low" => "severity-low",
+                                _ => "",
+                            };
+
+                            // Collect security-relevant findings
+                            let finding_type_str = format!("{}", finding.finding_type);
+                            if severity != "-" || finding_type_str.contains("Misconfiguration")
+                                || finding_type_str.contains("Vulnerability")
+                                || finding_type_str.contains("Weak") {
+                                security_findings.push((
+                                    format!("{}:{}", host.target.ip, port.port),
+                                    finding_type_str.clone(),
+                                    finding.value.clone(),
+                                    severity.to_string(),
+                                ));
+                            }
+
                             html.push_str(&format!(
-                                r#"<tr><td>{:?}</td><td class="finding-value">{}</td><td>{}%</td></tr>"#,
+                                r#"<tr class="{}"><td>{}</td><td class="finding-value">{}</td><td>{}%</td><td class="{}">{}</td></tr>"#,
+                                severity_class,
                                 finding.finding_type,
                                 html_escape(&finding.value),
-                                finding.confidence
+                                finding.confidence,
+                                severity_class,
+                                severity
                             ));
                         }
 
                         html.push_str("</tbody></table>");
+
+                        // Show metadata summary if available
+                        if !enum_result.metadata.is_empty() {
+                            html.push_str("<div class=\"enum-metadata\"><strong>Additional Info:</strong> ");
+                            let meta_items: Vec<String> = enum_result.metadata.iter()
+                                .take(5)
+                                .map(|(k, v)| format!("{}: {}", html_escape(k), html_escape(v)))
+                                .collect();
+                            html.push_str(&meta_items.join(" | "));
+                            html.push_str("</div>");
+                        }
                     }
                 }
             }
         }
+    }
+
+    // Add security findings summary if any
+    if !security_findings.is_empty() {
+        html.push_str(r#"<div class="security-findings-summary"><h3>Security-Relevant Findings Summary</h3>"#);
+        html.push_str(r#"<table class="data-table"><thead><tr><th>Target</th><th>Finding</th><th>Details</th><th>Severity</th></tr></thead><tbody>"#);
+
+        for (target, finding_type, value, severity) in &security_findings {
+            let severity_class = match severity.to_lowercase().as_str() {
+                "critical" => "severity-critical",
+                "high" => "severity-high",
+                "medium" => "severity-medium",
+                _ => "",
+            };
+            html.push_str(&format!(
+                r#"<tr class="{}"><td>{}</td><td>{}</td><td class="finding-value">{}</td><td class="{}">{}</td></tr>"#,
+                severity_class,
+                html_escape(target),
+                html_escape(finding_type),
+                html_escape(&truncate_value(value, 100)),
+                severity_class,
+                html_escape(severity)
+            ));
+        }
+
+        html.push_str("</tbody></table></div>");
     }
 
     if !has_enumeration {
@@ -432,6 +498,14 @@ fn generate_service_enumeration(data: &ReportData) -> String {
 
     html.push_str("</div>");
     html
+}
+
+fn truncate_value(s: &str, max_len: usize) -> String {
+    if s.len() <= max_len {
+        s.to_string()
+    } else {
+        format!("{}...", &s[..max_len])
+    }
 }
 
 fn generate_remediation(data: &ReportData) -> String {
@@ -843,6 +917,39 @@ body {
     max-width: 400px;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+/* Severity highlighting for enumeration findings */
+.severity-critical { background: #fef2f2 !important; }
+.severity-high { background: #fff7ed !important; }
+.severity-medium { background: #fefce8 !important; }
+.severity-low { background: #eff6ff !important; }
+.severity-critical td:last-child { color: #dc2626; font-weight: bold; }
+.severity-high td:last-child { color: #ea580c; font-weight: bold; }
+.severity-medium td:last-child { color: #ca8a04; font-weight: bold; }
+.severity-low td:last-child { color: #2563eb; }
+
+/* Enumeration metadata */
+.enum-metadata {
+    background: #f1f5f9;
+    padding: 10px 15px;
+    border-radius: 4px;
+    margin: 10px 0;
+    font-size: 0.9rem;
+    color: #475569;
+}
+
+/* Security findings summary */
+.security-findings-summary {
+    margin-top: 30px;
+    padding: 20px;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+}
+.security-findings-summary h3 {
+    color: #dc2626;
+    margin-top: 0;
 }
 
 /* Remediation items */

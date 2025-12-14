@@ -67,6 +67,7 @@ pub async fn create_scan(
         output_format: crate::types::OutputFormat::Json,
         udp_port_range: scan_request.udp_port_range,
         udp_retries: scan_request.udp_retries,
+        skip_host_discovery: false, // Web API always performs discovery
     };
 
     tokio::spawn(async move {

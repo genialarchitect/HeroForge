@@ -114,6 +114,10 @@ enum Commands {
         #[arg(long, default_value = "2")]
         udp_retries: u8,
 
+        /// Skip host discovery and scan targets directly
+        #[arg(long)]
+        skip_discovery: bool,
+
         /// Output file path
         #[arg(short, long)]
         output_file: Option<String>,
@@ -240,6 +244,7 @@ async fn main() {
             enum_wordlist,
             udp_ports,
             udp_retries,
+            skip_discovery,
             output_file,
         } => {
             let config = build_scan_config(
@@ -256,6 +261,7 @@ async fn main() {
                 enum_wordlist,
                 udp_ports,
                 udp_retries,
+                skip_discovery,
                 cli.output,
             );
             run_full_scan(config, output_file).await
@@ -312,6 +318,7 @@ fn build_scan_config(
     enum_wordlist: Option<String>,
     udp_ports: Option<String>,
     udp_retries: u8,
+    skip_discovery: bool,
     output: CliOutputFormat,
 ) -> ScanConfig {
     let port_range = parse_port_range(&ports).unwrap_or((1, 1000));
@@ -333,6 +340,7 @@ fn build_scan_config(
         output_format: output.into(),
         udp_port_range,
         udp_retries,
+        skip_host_discovery: skip_discovery,
     }
 }
 

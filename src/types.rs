@@ -93,6 +93,8 @@ pub struct ScanConfig {
     // UDP-specific configuration
     pub udp_port_range: Option<(u16, u16)>,
     pub udp_retries: u8,
+    // Skip host discovery and scan targets directly
+    pub skip_host_discovery: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -129,6 +131,7 @@ impl Default for ScanConfig {
             output_format: OutputFormat::Terminal,
             udp_port_range: None,
             udp_retries: 2,
+            skip_host_discovery: false,
         }
     }
 }

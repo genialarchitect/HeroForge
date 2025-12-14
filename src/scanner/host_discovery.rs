@@ -1,8 +1,8 @@
 use anyhow::Result;
 use crate::types::{ScanConfig, ScanTarget};
 use ipnetwork::IpNetwork;
-use log::{debug, warn};
-use std::net::IpAddr;
+use log::{debug, info, warn};
+use std::net::{IpAddr, ToSocketAddrs};
 use std::str::FromStr;
 use std::time::Duration;
 use tokio::task;
@@ -12,10 +12,12 @@ pub async fn discover_hosts(
 ) -> Result<Vec<ScanTarget>, anyhow::Error> {
     let mut all_targets = Vec::new();
 
-    // Parse all target specifications
+    // Parse all target specifications (with hostname resolution)
     for target_spec in &config.targets {
-        let targets = parse_target_spec(target_spec)?;
-        all_targets.extend(targets);
+        match parse_target_spec(target_spec) {
+            Ok(targets) => all_targets.extend(targets),
+            Err(e) => warn!("Failed to parse target '{}': {}", target_spec, e),
+        }
     }
 
     debug!("Checking {} potential targets", all_targets.len());
@@ -24,20 +26,27 @@ pub async fn discover_hosts(
     let mut tasks = Vec::new();
     let timeout = config.timeout;
 
-    for ip in all_targets {
-        let task = task::spawn(async move { check_host_alive(ip, timeout).await });
+    for target in all_targets {
+        let ip = target.ip;
+        let hostname = target.hostname;
+        let task = task::spawn(async move {
+            (check_host_alive(ip, timeout).await, hostname)
+        });
         tasks.push((ip, task));
     }
 
     let mut live_hosts = Vec::new();
     for (ip, task) in tasks {
         match task.await {
-            Ok(true) => {
-                // Try to get hostname
-                let hostname = get_hostname(&ip).await;
-                live_hosts.push(ScanTarget { ip, hostname });
+            Ok((true, hostname)) => {
+                // Use resolved hostname if available, otherwise try reverse lookup
+                let final_hostname = hostname.or_else(|| {
+                    // We can try reverse lookup here, but it's often not reliable
+                    None
+                });
+                live_hosts.push(ScanTarget { ip, hostname: final_hostname });
             }
-            Ok(false) => {
+            Ok((false, _)) => {
                 debug!("{} appears to be down", ip);
             }
             Err(e) => {
@@ -49,18 +58,42 @@ pub async fn discover_hosts(
     Ok(live_hosts)
 }
 
-fn parse_target_spec(spec: &str) -> Result<Vec<IpAddr>, anyhow::Error> {
+/// Parsed target with optional hostname
+pub struct ParsedTarget {
+    pub ip: IpAddr,
+    pub hostname: Option<String>,
+}
+
+fn parse_target_spec(spec: &str) -> Result<Vec<ParsedTarget>, anyhow::Error> {
     // Try to parse as CIDR notation first
     if spec.contains('/') {
         let network = IpNetwork::from_str(spec)?;
-        Ok(network.iter().collect())
+        Ok(network.iter().map(|ip| ParsedTarget { ip, hostname: None }).collect())
     } else if spec.contains('-') {
         // IP range like 192.168.1.1-192.168.1.10
-        parse_ip_range(spec)
+        let ips = parse_ip_range(spec)?;
+        Ok(ips.into_iter().map(|ip| ParsedTarget { ip, hostname: None }).collect())
     } else {
-        // Single IP address
-        let ip = spec.parse::<IpAddr>()?;
-        Ok(vec![ip])
+        // Try to parse as IP address first
+        if let Ok(ip) = spec.parse::<IpAddr>() {
+            return Ok(vec![ParsedTarget { ip, hostname: None }]);
+        }
+
+        // Try to resolve as hostname
+        debug!("Resolving hostname: {}", spec);
+        match format!("{}:0", spec).to_socket_addrs() {
+            Ok(addrs) => {
+                let resolved: Vec<_> = addrs.collect();
+                if resolved.is_empty() {
+                    Err(anyhow::anyhow!("Hostname resolved to no addresses: {}", spec))
+                } else {
+                    let ip = resolved[0].ip();
+                    info!("Resolved {} -> {}", spec, ip);
+                    Ok(vec![ParsedTarget { ip, hostname: Some(spec.to_string()) }])
+                }
+            }
+            Err(e) => Err(anyhow::anyhow!("Failed to resolve hostname '{}': {}", spec, e)),
+        }
     }
 }
 
@@ -118,18 +151,3 @@ async fn tcp_connect_probe(ip: IpAddr, port: u16, timeout: Duration) -> bool {
     }
 }
 
-async fn get_hostname(ip: &IpAddr) -> Option<String> {
-    // Try reverse DNS lookup
-    match tokio::net::lookup_host(format!("{}:0", ip)).await {
-        Ok(mut addrs) => {
-            if let Some(_addr) = addrs.next() {
-                // This doesn't actually give us the hostname, need a proper reverse lookup
-                // For now, return None - we can improve this later with trust-dns-resolver
-                None
-            } else {
-                None
-            }
-        }
-        Err(_) => None,
-    }
-}

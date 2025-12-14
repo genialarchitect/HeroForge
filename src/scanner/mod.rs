@@ -9,10 +9,65 @@ pub mod udp_probes;
 pub mod udp_scanner;
 pub mod udp_service_detection;
 
-use crate::types::{HostInfo, ScanConfig, ScanProgressMessage};
-use log::info;
+use crate::types::{HostInfo, ScanConfig, ScanProgressMessage, ScanTarget};
+use log::{debug, info, warn};
+use std::net::{IpAddr, ToSocketAddrs};
 use std::time::Instant;
 use tokio::sync::broadcast::Sender;
+
+/// Resolve a target string to a ScanTarget
+/// Handles IP addresses, hostnames, and CIDR notation
+fn resolve_target(target_str: &str) -> Vec<ScanTarget> {
+    let mut targets = Vec::new();
+
+    // Handle CIDR notation
+    if target_str.contains('/') {
+        if let Ok(network) = target_str.parse::<ipnetwork::IpNetwork>() {
+            for ip in network.iter() {
+                targets.push(ScanTarget {
+                    ip,
+                    hostname: None,
+                });
+            }
+        } else {
+            warn!("Failed to parse CIDR notation: {}", target_str);
+        }
+        return targets;
+    }
+
+    // Try to parse as IP address first
+    if let Ok(ip) = target_str.parse::<IpAddr>() {
+        targets.push(ScanTarget {
+            ip,
+            hostname: None,
+        });
+        return targets;
+    }
+
+    // Try to resolve as hostname
+    debug!("Resolving hostname: {}", target_str);
+    match format!("{}:0", target_str).to_socket_addrs() {
+        Ok(addrs) => {
+            let resolved: Vec<_> = addrs.collect();
+            if resolved.is_empty() {
+                warn!("Hostname resolved to no addresses: {}", target_str);
+            } else {
+                // Use the first resolved address
+                let ip = resolved[0].ip();
+                info!("Resolved {} -> {}", target_str, ip);
+                targets.push(ScanTarget {
+                    ip,
+                    hostname: Some(target_str.to_string()),
+                });
+            }
+        }
+        Err(e) => {
+            warn!("Failed to resolve hostname '{}': {}", target_str, e);
+        }
+    }
+
+    targets
+}
 
 pub async fn run_scan(
     config: &ScanConfig,
@@ -28,18 +83,38 @@ pub async fn run_scan(
         }
     };
 
-    // Step 1: Discover live hosts
-    info!("Phase 1: Host Discovery");
-    send_progress(
-        &progress_tx,
-        ScanProgressMessage::PhaseStarted {
-            phase: "discovery".to_string(),
-            progress: 0.0,
-        },
-    );
+    // Step 1: Discover live hosts (or skip if --skip-discovery is set)
+    let live_hosts = if config.skip_host_discovery {
+        info!("Phase 1: Skipping Host Discovery (--skip-discovery)");
+        send_progress(
+            &progress_tx,
+            ScanProgressMessage::PhaseStarted {
+                phase: "discovery".to_string(),
+                progress: 0.0,
+            },
+        );
 
-    let live_hosts = host_discovery::discover_hosts(config).await?;
-    info!("Found {} live hosts", live_hosts.len());
+        // Convert targets directly to ScanTargets (with hostname resolution)
+        let mut targets = Vec::new();
+        for target_str in &config.targets {
+            targets.extend(resolve_target(target_str));
+        }
+        info!("Treating {} targets as live (discovery skipped)", targets.len());
+        targets
+    } else {
+        info!("Phase 1: Host Discovery");
+        send_progress(
+            &progress_tx,
+            ScanProgressMessage::PhaseStarted {
+                phase: "discovery".to_string(),
+                progress: 0.0,
+            },
+        );
+
+        let hosts = host_discovery::discover_hosts(config).await?;
+        info!("Found {} live hosts", hosts.len());
+        hosts
+    };
 
     if live_hosts.is_empty() {
         return Ok(Vec::new());
