@@ -6,7 +6,6 @@ pub mod websocket;
 use actix_cors::Cors;
 use actix_files as fs;
 use actix_web::{middleware::Logger, web, App, HttpServer};
-use sqlx::SqlitePool;
 
 pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::Result<()> {
     log::info!("Initializing database...");

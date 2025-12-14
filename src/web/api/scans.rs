@@ -1,7 +1,5 @@
 use actix_web::{web, HttpResponse, Result};
 use sqlx::SqlitePool;
-use std::sync::Arc;
-use tokio::sync::Mutex;
 
 use crate::db::{self, models};
 use crate::types::ScanConfig;

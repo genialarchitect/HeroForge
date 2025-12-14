@@ -10,7 +10,7 @@ pub mod smtp_enum;
 pub mod ldap_enum;
 pub mod ssl_enum;
 
-use crate::types::{HostInfo, PortInfo, ScanConfig, ScanProgressMessage, ScanTarget};
+use crate::types::{HostInfo, ScanConfig, ScanProgressMessage, ScanTarget};
 use anyhow::Result;
 use log::{debug, info};
 use tokio::sync::broadcast::Sender;

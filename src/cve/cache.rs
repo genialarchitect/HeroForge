@@ -1,7 +1,7 @@
 use crate::types::{Severity, Vulnerability};
 use anyhow::Result;
 use chrono::{Duration, Utc};
-use log::{debug, warn};
+use log::debug;
 use sqlx::SqlitePool;
 
 /// Get cached CVEs for a product/version combination

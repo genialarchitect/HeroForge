@@ -1,7 +1,7 @@
 use super::types::{DbType, EnumDepth, EnumerationResult, Finding, FindingType, ServiceType};
 use crate::types::{ScanProgressMessage, ScanTarget};
 use anyhow::Result;
-use log::{debug, info, warn};
+use log::{debug, info};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use tokio::sync::broadcast::Sender;

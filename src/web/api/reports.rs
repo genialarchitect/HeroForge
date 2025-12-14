@@ -6,7 +6,7 @@ use sqlx::SqlitePool;
 use crate::db;
 use crate::db::models::CreateReportRequest;
 use crate::reports::storage;
-use crate::reports::types::{ReportFormat, ReportOptions, ReportTemplate};
+use crate::reports::types::{ReportFormat, ReportTemplate};
 use crate::reports::ReportGenerator;
 use crate::web::auth::Claims;
 

@@ -1,6 +1,6 @@
 use super::types::{EnumDepth, EnumerationResult, Finding, FindingType, ServiceType};
 use crate::types::{ScanProgressMessage, ScanTarget};
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use log::{debug, info};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};

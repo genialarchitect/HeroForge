@@ -2,8 +2,8 @@ use super::types::{EnumDepth, EnumerationResult, Finding, FindingType, ServiceTy
 use super::wordlists::WordlistManager;
 use crate::types::{ScanProgressMessage, ScanTarget};
 use anyhow::Result;
-use log::{debug, info, warn};
-use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
+use log::{debug, info};
+use reqwest::header::HeaderMap;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;

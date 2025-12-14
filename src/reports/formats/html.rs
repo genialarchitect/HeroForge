@@ -3,7 +3,6 @@ use std::path::Path;
 use tokio::fs;
 
 use crate::reports::types::{ReportData, ReportSection};
-use crate::types::Severity;
 
 /// Generate an HTML report
 pub async fn generate(data: &ReportData, reports_dir: &str) -> Result<(String, i64)> {

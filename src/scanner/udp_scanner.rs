@@ -48,8 +48,6 @@ pub struct UdpScanResult {
 /// Check if we have raw socket capability
 pub fn has_raw_socket_capability() -> bool {
     // Try to create a raw ICMP socket using libc directly
-    use std::os::unix::io::FromRawFd;
-
     unsafe {
         let fd = libc::socket(libc::AF_INET, libc::SOCK_RAW, libc::IPPROTO_ICMP);
         if fd >= 0 {
