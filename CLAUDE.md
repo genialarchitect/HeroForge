@@ -84,6 +84,12 @@ cargo test -- --nocapture
 
 # Test specific module
 cargo test scanner::
+
+# Test specific function
+cargo test scanner::comparison::tests::test_compare_scans
+
+# Run type checking only (faster than full build)
+cargo check
 ```
 
 ### Database Management
@@ -205,8 +211,9 @@ src/
     │   ├── target_groups.rs # /api/target-groups/* endpoints
     │   ├── scheduled_scans.rs # /api/scheduled-scans/* endpoints
     │   └── notifications.rs # /api/notifications/* endpoints
-    └── websocket/       # Real-time scan progress
-        └── mod.rs       # WebSocket handler for scan updates
+    ├── websocket/       # Real-time scan progress
+    │   └── mod.rs       # WebSocket handler for scan updates
+    └── scheduler.rs     # Background job scheduler (WIP - for scheduled scans)
 ```
 
 ### Database Models
