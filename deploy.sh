@@ -1,5 +1,6 @@
 #!/bin/bash
-# HeroForge Deployment Script for genialarchitect.io
+# HeroForge Deployment Script
+# Deploys via Docker + Traefik (SSL handled automatically)
 
 set -e  # Exit on error
 
@@ -39,69 +40,50 @@ echo ""
 
 echo -e "${YELLOW}Step 3: Building Backend (Release)...${NC}"
 cd /root/Development/HeroForge
-sudo -u root ~/.cargo/bin/cargo build --release
+~/.cargo/bin/cargo build --release
 echo -e "${GREEN}✓ Backend built${NC}"
 echo ""
 
-echo -e "${YELLOW}Step 4: Deploying Nginx configuration...${NC}"
-cp nginx-heroforge.conf /etc/nginx/sites-available/heroforge
-
-# Create symlink if it doesn't exist
-if [ ! -L /etc/nginx/sites-enabled/heroforge ]; then
-    ln -s /etc/nginx/sites-available/heroforge /etc/nginx/sites-enabled/
-    echo -e "${GREEN}✓ Nginx config symlink created${NC}"
-else
-    echo -e "${GREEN}✓ Nginx config already linked${NC}"
-fi
+echo -e "${YELLOW}Step 4: Rebuilding Docker container...${NC}"
+cd /root
+docker compose build heroforge
+echo -e "${GREEN}✓ Docker container built${NC}"
 echo ""
 
-echo -e "${YELLOW}Step 5: Testing Nginx configuration...${NC}"
-nginx -t
-echo -e "${GREEN}✓ Nginx config is valid${NC}"
-echo ""
-
-echo -e "${YELLOW}Step 6: Installing systemd service...${NC}"
-cp heroforge.service /etc/systemd/system/
-systemctl daemon-reload
-echo -e "${GREEN}✓ Service installed${NC}"
-echo ""
-
-echo -e "${YELLOW}Step 7: Enabling and starting HeroForge service...${NC}"
-systemctl enable heroforge
-systemctl restart heroforge
+echo -e "${YELLOW}Step 5: Restarting HeroForge container...${NC}"
+docker compose up -d heroforge
 sleep 2
-echo -e "${GREEN}✓ Service started${NC}"
+echo -e "${GREEN}✓ Container restarted${NC}"
 echo ""
 
-echo -e "${YELLOW}Step 8: Checking service status...${NC}"
-if systemctl is-active --quiet heroforge; then
-    echo -e "${GREEN}✓ HeroForge service is running${NC}"
-    systemctl status heroforge --no-pager | head -10
+echo -e "${YELLOW}Step 6: Checking container status...${NC}"
+if docker ps | grep -q heroforge; then
+    echo -e "${GREEN}✓ HeroForge container is running${NC}"
+    docker logs heroforge --tail 10
 else
-    echo -e "${RED}✗ Service failed to start. Check logs with: journalctl -u heroforge -n 50${NC}"
+    echo -e "${RED}✗ Container failed to start. Check logs with: docker logs heroforge${NC}"
     exit 1
 fi
 echo ""
 
-echo -e "${YELLOW}Step 9: Reloading Nginx...${NC}"
-systemctl reload nginx
-echo -e "${GREEN}✓ Nginx reloaded${NC}"
+echo -e "${YELLOW}Step 7: Verifying API...${NC}"
+sleep 2
+if curl -s https://heroforge.genialarchitect.io/api/auth/me | grep -q "Unauthorized"; then
+    echo -e "${GREEN}✓ API is responding${NC}"
+else
+    echo -e "${YELLOW}⚠ API check inconclusive (may still be starting)${NC}"
+fi
 echo ""
 
 echo "====================================="
 echo -e "${GREEN}Deployment Complete!${NC}"
 echo "====================================="
 echo ""
-echo "Next steps:"
-echo "1. Set up DNS A record: heroforge.genialarchitect.io -> your-server-ip"
-echo "2. Get SSL certificate:"
-echo "   sudo certbot --nginx -d heroforge.genialarchitect.io"
-echo ""
-echo "3. Access your application at:"
-echo "   https://heroforge.genialarchitect.io"
+echo "Application running at:"
+echo "  https://heroforge.genialarchitect.io"
 echo ""
 echo "Useful commands:"
-echo "  - View logs: sudo journalctl -u heroforge -f"
-echo "  - Restart service: sudo systemctl restart heroforge"
-echo "  - Check status: sudo systemctl status heroforge"
+echo "  - View logs: docker logs heroforge -f"
+echo "  - Restart: docker compose up -d heroforge"
+echo "  - Rebuild: docker compose build heroforge && docker compose up -d heroforge"
 echo ""
