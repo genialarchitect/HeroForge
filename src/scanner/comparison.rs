@@ -302,7 +302,7 @@ fn vulnerability_key(vuln: &Vulnerability) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{PortState, Protocol, ScanTarget, ServiceInfo, Severity};
+    use crate::types::{PortState, Protocol, ScanTarget, ServiceInfo};
     use std::net::IpAddr;
     use std::time::Duration;
 
