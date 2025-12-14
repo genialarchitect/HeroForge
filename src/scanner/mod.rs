@@ -4,6 +4,7 @@ pub mod host_discovery;
 pub mod os_fingerprint;
 pub mod port_scanner;
 pub mod service_detection;
+pub mod syn_scanner;
 pub mod udp_probes;
 pub mod udp_scanner;
 pub mod udp_service_detection;

@@ -1,6 +1,6 @@
 use anyhow::Result;
 use crate::types::{PortInfo, PortState, Protocol, ScanConfig, ScanTarget, ScanType};
-use crate::scanner::udp_scanner;
+use crate::scanner::{syn_scanner, udp_scanner};
 use log::{debug, info};
 use std::collections::HashMap;
 use std::net::IpAddr;
@@ -40,19 +40,22 @@ pub async fn scan_target_ports(
             udp_scanner::scan_target_udp_ports(target, config).await
         }
         ScanType::TCPSyn => {
-            // TCP SYN scan not yet implemented, fall back to TCP Connect
-            debug!(
-                "TCP SYN scan not implemented, using TCP Connect for {}",
-                target.ip
-            );
-            scan_tcp_connect(target, config).await
+            info!("TCP SYN scan on {}", target.ip);
+            syn_scanner::scan_target_syn_ports(target, config).await
         }
         ScanType::Comprehensive => {
-            // Run both TCP and UDP scans
-            info!("Comprehensive scan (TCP + UDP) on {}", target.ip);
+            // Run both TCP SYN and UDP scans
+            info!("Comprehensive scan (TCP SYN + UDP) on {}", target.ip);
 
-            // TCP scan
-            let tcp_ports = scan_tcp_connect(target, config).await?;
+            // TCP SYN scan (stealthier than connect, falls back to connect if no privileges)
+            let tcp_ports = match syn_scanner::scan_target_syn_ports(target, config).await {
+                Ok(ports) => ports,
+                Err(e) => {
+                    // SYN scan might fail due to permissions - fall back to TCP Connect
+                    log::warn!("SYN scan failed (may require root): {}, falling back to TCP Connect", e);
+                    scan_tcp_connect(target, config).await?
+                }
+            };
 
             // UDP scan
             let udp_ports = match udp_scanner::scan_target_udp_ports(target, config).await {
