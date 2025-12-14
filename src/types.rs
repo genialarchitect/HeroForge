@@ -90,6 +90,9 @@ pub struct ScanConfig {
     pub enum_wordlist_path: Option<PathBuf>,
     pub enum_services: Vec<crate::scanner::enumeration::types::ServiceType>,
     pub output_format: OutputFormat,
+    // UDP-specific configuration
+    pub udp_port_range: Option<(u16, u16)>,
+    pub udp_retries: u8,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -124,6 +127,8 @@ impl Default for ScanConfig {
             enum_wordlist_path: None,
             enum_services: Vec::new(),
             output_format: OutputFormat::Terminal,
+            udp_port_range: None,
+            udp_retries: 2,
         }
     }
 }

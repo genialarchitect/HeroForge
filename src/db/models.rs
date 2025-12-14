@@ -80,6 +80,18 @@ pub struct CreateScanRequest {
     pub enum_depth: Option<String>,
     /// Services to enumerate: ["http", "dns", "smb", "ftp", "ssh", "smtp", "ldap", "mysql", "postgresql", "mongodb", "redis", "elasticsearch"]
     pub enum_services: Option<Vec<String>>,
+    // Scan type options
+    /// Scan type: "tcp_connect", "udp", "comprehensive" (default: tcp_connect)
+    pub scan_type: Option<String>,
+    /// UDP-specific port range (uses common UDP ports if not specified)
+    pub udp_port_range: Option<(u16, u16)>,
+    /// Number of UDP probe retries (default: 2)
+    #[serde(default = "default_udp_retries")]
+    pub udp_retries: u8,
+}
+
+fn default_udp_retries() -> u8 {
+    2
 }
 
 #[derive(Debug, Serialize, Deserialize)]

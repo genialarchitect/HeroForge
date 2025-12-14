@@ -55,12 +55,18 @@ pub fn output_terminal(results: &[HostInfo]) -> Result<()> {
             let mut table = Table::new();
             table.add_row(row![
                 "Port".bold(),
+                "Proto".bold(),
                 "State".bold(),
                 "Service".bold(),
                 "Version".bold()
             ]);
 
             for port in &host.ports {
+                let protocol_str = match port.protocol {
+                    crate::types::Protocol::TCP => "TCP".cyan(),
+                    crate::types::Protocol::UDP => "UDP".yellow(),
+                };
+
                 let state_str = match port.state {
                     crate::types::PortState::Open => "Open".green(),
                     crate::types::PortState::Closed => "Closed".red(),
@@ -81,7 +87,7 @@ pub fn output_terminal(results: &[HostInfo]) -> Result<()> {
                     .map(|v| v.as_str())
                     .unwrap_or("-");
 
-                table.add_row(row![port.port, state_str, service_name, version]);
+                table.add_row(row![port.port, protocol_str, state_str, service_name, version]);
             }
 
             table.printstd();
@@ -147,11 +153,17 @@ pub fn output_port_scan_terminal(
         let mut table = Table::new();
         table.add_row(row![
             "Port".bold(),
+            "Proto".bold(),
             "State".bold(),
             "Service".bold()
         ]);
 
         for port in ports {
+            let protocol_str = match port.protocol {
+                crate::types::Protocol::TCP => "TCP".cyan(),
+                crate::types::Protocol::UDP => "UDP".yellow(),
+            };
+
             let state_str = match port.state {
                 crate::types::PortState::Open => "Open".green(),
                 crate::types::PortState::Closed => "Closed".red(),
@@ -165,7 +177,7 @@ pub fn output_port_scan_terminal(
                 .map(|s| s.name.as_str())
                 .unwrap_or("unknown");
 
-            table.add_row(row![port.port, state_str, service_name]);
+            table.add_row(row![port.port, protocol_str, state_str, service_name]);
         }
 
         table.printstd();

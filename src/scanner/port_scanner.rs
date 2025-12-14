@@ -1,6 +1,7 @@
 use anyhow::Result;
-use crate::types::{PortInfo, PortState, Protocol, ScanConfig, ScanTarget};
-use log::debug;
+use crate::types::{PortInfo, PortState, Protocol, ScanConfig, ScanTarget, ScanType};
+use crate::scanner::udp_scanner;
+use log::{debug, info};
 use std::collections::HashMap;
 use std::net::IpAddr;
 use tokio::sync::Semaphore;
@@ -21,15 +22,63 @@ pub async fn scan_ports(
     Ok(results)
 }
 
+/// Scan ports on a target, dispatching to the appropriate scanner based on scan type
 pub async fn scan_target_ports(
     target: &ScanTarget,
     config: &ScanConfig,
 ) -> Result<Vec<PortInfo>, anyhow::Error> {
-    debug!(
-        "Scanning ports {}-{} on {}",
-        config.port_range.0, config.port_range.1, target.ip
-    );
+    match config.scan_type {
+        ScanType::TCPConnect => {
+            debug!(
+                "TCP Connect scan: ports {}-{} on {}",
+                config.port_range.0, config.port_range.1, target.ip
+            );
+            scan_tcp_connect(target, config).await
+        }
+        ScanType::UDPScan => {
+            info!("UDP scan on {}", target.ip);
+            udp_scanner::scan_target_udp_ports(target, config).await
+        }
+        ScanType::TCPSyn => {
+            // TCP SYN scan not yet implemented, fall back to TCP Connect
+            debug!(
+                "TCP SYN scan not implemented, using TCP Connect for {}",
+                target.ip
+            );
+            scan_tcp_connect(target, config).await
+        }
+        ScanType::Comprehensive => {
+            // Run both TCP and UDP scans
+            info!("Comprehensive scan (TCP + UDP) on {}", target.ip);
 
+            // TCP scan
+            let tcp_ports = scan_tcp_connect(target, config).await?;
+
+            // UDP scan
+            let udp_ports = match udp_scanner::scan_target_udp_ports(target, config).await {
+                Ok(ports) => ports,
+                Err(e) => {
+                    // UDP might fail due to permissions - log but continue
+                    log::warn!("UDP scan failed (may require root): {}", e);
+                    Vec::new()
+                }
+            };
+
+            // Merge results
+            let mut all_ports = tcp_ports;
+            all_ports.extend(udp_ports);
+            all_ports.sort_by_key(|p| (p.port, matches!(p.protocol, Protocol::UDP)));
+
+            Ok(all_ports)
+        }
+    }
+}
+
+/// TCP Connect scan (original implementation)
+async fn scan_tcp_connect(
+    target: &ScanTarget,
+    config: &ScanConfig,
+) -> Result<Vec<PortInfo>, anyhow::Error> {
     let ports: Vec<u16> = (config.port_range.0..=config.port_range.1).collect();
     let semaphore = Arc::new(Semaphore::new(config.threads));
     let mut tasks = Vec::new();

@@ -105,6 +105,15 @@ enum Commands {
         #[arg(long)]
         enum_wordlist: Option<String>,
 
+        /// UDP-specific port range or list (e.g., "53,123,161" or "1-500")
+        /// If not specified with UDP scan type, uses common UDP ports
+        #[arg(long)]
+        udp_ports: Option<String>,
+
+        /// Number of UDP probe retries (default: 2)
+        #[arg(long, default_value = "2")]
+        udp_retries: u8,
+
         /// Output file path
         #[arg(short, long)]
         output_file: Option<String>,
@@ -229,6 +238,8 @@ async fn main() {
             r#enum,
             enum_depth,
             enum_wordlist,
+            udp_ports,
+            udp_retries,
             output_file,
         } => {
             let config = build_scan_config(
@@ -243,6 +254,8 @@ async fn main() {
                 r#enum,
                 enum_depth,
                 enum_wordlist,
+                udp_ports,
+                udp_retries,
                 cli.output,
             );
             run_full_scan(config, output_file).await
@@ -297,9 +310,12 @@ fn build_scan_config(
     enable_enum: bool,
     enum_depth: CliEnumDepth,
     enum_wordlist: Option<String>,
+    udp_ports: Option<String>,
+    udp_retries: u8,
     output: CliOutputFormat,
 ) -> ScanConfig {
     let port_range = parse_port_range(&ports).unwrap_or((1, 1000));
+    let udp_port_range = udp_ports.as_ref().and_then(|p| parse_udp_ports(p).ok());
 
     ScanConfig {
         targets,
@@ -315,6 +331,37 @@ fn build_scan_config(
         enum_wordlist_path: enum_wordlist.map(std::path::PathBuf::from),
         enum_services: Vec::new(), // Empty = enumerate all services
         output_format: output.into(),
+        udp_port_range,
+        udp_retries,
+    }
+}
+
+/// Parse UDP ports from either a range (e.g., "1-500") or comma-separated list (e.g., "53,123,161")
+fn parse_udp_ports(ports: &str) -> Result<(u16, u16)> {
+    if ports.contains('-') {
+        // Range format: "1-500"
+        parse_port_range(ports)
+    } else if ports.contains(',') {
+        // Comma-separated list: "53,123,161"
+        let port_list: Vec<u16> = ports
+            .split(',')
+            .filter_map(|p| p.trim().parse::<u16>().ok())
+            .collect();
+
+        if port_list.is_empty() {
+            return Err(anyhow::anyhow!("No valid UDP ports specified"));
+        }
+
+        let min = *port_list.iter().min().unwrap();
+        let max = *port_list.iter().max().unwrap();
+        Ok((min, max))
+    } else {
+        // Single port
+        let port: u16 = ports
+            .trim()
+            .parse()
+            .map_err(|_| anyhow::anyhow!("Invalid UDP port"))?;
+        Ok((port, port))
     }
 }
 

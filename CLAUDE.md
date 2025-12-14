@@ -36,8 +36,17 @@ cargo build --release
 ### Running the Application
 
 ```bash
-# CLI scan command
+# CLI scan command (TCP)
 cargo run -- scan 192.168.1.0/24 --ports 1-1000
+
+# UDP scan (requires root/CAP_NET_RAW)
+sudo ./target/release/heroforge scan 192.168.1.0/24 --scan-type udp
+
+# UDP scan with specific ports
+sudo ./target/release/heroforge scan 192.168.1.1 --scan-type udp --udp-ports 53,123,161
+
+# Comprehensive scan (TCP + UDP)
+sudo ./target/release/heroforge scan 192.168.1.0/24 --scan-type comprehensive
 
 # Start web server (development)
 cargo run -- serve --bind 127.0.0.1:8080
@@ -122,9 +131,12 @@ src/
 ├── scanner/             # Network scanning engine
 │   ├── mod.rs           # Main scan orchestration
 │   ├── host_discovery.rs    # TCP-based host discovery
-│   ├── port_scanner.rs      # Concurrent port scanning
+│   ├── port_scanner.rs      # Concurrent port scanning (dispatches TCP/UDP)
 │   ├── service_detection.rs # Banner grabbing and service fingerprinting
 │   ├── os_fingerprint.rs    # OS detection based on port patterns
+│   ├── udp_scanner.rs       # UDP port scanning with ICMP detection (requires root)
+│   ├── udp_probes.rs        # Protocol-specific UDP probes (DNS, SNMP, NTP, etc.)
+│   ├── udp_service_detection.rs  # UDP response parsing for service identification
 │   └── enumeration/     # Service-specific enumeration
 │       ├── mod.rs       # Enumeration orchestration
 │       ├── types.rs     # Enumeration data structures
@@ -133,10 +145,29 @@ src/
 │       ├── dns_enum.rs  # DNS enumeration (zone transfers, subdomains)
 │       ├── db_enum.rs   # Database enumeration (MySQL, PostgreSQL, MongoDB, Redis)
 │       ├── smb_enum.rs  # SMB enumeration (shares, users via external tools)
-│       └── ftp_enum.rs  # FTP enumeration (anonymous access, directory listing)
+│       ├── ftp_enum.rs  # FTP enumeration (anonymous access, directory listing)
+│       ├── ssh_enum.rs  # SSH enumeration (algorithms, auth methods)
+│       ├── smtp_enum.rs # SMTP enumeration (VRFY, EXPN user enum)
+│       ├── ldap_enum.rs # LDAP enumeration (anonymous bind, base DN)
+│       └── ssl_enum.rs  # SSL/TLS enumeration (ciphers, certificate info)
+├── cve/                 # CVE database integration
+│   ├── mod.rs           # CVE scanner orchestration (offline + NVD API + cache)
+│   ├── offline_db.rs    # Embedded CVE database for common vulnerabilities
+│   ├── nvd_client.rs    # NVD API client for real-time CVE lookups
+│   └── cache.rs         # SQLite-based CVE cache layer
 ├── vuln/                # Vulnerability scanning
 │   ├── mod.rs
 │   └── scanner.rs       # CVE matching and misconfiguration detection
+├── reports/             # Report generation system
+│   ├── mod.rs           # Report generator service
+│   ├── types.rs         # Report data structures (ReportData, ReportSummary, etc.)
+│   ├── formats/         # Output format implementations
+│   │   ├── json.rs      # JSON report export
+│   │   ├── html.rs      # HTML report with styling
+│   │   └── pdf.rs       # PDF report generation
+│   ├── risk_scoring.rs  # CVSS-based risk calculations
+│   ├── remediation.rs   # Auto-generated remediation recommendations
+│   └── storage.rs       # Report file storage management
 ├── output/              # Output formatting
 │   ├── mod.rs
 │   ├── terminal_output.rs   # Colorized terminal output
@@ -155,7 +186,8 @@ src/
     ├── api/             # REST API endpoints
     │   ├── auth.rs      # /api/auth/* endpoints
     │   ├── scans.rs     # /api/scans/* endpoints
-    │   └── admin.rs     # /api/admin/* endpoints (user/role management)
+    │   ├── admin.rs     # /api/admin/* endpoints (user/role management)
+    │   └── reports.rs   # /api/reports/* endpoints (report generation/download)
     └── websocket/       # Real-time scan progress
         └── mod.rs       # WebSocket handler for scan updates
 ```
@@ -181,6 +213,26 @@ The scanner follows a multi-phase pipeline:
 6. **Vulnerability Scanning** (`vuln::scanner`): CVE matching and misconfiguration detection
 
 Each phase sends progress updates via `ScanProgressMessage` broadcast channel to WebSocket clients.
+
+### CVE Lookup Pipeline
+
+The `cve` module implements a three-tier lookup strategy:
+
+1. **Offline Database** (`cve::offline_db`): Embedded database of common CVEs for fast, offline lookup
+2. **SQLite Cache** (`cve::cache`): Caches NVD API results with configurable TTL (default 30 days)
+3. **NVD API** (`cve::nvd_client`): Real-time queries to NIST NVD when cache misses occur
+
+Service names are normalized (e.g., "SSH" → "openssh") before lookup. The scanner also checks for service exposure vulnerabilities (Redis, MongoDB, etc. exposed to network).
+
+### Report Generation System
+
+Reports are generated via `reports::ReportGenerator`:
+
+1. Fetch scan results from SQLite database
+2. Calculate risk scores using CVSS-based methodology (`reports::risk_scoring`)
+3. Generate remediation recommendations (`reports::remediation`)
+4. Export to requested format (JSON, HTML, or PDF)
+5. Store report file and update database with file path/size
 
 ### Key Architectural Patterns
 

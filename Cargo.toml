@@ -19,6 +19,7 @@ tokio = { version = "1.40", features = ["full"] }
 pnet = "0.35"
 socket2 = "0.5"
 trust-dns-resolver = "0.23"
+libc = "0.2"
 
 # IP and network utilities
 ipnetwork = "0.20"

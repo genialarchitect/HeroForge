@@ -46,12 +46,19 @@ pub async fn create_scan(
         })
         .unwrap_or_default();
 
+    // Parse scan type from request
+    let scan_type = scan_request
+        .scan_type
+        .as_ref()
+        .map(|s| parse_scan_type(s))
+        .unwrap_or(crate::types::ScanType::TCPConnect);
+
     let config = ScanConfig {
         targets: scan_request.targets.clone(),
         port_range: scan_request.port_range,
         threads: scan_request.threads,
         timeout: std::time::Duration::from_secs(3),
-        scan_type: crate::types::ScanType::TCPConnect,
+        scan_type,
         enable_os_detection: scan_request.enable_os_detection,
         enable_service_detection: scan_request.enable_service_detection,
         enable_vuln_scan: scan_request.enable_vuln_scan,
@@ -60,6 +67,8 @@ pub async fn create_scan(
         enum_wordlist_path: None,
         enum_services,
         output_format: crate::types::OutputFormat::Json,
+        udp_port_range: scan_request.udp_port_range,
+        udp_retries: scan_request.udp_retries,
     };
 
     tokio::spawn(async move {
@@ -224,5 +233,16 @@ fn parse_service_type(s: &str) -> Option<crate::scanner::enumeration::types::Ser
         "redis" => Some(ServiceType::Database(DbType::Redis)),
         "elasticsearch" | "elastic" => Some(ServiceType::Database(DbType::Elasticsearch)),
         _ => None,
+    }
+}
+
+/// Parse scan type from string
+fn parse_scan_type(s: &str) -> crate::types::ScanType {
+    match s.to_lowercase().as_str() {
+        "tcp_connect" | "tcp-connect" | "tcp" => crate::types::ScanType::TCPConnect,
+        "udp" | "udp_scan" | "udp-scan" => crate::types::ScanType::UDPScan,
+        "comprehensive" | "full" | "all" => crate::types::ScanType::Comprehensive,
+        "syn" | "tcp_syn" | "tcp-syn" => crate::types::ScanType::TCPSyn,
+        _ => crate::types::ScanType::TCPConnect,
     }
 }

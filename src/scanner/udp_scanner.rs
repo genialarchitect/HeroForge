@@ -1,0 +1,496 @@
+//! UDP port scanner with ICMP detection
+//!
+//! This module implements UDP port scanning using raw sockets to detect
+//! ICMP "port unreachable" responses, allowing accurate distinction between
+//! open, closed, and filtered ports.
+//!
+//! **Requires root privileges or CAP_NET_RAW capability.**
+
+use std::collections::HashMap;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::sync::Arc;
+use std::time::Duration;
+
+use anyhow::{anyhow, Result};
+use log::{debug, info, trace, warn};
+use pnet::packet::icmp::{IcmpPacket, IcmpTypes};
+use pnet::packet::ipv4::Ipv4Packet;
+use pnet::packet::udp::UdpPacket;
+use tokio::net::UdpSocket;
+use tokio::sync::{mpsc, Semaphore};
+use tokio::time::timeout;
+
+use crate::scanner::udp_probes::{get_udp_probe, get_udp_service_name, DEFAULT_UDP_PORTS};
+use crate::scanner::udp_service_detection;
+use crate::types::{PortInfo, PortState, Protocol as ScanProtocol, ScanConfig, ScanTarget};
+
+/// Default number of concurrent UDP probes (lower than TCP due to ICMP rate limiting)
+const UDP_DEFAULT_THREADS: usize = 50;
+
+/// Default timeout for UDP probes (longer than TCP)
+const UDP_DEFAULT_TIMEOUT: Duration = Duration::from_secs(3);
+
+/// Default number of retries for UDP probes
+const UDP_DEFAULT_RETRIES: u8 = 2;
+
+/// Delay between retries (milliseconds)
+const RETRY_DELAY_MS: u64 = 100;
+
+/// Result of a UDP port scan
+#[derive(Debug, Clone)]
+pub struct UdpScanResult {
+    pub port: u16,
+    pub state: PortState,
+    pub response_data: Option<Vec<u8>>,
+    pub response_time: Option<Duration>,
+}
+
+/// Check if we have raw socket capability
+pub fn has_raw_socket_capability() -> bool {
+    // Try to create a raw ICMP socket using libc directly
+    use std::os::unix::io::FromRawFd;
+
+    unsafe {
+        let fd = libc::socket(libc::AF_INET, libc::SOCK_RAW, libc::IPPROTO_ICMP);
+        if fd >= 0 {
+            libc::close(fd);
+            true
+        } else {
+            debug!("Raw socket capability check failed: errno={}", *libc::__errno_location());
+            false
+        }
+    }
+}
+
+/// Scan multiple targets for open UDP ports
+pub async fn scan_udp_ports(
+    config: &ScanConfig,
+) -> Result<HashMap<IpAddr, Vec<PortInfo>>> {
+    // Check privileges first
+    if !has_raw_socket_capability() {
+        return Err(anyhow!(
+            "UDP scanning requires root privileges or CAP_NET_RAW capability.\n\
+             Run with sudo or set capabilities: sudo setcap cap_net_raw+ep ./heroforge"
+        ));
+    }
+
+    let mut results = HashMap::new();
+
+    for target_str in &config.targets {
+        match target_str.parse::<IpAddr>() {
+            Ok(ip) => {
+                let target = ScanTarget {
+                    ip,
+                    hostname: None,
+                };
+                match scan_target_udp_ports(&target, config).await {
+                    Ok(ports) => {
+                        results.insert(ip, ports);
+                    }
+                    Err(e) => {
+                        warn!("Failed to scan UDP ports on {}: {}", ip, e);
+                    }
+                }
+            }
+            Err(_) => {
+                // Try to resolve hostname
+                if let Ok(addrs) = tokio::net::lookup_host(format!("{}:0", target_str)).await {
+                    for addr in addrs {
+                        let target = ScanTarget {
+                            ip: addr.ip(),
+                            hostname: Some(target_str.clone()),
+                        };
+                        match scan_target_udp_ports(&target, config).await {
+                            Ok(ports) => {
+                                results.insert(addr.ip(), ports);
+                            }
+                            Err(e) => {
+                                warn!("Failed to scan UDP ports on {}: {}", addr.ip(), e);
+                            }
+                        }
+                        break; // Only scan first resolved IP
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(results)
+}
+
+/// Scan UDP ports on a single target
+pub async fn scan_target_udp_ports(
+    target: &ScanTarget,
+    config: &ScanConfig,
+) -> Result<Vec<PortInfo>> {
+    let ip = target.ip;
+
+    // Determine ports to scan
+    let ports: Vec<u16> = if let Some((start, end)) = config.udp_port_range {
+        (start..=end).collect()
+    } else if config.port_range == (1, 1000) {
+        // Use default UDP ports if using default TCP range
+        DEFAULT_UDP_PORTS.to_vec()
+    } else {
+        (config.port_range.0..=config.port_range.1).collect()
+    };
+
+    info!(
+        "Starting UDP scan of {} ({} ports)",
+        ip,
+        ports.len()
+    );
+
+    // Set up concurrency control
+    let threads = std::cmp::min(config.threads, UDP_DEFAULT_THREADS);
+    let semaphore = Arc::new(Semaphore::new(threads));
+
+    // Channel for ICMP "port unreachable" notifications
+    let (icmp_tx, mut icmp_rx) = mpsc::channel::<u16>(1000);
+
+    // Start ICMP listener in background
+    let icmp_target = ip;
+    let icmp_handle = tokio::spawn(async move {
+        if let Err(e) = icmp_listener(icmp_target, icmp_tx).await {
+            warn!("ICMP listener error: {}", e);
+        }
+    });
+
+    // Track closed ports from ICMP
+    let closed_ports = Arc::new(tokio::sync::RwLock::new(std::collections::HashSet::new()));
+    let closed_ports_writer = closed_ports.clone();
+
+    // Background task to collect ICMP responses
+    let icmp_collector = tokio::spawn(async move {
+        while let Some(port) = icmp_rx.recv().await {
+            closed_ports_writer.write().await.insert(port);
+        }
+    });
+
+    // Spawn probe tasks
+    let timeout_duration = config.timeout;
+    let retries = config.udp_retries;
+    let mut tasks = Vec::new();
+
+    for port in ports {
+        let sem = semaphore.clone();
+        let target_ip = ip;
+
+        let task = tokio::spawn(async move {
+            let _permit = sem.acquire().await.unwrap();
+            scan_udp_port_with_retry(target_ip, port, timeout_duration, retries).await
+        });
+        tasks.push((port, task));
+    }
+
+    // Collect results
+    let mut scan_results = Vec::new();
+    for (port, task) in tasks {
+        match task.await {
+            Ok(result) => {
+                scan_results.push(result);
+            }
+            Err(e) => {
+                warn!("UDP scan task for port {} failed: {}", port, e);
+            }
+        }
+    }
+
+    // Wait a bit for any remaining ICMP responses
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    // Stop ICMP listener
+    icmp_handle.abort();
+    drop(icmp_collector);
+
+    // Update states based on ICMP responses
+    let closed_set = closed_ports.read().await;
+
+    let mut port_infos: Vec<PortInfo> = scan_results
+        .into_iter()
+        .map(|result| {
+            let state = if closed_set.contains(&result.port) {
+                PortState::Closed
+            } else {
+                result.state
+            };
+
+            // Only return open or open|filtered ports (skip closed)
+            let service = if state == PortState::Open {
+                // Try to detect service from response
+                result
+                    .response_data
+                    .as_ref()
+                    .and_then(|data| udp_service_detection::detect_udp_service(result.port, data))
+                    .or_else(|| {
+                        Some(crate::types::ServiceInfo {
+                            name: get_udp_service_name(result.port).to_string(),
+                            version: None,
+                            banner: None,
+                            cpe: None,
+                            enumeration: None,
+                        })
+                    })
+            } else {
+                Some(crate::types::ServiceInfo {
+                    name: get_udp_service_name(result.port).to_string(),
+                    version: None,
+                    banner: None,
+                    cpe: None,
+                    enumeration: None,
+                })
+            };
+
+            PortInfo {
+                port: result.port,
+                protocol: ScanProtocol::UDP,
+                state,
+                service,
+            }
+        })
+        .filter(|p| p.state != PortState::Closed) // Filter out closed ports
+        .collect();
+
+    port_infos.sort_by_key(|p| p.port);
+
+    info!(
+        "UDP scan of {} complete: {} open/filtered ports",
+        ip,
+        port_infos.len()
+    );
+
+    Ok(port_infos)
+}
+
+/// Scan a single UDP port with retries
+async fn scan_udp_port_with_retry(
+    target: IpAddr,
+    port: u16,
+    timeout_duration: Duration,
+    retries: u8,
+) -> UdpScanResult {
+    for attempt in 0..=retries {
+        let result = scan_udp_port(target, port, timeout_duration).await;
+
+        // If we got a definitive response, return it
+        if result.state == PortState::Open {
+            return result;
+        }
+
+        // If not the last attempt, wait before retrying
+        if attempt < retries {
+            tokio::time::sleep(Duration::from_millis(
+                RETRY_DELAY_MS * (1 << attempt), // Exponential backoff
+            ))
+            .await;
+        }
+    }
+
+    // After all retries, return Open|Filtered
+    UdpScanResult {
+        port,
+        state: PortState::OpenFiltered,
+        response_data: None,
+        response_time: None,
+    }
+}
+
+/// Scan a single UDP port
+async fn scan_udp_port(target: IpAddr, port: u16, timeout_duration: Duration) -> UdpScanResult {
+    let probe = get_udp_probe(port);
+    let start = std::time::Instant::now();
+
+    // Bind to any available port
+    let socket = match UdpSocket::bind("0.0.0.0:0").await {
+        Ok(s) => s,
+        Err(e) => {
+            trace!("Failed to bind UDP socket: {}", e);
+            return UdpScanResult {
+                port,
+                state: PortState::OpenFiltered,
+                response_data: None,
+                response_time: None,
+            };
+        }
+    };
+
+    let target_addr = SocketAddr::new(target, port);
+
+    // Send probe
+    if let Err(e) = socket.send_to(&probe, target_addr).await {
+        trace!("Failed to send UDP probe to {}:{}: {}", target, port, e);
+        return UdpScanResult {
+            port,
+            state: PortState::OpenFiltered,
+            response_data: None,
+            response_time: None,
+        };
+    }
+
+    // Wait for response
+    let mut buf = vec![0u8; 65535];
+    match timeout(timeout_duration, socket.recv_from(&mut buf)).await {
+        Ok(Ok((len, _))) => {
+            // Got a response - port is open
+            let elapsed = start.elapsed();
+            debug!("UDP port {} open - received {} bytes", port, len);
+            UdpScanResult {
+                port,
+                state: PortState::Open,
+                response_data: Some(buf[..len].to_vec()),
+                response_time: Some(elapsed),
+            }
+        }
+        Ok(Err(e)) => {
+            // Socket error - likely ICMP unreachable (will be caught by ICMP listener)
+            trace!("UDP recv error on port {}: {}", port, e);
+            UdpScanResult {
+                port,
+                state: PortState::OpenFiltered,
+                response_data: None,
+                response_time: None,
+            }
+        }
+        Err(_) => {
+            // Timeout - port is open|filtered (no response doesn't mean closed for UDP)
+            trace!("UDP timeout on port {}", port);
+            UdpScanResult {
+                port,
+                state: PortState::OpenFiltered,
+                response_data: None,
+                response_time: None,
+            }
+        }
+    }
+}
+
+/// Listen for ICMP "port unreachable" messages
+async fn icmp_listener(target: IpAddr, tx: mpsc::Sender<u16>) -> Result<()> {
+    let target_ip = match target {
+        IpAddr::V4(ip) => ip,
+        IpAddr::V6(_) => {
+            return Err(anyhow!("IPv6 ICMP listening not yet implemented"));
+        }
+    };
+
+    // Create raw ICMP socket using libc
+    let fd = unsafe {
+        libc::socket(libc::AF_INET, libc::SOCK_RAW, libc::IPPROTO_ICMP)
+    };
+
+    if fd < 0 {
+        return Err(anyhow!("Failed to create raw ICMP socket (requires root/CAP_NET_RAW)"));
+    }
+
+    // Set non-blocking
+    unsafe {
+        let flags = libc::fcntl(fd, libc::F_GETFL);
+        libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
+    }
+
+    // Wrap in tokio async fd
+    use std::os::unix::io::FromRawFd;
+    let std_socket = unsafe { std::net::UdpSocket::from_raw_fd(fd) };
+    let async_socket = tokio::net::UdpSocket::from_std(std_socket)?;
+
+    let mut buf = vec![0u8; 65535];
+
+    loop {
+        // Check if channel is closed
+        if tx.is_closed() {
+            break;
+        }
+
+        match timeout(Duration::from_millis(100), async_socket.recv(&mut buf)).await {
+            Ok(Ok(len)) => {
+                if let Some(port) = parse_icmp_unreachable(&buf[..len], target_ip) {
+                    debug!("ICMP port unreachable for UDP port {}", port);
+                    let _ = tx.send(port).await;
+                }
+            }
+            Ok(Err(_)) | Err(_) => {
+                // Timeout or error, continue listening
+                continue;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Parse ICMP packet to extract destination port from embedded UDP header
+fn parse_icmp_unreachable(packet: &[u8], target_ip: Ipv4Addr) -> Option<u16> {
+    // IP header is typically 20 bytes, but check IHL
+    if packet.len() < 20 {
+        return None;
+    }
+
+    // Parse outer IP header
+    let ip_packet = Ipv4Packet::new(packet)?;
+
+    // Check if it's from our target (the ICMP comes from the target)
+    if ip_packet.get_source() != target_ip {
+        return None;
+    }
+
+    // Get ICMP payload (skip IP header)
+    let ip_header_len = (ip_packet.get_header_length() as usize) * 4;
+    if packet.len() < ip_header_len + 8 {
+        return None;
+    }
+
+    let icmp_data = &packet[ip_header_len..];
+    let icmp_packet = IcmpPacket::new(icmp_data)?;
+
+    // Check for "Destination Unreachable" (type 3)
+    if icmp_packet.get_icmp_type() != IcmpTypes::DestinationUnreachable {
+        return None;
+    }
+
+    // Code 3 = Port Unreachable
+    if icmp_packet.get_icmp_code().0 != 3 {
+        return None;
+    }
+
+    // ICMP payload contains original IP header + first 8 bytes of UDP header
+    // ICMP header is 8 bytes, then comes the original packet
+    if icmp_data.len() < 8 + 20 + 8 {
+        return None;
+    }
+
+    let original_packet = &icmp_data[8..];
+
+    // Parse the original IP packet
+    let original_ip = Ipv4Packet::new(original_packet)?;
+    let original_ip_header_len = (original_ip.get_header_length() as usize) * 4;
+
+    if original_packet.len() < original_ip_header_len + 4 {
+        return None;
+    }
+
+    // Get UDP destination port from original packet
+    let udp_data = &original_packet[original_ip_header_len..];
+    let udp_packet = UdpPacket::new(udp_data)?;
+
+    Some(udp_packet.get_destination())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_has_raw_socket_capability() {
+        // This will fail in unprivileged tests, which is expected
+        let has_cap = has_raw_socket_capability();
+        println!("Raw socket capability: {}", has_cap);
+        // Don't assert - just verify it doesn't panic
+    }
+
+    #[test]
+    fn test_default_udp_ports() {
+        assert!(!DEFAULT_UDP_PORTS.is_empty());
+        assert!(DEFAULT_UDP_PORTS.contains(&53)); // DNS
+        assert!(DEFAULT_UDP_PORTS.contains(&161)); // SNMP
+    }
+}
