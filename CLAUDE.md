@@ -202,7 +202,9 @@ src/
     │   ├── reports.rs   # /api/reports/* endpoints (report generation/download)
     │   ├── compare.rs   # /api/scans/compare endpoint (scan diff)
     │   ├── templates.rs # /api/templates/* endpoints (scan templates)
-    │   └── target_groups.rs # (WIP - not yet wired to routes)
+    │   ├── target_groups.rs # /api/target-groups/* endpoints
+    │   ├── scheduled_scans.rs # /api/scheduled-scans/* endpoints
+    │   └── notifications.rs # /api/notifications/* endpoints
     └── websocket/       # Real-time scan progress
         └── mod.rs       # WebSocket handler for scan updates
 ```
@@ -214,9 +216,9 @@ Key models in `db/models.rs`:
 - **ScanResult**: Scan records with status, results JSON, timestamps
 - **Report**: Generated reports with format, sections, file paths
 - **ScanTemplate**: Reusable scan configurations
-- **TargetGroup**: Named groups of scan targets (WIP - not yet wired)
-- **ScheduledScan**: Recurring scan schedules (WIP - not yet wired)
-- **NotificationSettings**: Per-user email preferences (WIP - not yet wired)
+- **TargetGroup**: Named groups of scan targets with color coding
+- **ScheduledScan**: Recurring scan schedules (daily, weekly, monthly)
+- **NotificationSettings**: Per-user email notification preferences
 - **AuditLog**: Admin action audit trail
 
 ### Data Flow for Scans
@@ -274,14 +276,21 @@ The `email` module provides SMTP-based notifications:
 - Stores port ranges, scan type, enumeration settings
 - Create scans from templates via POST `/api/templates/{id}/scan`
 
-**Target Groups** (WIP - models exist but API not yet wired):
-- `target_groups.rs` and database models exist
+**Target Groups** (`web/api/target_groups.rs`): Organize scan targets
 - Named collections of IP addresses/ranges/hostnames
 - Color-coded for UI organization
+- CRUD via `/api/target-groups`
 
-**Scheduled Scans** (WIP - models exist but no API):
-- Database models for recurring scans (daily, weekly, monthly, cron)
-- `ScheduledScan` model in `db/models.rs`
+**Scheduled Scans** (`web/api/scheduled_scans.rs`): Recurring scan automation
+- Schedule types: daily, weekly, monthly
+- Automatic next-run calculation
+- CRUD via `/api/scheduled-scans`
+- Note: Background scheduler daemon not yet implemented
+
+**Notification Settings** (`web/api/notifications.rs`): Email preferences
+- GET/PUT `/api/notifications/settings`
+- Controls: email on scan complete, email on critical vulnerabilities
+- Integrates with `email` module for SMTP delivery
 
 ### Report Generation System
 
