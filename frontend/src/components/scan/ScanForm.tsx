@@ -4,9 +4,9 @@ import Button from '../ui/Button';
 import Input from '../ui/Input';
 import Checkbox from '../ui/Checkbox';
 import Card from '../ui/Card';
-import { scanAPI, targetGroupAPI } from '../../services/api';
+import { scanAPI, targetGroupAPI, templateAPI } from '../../services/api';
 import { useScanStore } from '../../store/scanStore';
-import { Target, Hash, Cpu, Search, Radio, Wifi, FolderOpen } from 'lucide-react';
+import { Target, Hash, Cpu, Search, Radio, Wifi, FolderOpen, Save } from 'lucide-react';
 import { EnumDepth, EnumService, ScanType, TargetGroup } from '../../types';
 
 const SCAN_TYPES: { id: ScanType; label: string; description: string }[] = [
@@ -55,6 +55,9 @@ const ScanForm: React.FC = () => {
   const [selectedServices, setSelectedServices] = useState<EnumService[]>([]);
   const [loading, setLoading] = useState(false);
   const [targetGroups, setTargetGroups] = useState<TargetGroup[]>([]);
+  const [saveAsTemplate, setSaveAsTemplate] = useState(false);
+  const [templateName, setTemplateName] = useState('');
+  const [templateDescription, setTemplateDescription] = useState('');
 
   const { addScan } = useScanStore();
 
@@ -150,6 +153,34 @@ const ScanForm: React.FC = () => {
       addScan(response.data);
       toast.success('Scan started successfully!');
 
+      // Save as template if requested
+      if (saveAsTemplate && templateName.trim()) {
+        try {
+          await templateAPI.create({
+            name: templateName.trim(),
+            description: templateDescription.trim() || undefined,
+            config: {
+              targets,
+              port_range: [portStart, portEnd],
+              threads,
+              scan_type: scanType,
+              udp_port_range: showUdpOptions ? [udpPortStart, udpPortEnd] : undefined,
+              udp_retries: showUdpOptions ? udpRetries : undefined,
+              enable_os_detection: osDetection,
+              enable_service_detection: serviceDetection,
+              enable_vuln_scan: vulnScan,
+              enable_enumeration: enableEnumeration,
+              enum_depth: enableEnumeration ? enumDepth : undefined,
+              enum_services: enableEnumeration && selectedServices.length > 0 ? selectedServices : undefined,
+            },
+          });
+          toast.success('Template saved!');
+        } catch (templateError: any) {
+          console.error('Failed to save template:', templateError);
+          toast.warning('Scan started but template save failed');
+        }
+      }
+
       // Reset form
       setName('');
       setTarget('');
@@ -164,6 +195,9 @@ const ScanForm: React.FC = () => {
       setEnableEnumeration(false);
       setEnumDepth('light');
       setSelectedServices([]);
+      setSaveAsTemplate(false);
+      setTemplateName('');
+      setTemplateDescription('');
     } catch (error: any) {
       const message = error.response?.data?.error || 'Failed to start scan';
       toast.error(message);
@@ -413,6 +447,43 @@ const ScanForm: React.FC = () => {
                     Selected: {selectedServices.join(', ')}
                   </p>
                 )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Save as Template */}
+        <div className="space-y-3 border-t border-dark-border pt-4">
+          <div className="flex items-center space-x-2">
+            <Save className="h-5 w-5 text-purple-400" />
+            <p className="text-sm font-medium text-slate-300">Save Configuration</p>
+          </div>
+          <Checkbox
+            label="Save this scan configuration as a template"
+            checked={saveAsTemplate}
+            onChange={setSaveAsTemplate}
+          />
+
+          {saveAsTemplate && (
+            <div className="ml-4 space-y-3 animate-fadeIn">
+              <Input
+                label="Template Name"
+                type="text"
+                placeholder="Production Network Scan Template"
+                value={templateName}
+                onChange={(e) => setTemplateName(e.target.value)}
+              />
+              <div>
+                <label className="block text-sm font-medium text-slate-400 mb-1">
+                  Template Description (Optional)
+                </label>
+                <textarea
+                  value={templateDescription}
+                  onChange={(e) => setTemplateDescription(e.target.value)}
+                  className="w-full bg-dark-surface border border-dark-border rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  rows={2}
+                  placeholder="Quick template for scanning production servers"
+                />
               </div>
             </div>
           )}

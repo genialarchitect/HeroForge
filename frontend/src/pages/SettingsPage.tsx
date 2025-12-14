@@ -3,9 +3,11 @@ import Layout from '../components/layout/Layout';
 import TargetGroups from '../components/settings/TargetGroups';
 import ScheduledScans from '../components/settings/ScheduledScans';
 import NotificationSettings from '../components/settings/NotificationSettings';
-import { Target, Clock, Bell, Settings } from 'lucide-react';
+import ScanComparison from '../components/compare/ScanComparison';
+import ScanTemplates from '../components/settings/ScanTemplates';
+import { Target, Clock, Bell, Settings, GitCompare, FileText } from 'lucide-react';
 
-type TabId = 'target-groups' | 'scheduled-scans' | 'notifications';
+type TabId = 'target-groups' | 'scheduled-scans' | 'templates' | 'notifications' | 'compare-scans';
 
 interface Tab {
   id: TabId;
@@ -31,10 +33,22 @@ const SettingsPage: React.FC = () => {
       component: <ScheduledScans />,
     },
     {
+      id: 'templates',
+      label: 'Scan Templates',
+      icon: <FileText className="h-4 w-4" />,
+      component: <ScanTemplates />,
+    },
+    {
       id: 'notifications',
       label: 'Notifications',
       icon: <Bell className="h-4 w-4" />,
       component: <NotificationSettings />,
+    },
+    {
+      id: 'compare-scans',
+      label: 'Compare Scans',
+      icon: <GitCompare className="h-4 w-4" />,
+      component: <ScanComparison />,
     },
   ];
 
@@ -50,7 +64,7 @@ const SettingsPage: React.FC = () => {
             <h1 className="text-2xl font-bold text-white">Settings</h1>
           </div>
           <p className="text-slate-400">
-            Manage target groups, scheduled scans, and notification preferences
+            Manage target groups, scheduled scans, templates, notification preferences, and compare scan results
           </p>
         </div>
 

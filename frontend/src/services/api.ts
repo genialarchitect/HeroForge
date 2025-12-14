@@ -20,6 +20,9 @@ import type {
   NotificationSettings,
   UpdateNotificationSettingsRequest,
   ScanComparisonResponse,
+  ScanTemplate,
+  CreateTemplateRequest,
+  UpdateTemplateRequest,
 } from '../types';
 
 const api = axios.create({
@@ -135,6 +138,15 @@ export const compareAPI = {
       scan_id_1: scanId1,
       scan_id_2: scanId2,
     }),
+};
+
+export const templateAPI = {
+  getAll: () => api.get<ScanTemplate[]>('/templates'),
+  getById: (id: string) => api.get<ScanTemplate>(`/templates/${id}`),
+  create: (data: CreateTemplateRequest) => api.post<ScanTemplate>('/templates', data),
+  update: (id: string, data: UpdateTemplateRequest) => api.put<ScanTemplate>(`/templates/${id}`, data),
+  delete: (id: string) => api.delete(`/templates/${id}`),
+  createScan: (id: string, name: string) => api.post<ScanResult>(`/templates/${id}/scan`, { name }),
 };
 
 export default api;

@@ -370,3 +370,27 @@ export interface UpdateNotificationSettingsRequest {
   email_on_critical_vuln?: boolean;
   email_address?: string;
 }
+
+// Scan Templates
+
+export interface ScanTemplate {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string | null;
+  config: string; // JSON string of scan config
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateTemplateRequest {
+  name: string;
+  description?: string;
+  config: ScheduledScanConfig;
+}
+
+export interface UpdateTemplateRequest {
+  name?: string;
+  description?: string;
+  config?: ScheduledScanConfig;
+}
