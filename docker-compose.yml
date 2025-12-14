@@ -1,0 +1,26 @@
+# HeroForge Docker Compose Configuration
+#
+# This file provides a standalone deployment configuration for HeroForge.
+# For production, you may want to add a reverse proxy (Traefik, nginx) for SSL.
+
+services:
+  heroforge:
+    build: .
+    container_name: heroforge
+    restart: unless-stopped
+    # Required for UDP scanning with ICMP detection
+    cap_add:
+      - NET_RAW
+    ports:
+      - "8080:8080"
+    environment:
+      # Optional: Set admin username for first-run setup
+      # ADMIN_USERNAME: "admin"
+      # Database path inside container
+      DATABASE_URL: "sqlite:///data/heroforge.db"
+    volumes:
+      # Persist database and scan data
+      - heroforge_data:/data
+
+volumes:
+  heroforge_data:
