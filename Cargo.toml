@@ -1,0 +1,69 @@
+[package]
+name = "heroforge"
+version = "0.1.0"
+edition = "2021"
+authors = ["Your Pentest Team"]
+description = "Network triage and reconnaissance tool for penetration testing"
+
+[dependencies]
+# CLI and configuration
+clap = { version = "4.5", features = ["derive", "cargo"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+
+# Async runtime
+tokio = { version = "1.40", features = ["full"] }
+
+# Network operations
+pnet = "0.35"
+socket2 = "0.5"
+trust-dns-resolver = "0.23"
+
+# IP and network utilities
+ipnetwork = "0.20"
+cidr-utils = "0.6"
+
+# Output and logging
+colored = "2.1"
+csv = "1.3"
+log = "0.4"
+env_logger = "0.11"
+prettytable-rs = "0.10"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "2.0"
+
+# HTTP client for vulnerability checks
+reqwest = { version = "0.12", features = ["json"] }
+
+# Additional utilities
+chrono = { version = "0.4", features = ["serde"] }
+rayon = "1.10"
+uuid = { version = "1.10", features = ["v4", "serde"] }
+once_cell = "1.20"
+urlencoding = "2.1"
+
+# Web server
+actix-web = "4.9"
+actix-cors = "0.7"
+actix-files = "0.6"
+actix = "0.13"
+actix-web-actors = "4.3"
+futures-util = "0.3"
+
+# Authentication
+jsonwebtoken = "9.3"
+bcrypt = "0.15"
+
+# Database
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "postgres", "mysql", "chrono", "uuid"] }
+
+# Database enumeration
+mysql_async = "0.34"
+mongodb = "2.8"
+redis = { version = "0.24", features = ["tokio-comp", "connection-manager"] }
+
+# SMB enumeration
+# Note: SMB enumeration will use external tools (smbclient, enum4linux) via Bash commands

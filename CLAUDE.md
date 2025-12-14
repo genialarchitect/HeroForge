@@ -1,0 +1,309 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Overview
+
+HeroForge is a network reconnaissance and triage tool written in Rust, designed for authorized penetration testing. It provides both a CLI interface and a web dashboard with real-time scanning capabilities.
+
+**Key Technologies:**
+- **Backend:** Rust with Tokio async runtime, Actix-web for HTTP server
+- **Frontend:** React 18 + TypeScript + Vite + TailwindCSS
+- **State Management:** Zustand (global state) + React Query (server state)
+- **Database:** SQLite with sqlx for async queries
+- **Authentication:** JWT tokens with bcrypt password hashing
+
+**Deployment:**
+- Production URL: https://heroforge.genialarchitect.io
+- Reverse proxy: Nginx with SSL/TLS (Let's Encrypt)
+- Service management: systemd service
+
+## Build and Development Commands
+
+### Building the Project
+
+```bash
+# Build debug version
+cargo build
+
+# Build optimized release version
+cargo build --release
+
+# The binary will be at:
+./target/release/heroforge
+```
+
+### Running the Application
+
+```bash
+# CLI scan command
+cargo run -- scan 192.168.1.0/24 --ports 1-1000
+
+# Start web server (development)
+cargo run -- serve --bind 127.0.0.1:8080
+
+# Start web server (production - via systemd)
+sudo systemctl start heroforge
+```
+
+### Frontend Development
+
+```bash
+cd frontend
+
+# Install dependencies (if needed)
+npm install
+
+# Build for production
+npm run build
+
+# Development server (hot reload)
+npm run dev
+
+# Lint TypeScript/React code
+npm run lint
+```
+
+### Testing
+
+```bash
+# Run all Rust tests
+cargo test
+
+# Run tests with output
+cargo test -- --nocapture
+
+# Test specific module
+cargo test scanner::
+```
+
+### Database Management
+
+```bash
+# Database is automatically initialized on first run
+# Location: /root/Development/HeroForge/heroforge.db
+
+# View database schema
+sqlite3 heroforge.db ".schema"
+
+# Query users
+sqlite3 heroforge.db "SELECT * FROM users;"
+
+# Query scans
+sqlite3 heroforge.db "SELECT id, name, status, created_at FROM scan_results;"
+```
+
+### Deployment
+
+```bash
+# Build and deploy (uses deploy.sh script)
+cargo build --release
+sudo ./deploy.sh
+
+# Restart service after code changes
+sudo systemctl restart heroforge
+
+# View logs
+sudo journalctl -u heroforge -f
+
+# Check service status
+sudo systemctl status heroforge
+```
+
+## Architecture Overview
+
+### Module Organization
+
+```
+src/
+├── main.rs              # CLI argument parsing and entry point
+├── config.rs            # Configuration file handling (TOML)
+├── types.rs             # Core data structures (HostInfo, PortInfo, ScanConfig, etc.)
+├── scanner/             # Network scanning engine
+│   ├── mod.rs           # Main scan orchestration
+│   ├── host_discovery.rs    # TCP-based host discovery
+│   ├── port_scanner.rs      # Concurrent port scanning
+│   ├── service_detection.rs # Banner grabbing and service fingerprinting
+│   ├── os_fingerprint.rs    # OS detection based on port patterns
+│   └── enumeration/     # Service-specific enumeration
+│       ├── mod.rs       # Enumeration orchestration
+│       ├── types.rs     # Enumeration data structures
+│       ├── wordlists.rs # Built-in and custom wordlist handling
+│       ├── http_enum.rs # HTTP/HTTPS enumeration (dirs, files, headers)
+│       ├── dns_enum.rs  # DNS enumeration (zone transfers, subdomains)
+│       ├── db_enum.rs   # Database enumeration (MySQL, PostgreSQL, MongoDB, Redis)
+│       ├── smb_enum.rs  # SMB enumeration (shares, users via external tools)
+│       └── ftp_enum.rs  # FTP enumeration (anonymous access, directory listing)
+├── vuln/                # Vulnerability scanning
+│   ├── mod.rs
+│   └── scanner.rs       # CVE matching and misconfiguration detection
+├── output/              # Output formatting
+│   ├── mod.rs
+│   ├── terminal_output.rs   # Colorized terminal output
+│   ├── json_output.rs       # JSON export
+│   └── csv_output.rs        # CSV export
+├── db/                  # Database layer
+│   ├── mod.rs           # Database initialization and queries
+│   ├── models.rs        # SQLx model types (User, ScanResult, Role, AuditLog)
+│   └── migrations.rs    # Admin console table migrations
+└── web/                 # Web server and API
+    ├── mod.rs           # Server setup and routing
+    ├── broadcast.rs     # Broadcast channel for scan progress
+    ├── auth/            # JWT authentication
+    │   ├── jwt.rs       # Token generation/validation
+    │   └── middleware.rs # Auth middleware for protected routes
+    ├── api/             # REST API endpoints
+    │   ├── auth.rs      # /api/auth/* endpoints
+    │   ├── scans.rs     # /api/scans/* endpoints
+    │   └── admin.rs     # /api/admin/* endpoints (user/role management)
+    └── websocket/       # Real-time scan progress
+        └── mod.rs       # WebSocket handler for scan updates
+```
+
+### Data Flow for Scans
+
+1. **CLI Scans:** `main.rs` → `scanner::run_scan()` → `output::display_results()`
+2. **Web API Scans:**
+   - Client POSTs to `/api/scans` → `api::scans::create_scan()`
+   - Spawns async task with `scanner::run_scan(progress_tx)`
+   - Progress messages sent via broadcast channel to WebSocket clients
+   - Results stored in SQLite when complete
+
+### Scan Pipeline Architecture
+
+The scanner follows a multi-phase pipeline:
+
+1. **Host Discovery** (`scanner::host_discovery`): Identifies live hosts using TCP connect probes
+2. **Port Scanning** (`scanner::port_scanner`): Concurrent port scanning on discovered hosts
+3. **Service Detection** (`scanner::service_detection`): Banner grabbing and service identification
+4. **OS Fingerprinting** (`scanner::os_fingerprint`): Passive OS detection based on port patterns
+5. **Service Enumeration** (`scanner::enumeration`): Deep service-specific probing (HTTP dirs, DNS zones, DB users, SMB shares)
+6. **Vulnerability Scanning** (`vuln::scanner`): CVE matching and misconfiguration detection
+
+Each phase sends progress updates via `ScanProgressMessage` broadcast channel to WebSocket clients.
+
+### Key Architectural Patterns
+
+**Concurrency Model:**
+- Uses Tokio runtime with configurable thread pools
+- Port scanning uses semaphore-limited concurrent tasks
+- WebSocket broadcasts use `tokio::sync::broadcast` channels
+
+**Database Access:**
+- All DB functions are async and use `sqlx::SqlitePool`
+- Database schema auto-migrates on startup in `db::run_migrations()`
+- Connection pool configured in `db::init_database()`
+
+**Authentication Flow:**
+1. User registers/logs in via `/api/auth/register` or `/api/auth/login`
+2. Password hashed with bcrypt, JWT token returned
+3. Protected routes use `JwtMiddleware` to validate Bearer tokens
+4. User ID extracted from token claims for database queries
+
+**Error Handling:**
+- Most functions return `Result<T, anyhow::Error>`
+- Database functions use `anyhow::Error` for `Send` compatibility in async contexts
+- Never use `Box<dyn std::error::Error>` in async spawned tasks (not `Send`)
+
+**Enumeration System:**
+- Service-specific enumeration modules in `scanner/enumeration/`
+- Configurable depth levels: Passive, Light, Aggressive
+- Custom or built-in wordlists for HTTP/DNS enumeration
+- Database enumeration uses native async drivers (mysql_async, mongodb, redis)
+- SMB enumeration uses external tools (smbclient, enum4linux) via tokio::process
+
+## Configuration Files
+
+**heroforge.toml** (generated with `heroforge config`):
+- Stores scan configuration for repeatable scans
+- Includes targets, port ranges, scan type, feature flags
+- Alternative to passing CLI flags
+
+**heroforge.service** (systemd):
+- Manages HeroForge as a system service
+- Runs web server on system boot
+- Located at `/etc/systemd/system/heroforge.service`
+
+**nginx-heroforge.conf**:
+- Reverse proxy configuration
+- SSL/TLS termination with Let's Encrypt certificates
+- Proxies to `127.0.0.1:8080` (HeroForge web server)
+
+## Important Notes
+
+### Security and Authorization
+This is a penetration testing tool designed for **authorized security testing only**. All code must include appropriate warnings about authorization requirements. Never remove or weaken security warnings.
+
+### Error Type Compatibility
+When spawning async tasks (e.g., in `tokio::spawn`), all error types must implement `Send`. Use `anyhow::Error` instead of `Box<dyn std::error::Error>` in database and other async functions to ensure `Send` compatibility.
+
+### Frontend Build
+The web server serves static files from `frontend/dist`. After making frontend changes, you must run `npm run build` before the changes are visible in production. The deployment script handles this automatically.
+
+### Database Location
+- Development: `./heroforge.db` (relative to project root)
+- Production: `/root/Development/HeroForge/heroforge.db` (absolute path in systemd service)
+
+### Port Binding
+- CLI mode: Can bind to any address (default `0.0.0.0:8080`)
+- Production: Binds to `127.0.0.1:8080` (Nginx reverse proxy handles external access)
+
+### WebSocket Authentication
+WebSocket connections to `/api/ws/scans/{id}` require JWT authentication. The token should be passed as a query parameter or in the handshake headers.
+
+### Wordlists for Enumeration
+- Built-in wordlists embedded in `scanner/enumeration/wordlists.rs`
+- Custom wordlists via `--enum-wordlist` flag
+- Located in `wordlists/` directory for external lists
+
+## Troubleshooting
+
+### Compilation Errors About `Send`
+If you see errors like "future cannot be sent between threads safely":
+- Check that all error types in spawned tasks are `Send`
+- Replace `Box<dyn std::error::Error>` with `anyhow::Error`
+- Ensure database pool and other shared state use `Arc` or `web::Data`
+
+### Frontend Not Updating
+- Check that `npm run build` was run after changes
+- Verify `frontend/dist` directory exists and contains built files
+- Clear browser cache or use incognito mode
+- Check Nginx is serving from correct directory
+
+### Database Locked Errors
+- SQLite doesn't handle high concurrency well
+- Check connection pool size in `db::init_database()` (default: 5)
+- Ensure long-running transactions are avoided
+- Consider using write-ahead logging: `PRAGMA journal_mode=WAL`
+
+### Service Won't Start
+```bash
+# Check service status and logs
+sudo systemctl status heroforge
+sudo journalctl -u heroforge -n 50
+
+# Common issues:
+# - Binary not found (rebuild: cargo build --release)
+# - Port already in use (check: sudo lsof -i :8080)
+# - Database permissions (check: ls -la heroforge.db)
+# - Missing frontend/dist (run: cd frontend && npm run build)
+```
+
+### SSL Certificate Issues
+```bash
+# Check certificate status
+sudo certbot certificates
+
+# Renew certificate manually
+sudo certbot renew
+
+# Test nginx configuration
+sudo nginx -t
+```
+
+### Enumeration Not Working
+- Check that `--enum` flag is passed to enable enumeration
+- Verify service was detected (enumeration requires service detection)
+- For SMB: ensure `smbclient` and `enum4linux` are installed
+- Check wordlist paths for custom wordlists
+- Increase verbosity with `-v` to see enumeration debug logs

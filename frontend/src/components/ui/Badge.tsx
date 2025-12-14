@@ -1,0 +1,42 @@
+import React from 'react';
+
+interface BadgeProps {
+  children: React.ReactNode;
+  variant?: 'status' | 'severity';
+  type?: 'pending' | 'running' | 'completed' | 'failed' | 'critical' | 'high' | 'medium' | 'low';
+  className?: string;
+}
+
+const Badge: React.FC<BadgeProps> = ({
+  children,
+  variant = 'status',
+  type = 'pending',
+  className = '',
+}) => {
+  const baseStyles = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium';
+
+  const statusStyles = {
+    pending: 'bg-status-pending/20 text-status-pending border border-status-pending/30',
+    running: 'bg-status-running/20 text-status-running border border-status-running/30',
+    completed: 'bg-status-completed/20 text-status-completed border border-status-completed/30',
+    failed: 'bg-status-failed/20 text-status-failed border border-status-failed/30',
+  };
+
+  const severityStyles = {
+    critical: 'bg-severity-critical/20 text-severity-critical border border-severity-critical/30',
+    high: 'bg-severity-high/20 text-severity-high border border-severity-high/30',
+    medium: 'bg-severity-medium/20 text-severity-medium border border-severity-medium/30',
+    low: 'bg-severity-low/20 text-severity-low border border-severity-low/30',
+  };
+
+  const styles = variant === 'status' ? statusStyles : severityStyles;
+  const typeStyles = styles[type as keyof typeof styles] || statusStyles.pending;
+
+  return (
+    <span className={`${baseStyles} ${typeStyles} ${className}`}>
+      {children}
+    </span>
+  );
+};
+
+export default Badge;

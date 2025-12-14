@@ -1,0 +1,414 @@
+use anyhow::Result;
+use clap::{Parser, Subcommand};
+use colored::*;
+use log::{error, info};
+use std::time::Duration;
+
+mod config;
+mod cve;
+mod db;
+mod output;
+mod scanner;
+mod types;
+mod vuln;
+mod web;
+
+use types::{OutputFormat, ScanConfig, ScanType};
+
+#[derive(Parser)]
+#[command(
+    name = "HeroForge",
+    version,
+    about = "Network triage and reconnaissance tool for penetration testing",
+    long_about = "HeroForge automates the initial network triage phase of penetration testing,\n\
+                  including host discovery, port scanning, service detection, OS fingerprinting,\n\
+                  and basic vulnerability assessment."
+)]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+
+    /// Enable verbose logging
+    #[arg(short, long, global = true)]
+    verbose: bool,
+
+    /// Output format
+    #[arg(short, long, value_enum, global = true, default_value = "terminal")]
+    output: CliOutputFormat,
+}
+
+#[derive(Clone, clap::ValueEnum)]
+enum CliOutputFormat {
+    Json,
+    Csv,
+    Terminal,
+    All,
+}
+
+impl From<CliOutputFormat> for OutputFormat {
+    fn from(val: CliOutputFormat) -> Self {
+        match val {
+            CliOutputFormat::Json => OutputFormat::Json,
+            CliOutputFormat::Csv => OutputFormat::Csv,
+            CliOutputFormat::Terminal => OutputFormat::Terminal,
+            CliOutputFormat::All => OutputFormat::All,
+        }
+    }
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Perform full network triage scan
+    Scan {
+        /// Target IP addresses or CIDR ranges (e.g., 192.168.1.0/24)
+        #[arg(required = true)]
+        targets: Vec<String>,
+
+        /// Port range to scan (e.g., 1-1000)
+        #[arg(short, long, default_value = "1-1000")]
+        ports: String,
+
+        /// Number of concurrent threads
+        #[arg(short, long, default_value = "100")]
+        threads: usize,
+
+        /// Timeout per port in milliseconds
+        #[arg(short = 'T', long, default_value = "3000")]
+        timeout: u64,
+
+        /// Scan type
+        #[arg(short, long, value_enum, default_value = "tcp-connect")]
+        scan_type: CliScanType,
+
+        /// Skip OS detection
+        #[arg(long)]
+        no_os_detect: bool,
+
+        /// Skip service detection
+        #[arg(long)]
+        no_service_detect: bool,
+
+        /// Enable vulnerability scanning
+        #[arg(long)]
+        vuln_scan: bool,
+
+        /// Enable service enumeration
+        #[arg(long)]
+        r#enum: bool,
+
+        /// Enumeration depth level
+        #[arg(long, value_enum, default_value = "light")]
+        enum_depth: CliEnumDepth,
+
+        /// Custom wordlist file path for enumeration
+        #[arg(long)]
+        enum_wordlist: Option<String>,
+
+        /// Output file path
+        #[arg(short, long)]
+        output_file: Option<String>,
+    },
+
+    /// Discover live hosts on the network
+    Discover {
+        /// Target IP addresses or CIDR ranges
+        #[arg(required = true)]
+        targets: Vec<String>,
+
+        /// Number of concurrent threads
+        #[arg(short, long, default_value = "100")]
+        threads: usize,
+
+        /// Timeout in milliseconds
+        #[arg(short = 'T', long, default_value = "1000")]
+        timeout: u64,
+    },
+
+    /// Scan ports on specific hosts
+    Portscan {
+        /// Target IP addresses
+        #[arg(required = true)]
+        targets: Vec<String>,
+
+        /// Port range to scan
+        #[arg(short, long, default_value = "1-65535")]
+        ports: String,
+
+        /// Number of concurrent threads
+        #[arg(short, long, default_value = "100")]
+        threads: usize,
+
+        /// Scan type
+        #[arg(short, long, value_enum, default_value = "tcp-connect")]
+        scan_type: CliScanType,
+    },
+
+    /// Generate default configuration file
+    Config {
+        /// Output path for config file
+        #[arg(default_value = "heroforge.toml")]
+        path: String,
+    },
+
+    /// Start web server with dashboard
+    Serve {
+        /// Database URL
+        #[arg(short, long, default_value = "sqlite://heroforge.db")]
+        database: String,
+
+        /// Bind address
+        #[arg(short, long, default_value = "0.0.0.0:8080")]
+        bind: String,
+    },
+}
+
+#[derive(Clone, clap::ValueEnum)]
+enum CliScanType {
+    TcpConnect,
+    TcpSyn,
+    Udp,
+    Comprehensive,
+}
+
+impl From<CliScanType> for ScanType {
+    fn from(val: CliScanType) -> Self {
+        match val {
+            CliScanType::TcpConnect => ScanType::TCPConnect,
+            CliScanType::TcpSyn => ScanType::TCPSyn,
+            CliScanType::Udp => ScanType::UDPScan,
+            CliScanType::Comprehensive => ScanType::Comprehensive,
+        }
+    }
+}
+
+#[derive(Clone, clap::ValueEnum)]
+enum CliEnumDepth {
+    Passive,
+    Light,
+    Aggressive,
+}
+
+impl From<CliEnumDepth> for scanner::enumeration::types::EnumDepth {
+    fn from(val: CliEnumDepth) -> Self {
+        match val {
+            CliEnumDepth::Passive => scanner::enumeration::types::EnumDepth::Passive,
+            CliEnumDepth::Light => scanner::enumeration::types::EnumDepth::Light,
+            CliEnumDepth::Aggressive => scanner::enumeration::types::EnumDepth::Aggressive,
+        }
+    }
+}
+
+#[tokio::main]
+async fn main() {
+    let cli = Cli::parse();
+
+    // Initialize logger
+    if cli.verbose {
+        env_logger::Builder::from_default_env()
+            .filter_level(log::LevelFilter::Debug)
+            .init();
+    } else {
+        env_logger::Builder::from_default_env()
+            .filter_level(log::LevelFilter::Info)
+            .init();
+    }
+
+    print_banner();
+
+    let result = match cli.command {
+        Commands::Scan {
+            targets,
+            ports,
+            threads,
+            timeout,
+            scan_type,
+            no_os_detect,
+            no_service_detect,
+            vuln_scan,
+            r#enum,
+            enum_depth,
+            enum_wordlist,
+            output_file,
+        } => {
+            let config = build_scan_config(
+                targets,
+                ports,
+                threads,
+                timeout,
+                scan_type,
+                !no_os_detect,
+                !no_service_detect,
+                vuln_scan,
+                r#enum,
+                enum_depth,
+                enum_wordlist,
+                cli.output,
+            );
+            run_full_scan(config, output_file).await
+        }
+        Commands::Discover {
+            targets,
+            threads,
+            timeout,
+        } => run_discovery(targets, threads, timeout).await,
+        Commands::Portscan {
+            targets,
+            ports,
+            threads,
+            scan_type,
+        } => run_portscan(targets, ports, threads, scan_type, cli.output).await,
+        Commands::Config { path } => generate_config(path),
+        Commands::Serve { database, bind } => {
+            println!("{}", "Starting HeroForge Web Server...".bright_green().bold());
+            println!("{} {}", "Database:".bright_white(), database.cyan());
+            println!("{} {}", "Bind Address:".bright_white(), bind.cyan());
+            println!("\n{}", "Access the dashboard at:".bright_white().bold());
+            println!("  {}", format!("http://{}", bind).bright_cyan().underline());
+            println!();
+            web::run_web_server(&database, &bind).await.map_err(|e| e.into())
+        }
+    };
+
+    if let Err(e) = result {
+        error!("{}", format!("Error: {}", e).red());
+        std::process::exit(1);
+    }
+}
+
+fn print_banner() {
+    println!("{}", r#"
+    ╦ ╦╔═╗╦═╗╔═╗╔═╗╔═╗╦═╗╔═╗╔═╗
+    ╠═╣║╣ ╠╦╝║ ║╠╣ ║ ║╠╦╝║ ╦║╣
+    ╩ ╩╚═╝╩╚═╚═╝╚  ╚═╝╩╚═╚═╝╚═╝
+    "#.bright_cyan().bold());
+    println!("{}", "    Network Triage for Penetration Testing\n".bright_white());
+}
+
+fn build_scan_config(
+    targets: Vec<String>,
+    ports: String,
+    threads: usize,
+    timeout: u64,
+    scan_type: CliScanType,
+    os_detect: bool,
+    service_detect: bool,
+    vuln_scan: bool,
+    enable_enum: bool,
+    enum_depth: CliEnumDepth,
+    enum_wordlist: Option<String>,
+    output: CliOutputFormat,
+) -> ScanConfig {
+    let port_range = parse_port_range(&ports).unwrap_or((1, 1000));
+
+    ScanConfig {
+        targets,
+        port_range,
+        threads,
+        timeout: Duration::from_millis(timeout),
+        scan_type: scan_type.into(),
+        enable_os_detection: os_detect,
+        enable_service_detection: service_detect,
+        enable_vuln_scan: vuln_scan,
+        enable_enumeration: enable_enum,
+        enum_depth: enum_depth.into(),
+        enum_wordlist_path: enum_wordlist.map(std::path::PathBuf::from),
+        enum_services: Vec::new(), // Empty = enumerate all services
+        output_format: output.into(),
+    }
+}
+
+fn parse_port_range(range: &str) -> Result<(u16, u16)> {
+    let parts: Vec<&str> = range.split('-').collect();
+    if parts.len() != 2 {
+        return Err(anyhow::anyhow!("Invalid port range format"));
+    }
+
+    let start = parts[0]
+        .parse::<u16>()
+        .map_err(|_| anyhow::anyhow!("Invalid start port"))?;
+    let end = parts[1]
+        .parse::<u16>()
+        .map_err(|_| anyhow::anyhow!("Invalid end port"))?;
+
+    if start > end {
+        return Err(anyhow::anyhow!("Start port must be less than end port"));
+    }
+
+    Ok((start, end))
+}
+
+async fn run_full_scan(
+    config: ScanConfig,
+    output_file: Option<String>,
+) -> Result<()> {
+    info!("Starting full network triage scan...");
+    info!("Targets: {:?}", config.targets);
+    info!("Port range: {}-{}", config.port_range.0, config.port_range.1);
+
+    let results = scanner::run_scan(&config, None).await?;
+
+    output::display_results(&results, &config.output_format, output_file.as_deref())?;
+
+    Ok(())
+}
+
+async fn run_discovery(
+    targets: Vec<String>,
+    threads: usize,
+    timeout: u64,
+) -> Result<()> {
+    info!("Starting host discovery...");
+
+    let config = ScanConfig {
+        targets,
+        threads,
+        timeout: Duration::from_millis(timeout),
+        ..Default::default()
+    };
+
+    let live_hosts = scanner::host_discovery::discover_hosts(&config).await?;
+
+    println!("\n{}", "Live Hosts Discovered:".green().bold());
+    for host in &live_hosts {
+        println!("  {} {}", "✓".green(), host.ip);
+        if let Some(hostname) = &host.hostname {
+            println!("    Hostname: {}", hostname.cyan());
+        }
+    }
+
+    println!("\n{} hosts found", live_hosts.len().to_string().yellow().bold());
+
+    Ok(())
+}
+
+async fn run_portscan(
+    targets: Vec<String>,
+    ports: String,
+    threads: usize,
+    scan_type: CliScanType,
+    output: CliOutputFormat,
+) -> Result<()> {
+    info!("Starting port scan...");
+
+    let port_range = parse_port_range(&ports)?;
+    let config = ScanConfig {
+        targets,
+        port_range,
+        threads,
+        scan_type: scan_type.into(),
+        output_format: output.into(),
+        ..Default::default()
+    };
+
+    let results = scanner::port_scanner::scan_ports(&config).await?;
+
+    output::display_port_results(&results, &config.output_format)?;
+
+    Ok(())
+}
+
+fn generate_config(path: String) -> Result<()> {
+    config::generate_default_config(&path)?;
+    println!("{}", format!("Config file generated at: {}", path).green());
+    Ok(())
+}

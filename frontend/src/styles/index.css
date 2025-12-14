@@ -1,0 +1,149 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply box-border;
+  }
+
+  body {
+    @apply m-0 p-0 bg-dark-bg text-slate-100 font-sans antialiased;
+  }
+
+  code {
+    @apply font-mono;
+  }
+}
+
+@layer components {
+  /* Custom scrollbar for dark theme */
+  ::-webkit-scrollbar {
+    @apply w-2 h-2;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-dark-bg;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-dark-border rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-dark-hover;
+  }
+
+  /* Focus styles */
+  .focus-ring {
+    @apply focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-dark-bg;
+  }
+}
+
+@layer utilities {
+  /* Animation utilities */
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-fadeIn {
+    animation: fadeIn 0.3s ease-out;
+  }
+
+  /* Slide in from right animation */
+  @keyframes slideInRight {
+    from {
+      opacity: 0;
+      transform: translateX(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  .animate-slideInRight {
+    animation: slideInRight 0.4s ease-out;
+  }
+
+  /* Flash highlight animation for new items */
+  @keyframes flashHighlight {
+    0% {
+      background-color: rgba(59, 130, 246, 0.3);
+    }
+    50% {
+      background-color: rgba(59, 130, 246, 0.1);
+    }
+    100% {
+      background-color: transparent;
+    }
+  }
+
+  .animate-flashHighlight {
+    animation: flashHighlight 2s ease-out;
+  }
+
+  /* Critical vulnerability flash */
+  @keyframes flashCritical {
+    0%, 100% {
+      border-color: rgba(239, 68, 68, 0.5);
+      box-shadow: 0 0 0 rgba(239, 68, 68, 0);
+    }
+    50% {
+      border-color: rgba(239, 68, 68, 1);
+      box-shadow: 0 0 20px rgba(239, 68, 68, 0.4);
+    }
+  }
+
+  .animate-flashCritical {
+    animation: flashCritical 1.5s ease-in-out 2;
+  }
+
+  /* Smooth height transition */
+  .transition-height {
+    transition: height 0.3s ease-in-out;
+  }
+
+  /* Pulsing dot for status indicator */
+  @keyframes pulse-dot {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.5;
+    }
+  }
+
+  .animate-pulse-dot {
+    animation: pulse-dot 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  /* Slower pulse animation */
+  .animate-pulse-slow {
+    animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  /* Custom scrollbar utility class */
+  .custom-scrollbar::-webkit-scrollbar {
+    @apply w-2;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    @apply bg-dark-surface rounded-full;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-slate-600 rounded-full;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    @apply bg-slate-500;
+  }
+}
