@@ -8,6 +8,7 @@ pub mod ftp_enum;
 pub mod ssh_enum;
 pub mod smtp_enum;
 pub mod ldap_enum;
+pub mod snmp_enum;
 pub mod ssl_enum;
 
 use crate::types::{HostInfo, ScanConfig, ScanProgressMessage, ScanTarget};
@@ -188,6 +189,17 @@ async fn enumerate_service_by_port(
             )
             .await
         }
+        ServiceType::Snmp => {
+            snmp_enum::enumerate_snmp(
+                target,
+                port,
+                config.enum_depth,
+                &config.enum_wordlist_path,
+                config.timeout,
+                progress_tx.clone(),
+            )
+            .await
+        }
     };
 
     // Send completion message
@@ -275,6 +287,11 @@ fn determine_service_type(service_name: &str, port: u16) -> ServiceType {
     // Check for LDAP
     if name_lower.contains("ldap") || port == 389 || port == 636 {
         return ServiceType::Ldap;
+    }
+
+    // Check for SNMP
+    if name_lower.contains("snmp") || port == 161 || port == 162 {
+        return ServiceType::Snmp;
     }
 
     // Default to HTTPS for SSL ports

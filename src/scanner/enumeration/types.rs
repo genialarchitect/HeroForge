@@ -23,6 +23,7 @@ pub enum ServiceType {
     Ssh,
     Smtp,
     Ldap,
+    Snmp,
     Database(DbType),
 }
 
@@ -150,6 +151,17 @@ pub enum FindingType {
     Certificate,
     WeakCrypto,
 
+    // SNMP findings
+    SnmpCommunityString,
+    SnmpSystemInfo,
+    SnmpInterface,
+    SnmpIpAddress,
+    SnmpRoute,
+    SnmpArpEntry,
+    SnmpTcpConnection,
+    SnmpUdpListener,
+    SnmpV3Required,
+
     // General findings
     Misconfiguration,
     InformationDisclosure,
@@ -182,6 +194,7 @@ impl std::fmt::Display for ServiceType {
             ServiceType::Ssh => write!(f, "SSH"),
             ServiceType::Smtp => write!(f, "SMTP"),
             ServiceType::Ldap => write!(f, "LDAP"),
+            ServiceType::Snmp => write!(f, "SNMP"),
             ServiceType::Database(db) => write!(f, "{:?}", db),
         }
     }
@@ -252,6 +265,15 @@ impl std::fmt::Display for FindingType {
             FindingType::CipherSuite => write!(f, "Cipher Suite"),
             FindingType::Certificate => write!(f, "Certificate"),
             FindingType::WeakCrypto => write!(f, "Weak Cryptography"),
+            FindingType::SnmpCommunityString => write!(f, "SNMP Community String"),
+            FindingType::SnmpSystemInfo => write!(f, "SNMP System Info"),
+            FindingType::SnmpInterface => write!(f, "SNMP Interface"),
+            FindingType::SnmpIpAddress => write!(f, "SNMP IP Address"),
+            FindingType::SnmpRoute => write!(f, "SNMP Route"),
+            FindingType::SnmpArpEntry => write!(f, "SNMP ARP Entry"),
+            FindingType::SnmpTcpConnection => write!(f, "SNMP TCP Connection"),
+            FindingType::SnmpUdpListener => write!(f, "SNMP UDP Listener"),
+            FindingType::SnmpV3Required => write!(f, "SNMPv3 Required"),
             FindingType::Misconfiguration => write!(f, "Misconfiguration"),
             FindingType::InformationDisclosure => write!(f, "Information Disclosure"),
             FindingType::Vulnerability => write!(f, "Vulnerability"),
