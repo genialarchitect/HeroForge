@@ -15,8 +15,8 @@ HeroForge is a network reconnaissance and triage tool written in Rust, designed 
 
 **Deployment:**
 - Production URL: https://heroforge.genialarchitect.io
-- Reverse proxy: Nginx with SSL/TLS (Let's Encrypt)
-- Service management: systemd service
+- Reverse proxy: Traefik (via Docker) with automatic SSL/TLS (Let's Encrypt)
+- Container management: Docker Compose
 
 ## Build and Development Commands
 
@@ -51,8 +51,8 @@ sudo ./target/release/heroforge scan 192.168.1.0/24 --scan-type comprehensive
 # Start web server (development)
 cargo run -- serve --bind 127.0.0.1:8080
 
-# Start web server (production - via systemd)
-sudo systemctl start heroforge
+# Start web server (production - via Docker)
+cd /root && docker compose up -d heroforge
 ```
 
 ### Frontend Development
@@ -106,17 +106,21 @@ sqlite3 heroforge.db "SELECT id, name, status, created_at FROM scan_results;"
 
 ```bash
 # Build and deploy (uses deploy.sh script)
-cargo build --release
 sudo ./deploy.sh
 
-# Restart service after code changes
-sudo systemctl restart heroforge
+# Or manually:
+cd /root/Development/HeroForge/frontend && npm install && npm run build
+cd /root/Development/HeroForge && ~/.cargo/bin/cargo build --release
+cd /root && docker compose build heroforge && docker compose up -d heroforge
+
+# Restart container after code changes
+cd /root && docker compose restart heroforge
 
 # View logs
-sudo journalctl -u heroforge -f
+docker logs heroforge -f
 
-# Check service status
-sudo systemctl status heroforge
+# Check container status
+docker ps | grep heroforge
 ```
 
 ## Architecture Overview
@@ -149,7 +153,10 @@ src/
 │       ├── ssh_enum.rs  # SSH enumeration (algorithms, auth methods)
 │       ├── smtp_enum.rs # SMTP enumeration (VRFY, EXPN user enum)
 │       ├── ldap_enum.rs # LDAP enumeration (anonymous bind, base DN)
-│       └── ssl_enum.rs  # SSL/TLS enumeration (ciphers, certificate info)
+│       ├── ssl_enum.rs  # SSL/TLS enumeration (ciphers, certificate info)
+│       ├── rdp_enum.rs  # RDP enumeration (NLA, encryption, BlueKeep detection)
+│       ├── vnc_enum.rs  # VNC enumeration (RFB version, security types)
+│       └── telnet_enum.rs # Telnet enumeration (banner, device fingerprinting)
 ├── cve/                 # CVE database integration
 │   ├── mod.rs           # CVE scanner orchestration (offline + NVD API + cache)
 │   ├── offline_db.rs    # Embedded CVE database for common vulnerabilities
@@ -271,15 +278,15 @@ Reports are generated via `reports::ReportGenerator`:
 - Includes targets, port ranges, scan type, feature flags
 - Alternative to passing CLI flags
 
-**heroforge.service** (systemd):
-- Manages HeroForge as a system service
-- Runs web server on system boot
-- Located at `/etc/systemd/system/heroforge.service`
+**docker-compose.yml** (in /root):
+- Defines HeroForge container alongside other services (n8n, MinIO)
+- Uses Traefik for automatic SSL/TLS via Let's Encrypt
+- Container mounts source code for serving frontend
 
-**nginx-heroforge.conf**:
-- Reverse proxy configuration
-- SSL/TLS termination with Let's Encrypt certificates
-- Proxies to `127.0.0.1:8080` (HeroForge web server)
+**deploy.sh**:
+- Automated deployment script
+- Builds frontend (npm), backend (cargo), and Docker container
+- Restarts HeroForge container with new build
 
 ## Important Notes
 
@@ -294,11 +301,11 @@ The web server serves static files from `frontend/dist`. After making frontend c
 
 ### Database Location
 - Development: `./heroforge.db` (relative to project root)
-- Production: `/root/Development/HeroForge/heroforge.db` (absolute path in systemd service)
+- Production: `/root/Development/HeroForge/heroforge.db` (mounted into Docker container)
 
 ### Port Binding
 - CLI mode: Can bind to any address (default `0.0.0.0:8080`)
-- Production: Binds to `127.0.0.1:8080` (Nginx reverse proxy handles external access)
+- Production: Binds to `0.0.0.0:8080` inside container (Traefik reverse proxy handles external access)
 
 ### WebSocket Authentication
 WebSocket connections to `/api/ws/scans/{id}` require JWT authentication. The token should be passed as a query parameter or in the handshake headers.
@@ -320,7 +327,7 @@ If you see errors like "future cannot be sent between threads safely":
 - Check that `npm run build` was run after changes
 - Verify `frontend/dist` directory exists and contains built files
 - Clear browser cache or use incognito mode
-- Check Nginx is serving from correct directory
+- Rebuild Docker container: `docker compose build heroforge && docker compose up -d heroforge`
 
 ### Database Locked Errors
 - SQLite doesn't handle high concurrency well
@@ -328,29 +335,31 @@ If you see errors like "future cannot be sent between threads safely":
 - Ensure long-running transactions are avoided
 - Consider using write-ahead logging: `PRAGMA journal_mode=WAL`
 
-### Service Won't Start
+### Container Won't Start
 ```bash
-# Check service status and logs
-sudo systemctl status heroforge
-sudo journalctl -u heroforge -n 50
+# Check container status and logs
+docker ps -a | grep heroforge
+docker logs heroforge --tail 50
 
 # Common issues:
 # - Binary not found (rebuild: cargo build --release)
 # - Port already in use (check: sudo lsof -i :8080)
 # - Database permissions (check: ls -la heroforge.db)
 # - Missing frontend/dist (run: cd frontend && npm run build)
+# - Container crash loop (check: docker logs heroforge)
 ```
 
 ### SSL Certificate Issues
 ```bash
-# Check certificate status
-sudo certbot certificates
+# SSL is managed automatically by Traefik via Let's Encrypt
+# Check Traefik logs for certificate issues
+docker logs root-traefik-1 --tail 50 | grep -i cert
 
-# Renew certificate manually
-sudo certbot renew
+# View certificate store
+docker exec root-traefik-1 cat /letsencrypt/acme.json | jq '.Certificates'
 
-# Test nginx configuration
-sudo nginx -t
+# Force certificate refresh (restart Traefik)
+cd /root && docker compose restart traefik
 ```
 
 ### Enumeration Not Working
