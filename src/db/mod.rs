@@ -973,6 +973,54 @@ pub async fn delete_scheduled_scan(pool: &SqlitePool, id: &str) -> Result<()> {
     Ok(())
 }
 
+/// Get all scheduled scans that are due to run (next_run_at <= now and is_active = true)
+pub async fn get_due_scheduled_scans(pool: &SqlitePool) -> Result<Vec<models::ScheduledScan>> {
+    let now = Utc::now();
+    let scans = sqlx::query_as::<_, models::ScheduledScan>(
+        "SELECT * FROM scheduled_scans WHERE is_active = 1 AND next_run_at <= ?1 ORDER BY next_run_at ASC",
+    )
+    .bind(now)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(scans)
+}
+
+/// Update a scheduled scan after execution
+pub async fn update_scheduled_scan_execution(
+    pool: &SqlitePool,
+    id: &str,
+    scan_id: &str,
+) -> Result<models::ScheduledScan> {
+    // Get the current scheduled scan to calculate next run
+    let current = get_scheduled_scan_by_id(pool, id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("Scheduled scan not found"))?;
+
+    let now = Utc::now();
+    let next_run = calculate_next_run(&current.schedule_type, &current.schedule_value)?;
+    let new_run_count = current.run_count + 1;
+
+    let updated = sqlx::query_as::<_, models::ScheduledScan>(
+        r#"
+        UPDATE scheduled_scans
+        SET last_run_at = ?1, last_scan_id = ?2, run_count = ?3, next_run_at = ?4, updated_at = ?5
+        WHERE id = ?6
+        RETURNING *
+        "#,
+    )
+    .bind(now)
+    .bind(scan_id)
+    .bind(new_run_count)
+    .bind(next_run)
+    .bind(now)
+    .bind(id)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(updated)
+}
+
 /// Helper function for schedule calculation
 fn calculate_next_run(schedule_type: &str, schedule_value: &str) -> Result<DateTime<Utc>> {
     use chrono::{Duration, NaiveTime};

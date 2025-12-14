@@ -1,17 +1,22 @@
 pub mod api;
 pub mod auth;
 pub mod broadcast;
+pub mod scheduler;
 pub mod websocket;
 
 use actix_cors::Cors;
 use actix_files as fs;
 use actix_web::{middleware::Logger, web, App, HttpServer};
+use std::sync::Arc;
 
 pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::Result<()> {
     log::info!("Initializing database...");
     let pool = crate::db::init_database(database_url)
         .await
         .expect("Failed to initialize database");
+
+    // Start the background scheduler daemon
+    scheduler::start_scheduler(Arc::new(pool.clone()));
 
     log::info!("Starting web server at http://{}", bind_address);
 
