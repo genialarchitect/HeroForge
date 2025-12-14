@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useAuthStore } from '../../store/authStore';
 import Button from '../ui/Button';
-import { Shield, LogOut, User, LayoutDashboard, Users } from 'lucide-react';
+import { Shield, LogOut, User, LayoutDashboard, Users, Settings } from 'lucide-react';
 
 const Header: React.FC = () => {
   const { user, logout } = useAuth();
@@ -39,6 +39,17 @@ const Header: React.FC = () => {
                 >
                   <LayoutDashboard className="h-4 w-4" />
                   Dashboard
+                </Link>
+                <Link
+                  to="/settings"
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
+                    location.pathname.startsWith('/settings')
+                      ? 'bg-primary/10 text-primary font-medium'
+                      : 'text-slate-400 hover:text-white hover:bg-dark-hover'
+                  }`}
+                >
+                  <Settings className="h-4 w-4" />
+                  Settings
                 </Link>
                 {isAdmin() && (
                   <Link

@@ -1,13 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import Checkbox from '../ui/Checkbox';
 import Card from '../ui/Card';
-import { scanAPI } from '../../services/api';
+import { scanAPI, targetGroupAPI } from '../../services/api';
 import { useScanStore } from '../../store/scanStore';
-import { Target, Hash, Cpu, Search, Radio, Wifi } from 'lucide-react';
-import { EnumDepth, EnumService, ScanType } from '../../types';
+import { Target, Hash, Cpu, Search, Radio, Wifi, FolderOpen } from 'lucide-react';
+import { EnumDepth, EnumService, ScanType, TargetGroup } from '../../types';
 
 const SCAN_TYPES: { id: ScanType; label: string; description: string }[] = [
   { id: 'tcp_connect', label: 'TCP Connect', description: 'Standard TCP scan (most reliable)' },
@@ -54,12 +54,32 @@ const ScanForm: React.FC = () => {
   const [enumDepth, setEnumDepth] = useState<EnumDepth>('light');
   const [selectedServices, setSelectedServices] = useState<EnumService[]>([]);
   const [loading, setLoading] = useState(false);
+  const [targetGroups, setTargetGroups] = useState<TargetGroup[]>([]);
 
   const { addScan } = useScanStore();
 
   const showUdpOptions = scanType === 'udp' || scanType === 'comprehensive';
 
-  const validateTarget = (input: string): boolean => {
+  useEffect(() => {
+    loadTargetGroups();
+  }, []);
+
+  const loadTargetGroups = async () => {
+    try {
+      const response = await targetGroupAPI.getAll();
+      setTargetGroups(response.data);
+    } catch (error) {
+      console.error('Failed to load target groups:', error);
+    }
+  };
+
+  const useTargetGroup = (group: TargetGroup) => {
+    const targets = JSON.parse(group.targets || '[]');
+    setTarget(targets.join(', '));
+  };
+
+  const validateSingleTarget = (input: string): boolean => {
+    const trimmed = input.trim();
     // IP address regex
     const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$/;
     // CIDR regex
@@ -69,7 +89,20 @@ const ScanForm: React.FC = () => {
     // Hostname regex (basic)
     const hostnameRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/;
 
-    return ipRegex.test(input) || cidrRegex.test(input) || rangeRegex.test(input) || hostnameRegex.test(input);
+    return ipRegex.test(trimmed) || cidrRegex.test(trimmed) || rangeRegex.test(trimmed) || hostnameRegex.test(trimmed);
+  };
+
+  const parseTargets = (input: string): string[] => {
+    return input
+      .split(/[,\n]/)
+      .map((t) => t.trim())
+      .filter((t) => t.length > 0);
+  };
+
+  const validateTargets = (input: string): boolean => {
+    const targets = parseTargets(input);
+    if (targets.length === 0) return false;
+    return targets.every(validateSingleTarget);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -85,8 +118,8 @@ const ScanForm: React.FC = () => {
       return;
     }
 
-    if (!validateTarget(target.trim())) {
-      toast.error('Invalid target format. Use IP (192.168.1.1), CIDR (192.168.1.0/24), range (192.168.1.1-192.168.1.100), or hostname');
+    if (!validateTargets(target)) {
+      toast.error('Invalid target format. Use IP (192.168.1.1), CIDR (192.168.1.0/24), range, or hostname. Separate multiple targets with commas.');
       return;
     }
 
@@ -95,11 +128,12 @@ const ScanForm: React.FC = () => {
       return;
     }
 
+    const targets = parseTargets(target);
     setLoading(true);
     try {
       const response = await scanAPI.create({
         name: name.trim(),
-        targets: [target.trim()],
+        targets,
         port_range: [portStart, portEnd],
         threads,
         scan_type: scanType,
@@ -168,15 +202,39 @@ const ScanForm: React.FC = () => {
           icon={<Hash className="h-5 w-5" />}
         />
 
-        <Input
-          label="Target"
-          type="text"
-          placeholder="192.168.1.0/24, 10.0.0.1-10.0.0.100, or hostname"
-          value={target}
-          onChange={(e) => setTarget(e.target.value)}
-          icon={<Target className="h-5 w-5" />}
-          required
-        />
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <label className="block text-sm font-medium text-slate-300">Target</label>
+            {targetGroups.length > 0 && (
+              <div className="flex items-center gap-2">
+                <FolderOpen className="h-3 w-3 text-slate-500" />
+                <span className="text-xs text-slate-500">Use group:</span>
+                {targetGroups.slice(0, 3).map((g) => (
+                  <button
+                    key={g.id}
+                    type="button"
+                    onClick={() => useTargetGroup(g)}
+                    className="px-2 py-0.5 text-xs rounded border border-dark-border text-slate-400 hover:text-white hover:border-primary transition-colors"
+                    style={{ borderLeftColor: g.color, borderLeftWidth: 3 }}
+                  >
+                    {g.name}
+                  </button>
+                ))}
+                {targetGroups.length > 3 && (
+                  <span className="text-xs text-slate-500">+{targetGroups.length - 3}</span>
+                )}
+              </div>
+            )}
+          </div>
+          <Input
+            type="text"
+            placeholder="192.168.1.0/24, 10.0.0.1-10.0.0.100, or hostname"
+            value={target}
+            onChange={(e) => setTarget(e.target.value)}
+            icon={<Target className="h-5 w-5" />}
+            required
+          />
+        </div>
 
         <div className="grid grid-cols-2 gap-4">
           <Input

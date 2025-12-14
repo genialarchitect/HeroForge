@@ -11,6 +11,15 @@ import type {
   Report,
   ReportTemplate,
   CreateReportRequest,
+  TargetGroup,
+  CreateTargetGroupRequest,
+  UpdateTargetGroupRequest,
+  ScheduledScan,
+  CreateScheduledScanRequest,
+  UpdateScheduledScanRequest,
+  NotificationSettings,
+  UpdateNotificationSettingsRequest,
+  ScanComparisonResponse,
 } from '../types';
 
 const api = axios.create({
@@ -92,6 +101,40 @@ export const reportAPI = {
 
   // Get available templates
   getTemplates: () => api.get<ReportTemplate[]>('/reports/templates'),
+};
+
+export const targetGroupAPI = {
+  getAll: () => api.get<TargetGroup[]>('/target-groups'),
+  getById: (id: string) => api.get<TargetGroup>(`/target-groups/${id}`),
+  create: (data: CreateTargetGroupRequest) =>
+    api.post<TargetGroup>('/target-groups', data),
+  update: (id: string, data: UpdateTargetGroupRequest) =>
+    api.put<TargetGroup>(`/target-groups/${id}`, data),
+  delete: (id: string) => api.delete(`/target-groups/${id}`),
+};
+
+export const scheduledScanAPI = {
+  getAll: () => api.get<ScheduledScan[]>('/scheduled-scans'),
+  getById: (id: string) => api.get<ScheduledScan>(`/scheduled-scans/${id}`),
+  create: (data: CreateScheduledScanRequest) =>
+    api.post<ScheduledScan>('/scheduled-scans', data),
+  update: (id: string, data: UpdateScheduledScanRequest) =>
+    api.put<ScheduledScan>(`/scheduled-scans/${id}`, data),
+  delete: (id: string) => api.delete(`/scheduled-scans/${id}`),
+};
+
+export const notificationAPI = {
+  getSettings: () => api.get<NotificationSettings>('/notifications/settings'),
+  updateSettings: (data: UpdateNotificationSettingsRequest) =>
+    api.put<NotificationSettings>('/notifications/settings', data),
+};
+
+export const compareAPI = {
+  compare: (scanId1: string, scanId2: string) =>
+    api.post<ScanComparisonResponse>('/scans/compare', {
+      scan_id_1: scanId1,
+      scan_id_2: scanId2,
+    }),
 };
 
 export default api;
