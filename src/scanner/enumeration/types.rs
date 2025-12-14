@@ -24,6 +24,7 @@ pub enum ServiceType {
     Smtp,
     Ldap,
     Snmp,
+    Rdp,
     Database(DbType),
 }
 
@@ -162,6 +163,13 @@ pub enum FindingType {
     SnmpUdpListener,
     SnmpV3Required,
 
+    // RDP findings
+    RdpVersion,
+    RdpSecurityProtocol,
+    RdpNlaRequired,
+    RdpEncryptionLevel,
+    RdpBlueKeep,
+
     // General findings
     Misconfiguration,
     InformationDisclosure,
@@ -195,6 +203,7 @@ impl std::fmt::Display for ServiceType {
             ServiceType::Smtp => write!(f, "SMTP"),
             ServiceType::Ldap => write!(f, "LDAP"),
             ServiceType::Snmp => write!(f, "SNMP"),
+            ServiceType::Rdp => write!(f, "RDP"),
             ServiceType::Database(db) => write!(f, "{:?}", db),
         }
     }
@@ -274,6 +283,11 @@ impl std::fmt::Display for FindingType {
             FindingType::SnmpTcpConnection => write!(f, "SNMP TCP Connection"),
             FindingType::SnmpUdpListener => write!(f, "SNMP UDP Listener"),
             FindingType::SnmpV3Required => write!(f, "SNMPv3 Required"),
+            FindingType::RdpVersion => write!(f, "RDP Version"),
+            FindingType::RdpSecurityProtocol => write!(f, "RDP Security Protocol"),
+            FindingType::RdpNlaRequired => write!(f, "NLA Requirement"),
+            FindingType::RdpEncryptionLevel => write!(f, "RDP Encryption Level"),
+            FindingType::RdpBlueKeep => write!(f, "BlueKeep Vulnerability"),
             FindingType::Misconfiguration => write!(f, "Misconfiguration"),
             FindingType::InformationDisclosure => write!(f, "Information Disclosure"),
             FindingType::Vulnerability => write!(f, "Vulnerability"),

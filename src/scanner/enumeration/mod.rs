@@ -10,6 +10,7 @@ pub mod smtp_enum;
 pub mod ldap_enum;
 pub mod snmp_enum;
 pub mod ssl_enum;
+pub mod rdp_enum;
 
 use crate::types::{HostInfo, ScanConfig, ScanProgressMessage, ScanTarget};
 use anyhow::Result;
@@ -106,17 +107,51 @@ async fn enumerate_service_by_port(
 
     // Dispatch to appropriate enumeration module based on service type
     let result = match service_type {
-        ServiceType::Http | ServiceType::Https => {
+        ServiceType::Http => {
             http_enum::enumerate_http(
                 target,
                 port,
-                service_type == ServiceType::Https,
+                false,
                 config.enum_depth,
                 &config.enum_wordlist_path,
                 config.timeout,
                 progress_tx.clone(),
             )
             .await
+        }
+        ServiceType::Https => {
+            // For HTTPS, run HTTP enumeration first, then chain SSL analysis
+            let http_result = http_enum::enumerate_http(
+                target,
+                port,
+                true,
+                config.enum_depth,
+                &config.enum_wordlist_path,
+                config.timeout,
+                progress_tx.clone(),
+            )
+            .await;
+
+            // Chain SSL/TLS analysis for HTTPS ports
+            match http_result {
+                Ok(mut enum_result) => {
+                    // Run SSL enumeration and merge findings
+                    if let Ok(ssl_result) = ssl_enum::enumerate_ssl(
+                        target,
+                        port,
+                        config.enum_depth,
+                        config.timeout,
+                        progress_tx.clone(),
+                    )
+                    .await
+                    {
+                        enum_result.findings.extend(ssl_result.findings);
+                        enum_result.metadata.extend(ssl_result.metadata);
+                    }
+                    Ok(enum_result)
+                }
+                Err(e) => Err(e),
+            }
         }
         ServiceType::Dns => {
             dns_enum::enumerate_dns(
@@ -195,6 +230,16 @@ async fn enumerate_service_by_port(
                 port,
                 config.enum_depth,
                 &config.enum_wordlist_path,
+                config.timeout,
+                progress_tx.clone(),
+            )
+            .await
+        }
+        ServiceType::Rdp => {
+            rdp_enum::enumerate_rdp(
+                target,
+                port,
+                config.enum_depth,
                 config.timeout,
                 progress_tx.clone(),
             )
@@ -292,6 +337,13 @@ fn determine_service_type(service_name: &str, port: u16) -> ServiceType {
     // Check for SNMP
     if name_lower.contains("snmp") || port == 161 || port == 162 {
         return ServiceType::Snmp;
+    }
+
+    // Check for RDP
+    if name_lower.contains("rdp") || name_lower.contains("ms-wbt-server")
+       || name_lower.contains("remote desktop") || name_lower.contains("terminal")
+       || port == 3389 {
+        return ServiceType::Rdp;
     }
 
     // Default to HTTPS for SSL ports

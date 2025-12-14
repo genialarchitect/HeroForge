@@ -437,6 +437,64 @@ static CVE_DATABASE: Lazy<HashMap<String, Vec<CveEntry>>> = Lazy::new(|| {
         },
     ]);
 
+    // ============================================================================
+    // RDP (Remote Desktop Protocol)
+    // ============================================================================
+    db.insert("rdp".to_string(), vec![
+        CveEntry {
+            cve_id: "CVE-2019-0708".to_string(),
+            title: "BlueKeep Remote Code Execution".to_string(),
+            description: "A remote code execution vulnerability exists in Remote Desktop Services when an unauthenticated attacker connects to the target system using RDP and sends specially crafted requests. This vulnerability is pre-authentication and requires no user interaction. Affects Windows XP, Server 2003, Vista, Server 2008, 7, and Server 2008 R2.".to_string(),
+            severity: Severity::Critical,
+            cvss_score: 9.8,
+            version_pattern: VersionPattern::All,
+        },
+        CveEntry {
+            cve_id: "CVE-2019-1181".to_string(),
+            title: "DejaBlue Remote Code Execution".to_string(),
+            description: "A remote code execution vulnerability exists in Remote Desktop Services, similar to BlueKeep. Affects Windows 7 through Windows 10 and Server 2008 through Server 2019.".to_string(),
+            severity: Severity::Critical,
+            cvss_score: 9.8,
+            version_pattern: VersionPattern::All,
+        },
+        CveEntry {
+            cve_id: "CVE-2019-1182".to_string(),
+            title: "DejaBlue Remote Code Execution (2)".to_string(),
+            description: "Another RCE vulnerability in Remote Desktop Services, part of the DejaBlue family of vulnerabilities.".to_string(),
+            severity: Severity::Critical,
+            cvss_score: 9.8,
+            version_pattern: VersionPattern::All,
+        },
+        CveEntry {
+            cve_id: "CVE-2019-0887".to_string(),
+            title: "RDP Client Remote Code Execution".to_string(),
+            description: "Remote code execution vulnerability in the Windows Remote Desktop Client when connecting to a malicious server.".to_string(),
+            severity: Severity::High,
+            cvss_score: 8.0,
+            version_pattern: VersionPattern::All,
+        },
+        CveEntry {
+            cve_id: "CVE-2012-0002".to_string(),
+            title: "MS12-020 RDP Remote Code Execution".to_string(),
+            description: "Remote Desktop Protocol vulnerability allows remote code execution. Affects Windows XP through Windows 7 and Server 2003 through Server 2008 R2.".to_string(),
+            severity: Severity::Critical,
+            cvss_score: 9.3,
+            version_pattern: VersionPattern::All,
+        },
+    ]);
+
+    // Also add ms-wbt-server alias for RDP
+    db.insert("ms-wbt-server".to_string(), vec![
+        CveEntry {
+            cve_id: "CVE-2019-0708".to_string(),
+            title: "BlueKeep Remote Code Execution".to_string(),
+            description: "A remote code execution vulnerability exists in Remote Desktop Services when an unauthenticated attacker connects to the target system using RDP and sends specially crafted requests.".to_string(),
+            severity: Severity::Critical,
+            cvss_score: 9.8,
+            version_pattern: VersionPattern::All,
+        },
+    ]);
+
     db
 });
 
