@@ -136,11 +136,13 @@ src/
 │   ├── mod.rs           # Main scan orchestration
 │   ├── host_discovery.rs    # TCP-based host discovery
 │   ├── port_scanner.rs      # Concurrent port scanning (dispatches TCP/UDP)
+│   ├── syn_scanner.rs       # TCP SYN (half-open) scanner (requires root/CAP_NET_RAW)
 │   ├── service_detection.rs # Banner grabbing and service fingerprinting
 │   ├── os_fingerprint.rs    # OS detection based on port patterns
 │   ├── udp_scanner.rs       # UDP port scanning with ICMP detection (requires root)
 │   ├── udp_probes.rs        # Protocol-specific UDP probes (DNS, SNMP, NTP, etc.)
 │   ├── udp_service_detection.rs  # UDP response parsing for service identification
+│   ├── comparison.rs        # Scan diff/comparison between two scan results
 │   └── enumeration/     # Service-specific enumeration
 │       ├── mod.rs       # Enumeration orchestration
 │       ├── types.rs     # Enumeration data structures
@@ -156,7 +158,8 @@ src/
 │       ├── ssl_enum.rs  # SSL/TLS enumeration (ciphers, certificate info)
 │       ├── rdp_enum.rs  # RDP enumeration (NLA, encryption, BlueKeep detection)
 │       ├── vnc_enum.rs  # VNC enumeration (RFB version, security types)
-│       └── telnet_enum.rs # Telnet enumeration (banner, device fingerprinting)
+│       ├── telnet_enum.rs # Telnet enumeration (banner, device fingerprinting)
+│       └── snmp_enum.rs # SNMP enumeration (community strings, MIB-II, interfaces)
 ├── cve/                 # CVE database integration
 │   ├── mod.rs           # CVE scanner orchestration (offline + NVD API + cache)
 │   ├── offline_db.rs    # Embedded CVE database for common vulnerabilities
@@ -165,6 +168,8 @@ src/
 ├── vuln/                # Vulnerability scanning
 │   ├── mod.rs
 │   └── scanner.rs       # CVE matching and misconfiguration detection
+├── email/               # Email notification system
+│   └── mod.rs           # SMTP-based email service (scan completion, critical vulns)
 ├── reports/             # Report generation system
 │   ├── mod.rs           # Report generator service
 │   ├── types.rs         # Report data structures (ReportData, ReportSummary, etc.)
@@ -182,8 +187,8 @@ src/
 │   └── csv_output.rs        # CSV export
 ├── db/                  # Database layer
 │   ├── mod.rs           # Database initialization and queries
-│   ├── models.rs        # SQLx model types (User, ScanResult, Role, AuditLog)
-│   └── migrations.rs    # Admin console table migrations
+│   ├── models.rs        # SQLx model types (see Database Models below)
+│   └── migrations.rs    # Schema migrations for all tables
 └── web/                 # Web server and API
     ├── mod.rs           # Server setup and routing
     ├── broadcast.rs     # Broadcast channel for scan progress
@@ -194,10 +199,25 @@ src/
     │   ├── auth.rs      # /api/auth/* endpoints
     │   ├── scans.rs     # /api/scans/* endpoints
     │   ├── admin.rs     # /api/admin/* endpoints (user/role management)
-    │   └── reports.rs   # /api/reports/* endpoints (report generation/download)
+    │   ├── reports.rs   # /api/reports/* endpoints (report generation/download)
+    │   ├── compare.rs   # /api/scans/compare endpoint (scan diff)
+    │   ├── templates.rs # /api/templates/* endpoints (scan templates)
+    │   └── target_groups.rs # (WIP - not yet wired to routes)
     └── websocket/       # Real-time scan progress
         └── mod.rs       # WebSocket handler for scan updates
 ```
+
+### Database Models
+
+Key models in `db/models.rs`:
+- **User, Role, UserRole**: User accounts and RBAC
+- **ScanResult**: Scan records with status, results JSON, timestamps
+- **Report**: Generated reports with format, sections, file paths
+- **ScanTemplate**: Reusable scan configurations
+- **TargetGroup**: Named groups of scan targets (WIP - not yet wired)
+- **ScheduledScan**: Recurring scan schedules (WIP - not yet wired)
+- **NotificationSettings**: Per-user email preferences (WIP - not yet wired)
+- **AuditLog**: Admin action audit trail
 
 ### Data Flow for Scans
 
@@ -230,6 +250,38 @@ The `cve` module implements a three-tier lookup strategy:
 3. **NVD API** (`cve::nvd_client`): Real-time queries to NIST NVD when cache misses occur
 
 Service names are normalized (e.g., "SSH" → "openssh") before lookup. The scanner also checks for service exposure vulnerabilities (Redis, MongoDB, etc. exposed to network).
+
+### Scan Comparison System
+
+The `scanner/comparison.rs` module provides diff functionality between scan results:
+- Detects new/removed hosts
+- Tracks port state changes (new open, newly closed)
+- Identifies service version changes
+- Compares vulnerability findings (new vs resolved)
+- Accessible via POST `/api/scans/compare` with `scan_id_1` and `scan_id_2`
+
+### Email Notification System
+
+The `email` module provides SMTP-based notifications:
+- Scan completion summaries with host/port/vuln counts
+- Critical vulnerability alerts with finding details
+- HTML + plaintext multipart emails
+- Configuration via environment variables: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM_ADDRESS`, `SMTP_FROM_NAME`
+
+### Scan Templates and Target Groups
+
+**Templates** (`web/api/templates.rs`): Save scan configurations for reuse
+- Stores port ranges, scan type, enumeration settings
+- Create scans from templates via POST `/api/templates/{id}/scan`
+
+**Target Groups** (WIP - models exist but API not yet wired):
+- `target_groups.rs` and database models exist
+- Named collections of IP addresses/ranges/hostnames
+- Color-coded for UI organization
+
+**Scheduled Scans** (WIP - models exist but no API):
+- Database models for recurring scans (daily, weekly, monthly, cron)
+- `ScheduledScan` model in `db/models.rs`
 
 ### Report Generation System
 
@@ -270,6 +322,13 @@ Reports are generated via `reports::ReportGenerator`:
 - Custom or built-in wordlists for HTTP/DNS enumeration
 - Database enumeration uses native async drivers (mysql_async, mongodb, redis)
 - SMB enumeration uses external tools (smbclient, enum4linux) via tokio::process
+- SNMP enumeration tests community strings and extracts MIB-II data (system info, interfaces, routing)
+
+**Scan Types:**
+- **TCP Connect** (default): Standard 3-way handshake, no special privileges
+- **TCP SYN** (`syn_scanner.rs`): Half-open scanning, requires root/CAP_NET_RAW
+- **UDP**: Protocol-specific probes with ICMP unreachable detection, requires root
+- **Comprehensive**: TCP + UDP combined scan
 
 ## Configuration Files
 
