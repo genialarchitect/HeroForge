@@ -153,3 +153,49 @@ pub struct UpdateUserRequest {
 pub struct UpdateSettingRequest {
     pub value: String,
 }
+
+// Report Models
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct Report {
+    pub id: String,
+    pub user_id: String,
+    pub scan_id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub format: String,
+    pub template_id: String,
+    pub sections: String, // JSON array of section names
+    pub file_path: Option<String>,
+    pub file_size: Option<i64>,
+    pub status: String, // pending, generating, completed, failed
+    pub error_message: Option<String>,
+    pub metadata: Option<String>, // JSON object
+    pub created_at: DateTime<Utc>,
+    pub completed_at: Option<DateTime<Utc>>,
+    pub expires_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateReportRequest {
+    pub scan_id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub format: String, // "pdf", "html", "json"
+    pub template_id: String, // "executive", "technical", "compliance"
+    pub sections: Vec<String>,
+    #[serde(default)]
+    pub options: ReportOptions,
+}
+
+// Re-export ReportOptions from reports module
+pub use crate::reports::types::ReportOptions;
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ReportTemplate {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub default_sections: Vec<String>,
+    pub supports_formats: Vec<String>,
+}

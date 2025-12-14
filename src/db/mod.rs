@@ -443,3 +443,150 @@ pub async fn update_setting(
 
     Ok(())
 }
+
+// ============================================================================
+// Report Management Functions
+// ============================================================================
+
+/// Create a new report record
+pub async fn create_report(
+    pool: &SqlitePool,
+    user_id: &str,
+    scan_id: &str,
+    name: &str,
+    description: Option<&str>,
+    format: &str,
+    template_id: &str,
+    sections: &[String],
+    metadata: Option<&str>,
+) -> Result<models::Report> {
+    let id = Uuid::new_v4().to_string();
+    let now = Utc::now();
+    let sections_json = serde_json::to_string(sections)?;
+
+    let report = sqlx::query_as::<_, models::Report>(
+        r#"
+        INSERT INTO reports (id, user_id, scan_id, name, description, format, template_id, sections, status, metadata, created_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+        RETURNING *
+        "#,
+    )
+    .bind(&id)
+    .bind(user_id)
+    .bind(scan_id)
+    .bind(name)
+    .bind(description)
+    .bind(format)
+    .bind(template_id)
+    .bind(&sections_json)
+    .bind("pending")
+    .bind(metadata)
+    .bind(now)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(report)
+}
+
+/// Get all reports for a user
+pub async fn get_user_reports(pool: &SqlitePool, user_id: &str) -> Result<Vec<models::Report>> {
+    let reports = sqlx::query_as::<_, models::Report>(
+        "SELECT * FROM reports WHERE user_id = ?1 ORDER BY created_at DESC",
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(reports)
+}
+
+/// Get reports for a specific scan
+pub async fn get_scan_reports(pool: &SqlitePool, scan_id: &str) -> Result<Vec<models::Report>> {
+    let reports = sqlx::query_as::<_, models::Report>(
+        "SELECT * FROM reports WHERE scan_id = ?1 ORDER BY created_at DESC",
+    )
+    .bind(scan_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(reports)
+}
+
+/// Get a report by ID
+pub async fn get_report_by_id(pool: &SqlitePool, report_id: &str) -> Result<Option<models::Report>> {
+    let report = sqlx::query_as::<_, models::Report>("SELECT * FROM reports WHERE id = ?1")
+        .bind(report_id)
+        .fetch_optional(pool)
+        .await?;
+
+    Ok(report)
+}
+
+/// Update report status (generating, completed, failed)
+pub async fn update_report_status(
+    pool: &SqlitePool,
+    report_id: &str,
+    status: &str,
+    file_path: Option<&str>,
+    file_size: Option<i64>,
+    error: Option<&str>,
+) -> Result<()> {
+    let now = Utc::now();
+
+    match status {
+        "generating" => {
+            sqlx::query("UPDATE reports SET status = ?1 WHERE id = ?2")
+                .bind(status)
+                .bind(report_id)
+                .execute(pool)
+                .await?;
+        }
+        "completed" => {
+            sqlx::query(
+                "UPDATE reports SET status = ?1, file_path = ?2, file_size = ?3, completed_at = ?4 WHERE id = ?5",
+            )
+            .bind(status)
+            .bind(file_path)
+            .bind(file_size)
+            .bind(now)
+            .bind(report_id)
+            .execute(pool)
+            .await?;
+        }
+        "failed" => {
+            sqlx::query(
+                "UPDATE reports SET status = ?1, error_message = ?2, completed_at = ?3 WHERE id = ?4",
+            )
+            .bind(status)
+            .bind(error)
+            .bind(now)
+            .bind(report_id)
+            .execute(pool)
+            .await?;
+        }
+        _ => {}
+    }
+
+    Ok(())
+}
+
+/// Delete a report
+pub async fn delete_report(pool: &SqlitePool, report_id: &str) -> Result<()> {
+    sqlx::query("DELETE FROM reports WHERE id = ?1")
+        .bind(report_id)
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+/// Get all reports (admin)
+pub async fn get_all_reports(pool: &SqlitePool) -> Result<Vec<models::Report>> {
+    let reports = sqlx::query_as::<_, models::Report>(
+        "SELECT * FROM reports ORDER BY created_at DESC",
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(reports)
+}

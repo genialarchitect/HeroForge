@@ -8,6 +8,9 @@ import type {
   HostInfo,
   AuditLog,
   SystemSetting,
+  Report,
+  ReportTemplate,
+  CreateReportRequest,
 } from '../types';
 
 const api = axios.create({
@@ -61,6 +64,34 @@ export const adminAPI = {
   getSettings: () => api.get<SystemSetting[]>('/admin/settings'),
   updateSetting: (key: string, value: string) =>
     api.patch(`/admin/settings/${key}`, { value }),
+};
+
+export const reportAPI = {
+  // Create a new report
+  create: (data: CreateReportRequest) => api.post<Report>('/reports', data),
+
+  // Get all reports for current user
+  getAll: (scanId?: string) => {
+    const params = scanId ? `?scan_id=${scanId}` : '';
+    return api.get<Report[]>(`/reports${params}`);
+  },
+
+  // Get a specific report
+  getById: (id: string) => api.get<Report>(`/reports/${id}`),
+
+  // Download a report file
+  download: async (id: string) => {
+    const response = await api.get(`/reports/${id}/download`, {
+      responseType: 'blob',
+    });
+    return response;
+  },
+
+  // Delete a report
+  delete: (id: string) => api.delete(`/reports/${id}`),
+
+  // Get available templates
+  getTemplates: () => api.get<ReportTemplate[]>('/reports/templates'),
 };
 
 export default api;

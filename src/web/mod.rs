@@ -48,6 +48,13 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                         web::get().to(api::scans::get_scan_results),
                     )
                     .route("/ws/scans/{id}", web::get().to(websocket::ws_handler))
+                    // Report endpoints
+                    .route("/reports", web::post().to(api::reports::create_report))
+                    .route("/reports", web::get().to(api::reports::get_reports))
+                    .route("/reports/templates", web::get().to(api::reports::get_templates))
+                    .route("/reports/{id}", web::get().to(api::reports::get_report))
+                    .route("/reports/{id}/download", web::get().to(api::reports::download_report))
+                    .route("/reports/{id}", web::delete().to(api::reports::delete_report))
                     .configure(api::admin::configure),
             )
             // Serve frontend static files

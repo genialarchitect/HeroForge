@@ -23,7 +23,7 @@ pub enum Protocol {
     UDP,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PortState {
     Open,
     Closed,

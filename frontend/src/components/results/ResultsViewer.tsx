@@ -10,7 +10,8 @@ import VulnerabilityCard from './VulnerabilityCard';
 import ServiceBanner from './ServiceBanner';
 import ExportButton from './ExportButton';
 import Input from '../ui/Input';
-import { Server, Shield, AlertTriangle, Search, SlidersHorizontal } from 'lucide-react';
+import { ReportGenerator, ReportList } from '../reports';
+import { Server, Shield, AlertTriangle, Search, SlidersHorizontal, FileText } from 'lucide-react';
 
 type SortOption = 'ip' | 'risk' | 'vulns' | 'ports';
 type FilterOption = 'all' | 'with-vulns' | 'critical' | 'high';
@@ -23,6 +24,8 @@ const ResultsViewer: React.FC = () => {
   const [sortBy, setSortBy] = useState<SortOption>('risk');
   const [filterBy, setFilterBy] = useState<FilterOption>('all');
   const [showFilters, setShowFilters] = useState(false);
+  const [showReportGenerator, setShowReportGenerator] = useState(false);
+  const [reportListKey, setReportListKey] = useState(0);
 
   const scanResults = activeScan ? results.get(activeScan.id) || [] : [];
 
@@ -181,6 +184,14 @@ const ResultsViewer: React.FC = () => {
               scanName={activeScan?.name}
               disabled={filteredAndSortedHosts.length === 0}
             />
+            <button
+              onClick={() => setShowReportGenerator(true)}
+              disabled={activeScan?.status !== 'completed'}
+              className="px-4 py-2 rounded-lg border border-primary text-primary hover:bg-primary/10 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <FileText className="h-4 w-4" />
+              Report
+            </button>
             <button
               onClick={() => setShowFilters(!showFilters)}
               className={`px-4 py-2 rounded-lg border transition-colors flex items-center gap-2 ${
@@ -355,6 +366,25 @@ const ResultsViewer: React.FC = () => {
           )}
         </div>
       </Card>
+
+      {/* Reports Section */}
+      {activeScan?.status === 'completed' && (
+        <ReportList
+          key={reportListKey}
+          scanId={activeScan.id}
+          onGenerateNew={() => setShowReportGenerator(true)}
+        />
+      )}
+
+      {/* Report Generator Modal */}
+      {showReportGenerator && activeScan && (
+        <ReportGenerator
+          scanId={activeScan.id}
+          scanName={activeScan.name}
+          onClose={() => setShowReportGenerator(false)}
+          onReportCreated={() => setReportListKey((k) => k + 1)}
+        />
+      )}
     </div>
   );
 };

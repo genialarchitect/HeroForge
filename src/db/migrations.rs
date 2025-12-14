@@ -8,6 +8,7 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     create_audit_logs_table(pool).await?;
     create_system_settings_table(pool).await?;
     create_cve_cache_table(pool).await?;
+    create_reports_table(pool).await?;
     seed_default_roles(pool).await?;
     seed_default_settings(pool).await?;
     Ok(())
@@ -125,6 +126,51 @@ async fn create_cve_cache_table(pool: &SqlitePool) -> Result<()> {
 
     // Create index for expiration cleanup
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_cve_cache_expires ON cve_cache(expires_at)")
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+/// Create reports table for storing generated reports
+async fn create_reports_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS reports (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            scan_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            format TEXT NOT NULL,
+            template_id TEXT NOT NULL,
+            sections TEXT NOT NULL,
+            file_path TEXT,
+            file_size INTEGER,
+            status TEXT NOT NULL,
+            error_message TEXT,
+            metadata TEXT,
+            created_at TEXT NOT NULL,
+            completed_at TEXT,
+            expires_at TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            FOREIGN KEY (scan_id) REFERENCES scan_results(id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for efficient queries
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_reports_user_id ON reports(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_reports_scan_id ON reports(scan_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status)")
         .execute(pool)
         .await?;
 

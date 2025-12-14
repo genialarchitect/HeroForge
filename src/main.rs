@@ -8,6 +8,7 @@ mod config;
 mod cve;
 mod db;
 mod output;
+mod reports;
 mod scanner;
 mod types;
 mod vuln;
