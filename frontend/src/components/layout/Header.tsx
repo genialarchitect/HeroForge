@@ -50,7 +50,7 @@ const Header: React.FC = () => {
                     }`}
                   >
                     <Users className="h-4 w-4" />
-                    Manage Users
+                    Admin Console
                   </Link>
                 )}
               </nav>

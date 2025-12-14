@@ -34,6 +34,8 @@ export interface ScanResult {
 
 export type EnumDepth = 'passive' | 'light' | 'aggressive';
 
+export type ScanType = 'tcp_connect' | 'udp' | 'comprehensive' | 'syn';
+
 export type EnumService =
   | 'http'
   | 'https'
@@ -47,7 +49,11 @@ export type EnumService =
   | 'postgresql'
   | 'mongodb'
   | 'redis'
-  | 'elasticsearch';
+  | 'elasticsearch'
+  | 'vnc'
+  | 'telnet'
+  | 'rdp'
+  | 'snmp';
 
 export interface CreateScanRequest {
   name: string;
@@ -57,6 +63,10 @@ export interface CreateScanRequest {
   enable_os_detection: boolean;
   enable_service_detection: boolean;
   enable_vuln_scan: boolean;
+  // Scan type options
+  scan_type?: ScanType;
+  udp_port_range?: [number, number];
+  udp_retries?: number;
   // Enumeration options
   enable_enumeration?: boolean;
   enum_depth?: EnumDepth;

@@ -6,8 +6,15 @@ import Checkbox from '../ui/Checkbox';
 import Card from '../ui/Card';
 import { scanAPI } from '../../services/api';
 import { useScanStore } from '../../store/scanStore';
-import { Target, Hash, Cpu, Search } from 'lucide-react';
-import { EnumDepth, EnumService } from '../../types';
+import { Target, Hash, Cpu, Search, Radio, Wifi } from 'lucide-react';
+import { EnumDepth, EnumService, ScanType } from '../../types';
+
+const SCAN_TYPES: { id: ScanType; label: string; description: string }[] = [
+  { id: 'tcp_connect', label: 'TCP Connect', description: 'Standard TCP scan (most reliable)' },
+  { id: 'udp', label: 'UDP Only', description: 'UDP port scanning (requires root)' },
+  { id: 'comprehensive', label: 'Comprehensive', description: 'TCP + UDP scanning (thorough)' },
+  { id: 'syn', label: 'SYN Stealth', description: 'Half-open TCP scan (requires root)' },
+];
 
 const ENUM_SERVICES: { id: EnumService; label: string; category: string }[] = [
   { id: 'http', label: 'HTTP', category: 'Web' },
@@ -18,6 +25,10 @@ const ENUM_SERVICES: { id: EnumService; label: string; category: string }[] = [
   { id: 'ssh', label: 'SSH', category: 'Network' },
   { id: 'smtp', label: 'SMTP', category: 'Network' },
   { id: 'ldap', label: 'LDAP', category: 'Network' },
+  { id: 'rdp', label: 'RDP', category: 'Remote' },
+  { id: 'vnc', label: 'VNC', category: 'Remote' },
+  { id: 'telnet', label: 'Telnet', category: 'Remote' },
+  { id: 'snmp', label: 'SNMP', category: 'Network' },
   { id: 'mysql', label: 'MySQL', category: 'Database' },
   { id: 'postgresql', label: 'PostgreSQL', category: 'Database' },
   { id: 'mongodb', label: 'MongoDB', category: 'Database' },
@@ -32,6 +43,10 @@ const ScanForm: React.FC = () => {
   const [portStart, setPortStart] = useState(1);
   const [portEnd, setPortEnd] = useState(1000);
   const [threads, setThreads] = useState(100);
+  const [scanType, setScanType] = useState<ScanType>('tcp_connect');
+  const [udpPortStart, setUdpPortStart] = useState(53);
+  const [udpPortEnd, setUdpPortEnd] = useState(500);
+  const [udpRetries, setUdpRetries] = useState(2);
   const [osDetection, setOsDetection] = useState(true);
   const [serviceDetection, setServiceDetection] = useState(true);
   const [vulnScan, setVulnScan] = useState(false);
@@ -42,6 +57,8 @@ const ScanForm: React.FC = () => {
 
   const { addScan } = useScanStore();
 
+  const showUdpOptions = scanType === 'udp' || scanType === 'comprehensive';
+
   const validateTarget = (input: string): boolean => {
     // IP address regex
     const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$/;
@@ -49,8 +66,10 @@ const ScanForm: React.FC = () => {
     const cidrRegex = /^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$/;
     // IP range regex
     const rangeRegex = /^(\d{1,3}\.){3}\d{1,3}-(\d{1,3}\.){3}\d{1,3}$/;
+    // Hostname regex (basic)
+    const hostnameRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/;
 
-    return ipRegex.test(input) || cidrRegex.test(input) || rangeRegex.test(input);
+    return ipRegex.test(input) || cidrRegex.test(input) || rangeRegex.test(input) || hostnameRegex.test(input);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -67,7 +86,7 @@ const ScanForm: React.FC = () => {
     }
 
     if (!validateTarget(target.trim())) {
-      toast.error('Invalid target format. Use IP (192.168.1.1), CIDR (192.168.1.0/24), or range (192.168.1.1-192.168.1.100)');
+      toast.error('Invalid target format. Use IP (192.168.1.1), CIDR (192.168.1.0/24), range (192.168.1.1-192.168.1.100), or hostname');
       return;
     }
 
@@ -83,6 +102,9 @@ const ScanForm: React.FC = () => {
         targets: [target.trim()],
         port_range: [portStart, portEnd],
         threads,
+        scan_type: scanType,
+        udp_port_range: showUdpOptions ? [udpPortStart, udpPortEnd] : undefined,
+        udp_retries: showUdpOptions ? udpRetries : undefined,
         enable_os_detection: osDetection,
         enable_service_detection: serviceDetection,
         enable_vuln_scan: vulnScan,
@@ -101,6 +123,10 @@ const ScanForm: React.FC = () => {
       setPortStart(1);
       setPortEnd(1000);
       setThreads(100);
+      setScanType('tcp_connect');
+      setUdpPortStart(53);
+      setUdpPortEnd(500);
+      setUdpRetries(2);
       setEnableEnumeration(false);
       setEnumDepth('light');
       setSelectedServices([]);
@@ -145,7 +171,7 @@ const ScanForm: React.FC = () => {
         <Input
           label="Target"
           type="text"
-          placeholder="192.168.1.0/24 or 10.0.0.1-10.0.0.100"
+          placeholder="192.168.1.0/24, 10.0.0.1-10.0.0.100, or hostname"
           value={target}
           onChange={(e) => setTarget(e.target.value)}
           icon={<Target className="h-5 w-5" />}
@@ -186,6 +212,72 @@ const ScanForm: React.FC = () => {
               className="w-full h-2 bg-dark-surface rounded-lg appearance-none cursor-pointer slider"
             />
           </div>
+        </div>
+
+        {/* Scan Type Selection */}
+        <div className="space-y-3 border-t border-dark-border pt-4">
+          <div className="flex items-center space-x-2">
+            <Radio className="h-5 w-5 text-primary" />
+            <p className="text-sm font-medium text-slate-300">Scan Type</p>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            {SCAN_TYPES.map((type) => (
+              <button
+                key={type.id}
+                type="button"
+                onClick={() => setScanType(type.id)}
+                className={`px-3 py-2 text-sm rounded-lg border transition-colors text-left ${
+                  scanType === type.id
+                    ? 'bg-primary/20 border-primary text-white'
+                    : 'bg-dark-surface border-dark-border text-slate-400 hover:border-slate-500'
+                }`}
+              >
+                <div className="font-medium">{type.label}</div>
+                <div className="text-xs opacity-70">{type.description}</div>
+              </button>
+            ))}
+          </div>
+
+          {/* UDP Options */}
+          {showUdpOptions && (
+            <div className="ml-4 space-y-3 animate-fadeIn">
+              <div className="flex items-center space-x-2">
+                <Wifi className="h-4 w-4 text-cyan-400" />
+                <p className="text-sm font-medium text-slate-400">UDP Options</p>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <Input
+                  label="UDP Start Port"
+                  type="number"
+                  min={1}
+                  max={65535}
+                  value={udpPortStart}
+                  onChange={(e) => setUdpPortStart(Number(e.target.value))}
+                />
+                <Input
+                  label="UDP End Port"
+                  type="number"
+                  min={1}
+                  max={65535}
+                  value={udpPortEnd}
+                  onChange={(e) => setUdpPortEnd(Number(e.target.value))}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-400 mb-2">
+                  UDP Retries: {udpRetries}
+                </label>
+                <input
+                  type="range"
+                  min={1}
+                  max={5}
+                  value={udpRetries}
+                  onChange={(e) => setUdpRetries(Number(e.target.value))}
+                  className="w-full h-2 bg-dark-surface rounded-lg appearance-none cursor-pointer slider"
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="space-y-2 border-t border-dark-border pt-4">
