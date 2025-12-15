@@ -394,3 +394,14 @@ export interface UpdateTemplateRequest {
   description?: string;
   config?: ScheduledScanConfig;
 }
+
+// Profile Types
+
+export interface UpdateProfileRequest {
+  email?: string;
+}
+
+export interface ChangePasswordRequest {
+  current_password: string;
+  new_password: string;
+}

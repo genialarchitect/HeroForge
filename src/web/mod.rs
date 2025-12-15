@@ -44,6 +44,8 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                 web::scope("/api")
                     .wrap(auth::JwtMiddleware)
                     .route("/auth/me", web::get().to(api::auth::me))
+                    .route("/auth/profile", web::put().to(api::auth::update_profile))
+                    .route("/auth/password", web::put().to(api::auth::change_password))
                     .route("/scans", web::post().to(api::scans::create_scan))
                     .route("/scans", web::get().to(api::scans::get_scans))
                     .route("/scans/{id}", web::get().to(api::scans::get_scan))

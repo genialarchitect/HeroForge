@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
 import Layout from '../components/layout/Layout';
+import Profile from '../components/settings/Profile';
+import Administration from '../components/settings/Administration';
 import TargetGroups from '../components/settings/TargetGroups';
 import ScheduledScans from '../components/settings/ScheduledScans';
 import NotificationSettings from '../components/settings/NotificationSettings';
 import ScanComparison from '../components/compare/ScanComparison';
 import ScanTemplates from '../components/settings/ScanTemplates';
-import { Target, Clock, Bell, Settings, GitCompare, FileText } from 'lucide-react';
+import { Target, Clock, Bell, Settings, GitCompare, FileText, User, Shield } from 'lucide-react';
 
-type TabId = 'target-groups' | 'scheduled-scans' | 'templates' | 'notifications' | 'compare-scans';
+type TabId = 'profile' | 'administration' | 'target-groups' | 'scheduled-scans' | 'templates' | 'notifications' | 'compare-scans';
 
 interface Tab {
   id: TabId;
@@ -17,9 +19,21 @@ interface Tab {
 }
 
 const SettingsPage: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<TabId>('target-groups');
+  const [activeTab, setActiveTab] = useState<TabId>('profile');
 
   const tabs: Tab[] = [
+    {
+      id: 'profile',
+      label: 'Profile',
+      icon: <User className="h-4 w-4" />,
+      component: <Profile />,
+    },
+    {
+      id: 'administration',
+      label: 'Administration',
+      icon: <Shield className="h-4 w-4" />,
+      component: <Administration />,
+    },
     {
       id: 'target-groups',
       label: 'Target Groups',
@@ -64,7 +78,7 @@ const SettingsPage: React.FC = () => {
             <h1 className="text-2xl font-bold text-white">Settings</h1>
           </div>
           <p className="text-slate-400">
-            Manage target groups, scheduled scans, templates, notification preferences, and compare scan results
+            Manage your profile, users, target groups, scheduled scans, templates, and notifications
           </p>
         </div>
 

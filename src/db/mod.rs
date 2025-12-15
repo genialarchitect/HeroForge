@@ -114,6 +114,67 @@ pub async fn get_user_by_username(
     Ok(user)
 }
 
+pub async fn get_user_by_id(
+    pool: &SqlitePool,
+    user_id: &str,
+) -> Result<Option<models::User>> {
+    let user = sqlx::query_as::<_, models::User>("SELECT * FROM users WHERE id = ?1")
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await?;
+
+    Ok(user)
+}
+
+pub async fn update_user_profile(
+    pool: &SqlitePool,
+    user_id: &str,
+    updates: &models::UpdateProfileRequest,
+) -> Result<models::User> {
+    // Build dynamic update query
+    let mut query = String::from("UPDATE users SET ");
+    let mut params: Vec<String> = Vec::new();
+    let mut set_clauses: Vec<String> = Vec::new();
+
+    if let Some(ref email) = updates.email {
+        set_clauses.push(format!("email = ?{}", params.len() + 1));
+        params.push(email.clone());
+    }
+
+    if set_clauses.is_empty() {
+        // Nothing to update, return current user
+        return get_user_by_id(pool, user_id)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("User not found"));
+    }
+
+    query.push_str(&set_clauses.join(", "));
+    query.push_str(&format!(" WHERE id = ?{} RETURNING *", params.len() + 1));
+
+    let mut q = sqlx::query_as::<_, models::User>(&query);
+    for param in &params {
+        q = q.bind(param);
+    }
+    q = q.bind(user_id);
+
+    let user = q.fetch_one(pool).await?;
+    Ok(user)
+}
+
+pub async fn update_user_password(
+    pool: &SqlitePool,
+    user_id: &str,
+    password_hash: &str,
+) -> Result<()> {
+    sqlx::query("UPDATE users SET password_hash = ?1 WHERE id = ?2")
+        .bind(password_hash)
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
 pub async fn create_scan(
     pool: &SqlitePool,
     user_id: &str,

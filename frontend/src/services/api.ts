@@ -23,6 +23,9 @@ import type {
   ScanTemplate,
   CreateTemplateRequest,
   UpdateTemplateRequest,
+  UpdateProfileRequest,
+  ChangePasswordRequest,
+  Role,
 } from '../types';
 
 const api = axios.create({
@@ -43,6 +46,10 @@ export const authAPI = {
     api.post<LoginResponse>('/auth/register', data),
   login: (data: LoginRequest) => api.post<LoginResponse>('/auth/login', data),
   me: () => api.get<User>('/auth/me'),
+  updateProfile: (data: UpdateProfileRequest) =>
+    api.put<User>('/auth/profile', data),
+  changePassword: (data: ChangePasswordRequest) =>
+    api.put<{ message: string }>('/auth/password', data),
 };
 
 export const scanAPI = {
@@ -63,6 +70,9 @@ export const adminAPI = {
     api.post(`/admin/users/${userId}/roles`, { role_id: roleId }),
   removeRole: (userId: string, roleId: string) =>
     api.delete(`/admin/users/${userId}/roles/${roleId}`),
+
+  // Roles
+  getRoles: () => api.get<Role[]>('/admin/roles'),
 
   // Scan management
   getAllScans: () => api.get<ScanResult[]>('/admin/scans'),

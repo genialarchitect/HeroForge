@@ -404,7 +404,7 @@ pub async fn update_setting(
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
-        web::scope("/api/admin")
+        web::scope("/admin")
             // User management
             .route("/users", web::get().to(list_users))
             .route("/users/{id}", web::get().to(get_user))
