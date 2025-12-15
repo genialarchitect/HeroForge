@@ -213,7 +213,78 @@ src/
     │   └── notifications.rs # /api/notifications/* endpoints
     ├── websocket/       # Real-time scan progress
     │   └── mod.rs       # WebSocket handler for scan updates
-    └── scheduler.rs     # Background job scheduler (WIP - for scheduled scans)
+    └── scheduler.rs     # Background job scheduler for scheduled scans
+```
+
+### Frontend Routes
+
+```
+/ ........................ Login page
+/dashboard ............... Main dashboard with scan list, new scan form
+/dashboard/:scanId ....... Scan details view with results, progress, reports
+/admin ................... Admin panel (requires admin role)
+/settings ................ User settings with tabs:
+                           - Target Groups: Organize scan targets
+                           - Scheduled Scans: Recurring scan automation
+                           - Scan Templates: Reusable scan configurations
+                           - Notifications: Email preferences
+                           - Profile: User account settings
+                           - Administration: System settings (admin only)
+```
+
+### REST API Endpoints
+
+```
+Authentication:
+  POST   /api/auth/register     Create new user account
+  POST   /api/auth/login        Authenticate and get JWT token
+  GET    /api/auth/me           Get current user info
+
+Scans:
+  GET    /api/scans             List all scans
+  POST   /api/scans             Create and start new scan
+  GET    /api/scans/{id}        Get scan details and results
+  DELETE /api/scans/{id}        Delete a scan
+  POST   /api/scans/compare     Compare two scans (body: scan_id_1, scan_id_2)
+
+Reports:
+  GET    /api/reports           List all reports
+  POST   /api/reports           Generate new report
+  GET    /api/reports/{id}      Get report metadata
+  GET    /api/reports/{id}/download  Download report file
+
+Templates:
+  GET    /api/templates         List scan templates
+  POST   /api/templates         Create template
+  GET    /api/templates/{id}    Get template
+  PUT    /api/templates/{id}    Update template
+  DELETE /api/templates/{id}    Delete template
+  POST   /api/templates/{id}/scan  Create scan from template
+
+Target Groups:
+  GET    /api/target-groups     List target groups
+  POST   /api/target-groups     Create target group
+  PUT    /api/target-groups/{id}    Update target group
+  DELETE /api/target-groups/{id}    Delete target group
+
+Scheduled Scans:
+  GET    /api/scheduled-scans   List scheduled scans
+  POST   /api/scheduled-scans   Create scheduled scan
+  PUT    /api/scheduled-scans/{id}    Update scheduled scan
+  DELETE /api/scheduled-scans/{id}    Delete scheduled scan
+
+Notifications:
+  GET    /api/notifications/settings  Get notification preferences
+  PUT    /api/notifications/settings  Update notification preferences
+
+Admin (requires admin role):
+  GET    /api/admin/users       List all users
+  PUT    /api/admin/users/{id}/roles  Update user roles
+  DELETE /api/admin/users/{id}  Delete user
+  GET    /api/admin/audit-logs  Get audit trail
+
+WebSocket:
+  WS     /api/ws/scans/{id}     Real-time scan progress (requires JWT)
 ```
 
 ### Database Models
@@ -292,7 +363,7 @@ The `email` module provides SMTP-based notifications:
 - Schedule types: daily, weekly, monthly
 - Automatic next-run calculation
 - CRUD via `/api/scheduled-scans`
-- Note: Background scheduler daemon not yet implemented
+- Background scheduler daemon in `web/scheduler.rs` (basic implementation exists, may need enhancement for production use)
 
 **Notification Settings** (`web/api/notifications.rs`): Email preferences
 - GET/PUT `/api/notifications/settings`
@@ -345,6 +416,12 @@ Reports are generated via `reports::ReportGenerator`:
 - **TCP SYN** (`syn_scanner.rs`): Half-open scanning, requires root/CAP_NET_RAW
 - **UDP**: Protocol-specific probes with ICMP unreachable detection, requires root
 - **Comprehensive**: TCP + UDP combined scan
+
+**Implemented Features** (from original roadmap):
+- UDP port scanning (complete)
+- TCP SYN stealth scanning (complete)
+- CVE database integration (complete - offline DB + NVD API + cache)
+- Service enumeration for HTTP, DNS, SMB, databases, and more (complete)
 
 ## Configuration Files
 
