@@ -39,6 +39,15 @@ cargo build --release
 # CLI scan command (TCP)
 cargo run -- scan 192.168.1.0/24 --ports 1-1000
 
+# Scan with verbose output
+cargo run -- scan 192.168.1.0/24 -v
+
+# Skip OS/service detection for faster scans
+cargo run -- scan 192.168.1.0/24 --no-os-detect --no-service-detect
+
+# Output to JSON file
+cargo run -- scan 192.168.1.0/24 --output json -o results.json
+
 # UDP scan (requires root/CAP_NET_RAW)
 sudo ./target/release/heroforge scan 192.168.1.0/24 --scan-type udp
 
@@ -54,6 +63,30 @@ cargo run -- serve --bind 127.0.0.1:8080
 # Start web server (production - via Docker)
 cd /root && docker compose up -d heroforge
 ```
+
+### CLI Subcommands
+
+```bash
+# Full network triage scan (host discovery + port scan + service detection + vuln scan)
+heroforge scan <TARGETS> [OPTIONS]
+
+# Quick host discovery only (no port scanning)
+heroforge discover <TARGETS> [-t threads] [-T timeout]
+
+# Port scan only (no host discovery phase)
+heroforge portscan <TARGETS> [-p ports] [-t threads] [-s scan-type]
+
+# Generate default configuration file
+heroforge config [PATH]
+```
+
+### Scan Types
+
+Use `-s, --scan-type <TYPE>` to select:
+- **tcp-connect** (default): Standard 3-way handshake, no special privileges required
+- **tcp-syn**: Half-open SYN scanning, requires root/CAP_NET_RAW
+- **udp**: Protocol-specific probes with ICMP detection, requires root
+- **comprehensive**: Combined TCP + UDP scan, requires root
 
 ### Frontend Development
 
@@ -90,6 +123,20 @@ cargo test scanner::comparison::tests::test_compare_scans
 
 # Run type checking only (faster than full build)
 cargo check
+```
+
+### Common Development Workflow
+
+```bash
+# Typical edit-test-deploy cycle
+cargo check                        # Fast type check (catches most errors)
+cargo test scanner::               # Run relevant module tests
+cargo build --release              # Build optimized binary
+sudo ./deploy.sh                   # Deploy to production
+
+# Frontend changes
+cd frontend && npm run build       # Rebuild frontend
+cd /root && docker compose restart heroforge  # Restart to pick up changes
 ```
 
 ### Database Management
@@ -214,6 +261,22 @@ src/
     ├── websocket/       # Real-time scan progress
     │   └── mod.rs       # WebSocket handler for scan updates
     └── scheduler.rs     # Background job scheduler for scheduled scans
+```
+
+### Frontend Source Structure
+
+```
+frontend/src/
+├── App.tsx              # Main app with React Router routing
+├── main.tsx             # React entry point
+├── components/          # Reusable UI components (forms, tables, modals, etc.)
+├── pages/               # Page-level components (Login, Dashboard, Settings, Admin)
+├── services/            # API client functions (axios-based, organized by resource)
+├── store/               # Zustand global state (auth, scans, UI state)
+├── hooks/               # Custom React hooks (useAuth, useScans, etc.)
+├── types/               # TypeScript type definitions mirroring backend types
+├── utils/               # Utility functions (formatters, validators)
+└── styles/              # Global CSS and Tailwind configuration
 ```
 
 ### Frontend Routes
@@ -411,18 +474,6 @@ Reports are generated via `reports::ReportGenerator`:
 - SMB enumeration uses external tools (smbclient, enum4linux) via tokio::process
 - SNMP enumeration tests community strings and extracts MIB-II data (system info, interfaces, routing)
 
-**Scan Types:**
-- **TCP Connect** (default): Standard 3-way handshake, no special privileges
-- **TCP SYN** (`syn_scanner.rs`): Half-open scanning, requires root/CAP_NET_RAW
-- **UDP**: Protocol-specific probes with ICMP unreachable detection, requires root
-- **Comprehensive**: TCP + UDP combined scan
-
-**Implemented Features** (from original roadmap):
-- UDP port scanning (complete)
-- TCP SYN stealth scanning (complete)
-- CVE database integration (complete - offline DB + NVD API + cache)
-- Service enumeration for HTTP, DNS, SMB, databases, and more (complete)
-
 ## Configuration Files
 
 **heroforge.toml** (generated with `heroforge config`):
@@ -439,6 +490,22 @@ Reports are generated via `reports::ReportGenerator`:
 - Automated deployment script
 - Builds frontend (npm), backend (cargo), and Docker container
 - Restarts HeroForge container with new build
+
+## Environment Variables
+
+**Email/SMTP (optional - for notifications):**
+- `SMTP_HOST` - SMTP server hostname
+- `SMTP_PORT` - SMTP server port (typically 587 for TLS)
+- `SMTP_USER` - SMTP authentication username
+- `SMTP_PASSWORD` - SMTP authentication password
+- `SMTP_FROM_ADDRESS` - Sender email address
+- `SMTP_FROM_NAME` - Sender display name
+
+**Authentication:**
+- `JWT_SECRET` - Secret key for JWT token signing (auto-generated if not set)
+
+**Database:**
+- `DATABASE_URL` - SQLite database path (default: `./heroforge.db`)
 
 ## Important Notes
 
