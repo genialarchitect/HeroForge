@@ -6,6 +6,7 @@ import Card from '../components/ui/Card';
 import Badge from '../components/ui/Badge';
 import Button from '../components/ui/Button';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
+import ConfirmationDialog from '../components/ui/ConfirmationDialog';
 import { dnsAPI } from '../services/api';
 import { Globe, Trash2, Eye, Clock } from 'lucide-react';
 
@@ -23,6 +24,8 @@ const DnsToolsPage: React.FC = () => {
   const [recentScans, setRecentScans] = useState<DnsReconListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'new' | 'result' | 'history'>('new');
+  const [deleteConfirm, setDeleteConfirm] = useState<DnsReconListItem | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     loadRecentScans();
@@ -56,21 +59,23 @@ const DnsToolsPage: React.FC = () => {
     }
   };
 
-  const handleDeleteResult = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this DNS reconnaissance result?')) {
-      return;
-    }
+  const handleDeleteResult = async () => {
+    if (!deleteConfirm) return;
 
+    setIsDeleting(true);
     try {
-      await dnsAPI.deleteResult(id);
-      toast.success('DNS recon result deleted');
+      await dnsAPI.deleteResult(deleteConfirm.id);
+      toast.success(`DNS recon for "${deleteConfirm.domain}" deleted`);
       loadRecentScans();
-      if (currentResult?.id === id) {
+      if (currentResult?.id === deleteConfirm.id) {
         setCurrentResult(null);
         setViewMode('new');
       }
+      setDeleteConfirm(null);
     } catch (error) {
       toast.error('Failed to delete DNS recon result');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -243,9 +248,10 @@ const DnsToolsPage: React.FC = () => {
                                 <Eye className="w-4 h-4" />
                               </button>
                               <button
-                                onClick={() => handleDeleteResult(scan.id)}
+                                onClick={() => setDeleteConfirm(scan)}
                                 className="text-severity-critical hover:text-severity-critical/80"
                                 title="Delete"
+                                aria-label={`Delete DNS recon for ${scan.domain}`}
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
@@ -260,6 +266,18 @@ const DnsToolsPage: React.FC = () => {
             </div>
           </Card>
         )}
+
+        {/* Delete DNS Recon Confirmation Dialog */}
+        <ConfirmationDialog
+          isOpen={!!deleteConfirm}
+          onClose={() => setDeleteConfirm(null)}
+          onConfirm={handleDeleteResult}
+          title="Delete DNS Recon Result"
+          message={`Are you sure you want to delete the DNS reconnaissance results for "${deleteConfirm?.domain}"?`}
+          confirmLabel="Delete Result"
+          variant="danger"
+          loading={isDeleting}
+        />
       </div>
     </Layout>
   );

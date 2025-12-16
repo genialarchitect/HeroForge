@@ -6,6 +6,7 @@ import Card from '../ui/Card';
 import Button from '../ui/Button';
 import Badge from '../ui/Badge';
 import LoadingSpinner from '../ui/LoadingSpinner';
+import ConfirmationDialog from '../ui/ConfirmationDialog';
 import { Clock, Plus, Edit2, Trash2, Play, Pause, Calendar, Save, X } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -52,6 +53,8 @@ const ScheduledScans: React.FC = () => {
   const [formData, setFormData] = useState<FormData>(defaultFormData);
   const [selectedDay, setSelectedDay] = useState(0);
   const [selectedDayOfMonth, setSelectedDayOfMonth] = useState(1);
+  const [deleteConfirm, setDeleteConfirm] = useState<ScheduledScan | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -195,14 +198,19 @@ const ScheduledScans: React.FC = () => {
     }
   };
 
-  const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`Delete scheduled scan "${name}"?`)) return;
+  const handleDelete = async () => {
+    if (!deleteConfirm) return;
+
+    setIsDeleting(true);
     try {
-      await scheduledScanAPI.delete(id);
-      toast.success('Scheduled scan deleted');
+      await scheduledScanAPI.delete(deleteConfirm.id);
+      toast.success(`Scheduled scan "${deleteConfirm.name}" deleted`);
       loadData();
+      setDeleteConfirm(null);
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to delete');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -536,8 +544,9 @@ const ScheduledScans: React.FC = () => {
                       <Edit2 className="h-4 w-4" />
                     </button>
                     <button
-                      onClick={() => handleDelete(scan.id, scan.name)}
+                      onClick={() => setDeleteConfirm(scan)}
                       className="p-2 text-slate-400 hover:text-red-400 transition-colors"
+                      aria-label={`Delete scheduled scan ${scan.name}`}
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
@@ -548,6 +557,18 @@ const ScheduledScans: React.FC = () => {
           })}
         </div>
       )}
+
+      {/* Delete Scheduled Scan Confirmation Dialog */}
+      <ConfirmationDialog
+        isOpen={!!deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        onConfirm={handleDelete}
+        title="Delete Scheduled Scan"
+        message={`Are you sure you want to delete the scheduled scan "${deleteConfirm?.name}"? Future automated scans will no longer run.`}
+        confirmLabel="Delete Schedule"
+        variant="warning"
+        loading={isDeleting}
+      />
     </div>
   );
 };

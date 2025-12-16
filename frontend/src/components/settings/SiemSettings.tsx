@@ -5,6 +5,7 @@ import { SiemSettings as SiemSettingsType, CreateSiemSettingsRequest, UpdateSiem
 import Card from '../ui/Card';
 import Button from '../ui/Button';
 import LoadingSpinner from '../ui/LoadingSpinner';
+import ConfirmationDialog from '../ui/ConfirmationDialog';
 import { Database, Plus, Edit2, Trash2, TestTube, Server, AlertCircle, CheckCircle, X, Upload, RefreshCw } from 'lucide-react';
 
 const SiemSettings: React.FC = () => {
@@ -13,6 +14,8 @@ const SiemSettings: React.FC = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingSettings, setEditingSettings] = useState<SiemSettingsType | null>(null);
   const [testing, setTesting] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<SiemSettingsType | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Manual export state
   const [scans, setScans] = useState<ScanResult[]>([]);
@@ -54,17 +57,19 @@ const SiemSettings: React.FC = () => {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this SIEM integration?')) {
-      return;
-    }
+  const handleDelete = async () => {
+    if (!deleteConfirm) return;
 
+    setIsDeleting(true);
     try {
-      await siemAPI.deleteSettings(id);
-      toast.success('SIEM integration deleted');
+      await siemAPI.deleteSettings(deleteConfirm.id);
+      toast.success(`${deleteConfirm.siem_type.toUpperCase()} integration deleted`);
       loadSettings();
+      setDeleteConfirm(null);
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to delete SIEM integration');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -217,7 +222,12 @@ const SiemSettings: React.FC = () => {
                     <Button variant="outline" size="sm" onClick={() => setEditingSettings(setting)}>
                       <Edit2 className="h-4 w-4" />
                     </Button>
-                    <Button variant="outline" size="sm" onClick={() => handleDelete(setting.id)}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setDeleteConfirm(setting)}
+                      aria-label={`Delete ${setting.siem_type} integration`}
+                    >
                       <Trash2 className="h-4 w-4 text-red-400" />
                     </Button>
                   </div>
@@ -335,6 +345,18 @@ const SiemSettings: React.FC = () => {
           }}
         />
       )}
+
+      {/* Delete SIEM Integration Confirmation Dialog */}
+      <ConfirmationDialog
+        isOpen={!!deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        onConfirm={handleDelete}
+        title="Delete SIEM Integration"
+        message={`Are you sure you want to delete the ${deleteConfirm?.siem_type.toUpperCase()} integration? Automatic exports to this endpoint will stop.`}
+        confirmLabel="Delete Integration"
+        variant="danger"
+        loading={isDeleting}
+      />
     </div>
   );
 };

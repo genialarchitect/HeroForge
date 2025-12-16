@@ -16,6 +16,7 @@ import Card from '../ui/Card';
 import Badge from '../ui/Badge';
 import Button from '../ui/Button';
 import LoadingSpinner from '../ui/LoadingSpinner';
+import ConfirmationDialog from '../ui/ConfirmationDialog';
 import { format } from 'date-fns';
 
 interface ReportListProps {
@@ -28,6 +29,7 @@ const ReportList: React.FC<ReportListProps> = ({ scanId, onGenerateNew }) => {
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<Report | null>(null);
 
   useEffect(() => {
     loadReports();
@@ -80,16 +82,15 @@ const ReportList: React.FC<ReportListProps> = ({ scanId, onGenerateNew }) => {
     }
   };
 
-  const handleDelete = async (report: Report) => {
-    if (!confirm(`Delete report "${report.name}"?`)) {
-      return;
-    }
+  const handleDelete = async () => {
+    if (!deleteConfirm) return;
 
-    setDeleting(report.id);
+    setDeleting(deleteConfirm.id);
     try {
-      await reportAPI.delete(report.id);
-      setReports((prev) => prev.filter((r) => r.id !== report.id));
-      toast.success('Report deleted');
+      await reportAPI.delete(deleteConfirm.id);
+      setReports((prev) => prev.filter((r) => r.id !== deleteConfirm.id));
+      toast.success(`Report "${deleteConfirm.name}" deleted`);
+      setDeleteConfirm(null);
     } catch (error) {
       toast.error('Failed to delete report');
     } finally {
@@ -238,10 +239,11 @@ const ReportList: React.FC<ReportListProps> = ({ scanId, onGenerateNew }) => {
                   )}
                 </button>
                 <button
-                  onClick={() => handleDelete(report)}
+                  onClick={() => setDeleteConfirm(report)}
                   disabled={deleting === report.id}
                   className="p-2 rounded-lg text-slate-400 hover:text-red-400 hover:bg-dark-bg transition-colors"
                   title="Delete"
+                  aria-label={`Delete report ${report.name}`}
                 >
                   {deleting === report.id ? (
                     <Loader className="h-4 w-4 animate-spin" />
@@ -254,6 +256,18 @@ const ReportList: React.FC<ReportListProps> = ({ scanId, onGenerateNew }) => {
           </div>
         ))}
       </div>
+
+      {/* Delete Report Confirmation Dialog */}
+      <ConfirmationDialog
+        isOpen={!!deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        onConfirm={handleDelete}
+        title="Delete Report"
+        message={`Are you sure you want to delete the report "${deleteConfirm?.name}"?`}
+        confirmLabel="Delete Report"
+        variant="danger"
+        loading={!!deleting}
+      />
     </Card>
   );
 };

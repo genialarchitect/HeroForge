@@ -5,6 +5,7 @@ import { ApiKey, CreateApiKeyResponse } from '../../types';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
 import LoadingSpinner from '../ui/LoadingSpinner';
+import ConfirmationDialog from '../ui/ConfirmationDialog';
 import { Key, Plus, Trash2, Copy, CheckCircle, Calendar, Clock } from 'lucide-react';
 
 const ApiKeys: React.FC = () => {
@@ -14,6 +15,8 @@ const ApiKeys: React.FC = () => {
   const [newKeyName, setNewKeyName] = useState('');
   const [creating, setCreating] = useState(false);
   const [newlyCreatedKey, setNewlyCreatedKey] = useState<CreateApiKeyResponse | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<ApiKey | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     loadKeys();
@@ -52,17 +55,19 @@ const ApiKeys: React.FC = () => {
     }
   };
 
-  const handleDelete = async (keyId: string, keyName: string) => {
-    if (!confirm(`Are you sure you want to revoke the API key "${keyName}"? This action cannot be undone.`)) {
-      return;
-    }
+  const handleDelete = async () => {
+    if (!deleteConfirm) return;
 
+    setIsDeleting(true);
     try {
-      await apiKeyAPI.delete(keyId);
+      await apiKeyAPI.delete(deleteConfirm.id);
       await loadKeys();
-      toast.success('API key revoked successfully');
+      toast.success(`API key "${deleteConfirm.name}" revoked successfully`);
+      setDeleteConfirm(null);
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to revoke API key');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -147,8 +152,9 @@ const ApiKeys: React.FC = () => {
                 <Button
                   variant="danger"
                   size="sm"
-                  onClick={() => handleDelete(key.id, key.name)}
+                  onClick={() => setDeleteConfirm(key)}
                   className="flex items-center gap-2"
+                  aria-label={`Revoke API key ${key.name}`}
                 >
                   <Trash2 className="h-4 w-4" />
                   Revoke
@@ -269,6 +275,18 @@ const ApiKeys: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Revoke API Key Confirmation Dialog */}
+      <ConfirmationDialog
+        isOpen={!!deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        onConfirm={handleDelete}
+        title="Revoke API Key"
+        message={`Are you sure you want to revoke the API key "${deleteConfirm?.name}"? Any applications using this key will lose access immediately.`}
+        confirmLabel="Revoke Key"
+        variant="danger"
+        loading={isDeleting}
+      />
     </div>
   );
 };

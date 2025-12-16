@@ -6,6 +6,7 @@ import Card from '../ui/Card';
 import Button from '../ui/Button';
 import LoadingSpinner from '../ui/LoadingSpinner';
 import Badge from '../ui/Badge';
+import ConfirmationDialog from '../ui/ConfirmationDialog';
 import { useScanStore } from '../../store/scanStore';
 import {
   FileText, Edit2, Trash2, Save, X, PlayCircle,
@@ -27,6 +28,8 @@ const ScanTemplates: React.FC = () => {
     description: '',
   });
   const [creatingScans, setCreatingScans] = useState<Set<string>>(new Set());
+  const [deleteConfirm, setDeleteConfirm] = useState<ScanTemplate | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const { addScan } = useScanStore();
 
@@ -88,14 +91,19 @@ const ScanTemplates: React.FC = () => {
     }
   };
 
-  const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`Delete template "${name}"?`)) return;
+  const handleDelete = async () => {
+    if (!deleteConfirm) return;
+
+    setIsDeleting(true);
     try {
-      await templateAPI.delete(id);
-      toast.success('Template deleted');
+      await templateAPI.delete(deleteConfirm.id);
+      toast.success(`Template "${deleteConfirm.name}" deleted`);
       loadTemplates();
+      setDeleteConfirm(null);
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to delete');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -240,9 +248,10 @@ const ScanTemplates: React.FC = () => {
                         <Edit2 className="h-4 w-4" />
                       </button>
                       <button
-                        onClick={() => handleDelete(template.id, template.name)}
+                        onClick={() => setDeleteConfirm(template)}
                         className="p-1.5 text-slate-400 hover:text-red-400 transition-colors"
                         title="Delete template"
+                        aria-label={`Delete template ${template.name}`}
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -323,6 +332,18 @@ const ScanTemplates: React.FC = () => {
           })}
         </div>
       )}
+
+      {/* Delete Template Confirmation Dialog */}
+      <ConfirmationDialog
+        isOpen={!!deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        onConfirm={handleDelete}
+        title="Delete Template"
+        message={`Are you sure you want to delete the template "${deleteConfirm?.name}"? This will not affect any scans previously created from this template.`}
+        confirmLabel="Delete Template"
+        variant="danger"
+        loading={isDeleting}
+      />
     </div>
   );
 };

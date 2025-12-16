@@ -6,6 +6,7 @@ import Card from '../ui/Card';
 import Button from '../ui/Button';
 import Badge from '../ui/Badge';
 import LoadingSpinner from '../ui/LoadingSpinner';
+import ConfirmationDialog from '../ui/ConfirmationDialog';
 import {
   Users,
   Shield,
@@ -36,6 +37,8 @@ const Administration: React.FC = () => {
   const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
   const [showAuditLogs, setShowAuditLogs] = useState(false);
   const [hasAdminAccess, setHasAdminAccess] = useState(true);
+  const [deleteConfirm, setDeleteConfirm] = useState<User | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     loadUsers();
@@ -92,17 +95,19 @@ const Administration: React.FC = () => {
     }
   };
 
-  const handleDeleteUser = async (user: User) => {
-    if (!confirm(`Are you sure you want to delete user "${user.username}"? This cannot be undone.`)) {
-      return;
-    }
+  const handleDeleteUser = async () => {
+    if (!deleteConfirm) return;
 
+    setIsDeleting(true);
     try {
-      await adminAPI.deleteUser(user.id);
-      toast.success('User deleted');
+      await adminAPI.deleteUser(deleteConfirm.id);
+      toast.success(`User "${deleteConfirm.username}" deleted successfully`);
       loadUsers();
+      setDeleteConfirm(null);
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to delete user');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -340,9 +345,10 @@ const Administration: React.FC = () => {
                         size="sm"
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleDeleteUser(user);
+                          setDeleteConfirm(user);
                         }}
                         className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                        aria-label={`Delete user ${user.username}`}
                       >
                         <Trash2 className="h-4 w-4 mr-1" />
                         Delete
@@ -428,6 +434,18 @@ const Administration: React.FC = () => {
           </p>
         )}
       </Card>
+
+      {/* Delete User Confirmation Dialog */}
+      <ConfirmationDialog
+        isOpen={!!deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        onConfirm={handleDeleteUser}
+        title="Delete User"
+        message={`Are you sure you want to delete user "${deleteConfirm?.username}"? All their data, including scans and settings, will be permanently removed.`}
+        confirmLabel="Delete User"
+        variant="danger"
+        loading={isDeleting}
+      />
     </div>
   );
 };

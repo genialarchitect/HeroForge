@@ -5,6 +5,7 @@ import { TargetGroup } from '../../types';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
 import LoadingSpinner from '../ui/LoadingSpinner';
+import ConfirmationDialog from '../ui/ConfirmationDialog';
 import { Target, Plus, Edit2, Trash2, Save, X, FolderOpen } from 'lucide-react';
 
 const PRESET_COLORS = [
@@ -30,6 +31,8 @@ const TargetGroups: React.FC = () => {
     targets: '',
     color: PRESET_COLORS[0],
   });
+  const [deleteConfirm, setDeleteConfirm] = useState<TargetGroup | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     loadGroups();
@@ -107,14 +110,19 @@ const TargetGroups: React.FC = () => {
     }
   };
 
-  const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`Delete target group "${name}"?`)) return;
+  const handleDelete = async () => {
+    if (!deleteConfirm) return;
+
+    setIsDeleting(true);
     try {
-      await targetGroupAPI.delete(id);
-      toast.success('Target group deleted');
+      await targetGroupAPI.delete(deleteConfirm.id);
+      toast.success(`Target group "${deleteConfirm.name}" deleted`);
       loadGroups();
+      setDeleteConfirm(null);
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to delete');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -263,8 +271,9 @@ const TargetGroups: React.FC = () => {
                       <Edit2 className="h-4 w-4" />
                     </button>
                     <button
-                      onClick={() => handleDelete(group.id, group.name)}
+                      onClick={() => setDeleteConfirm(group)}
                       className="p-1.5 text-slate-400 hover:text-red-400 transition-colors"
+                      aria-label={`Delete target group ${group.name}`}
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
@@ -298,6 +307,18 @@ const TargetGroups: React.FC = () => {
           })}
         </div>
       )}
+
+      {/* Delete Target Group Confirmation Dialog */}
+      <ConfirmationDialog
+        isOpen={!!deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        onConfirm={handleDelete}
+        title="Delete Target Group"
+        message={`Are you sure you want to delete the target group "${deleteConfirm?.name}"? Scheduled scans using this group will need to be updated.`}
+        confirmLabel="Delete Group"
+        variant="danger"
+        loading={isDeleting}
+      />
     </div>
   );
 };

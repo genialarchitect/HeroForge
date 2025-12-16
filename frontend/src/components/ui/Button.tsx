@@ -5,6 +5,7 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
   size?: 'sm' | 'md' | 'lg';
   loading?: boolean;
+  loadingText?: string;
   children: React.ReactNode;
 }
 
@@ -12,9 +13,11 @@ const Button: React.FC<ButtonProps> = ({
   variant = 'primary',
   size = 'md',
   loading = false,
+  loadingText,
   disabled,
   className = '',
   children,
+  'aria-label': ariaLabel,
   ...props
 }) => {
   const baseStyles = 'inline-flex items-center justify-center font-medium rounded-lg transition-colors focus-ring disabled:opacity-50 disabled:cursor-not-allowed';
@@ -36,10 +39,20 @@ const Button: React.FC<ButtonProps> = ({
     <button
       className={`${baseStyles} ${variantStyles[variant]} ${sizeStyles[size]} ${className}`}
       disabled={disabled || loading}
+      aria-busy={loading}
+      aria-disabled={disabled || loading}
+      aria-label={loading && loadingText ? loadingText : ariaLabel}
       {...props}
     >
-      {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-      {children}
+      {loading && (
+        <Loader2
+          className="mr-2 h-4 w-4 animate-spin"
+          aria-hidden="true"
+        />
+      )}
+      <span aria-live={loading ? 'polite' : undefined}>
+        {loading && loadingText ? loadingText : children}
+      </span>
     </button>
   );
 };
