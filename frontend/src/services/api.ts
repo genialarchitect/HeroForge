@@ -214,6 +214,8 @@ export const notificationAPI = {
     api.put<NotificationSettings>('/notifications/settings', data),
   testSlack: () => api.post<{ success: boolean; message: string }>('/notifications/test-slack'),
   testTeams: () => api.post<{ success: boolean; message: string }>('/notifications/test-teams'),
+  testEmail: () => api.post<{ success: boolean; message: string }>('/notifications/test-email'),
+  checkSmtpStatus: () => api.get<{ configured: boolean; message: string }>('/notifications/smtp-status'),
 };
 
 export const apiKeyAPI = {

@@ -1,3 +1,6 @@
+// Allow unused code for public API features not yet exposed via web routes
+#![allow(dead_code)]
+
 use anyhow::{anyhow, Result};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use reqwest::{header, Client};
@@ -346,5 +349,313 @@ mod tests {
         assert!(desc.contains("443"));
         assert!(desc.contains("High"));
         assert!(desc.contains("This is a test vulnerability"));
+    }
+
+    #[tokio::test]
+    async fn test_jira_test_connection_success() {
+        let mut server = mockito::Server::new_async().await;
+
+        let mock = server
+            .mock("GET", "/rest/api/3/myself")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"accountId": "123", "displayName": "Test User"}"#)
+            .create_async()
+            .await;
+
+        let client = JiraClient::new(
+            server.url(),
+            "test@example.com".to_string(),
+            "test-api-token".to_string(),
+        )
+        .unwrap();
+
+        let result = client.test_connection().await;
+        assert!(result.is_ok());
+
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_jira_test_connection_unauthorized() {
+        let mut server = mockito::Server::new_async().await;
+
+        let mock = server
+            .mock("GET", "/rest/api/3/myself")
+            .with_status(401)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errorMessages": ["Authentication failed"]}"#)
+            .create_async()
+            .await;
+
+        let client = JiraClient::new(
+            server.url(),
+            "test@example.com".to_string(),
+            "invalid-token".to_string(),
+        )
+        .unwrap();
+
+        let result = client.test_connection().await;
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("401"));
+
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_jira_test_connection_server_error() {
+        let mut server = mockito::Server::new_async().await;
+
+        let mock = server
+            .mock("GET", "/rest/api/3/myself")
+            .with_status(500)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errorMessages": ["Internal server error"]}"#)
+            .create_async()
+            .await;
+
+        let client = JiraClient::new(
+            server.url(),
+            "test@example.com".to_string(),
+            "test-api-token".to_string(),
+        )
+        .unwrap();
+
+        let result = client.test_connection().await;
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("500"));
+
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_jira_create_issue_success() {
+        let mut server = mockito::Server::new_async().await;
+
+        let mock = server
+            .mock("POST", "/rest/api/3/issue")
+            .with_status(201)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"id": "10001", "key": "SEC-123", "self": "https://jira.example.com/rest/api/3/issue/10001"}"#)
+            .create_async()
+            .await;
+
+        let client = JiraClient::new(
+            server.url(),
+            "test@example.com".to_string(),
+            "test-api-token".to_string(),
+        )
+        .unwrap();
+
+        let request = CreateIssueRequest {
+            fields: IssueFields {
+                project: ProjectKey {
+                    key: "SEC".to_string(),
+                },
+                summary: "Critical vulnerability found".to_string(),
+                description: "SQL Injection vulnerability on port 443".to_string(),
+                issuetype: IssueType {
+                    name: "Bug".to_string(),
+                },
+                priority: Some(Priority {
+                    name: "Highest".to_string(),
+                }),
+                assignee: None,
+                labels: Some(vec!["security".to_string(), "vulnerability".to_string()]),
+            },
+        };
+
+        let result = client.create_issue(request).await;
+        assert!(result.is_ok());
+        let issue = result.unwrap();
+        assert_eq!(issue.id, "10001");
+        assert_eq!(issue.key, "SEC-123");
+
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_jira_create_issue_validation_error() {
+        let mut server = mockito::Server::new_async().await;
+
+        let mock = server
+            .mock("POST", "/rest/api/3/issue")
+            .with_status(400)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errorMessages": [], "errors": {"summary": "Summary is required"}}"#)
+            .create_async()
+            .await;
+
+        let client = JiraClient::new(
+            server.url(),
+            "test@example.com".to_string(),
+            "test-api-token".to_string(),
+        )
+        .unwrap();
+
+        let request = CreateIssueRequest {
+            fields: IssueFields {
+                project: ProjectKey {
+                    key: "SEC".to_string(),
+                },
+                summary: "".to_string(), // Invalid empty summary
+                description: "Test".to_string(),
+                issuetype: IssueType {
+                    name: "Bug".to_string(),
+                },
+                priority: None,
+                assignee: None,
+                labels: None,
+            },
+        };
+
+        let result = client.create_issue(request).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("400"));
+
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_jira_add_comment_success() {
+        let mut server = mockito::Server::new_async().await;
+
+        let mock = server
+            .mock("POST", "/rest/api/3/issue/SEC-123/comment")
+            .with_status(201)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"id": "10000", "body": "Test comment"}"#)
+            .create_async()
+            .await;
+
+        let client = JiraClient::new(
+            server.url(),
+            "test@example.com".to_string(),
+            "test-api-token".to_string(),
+        )
+        .unwrap();
+
+        let result = client
+            .add_comment("SEC-123", "Vulnerability has been verified")
+            .await;
+        assert!(result.is_ok());
+
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_jira_add_comment_not_found() {
+        let mut server = mockito::Server::new_async().await;
+
+        let mock = server
+            .mock("POST", "/rest/api/3/issue/INVALID-999/comment")
+            .with_status(404)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errorMessages": ["Issue does not exist"]}"#)
+            .create_async()
+            .await;
+
+        let client = JiraClient::new(
+            server.url(),
+            "test@example.com".to_string(),
+            "test-api-token".to_string(),
+        )
+        .unwrap();
+
+        let result = client.add_comment("INVALID-999", "Test comment").await;
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("404"));
+
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_jira_transition_issue_success() {
+        let mut server = mockito::Server::new_async().await;
+
+        let mock = server
+            .mock("POST", "/rest/api/3/issue/SEC-123/transitions")
+            .with_status(204)
+            .create_async()
+            .await;
+
+        let client = JiraClient::new(
+            server.url(),
+            "test@example.com".to_string(),
+            "test-api-token".to_string(),
+        )
+        .unwrap();
+
+        let result = client.transition_issue("SEC-123", "31").await;
+        assert!(result.is_ok());
+
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_jira_list_projects_success() {
+        let mut server = mockito::Server::new_async().await;
+
+        let mock = server
+            .mock("GET", "/rest/api/3/project/search")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{
+                "values": [
+                    {"id": "10000", "key": "SEC", "name": "Security"},
+                    {"id": "10001", "key": "DEV", "name": "Development"}
+                ]
+            }"#)
+            .create_async()
+            .await;
+
+        let client = JiraClient::new(
+            server.url(),
+            "test@example.com".to_string(),
+            "test-api-token".to_string(),
+        )
+        .unwrap();
+
+        let result = client.list_projects().await;
+        assert!(result.is_ok());
+        let projects = result.unwrap();
+        assert_eq!(projects.len(), 2);
+        assert_eq!(projects[0].key, "SEC");
+        assert_eq!(projects[1].key, "DEV");
+
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_jira_basic_auth_header() {
+        let mut server = mockito::Server::new_async().await;
+
+        // Verify that the Basic auth header is correctly formed
+        let expected_auth = format!(
+            "Basic {}",
+            base64::engine::general_purpose::STANDARD.encode("test@example.com:test-api-token")
+        );
+
+        let mock = server
+            .mock("GET", "/rest/api/3/myself")
+            .match_header("Authorization", expected_auth.as_str())
+            .with_status(200)
+            .with_body(r#"{"accountId": "123"}"#)
+            .create_async()
+            .await;
+
+        let client = JiraClient::new(
+            server.url(),
+            "test@example.com".to_string(),
+            "test-api-token".to_string(),
+        )
+        .unwrap();
+
+        let _ = client.test_connection().await;
+        mock.assert_async().await;
     }
 }

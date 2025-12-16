@@ -1,3 +1,6 @@
+// Allow unused code for internal helper functions
+#![allow(dead_code)]
+
 use anyhow::Result;
 use log::debug;
 use reqwest::Client;
@@ -252,4 +255,330 @@ fn contains_sql_error(text: &str) -> bool {
     SQL_ERROR_PATTERNS.iter().any(|pattern| {
         text_lower.contains(&pattern.to_lowercase())
     })
+}
+
+/// Get all SQL injection payloads
+fn get_sqli_payloads() -> &'static [&'static str] {
+    SQLI_PAYLOADS
+}
+
+/// Get all SQL error patterns
+fn get_sql_error_patterns() -> &'static [&'static str] {
+    SQL_ERROR_PATTERNS
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ==================== contains_sql_error Tests ====================
+
+    #[test]
+    fn test_contains_sql_error_mysql_syntax() {
+        let response = "Error: You have an error in your SQL syntax; check the manual";
+        assert!(contains_sql_error(response));
+    }
+
+    #[test]
+    fn test_contains_sql_error_mysql_fetch() {
+        let response = "Warning: mysql_fetch_array() expects parameter 1 to be resource";
+        assert!(contains_sql_error(response));
+    }
+
+    #[test]
+    fn test_contains_sql_error_mysql_num_rows() {
+        let response = "Warning: mysql_num_rows() expects parameter 1 to be resource";
+        assert!(contains_sql_error(response));
+    }
+
+    #[test]
+    fn test_contains_sql_error_oracle() {
+        let response = "ORA-01756: quoted string not properly terminated";
+        assert!(contains_sql_error(response));
+    }
+
+    #[test]
+    fn test_contains_sql_error_postgresql() {
+        let response = "ERROR: PostgreSQL query failed: syntax error at or near";
+        assert!(contains_sql_error(response));
+    }
+
+    #[test]
+    fn test_contains_sql_error_sqlite() {
+        let response = "SQLite error: near \"'\": syntax error";
+        assert!(contains_sql_error(response));
+    }
+
+    #[test]
+    fn test_contains_sql_error_mssql() {
+        let response = "Microsoft SQL Server error: Incorrect syntax near";
+        assert!(contains_sql_error(response));
+    }
+
+    #[test]
+    fn test_contains_sql_error_odbc() {
+        let response = "[ODBC SQL Server Driver] Error in SQL syntax";
+        assert!(contains_sql_error(response));
+    }
+
+    #[test]
+    fn test_contains_sql_error_unclosed_quote() {
+        let response = "Unclosed quotation mark after the character string";
+        assert!(contains_sql_error(response));
+    }
+
+    #[test]
+    fn test_contains_sql_error_java_mysql() {
+        let response = "com.mysql.jdbc.exceptions.jdbc4.MySQLSyntaxErrorException";
+        assert!(contains_sql_error(response));
+    }
+
+    #[test]
+    fn test_contains_sql_error_case_insensitive() {
+        let response = "sql SYNTAX error in query";
+        assert!(contains_sql_error(response));
+    }
+
+    #[test]
+    fn test_contains_sql_error_warning_mysql() {
+        let response = "<br>Warning: mysql_connect(): Access denied for user";
+        assert!(contains_sql_error(response));
+    }
+
+    #[test]
+    fn test_contains_sql_error_valid_mysql_result() {
+        let response = "supplied argument is not a valid MySQL result resource";
+        assert!(contains_sql_error(response));
+    }
+
+    #[test]
+    fn test_contains_sql_error_no_error() {
+        let response = "Welcome to our website! Please login to continue.";
+        assert!(!contains_sql_error(response));
+    }
+
+    #[test]
+    fn test_contains_sql_error_empty_response() {
+        let response = "";
+        assert!(!contains_sql_error(response));
+    }
+
+    #[test]
+    fn test_contains_sql_error_html_page() {
+        let response = r#"
+            <!DOCTYPE html>
+            <html>
+            <head><title>Product Page</title></head>
+            <body>
+                <h1>Product Details</h1>
+                <p>Price: $29.99</p>
+            </body>
+            </html>
+        "#;
+        assert!(!contains_sql_error(response));
+    }
+
+    #[test]
+    fn test_contains_sql_error_generic_error_page() {
+        // Make sure we don't match generic errors
+        let response = "An error occurred. Please try again later.";
+        assert!(!contains_sql_error(response));
+    }
+
+    #[test]
+    fn test_contains_sql_error_debug_mode() {
+        let response = "DEBUG = True";
+        // This shouldn't match SQL errors
+        assert!(!contains_sql_error(response));
+    }
+
+    #[test]
+    fn test_contains_sql_error_syntax_in_context() {
+        // Match "syntax error" in the context of SQL
+        let response = "Query error: syntax error at or near unexpected token";
+        assert!(contains_sql_error(response));
+    }
+
+    #[test]
+    fn test_contains_sql_error_mysqlclient() {
+        let response = "MySqlClient.MySqlException: You have an error in your SQL syntax";
+        assert!(contains_sql_error(response));
+    }
+
+    // ==================== Payload Tests ====================
+
+    #[test]
+    fn test_sqli_payloads_not_empty() {
+        let payloads = get_sqli_payloads();
+        assert!(!payloads.is_empty());
+    }
+
+    #[test]
+    fn test_sqli_payloads_contains_basic_quotes() {
+        let payloads = get_sqli_payloads();
+        assert!(payloads.contains(&"'"));
+        assert!(payloads.contains(&"\""));
+    }
+
+    #[test]
+    fn test_sqli_payloads_contains_or_injection() {
+        let payloads = get_sqli_payloads();
+        assert!(payloads.iter().any(|p| p.contains("OR")));
+    }
+
+    #[test]
+    fn test_sqli_payloads_contains_union() {
+        let payloads = get_sqli_payloads();
+        assert!(payloads.iter().any(|p| p.contains("UNION")));
+    }
+
+    #[test]
+    fn test_sqli_payloads_contains_comment_terminator() {
+        let payloads = get_sqli_payloads();
+        assert!(payloads.iter().any(|p| p.contains("--")));
+    }
+
+    #[test]
+    fn test_sqli_payloads_contains_order_by() {
+        let payloads = get_sqli_payloads();
+        assert!(payloads.iter().any(|p| p.contains("ORDER BY")));
+    }
+
+    // ==================== Error Pattern Tests ====================
+
+    #[test]
+    fn test_sql_error_patterns_not_empty() {
+        let patterns = get_sql_error_patterns();
+        assert!(!patterns.is_empty());
+    }
+
+    #[test]
+    fn test_sql_error_patterns_covers_major_databases() {
+        let patterns = get_sql_error_patterns();
+
+        // MySQL
+        assert!(patterns.iter().any(|p| p.to_lowercase().contains("mysql")));
+
+        // Oracle
+        assert!(patterns.iter().any(|p| p.contains("ORA-")));
+
+        // PostgreSQL
+        assert!(patterns.iter().any(|p| p.contains("PostgreSQL")));
+
+        // SQLite
+        assert!(patterns.iter().any(|p| p.contains("SQLite")));
+
+        // Microsoft SQL Server
+        assert!(patterns.iter().any(|p| p.contains("Microsoft SQL") || p.contains("ODBC SQL Server")));
+    }
+
+    #[test]
+    fn test_sql_error_patterns_contains_syntax_error() {
+        let patterns = get_sql_error_patterns();
+        assert!(patterns.iter().any(|p| p.to_lowercase().contains("syntax")));
+    }
+
+    // ==================== Integration-like Tests (without network) ====================
+
+    #[test]
+    fn test_error_detection_mysql_detailed() {
+        let mysql_errors = vec![
+            "Warning: mysql_connect(): Access denied for user 'root'@'localhost'",
+            "Fatal error: Call to undefined function mysql_connect()",
+            "mysql_fetch_row() expects parameter 1 to be resource, boolean given",
+            "You have an error in your SQL syntax near '' at line 1",
+        ];
+
+        for error in mysql_errors {
+            assert!(contains_sql_error(error), "Should detect: {}", error);
+        }
+    }
+
+    #[test]
+    fn test_error_detection_postgresql_detailed() {
+        let pg_errors = vec![
+            "ERROR: syntax error at or near \"'\"",
+            "PostgreSQL query failed: ERROR: column \"id\" does not exist",
+            "PostgreSQL query failed: ERROR: invalid input syntax for integer",
+        ];
+
+        for error in pg_errors {
+            assert!(contains_sql_error(error), "Should detect: {}", error);
+        }
+    }
+
+    #[test]
+    fn test_error_detection_oracle_detailed() {
+        let oracle_errors = vec![
+            "ORA-00933: SQL command not properly ended",
+            "ORA-01756: quoted string not properly terminated",
+            "ORA-00942: table or view does not exist",
+        ];
+
+        for error in oracle_errors {
+            assert!(contains_sql_error(error), "Should detect: {}", error);
+        }
+    }
+
+    #[test]
+    fn test_error_detection_mssql_detailed() {
+        let mssql_errors = vec![
+            "Microsoft SQL Server error: Incorrect syntax near the keyword 'SELECT'",
+            "Unclosed quotation mark after the character string ''",
+            "[ODBC SQL Server Driver][SQL Server]Line 1: Incorrect syntax",
+        ];
+
+        for error in mssql_errors {
+            assert!(contains_sql_error(error), "Should detect: {}", error);
+        }
+    }
+
+    #[test]
+    fn test_false_positives_avoided() {
+        let safe_responses = vec![
+            "Your search for 'test' returned 0 results",
+            "Invalid username or password",
+            "Page not found",
+            "Internal server error",
+            "Connection timeout",
+            "Welcome back, user!",
+            "Your order has been placed successfully",
+            "Email sent to test@example.com",
+        ];
+
+        for response in safe_responses {
+            assert!(!contains_sql_error(response), "Should NOT detect: {}", response);
+        }
+    }
+
+    #[test]
+    fn test_payload_effectiveness_single_quote() {
+        // Single quote should break string concatenation
+        let payload = "'";
+        assert_eq!(payload, SQLI_PAYLOADS[0]);
+
+        // Simulating what would happen if this payload causes an error
+        let simulated_error = format!("SQL syntax error near '{}'", payload);
+        assert!(contains_sql_error(&simulated_error));
+    }
+
+    #[test]
+    fn test_payload_effectiveness_or_true() {
+        // OR 1=1 payloads for authentication bypass
+        let payloads: Vec<&&str> = SQLI_PAYLOADS.iter()
+            .filter(|p| p.contains("1=1") || p.contains("'1'='1"))
+            .collect();
+
+        assert!(!payloads.is_empty(), "Should have OR 1=1 type payloads");
+    }
+
+    #[test]
+    fn test_payload_effectiveness_union_select() {
+        // UNION SELECT for data extraction
+        let union_payloads: Vec<&&str> = SQLI_PAYLOADS.iter()
+            .filter(|p| p.contains("UNION"))
+            .collect();
+
+        assert!(!union_payloads.is_empty(), "Should have UNION type payloads");
+    }
 }

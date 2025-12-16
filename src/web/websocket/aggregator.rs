@@ -1,3 +1,6 @@
+// Allow unused code for aggregator infrastructure not yet exposed via routes
+#![allow(dead_code)]
+
 use crate::web::broadcast::{get_all_scans_stats, ScanStats};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;

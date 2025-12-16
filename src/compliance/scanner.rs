@@ -3,7 +3,7 @@
 //! Real-time compliance scanning during the network scan pipeline.
 //! This scanner runs compliance checks as hosts are discovered.
 
-use crate::compliance::controls::{run_compliance_checks, check_results_to_findings, CheckResult};
+use crate::compliance::controls::{run_compliance_checks, check_results_to_findings};
 use crate::compliance::types::{ComplianceFinding, ComplianceFramework, ControlStatus};
 use crate::types::HostInfo;
 use std::sync::Arc;

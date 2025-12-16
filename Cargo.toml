@@ -102,3 +102,14 @@ rustls-pemfile = "2.1"
 x509-parser = "0.16"
 webpki = "0.22"
 rustls-native-certs = "0.7"
+
+# OpenAPI/Swagger documentation
+utoipa = { version = "4.2", features = ["actix_extras", "chrono", "uuid"] }
+utoipa-swagger-ui = { version = "7.1", features = ["actix-web"] }
+
+# Cron expression parsing for scheduled scans
+cron = "0.12"
+
+[dev-dependencies]
+mockito = "1.5"
+tokio-test = "0.4"

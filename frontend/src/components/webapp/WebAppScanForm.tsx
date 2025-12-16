@@ -53,13 +53,19 @@ const WebAppScanForm: React.FC<WebAppScanFormProps> = ({ onSuccess }) => {
       return;
     }
 
+    // Validate at least one check is enabled
+    const enabledChecks = Object.entries(checksEnabled)
+      .filter(([_, enabled]) => enabled)
+      .map(([check, _]) => check);
+
+    if (enabledChecks.length === 0) {
+      toast.error('Please enable at least one security check');
+      return;
+    }
+
     setLoading(true);
 
     try {
-      const enabledChecks = Object.entries(checksEnabled)
-        .filter(([_, enabled]) => enabled)
-        .map(([check, _]) => check);
-
       const response = await webappAPI.startScan({
         target_url: targetUrl.trim(),
         max_depth: maxDepth,
@@ -146,14 +152,14 @@ const WebAppScanForm: React.FC<WebAppScanFormProps> = ({ onSuccess }) => {
               <Input
                 id="maxPages"
                 type="number"
-                min="10"
+                min="1"
                 max="1000"
                 value={maxPages}
                 onChange={(e) => setMaxPages(parseInt(e.target.value) || 100)}
                 disabled={loading}
               />
               <p className="text-xs text-gray-500 mt-1">
-                Maximum pages to crawl (10-1000)
+                Maximum pages to crawl (1-1000)
               </p>
             </div>
           </div>

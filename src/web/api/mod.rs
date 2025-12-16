@@ -21,3 +21,6 @@ pub mod templates;
 pub mod topology;
 pub mod vulnerabilities;
 pub mod webapp;
+
+#[cfg(test)]
+mod tests;

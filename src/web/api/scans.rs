@@ -296,6 +296,25 @@ fn validate_scan_name(name: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Create a new network scan
+#[utoipa::path(
+    post,
+    path = "/api/scans",
+    tag = "Scans",
+    security(
+        ("bearer_auth" = [])
+    ),
+    request_body(
+        content = openapi::CreateScanRequestSchema,
+        description = "Scan configuration"
+    ),
+    responses(
+        (status = 200, description = "Scan created and started", body = openapi::ScanResultSchema),
+        (status = 400, description = "Invalid scan parameters", body = openapi::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = openapi::ErrorResponse)
+    )
+)]
 pub async fn create_scan(
     pool: web::Data<SqlitePool>,
     claims: web::ReqData<auth::Claims>,
@@ -531,6 +550,20 @@ pub async fn create_scan(
     Ok(HttpResponse::Ok().json(scan))
 }
 
+/// Get all scans for the authenticated user
+#[utoipa::path(
+    get,
+    path = "/api/scans",
+    tag = "Scans",
+    security(
+        ("bearer_auth" = [])
+    ),
+    responses(
+        (status = 200, description = "List of scans", body = Vec<openapi::ScanResultSchema>),
+        (status = 401, description = "Unauthorized", body = openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = openapi::ErrorResponse)
+    )
+)]
 pub async fn get_scans(
     pool: web::Data<SqlitePool>,
     claims: web::ReqData<auth::Claims>,
@@ -542,6 +575,25 @@ pub async fn get_scans(
     Ok(HttpResponse::Ok().json(scans))
 }
 
+/// Get a specific scan by ID
+#[utoipa::path(
+    get,
+    path = "/api/scans/{id}",
+    tag = "Scans",
+    security(
+        ("bearer_auth" = [])
+    ),
+    params(
+        ("id" = String, Path, description = "Scan ID")
+    ),
+    responses(
+        (status = 200, description = "Scan details", body = openapi::ScanResultSchema),
+        (status = 401, description = "Unauthorized", body = openapi::ErrorResponse),
+        (status = 403, description = "Access denied", body = openapi::ErrorResponse),
+        (status = 404, description = "Scan not found", body = openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = openapi::ErrorResponse)
+    )
+)]
 pub async fn get_scan(
     pool: web::Data<SqlitePool>,
     claims: web::ReqData<auth::Claims>,
@@ -567,6 +619,25 @@ pub async fn get_scan(
     }
 }
 
+/// Get scan results (hosts, ports, vulnerabilities)
+#[utoipa::path(
+    get,
+    path = "/api/scans/{id}/results",
+    tag = "Scans",
+    security(
+        ("bearer_auth" = [])
+    ),
+    params(
+        ("id" = String, Path, description = "Scan ID")
+    ),
+    responses(
+        (status = 200, description = "Scan results"),
+        (status = 401, description = "Unauthorized", body = openapi::ErrorResponse),
+        (status = 403, description = "Access denied", body = openapi::ErrorResponse),
+        (status = 404, description = "Scan not found", body = openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = openapi::ErrorResponse)
+    )
+)]
 pub async fn get_scan_results(
     pool: web::Data<SqlitePool>,
     claims: web::ReqData<auth::Claims>,
@@ -603,6 +674,23 @@ pub async fn get_scan_results(
 }
 
 /// Delete a scan (user-level, verifies ownership)
+#[utoipa::path(
+    delete,
+    path = "/api/scans/{id}",
+    tag = "Scans",
+    security(
+        ("bearer_auth" = [])
+    ),
+    params(
+        ("id" = String, Path, description = "Scan ID")
+    ),
+    responses(
+        (status = 200, description = "Scan deleted successfully", body = openapi::SuccessResponse),
+        (status = 401, description = "Unauthorized", body = openapi::ErrorResponse),
+        (status = 404, description = "Scan not found or access denied", body = openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = openapi::ErrorResponse)
+    )
+)]
 pub async fn delete_scan(
     pool: web::Data<SqlitePool>,
     claims: web::ReqData<auth::Claims>,
@@ -674,7 +762,7 @@ pub struct BulkDeleteRequest {
 }
 
 /// Request body for bulk scan export
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, serde::Deserialize, utoipa::ToSchema)]
 pub struct BulkExportRequest {
     pub scan_ids: Vec<String>,
     pub format: String, // "json", "csv", "pdf"
@@ -757,7 +845,27 @@ pub async fn export_scan_csv(
         .body(csv_data))
 }
 
-/// Bulk export multiple scans
+/// Bulk export multiple scans as ZIP archive
+#[utoipa::path(
+    post,
+    path = "/api/scans/bulk-export",
+    tag = "Scans",
+    security(
+        ("bearer_auth" = [])
+    ),
+    request_body(
+        content = inline(BulkExportRequest),
+        description = "List of scan IDs and export format. Body: {\"scan_ids\": [\"id1\", \"id2\"], \"format\": \"json|csv\", \"include_vulnerabilities\": true, \"include_services\": true}"
+    ),
+    responses(
+        (status = 200, description = "ZIP archive of exported scans", content_type = "application/zip"),
+        (status = 400, description = "Invalid request", body = crate::web::openapi::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = crate::web::openapi::ErrorResponse),
+        (status = 403, description = "Access denied to one or more scans", body = crate::web::openapi::ErrorResponse),
+        (status = 404, description = "One or more scans not found", body = crate::web::openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::web::openapi::ErrorResponse)
+    )
+)]
 pub async fn bulk_export_scans(
     pool: web::Data<SqlitePool>,
     claims: web::ReqData<auth::Claims>,
@@ -936,6 +1044,24 @@ pub async fn bulk_export_scans(
 }
 
 /// Bulk delete multiple scans
+#[utoipa::path(
+    post,
+    path = "/api/scans/bulk-delete",
+    tag = "Scans",
+    security(
+        ("bearer_auth" = [])
+    ),
+    request_body(
+        content = openapi::BulkDeleteRequestSchema,
+        description = "List of scan IDs to delete"
+    ),
+    responses(
+        (status = 200, description = "Scans deleted"),
+        (status = 400, description = "Invalid request", body = openapi::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = openapi::ErrorResponse)
+    )
+)]
 pub async fn bulk_delete_scans(
     pool: web::Data<SqlitePool>,
     claims: web::ReqData<auth::Claims>,

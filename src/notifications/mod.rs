@@ -1,7 +1,9 @@
+pub mod email;
 pub mod slack;
 pub mod teams;
 pub mod sender;
 
+pub use email::{EmailConfig, EmailNotifier};
 pub use slack::SlackNotifier;
 pub use teams::TeamsNotifier;
 

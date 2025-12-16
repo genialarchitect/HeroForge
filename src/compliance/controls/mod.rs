@@ -5,6 +5,8 @@
 //! - Vulnerability-to-control mapping engine
 //! - Active compliance check implementations
 
+#![allow(unused_imports)]
+
 pub mod mapping;
 pub mod checks;
 

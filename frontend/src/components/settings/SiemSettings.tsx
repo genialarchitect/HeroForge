@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { toast } from 'react-toastify';
-import { siemAPI } from '../../services/api';
-import { SiemSettings as SiemSettingsType, CreateSiemSettingsRequest, UpdateSiemSettingsRequest } from '../../types';
+import { siemAPI, scanAPI } from '../../services/api';
+import { SiemSettings as SiemSettingsType, CreateSiemSettingsRequest, UpdateSiemSettingsRequest, ScanResult } from '../../types';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
 import LoadingSpinner from '../ui/LoadingSpinner';
-import { Database, Plus, Edit2, Trash2, TestTube, Server, AlertCircle, CheckCircle, X } from 'lucide-react';
+import { Database, Plus, Edit2, Trash2, TestTube, Server, AlertCircle, CheckCircle, X, Upload, RefreshCw } from 'lucide-react';
 
 const SiemSettings: React.FC = () => {
   const [settings, setSettings] = useState<SiemSettingsType[]>([]);
@@ -14,8 +14,15 @@ const SiemSettings: React.FC = () => {
   const [editingSettings, setEditingSettings] = useState<SiemSettingsType | null>(null);
   const [testing, setTesting] = useState<string | null>(null);
 
+  // Manual export state
+  const [scans, setScans] = useState<ScanResult[]>([]);
+  const [loadingScans, setLoadingScans] = useState(false);
+  const [selectedScanId, setSelectedScanId] = useState<string>('');
+  const [exporting, setExporting] = useState(false);
+
   useEffect(() => {
     loadSettings();
+    loadScans();
   }, []);
 
   const loadSettings = async () => {
@@ -58,6 +65,49 @@ const SiemSettings: React.FC = () => {
       loadSettings();
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to delete SIEM integration');
+    }
+  };
+
+  const loadScans = async () => {
+    setLoadingScans(true);
+    try {
+      const response = await scanAPI.getAll();
+      // Only show completed scans
+      setScans(response.data.filter(scan => scan.status === 'completed'));
+    } catch (error: any) {
+      console.error('Failed to load scans:', error);
+    } finally {
+      setLoadingScans(false);
+    }
+  };
+
+  const handleExportScan = async () => {
+    if (!selectedScanId) {
+      toast.error('Please select a scan to export');
+      return;
+    }
+
+    const enabledSettings = settings.filter(s => s.enabled);
+    if (enabledSettings.length === 0) {
+      toast.error('No enabled SIEM integrations found. Please enable at least one integration.');
+      return;
+    }
+
+    setExporting(true);
+    try {
+      const response = await siemAPI.exportScan(selectedScanId);
+      if (response.data.success) {
+        toast.success(`Scan exported to ${response.data.exported_to} SIEM integration(s). ${response.data.events_count} events sent.`);
+        if (response.data.errors && response.data.errors.length > 0) {
+          response.data.errors.forEach((err: string) => toast.warning(err));
+        }
+      } else {
+        toast.error('Export failed. Check SIEM configuration.');
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to export scan to SIEM');
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -174,6 +224,82 @@ const SiemSettings: React.FC = () => {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+      </Card>
+
+      {/* Manual Export Card */}
+      <Card>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Upload className="h-5 w-5 text-primary" />
+            <h3 className="text-lg font-semibold text-white">Manual Export</h3>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={loadScans}
+            disabled={loadingScans}
+          >
+            {loadingScans ? (
+              <LoadingSpinner />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+          </Button>
+        </div>
+
+        {settings.filter(s => s.enabled).length === 0 ? (
+          <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4 flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 text-amber-500 mt-0.5 flex-shrink-0" />
+            <div className="text-sm text-amber-200">
+              <p className="font-medium mb-1">No Enabled Integrations</p>
+              <p>Enable at least one SIEM integration above before exporting scan results.</p>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <p className="text-sm text-slate-400">
+              Manually export scan results to all enabled SIEM integrations.
+            </p>
+            <div className="flex gap-3">
+              <select
+                value={selectedScanId}
+                onChange={(e) => setSelectedScanId(e.target.value)}
+                className="flex-1 bg-dark-bg border border-dark-border rounded-lg px-4 py-2 text-white focus:ring-2 focus:ring-primary focus:border-transparent"
+                disabled={loadingScans || exporting}
+              >
+                <option value="">Select a completed scan...</option>
+                {scans.map((scan) => (
+                  <option key={scan.id} value={scan.id}>
+                    {scan.name} - {new Date(scan.created_at).toLocaleDateString()} {new Date(scan.created_at).toLocaleTimeString()}
+                  </option>
+                ))}
+              </select>
+              <Button
+                variant="primary"
+                onClick={handleExportScan}
+                disabled={!selectedScanId || exporting || loadingScans}
+              >
+                {exporting ? (
+                  <>
+                    <LoadingSpinner />
+                    <span className="ml-2">Exporting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-4 w-4 mr-2" />
+                    Export to SIEM
+                  </>
+                )}
+              </Button>
+            </div>
+            {scans.length === 0 && !loadingScans && (
+              <p className="text-sm text-slate-500">No completed scans available for export.</p>
+            )}
+            <div className="text-xs text-slate-500 mt-2">
+              Export will send data to: {settings.filter(s => s.enabled).map(s => s.siem_type.toUpperCase()).join(', ')}
+            </div>
           </div>
         )}
       </Card>

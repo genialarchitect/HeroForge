@@ -3,8 +3,23 @@ use sqlx::SqlitePool;
 
 use crate::db::{self, models};
 use crate::web::auth;
-use crate::web::auth::jwt::{create_mfa_token};
+use crate::web::auth::jwt::create_mfa_token;
 
+/// Register a new user account
+#[utoipa::path(
+    post,
+    path = "/api/auth/register",
+    tag = "Authentication",
+    request_body(
+        content = crate::web::openapi::CreateUserSchema,
+        description = "User registration data"
+    ),
+    responses(
+        (status = 200, description = "User registered successfully", body = crate::web::openapi::LoginResponseSchema),
+        (status = 400, description = "Username already exists or invalid input", body = crate::web::openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::web::openapi::ErrorResponse)
+    )
+)]
 pub async fn register(
     pool: web::Data<SqlitePool>,
     user_data: web::Json<models::CreateUser>,
@@ -58,6 +73,24 @@ pub async fn register(
     }
 }
 
+/// Authenticate user and obtain JWT tokens
+#[utoipa::path(
+    post,
+    path = "/api/auth/login",
+    tag = "Authentication",
+    request_body(
+        content = crate::web::openapi::LoginRequestSchema,
+        description = "Login credentials"
+    ),
+    responses(
+        (status = 200, description = "Login successful", body = crate::web::openapi::LoginResponseSchema),
+        (status = 200, description = "MFA verification required", body = crate::web::openapi::MfaLoginResponseSchema),
+        (status = 401, description = "Invalid credentials", body = crate::web::openapi::ErrorResponse),
+        (status = 403, description = "Account disabled", body = crate::web::openapi::ErrorResponse),
+        (status = 429, description = "Account locked due to too many failed attempts", body = crate::web::openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::web::openapi::ErrorResponse)
+    )
+)]
 pub async fn login(
     pool: web::Data<SqlitePool>,
     credentials: web::Json<models::LoginRequest>,
@@ -259,6 +292,21 @@ pub async fn login(
     }))
 }
 
+/// Get current authenticated user's information
+#[utoipa::path(
+    get,
+    path = "/api/auth/me",
+    tag = "Authentication",
+    security(
+        ("bearer_auth" = [])
+    ),
+    responses(
+        (status = 200, description = "User information retrieved successfully", body = crate::web::openapi::UserInfoSchema),
+        (status = 401, description = "Unauthorized - invalid or missing token", body = crate::web::openapi::ErrorResponse),
+        (status = 404, description = "User not found", body = crate::web::openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::web::openapi::ErrorResponse)
+    )
+)]
 pub async fn me(
     pool: web::Data<SqlitePool>,
     claims: web::ReqData<auth::Claims>,
@@ -294,6 +342,24 @@ pub async fn me(
     }
 }
 
+/// Update current user's profile
+#[utoipa::path(
+    put,
+    path = "/api/auth/profile",
+    tag = "Authentication",
+    security(
+        ("bearer_auth" = [])
+    ),
+    request_body(
+        content = inline(crate::db::models::UpdateProfileRequest),
+        description = "Profile update data"
+    ),
+    responses(
+        (status = 200, description = "Profile updated successfully", body = crate::web::openapi::UserInfoSchema),
+        (status = 400, description = "Invalid input", body = crate::web::openapi::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = crate::web::openapi::ErrorResponse)
+    )
+)]
 pub async fn update_profile(
     pool: web::Data<SqlitePool>,
     claims: web::ReqData<auth::Claims>,
@@ -320,6 +386,25 @@ pub async fn update_profile(
     }
 }
 
+/// Change current user's password
+#[utoipa::path(
+    put,
+    path = "/api/auth/password",
+    tag = "Authentication",
+    security(
+        ("bearer_auth" = [])
+    ),
+    request_body(
+        content = inline(crate::db::models::ChangePasswordRequest),
+        description = "Current and new password"
+    ),
+    responses(
+        (status = 200, description = "Password changed successfully", body = crate::web::openapi::SuccessResponse),
+        (status = 400, description = "Invalid password or policy violation", body = crate::web::openapi::ErrorResponse),
+        (status = 401, description = "Current password incorrect", body = crate::web::openapi::ErrorResponse),
+        (status = 404, description = "User not found", body = crate::web::openapi::ErrorResponse)
+    )
+)]
 pub async fn change_password(
     pool: web::Data<SqlitePool>,
     claims: web::ReqData<auth::Claims>,
@@ -397,6 +482,22 @@ pub async fn change_password(
     }
 }
 
+/// Refresh JWT access token using refresh token
+#[utoipa::path(
+    post,
+    path = "/api/auth/refresh",
+    tag = "Authentication",
+    request_body(
+        content = crate::web::openapi::RefreshTokenRequestSchema,
+        description = "Refresh token"
+    ),
+    responses(
+        (status = 200, description = "Token refreshed successfully", body = crate::web::openapi::RefreshTokenResponseSchema),
+        (status = 401, description = "Invalid or expired refresh token", body = crate::web::openapi::ErrorResponse),
+        (status = 404, description = "User not found", body = crate::web::openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::web::openapi::ErrorResponse)
+    )
+)]
 pub async fn refresh(
     pool: web::Data<SqlitePool>,
     request: web::Json<models::RefreshTokenRequest>,
@@ -456,6 +557,20 @@ pub async fn refresh(
     }))
 }
 
+/// Logout and revoke refresh token
+#[utoipa::path(
+    post,
+    path = "/api/auth/logout",
+    tag = "Authentication",
+    request_body(
+        content = crate::web::openapi::RefreshTokenRequestSchema,
+        description = "Refresh token to revoke"
+    ),
+    responses(
+        (status = 200, description = "Logged out successfully", body = crate::web::openapi::SuccessResponse),
+        (status = 500, description = "Internal server error", body = crate::web::openapi::ErrorResponse)
+    )
+)]
 pub async fn logout(
     pool: web::Data<SqlitePool>,
     request: web::Json<models::RefreshTokenRequest>,

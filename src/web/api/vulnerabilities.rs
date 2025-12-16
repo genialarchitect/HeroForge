@@ -16,7 +16,26 @@ pub struct VulnerabilityListQuery {
     pub severity: Option<String>,
 }
 
-/// Get vulnerabilities with optional filters
+/// List vulnerabilities with optional filters
+#[utoipa::path(
+    get,
+    path = "/api/vulnerabilities",
+    tag = "Vulnerabilities",
+    security(
+        ("bearer_auth" = [])
+    ),
+    params(
+        ("scan_id" = Option<String>, Query, description = "Filter by scan ID (required)"),
+        ("status" = Option<String>, Query, description = "Filter by status (open, in_progress, resolved, false_positive, accepted_risk)"),
+        ("severity" = Option<String>, Query, description = "Filter by severity (critical, high, medium, low, info)")
+    ),
+    responses(
+        (status = 200, description = "List of vulnerabilities", body = Vec<crate::web::openapi::VulnerabilityTrackingSchema>),
+        (status = 400, description = "Missing scan_id parameter", body = crate::web::openapi::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = crate::web::openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::web::openapi::ErrorResponse)
+    )
+)]
 pub async fn list_vulnerabilities(
     pool: web::Data<SqlitePool>,
     query: web::Query<VulnerabilityListQuery>,
@@ -49,6 +68,23 @@ pub async fn list_vulnerabilities(
 }
 
 /// Get single vulnerability with details
+#[utoipa::path(
+    get,
+    path = "/api/vulnerabilities/{id}",
+    tag = "Vulnerabilities",
+    security(
+        ("bearer_auth" = [])
+    ),
+    params(
+        ("id" = String, Path, description = "Vulnerability tracking ID")
+    ),
+    responses(
+        (status = 200, description = "Vulnerability details"),
+        (status = 401, description = "Unauthorized", body = crate::web::openapi::ErrorResponse),
+        (status = 404, description = "Vulnerability not found", body = crate::web::openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::web::openapi::ErrorResponse)
+    )
+)]
 pub async fn get_vulnerability(
     pool: web::Data<SqlitePool>,
     vuln_id: web::Path<String>,
@@ -66,6 +102,26 @@ pub async fn get_vulnerability(
 }
 
 /// Update vulnerability status and metadata
+#[utoipa::path(
+    put,
+    path = "/api/vulnerabilities/{id}",
+    tag = "Vulnerabilities",
+    security(
+        ("bearer_auth" = [])
+    ),
+    params(
+        ("id" = String, Path, description = "Vulnerability tracking ID")
+    ),
+    request_body(
+        content = crate::web::openapi::UpdateVulnerabilityRequestSchema,
+        description = "Vulnerability update data"
+    ),
+    responses(
+        (status = 200, description = "Vulnerability updated", body = crate::web::openapi::VulnerabilityTrackingSchema),
+        (status = 401, description = "Unauthorized", body = crate::web::openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::web::openapi::ErrorResponse)
+    )
+)]
 pub async fn update_vulnerability(
     pool: web::Data<SqlitePool>,
     vuln_id: web::Path<String>,
@@ -91,6 +147,26 @@ pub async fn update_vulnerability(
 }
 
 /// Add comment to vulnerability
+#[utoipa::path(
+    post,
+    path = "/api/vulnerabilities/{id}/comments",
+    tag = "Vulnerabilities",
+    security(
+        ("bearer_auth" = [])
+    ),
+    params(
+        ("id" = String, Path, description = "Vulnerability tracking ID")
+    ),
+    request_body(
+        content = crate::web::openapi::AddCommentRequestSchema,
+        description = "Comment to add"
+    ),
+    responses(
+        (status = 201, description = "Comment added"),
+        (status = 401, description = "Unauthorized", body = crate::web::openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::web::openapi::ErrorResponse)
+    )
+)]
 pub async fn add_comment(
     pool: web::Data<SqlitePool>,
     vuln_id: web::Path<String>,
@@ -116,6 +192,23 @@ pub async fn add_comment(
 }
 
 /// Bulk update vulnerabilities
+#[utoipa::path(
+    post,
+    path = "/api/vulnerabilities/bulk-update",
+    tag = "Vulnerabilities",
+    security(
+        ("bearer_auth" = [])
+    ),
+    request_body(
+        content = crate::web::openapi::BulkUpdateVulnerabilitiesRequestSchema,
+        description = "Vulnerability IDs and update data"
+    ),
+    responses(
+        (status = 200, description = "Vulnerabilities updated"),
+        (status = 401, description = "Unauthorized", body = crate::web::openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::web::openapi::ErrorResponse)
+    )
+)]
 pub async fn bulk_update_vulnerabilities(
     pool: web::Data<SqlitePool>,
     request: web::Json<BulkUpdateVulnerabilitiesRequest>,
@@ -145,6 +238,22 @@ pub async fn bulk_update_vulnerabilities(
 }
 
 /// Get vulnerability statistics
+#[utoipa::path(
+    get,
+    path = "/api/vulnerabilities/stats",
+    tag = "Vulnerabilities",
+    security(
+        ("bearer_auth" = [])
+    ),
+    params(
+        ("scan_id" = Option<String>, Query, description = "Optional scan ID filter")
+    ),
+    responses(
+        (status = 200, description = "Vulnerability statistics", body = crate::web::openapi::VulnerabilityStatsSchema),
+        (status = 401, description = "Unauthorized", body = crate::web::openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::web::openapi::ErrorResponse)
+    )
+)]
 pub async fn get_vulnerability_stats(
     pool: web::Data<SqlitePool>,
     query: web::Query<VulnerabilityStatsQuery>,
@@ -282,6 +391,22 @@ pub async fn bulk_export_vulnerabilities(
 }
 
 /// Get timeline for vulnerability
+#[utoipa::path(
+    get,
+    path = "/api/vulnerabilities/{id}/timeline",
+    tag = "Vulnerabilities",
+    security(
+        ("bearer_auth" = [])
+    ),
+    params(
+        ("id" = String, Path, description = "Vulnerability tracking ID")
+    ),
+    responses(
+        (status = 200, description = "Vulnerability timeline"),
+        (status = 401, description = "Unauthorized", body = crate::web::openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::web::openapi::ErrorResponse)
+    )
+)]
 pub async fn get_vulnerability_timeline(
     pool: web::Data<SqlitePool>,
     vuln_id: web::Path<String>,
@@ -299,6 +424,26 @@ pub async fn get_vulnerability_timeline(
 }
 
 /// Mark vulnerability for verification
+#[utoipa::path(
+    post,
+    path = "/api/vulnerabilities/{id}/verify",
+    tag = "Vulnerabilities",
+    security(
+        ("bearer_auth" = [])
+    ),
+    params(
+        ("id" = String, Path, description = "Vulnerability tracking ID")
+    ),
+    request_body(
+        content = inline(crate::db::models::VerifyVulnerabilityRequest),
+        description = "Optional scan ID for verification"
+    ),
+    responses(
+        (status = 200, description = "Vulnerability marked for verification", body = crate::web::openapi::VulnerabilityTrackingSchema),
+        (status = 401, description = "Unauthorized", body = crate::web::openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::web::openapi::ErrorResponse)
+    )
+)]
 pub async fn mark_for_verification(
     pool: web::Data<SqlitePool>,
     vuln_id: web::Path<String>,
@@ -323,7 +468,24 @@ pub async fn mark_for_verification(
     }
 }
 
-/// Bulk assign vulnerabilities
+/// Bulk assign vulnerabilities to a user
+#[utoipa::path(
+    post,
+    path = "/api/vulnerabilities/bulk-assign",
+    tag = "Vulnerabilities",
+    security(
+        ("bearer_auth" = [])
+    ),
+    request_body(
+        content = inline(crate::db::models::BulkAssignVulnerabilitiesRequest),
+        description = "Vulnerability IDs and assignee"
+    ),
+    responses(
+        (status = 200, description = "Vulnerabilities assigned"),
+        (status = 401, description = "Unauthorized", body = crate::web::openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::web::openapi::ErrorResponse)
+    )
+)]
 pub async fn bulk_assign(
     pool: web::Data<SqlitePool>,
     request: web::Json<BulkAssignVulnerabilitiesRequest>,

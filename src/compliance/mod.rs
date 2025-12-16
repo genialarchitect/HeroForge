@@ -19,6 +19,9 @@
 //! 2. **Integrated Mode**: Real-time compliance checks during the scan
 //!    pipeline for more thorough assessment.
 
+// Allow dead code for public API functions not yet exposed via web routes
+#![allow(dead_code)]
+
 pub mod types;
 pub mod frameworks;
 pub mod controls;
@@ -29,10 +32,7 @@ pub mod scoring;
 // Re-export commonly used types
 pub use types::{
     ComplianceFramework,
-    ComplianceFinding,
     ComplianceSummary,
-    FrameworkSummary,
-    CategorySummary,
 };
 
 pub use analyzer::ComplianceAnalyzer;

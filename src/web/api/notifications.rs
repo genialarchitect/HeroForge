@@ -3,7 +3,7 @@ use serde_json::json;
 use sqlx::SqlitePool;
 
 use crate::db::{self, models};
-use crate::notifications::{NotificationEvent, Notifier, SlackNotifier, TeamsNotifier};
+use crate::notifications::{EmailConfig, EmailNotifier, Notifier, SlackNotifier, TeamsNotifier};
 use crate::web::auth;
 
 /// Get notification settings for the current user
@@ -96,5 +96,64 @@ pub async fn test_teams_webhook(
     Ok(HttpResponse::Ok().json(json!({
         "success": true,
         "message": "Test message sent successfully to Microsoft Teams"
+    })))
+}
+
+/// Test email notification
+pub async fn test_email(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+) -> Result<HttpResponse> {
+    // Check if SMTP is configured on the server
+    if !EmailConfig::is_configured() {
+        return Ok(HttpResponse::ServiceUnavailable().json(json!({
+            "error": "SMTP not configured on server. Contact your administrator to configure email settings."
+        })));
+    }
+
+    let settings = db::get_notification_settings(&pool, &claims.sub)
+        .await
+        .map_err(|e| {
+            log::error!("Failed to fetch notification settings: {}", e);
+            actix_web::error::ErrorInternalServerError("Failed to fetch settings")
+        })?;
+
+    if settings.email_address.is_empty() {
+        return Ok(HttpResponse::BadRequest().json(json!({
+            "error": "Email address not configured. Please save an email address first."
+        })));
+    }
+
+    let notifier = EmailNotifier::from_env(settings.email_address.clone())
+        .map_err(|e| {
+            log::error!("Failed to create email notifier: {}", e);
+            actix_web::error::ErrorInternalServerError("Failed to initialize email service")
+        })?;
+
+    notifier
+        .send_test_message()
+        .await
+        .map_err(|e| {
+            log::error!("Failed to send email test message: {}", e);
+            actix_web::error::ErrorInternalServerError(format!("Failed to send test email: {}", e))
+        })?;
+
+    Ok(HttpResponse::Ok().json(json!({
+        "success": true,
+        "message": format!("Test email sent successfully to {}", settings.email_address)
+    })))
+}
+
+/// Check if SMTP is configured on the server
+pub async fn check_smtp_status() -> Result<HttpResponse> {
+    let configured = EmailConfig::is_configured();
+
+    Ok(HttpResponse::Ok().json(json!({
+        "configured": configured,
+        "message": if configured {
+            "SMTP is configured and ready to send emails"
+        } else {
+            "SMTP is not configured. Contact your administrator to enable email notifications."
+        }
     })))
 }

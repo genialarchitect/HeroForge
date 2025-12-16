@@ -1,3 +1,6 @@
+// Allow unused code for public API features not yet exposed via web routes
+#![allow(dead_code)]
+
 pub mod syslog;
 pub mod splunk;
 pub mod elasticsearch;

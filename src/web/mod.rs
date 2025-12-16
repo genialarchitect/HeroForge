@@ -1,6 +1,7 @@
 pub mod api;
 pub mod auth;
 pub mod broadcast;
+pub mod openapi;
 pub mod rate_limit;
 pub mod scheduler;
 pub mod websocket;
@@ -9,6 +10,8 @@ use actix_cors::Cors;
 use actix_files as fs;
 use actix_web::{middleware::{DefaultHeaders, Logger}, web, App, HttpServer};
 use std::sync::Arc;
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
 
 pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::Result<()> {
     log::info!("Initializing database...");
@@ -101,6 +104,13 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
             )
             // Public privacy policy endpoint (no authentication required)
             .route("/api/privacy-policy", web::get().to(api::privacy::get_privacy_policy))
+            // Scan creation endpoint with strict rate limiting (10 req/hour per IP)
+            .service(
+                web::scope("/api/scans")
+                    .wrap(rate_limit::scan_rate_limiter())
+                    .wrap(auth::JwtMiddleware)
+                    .route("", web::post().to(api::scans::create_scan))
+            )
             // Protected routes with moderate rate limiting (100 req/min per IP)
             .service(
                 web::scope("/api")
@@ -119,8 +129,7 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .route("/auth/accept-terms", web::post().to(api::auth::accept_terms))
                     .route("/auth/export", web::get().to(api::auth::export_user_data))
                     .route("/auth/account", web::delete().to(api::auth::delete_account))
-                    // Scan endpoints - scan creation has additional rate limiting at handler level
-                    .route("/scans", web::post().to(api::scans::create_scan))
+                    // Scan endpoints - GET uses standard API rate limit
                     .route("/scans", web::get().to(api::scans::get_scans))
                     .route("/scans/stats", web::get().to(api::scans::get_aggregated_stats))
                     .route("/scans/{id}", web::get().to(api::scans::get_scan))
@@ -171,6 +180,8 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .route("/notifications/settings", web::put().to(api::notifications::update_notification_settings))
                     .route("/notifications/test-slack", web::post().to(api::notifications::test_slack_webhook))
                     .route("/notifications/test-teams", web::post().to(api::notifications::test_teams_webhook))
+                    .route("/notifications/test-email", web::post().to(api::notifications::test_email))
+                    .route("/notifications/smtp-status", web::get().to(api::notifications::check_smtp_status))
                     // API Keys endpoints
                     .route("/api-keys", web::get().to(api::api_keys::get_api_keys))
                     .route("/api-keys", web::post().to(api::api_keys::create_api_key))
@@ -231,6 +242,11 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .route("/integrations/siem/export/{scan_id}", web::post().to(api::siem::export_scan_to_siem))
                     .configure(api::admin::configure)
                     .configure(api::dashboard::configure),
+            )
+            // Swagger UI for API documentation
+            .service(
+                SwaggerUi::new("/api/docs/{_:.*}")
+                    .url("/api/openapi.json", openapi::ApiDoc::openapi())
             )
             // Serve frontend static files
             .service(fs::Files::new("/", "./frontend/dist").index_file("index.html"))

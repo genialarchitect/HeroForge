@@ -126,3 +126,149 @@ pub async fn scan_webapp(config: WebAppScanConfig) -> Result<WebAppScanResult> {
         findings,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ==================== WebAppScanConfig Default Tests ====================
+
+    #[test]
+    fn test_webapp_scan_config_default() {
+        let config = WebAppScanConfig::default();
+
+        assert!(config.target_url.is_empty());
+        assert_eq!(config.max_depth, 3);
+        assert_eq!(config.max_pages, 100);
+        assert!(config.respect_robots_txt);
+        assert_eq!(config.timeout, Duration::from_secs(10));
+        assert_eq!(config.user_agent, "HeroForge WebApp Scanner/0.1");
+        assert_eq!(config.rate_limit_delay, Duration::from_millis(500));
+    }
+
+    #[test]
+    fn test_webapp_scan_config_default_checks() {
+        let config = WebAppScanConfig::default();
+
+        assert!(config.checks_enabled.contains(&"headers".to_string()));
+        assert!(config.checks_enabled.contains(&"forms".to_string()));
+        assert!(config.checks_enabled.contains(&"sqli".to_string()));
+        assert!(config.checks_enabled.contains(&"xss".to_string()));
+        assert!(config.checks_enabled.contains(&"info_disclosure".to_string()));
+        assert_eq!(config.checks_enabled.len(), 5);
+    }
+
+    #[test]
+    fn test_webapp_scan_config_custom() {
+        let config = WebAppScanConfig {
+            target_url: "https://example.com".to_string(),
+            max_depth: 5,
+            max_pages: 50,
+            respect_robots_txt: false,
+            checks_enabled: vec!["headers".to_string()],
+            timeout: Duration::from_secs(30),
+            user_agent: "Custom Agent".to_string(),
+            rate_limit_delay: Duration::from_millis(1000),
+        };
+
+        assert_eq!(config.target_url, "https://example.com");
+        assert_eq!(config.max_depth, 5);
+        assert_eq!(config.max_pages, 50);
+        assert!(!config.respect_robots_txt);
+        assert_eq!(config.checks_enabled.len(), 1);
+        assert_eq!(config.timeout, Duration::from_secs(30));
+        assert_eq!(config.user_agent, "Custom Agent");
+        assert_eq!(config.rate_limit_delay, Duration::from_millis(1000));
+    }
+
+    #[test]
+    fn test_webapp_scan_config_clone() {
+        let config = WebAppScanConfig::default();
+        let cloned = config.clone();
+
+        assert_eq!(cloned.max_depth, config.max_depth);
+        assert_eq!(cloned.max_pages, config.max_pages);
+        assert_eq!(cloned.checks_enabled, config.checks_enabled);
+    }
+
+    #[test]
+    fn test_webapp_scan_config_debug() {
+        let config = WebAppScanConfig::default();
+        let debug_str = format!("{:?}", config);
+
+        assert!(debug_str.contains("WebAppScanConfig"));
+        assert!(debug_str.contains("max_depth"));
+        assert!(debug_str.contains("max_pages"));
+    }
+
+    // ==================== URL Validation Tests ====================
+
+    #[test]
+    fn test_url_parse_valid_https() {
+        let url = Url::parse("https://example.com");
+        assert!(url.is_ok());
+    }
+
+    #[test]
+    fn test_url_parse_valid_http() {
+        let url = Url::parse("http://example.com");
+        assert!(url.is_ok());
+    }
+
+    #[test]
+    fn test_url_parse_with_path() {
+        let url = Url::parse("https://example.com/path/to/page");
+        assert!(url.is_ok());
+        assert_eq!(url.unwrap().path(), "/path/to/page");
+    }
+
+    #[test]
+    fn test_url_parse_with_query() {
+        let url = Url::parse("https://example.com/search?q=test&page=1");
+        assert!(url.is_ok());
+        assert!(url.unwrap().query().is_some());
+    }
+
+    #[test]
+    fn test_url_parse_invalid() {
+        let url = Url::parse("not a valid url");
+        assert!(url.is_err());
+    }
+
+    #[test]
+    fn test_url_parse_missing_scheme() {
+        let url = Url::parse("example.com");
+        assert!(url.is_err());
+    }
+
+    // ==================== Check Enabled Tests ====================
+
+    #[test]
+    fn test_checks_enabled_contains() {
+        let config = WebAppScanConfig::default();
+
+        assert!(config.checks_enabled.contains(&"headers".to_string()));
+        assert!(!config.checks_enabled.contains(&"nonexistent".to_string()));
+    }
+
+    #[test]
+    fn test_checks_enabled_empty() {
+        let config = WebAppScanConfig {
+            checks_enabled: vec![],
+            ..Default::default()
+        };
+
+        assert!(config.checks_enabled.is_empty());
+    }
+
+    #[test]
+    fn test_checks_enabled_single() {
+        let config = WebAppScanConfig {
+            checks_enabled: vec!["headers".to_string()],
+            ..Default::default()
+        };
+
+        assert_eq!(config.checks_enabled.len(), 1);
+        assert!(config.checks_enabled.contains(&"headers".to_string()));
+    }
+}

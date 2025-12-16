@@ -1186,8 +1186,9 @@ pub async fn update_scheduled_scan_execution(
 }
 
 /// Helper function for schedule calculation
-fn calculate_next_run(schedule_type: &str, schedule_value: &str) -> Result<DateTime<Utc>> {
-    use chrono::{Duration, NaiveTime};
+/// Supports: "daily", "weekly", "monthly", and "cron" schedule types
+pub fn calculate_next_run(schedule_type: &str, schedule_value: &str) -> Result<DateTime<Utc>> {
+    use chrono::{Duration, NaiveTime, Weekday, Datelike};
 
     let now = Utc::now();
 
@@ -1208,11 +1209,34 @@ fn calculate_next_run(schedule_type: &str, schedule_value: &str) -> Result<DateT
             if parts.len() != 2 {
                 return Err(anyhow::anyhow!("Invalid weekly format, expected 'DAY HH:MM'"));
             }
-            let _day = parts[0].to_lowercase();
+            let day_str = parts[0].to_lowercase();
             let time = NaiveTime::parse_from_str(parts[1], "%H:%M")
                 .map_err(|_| anyhow::anyhow!("Invalid time format"))?;
-            // Simplified: just add 7 days from now at the specified time
-            let next = now.date_naive().and_time(time).and_utc() + Duration::days(7);
+
+            // Parse the target day of week
+            let target_weekday = match day_str.as_str() {
+                "monday" | "mon" => Weekday::Mon,
+                "tuesday" | "tue" => Weekday::Tue,
+                "wednesday" | "wed" => Weekday::Wed,
+                "thursday" | "thu" => Weekday::Thu,
+                "friday" | "fri" => Weekday::Fri,
+                "saturday" | "sat" => Weekday::Sat,
+                "sunday" | "sun" => Weekday::Sun,
+                _ => return Err(anyhow::anyhow!("Invalid day of week: {}", day_str)),
+            };
+
+            // Calculate days until next occurrence
+            let current_weekday = now.weekday();
+            let days_until = (target_weekday.num_days_from_monday() as i64
+                - current_weekday.num_days_from_monday() as i64 + 7) % 7;
+
+            let mut next = now.date_naive().and_time(time).and_utc() + Duration::days(days_until);
+
+            // If the calculated time is in the past (same day but earlier time), add 7 days
+            if next <= now {
+                next = next + Duration::days(7);
+            }
+
             Ok(next)
         }
         "monthly" => {
@@ -1221,14 +1245,74 @@ fn calculate_next_run(schedule_type: &str, schedule_value: &str) -> Result<DateT
             if parts.len() != 2 {
                 return Err(anyhow::anyhow!("Invalid monthly format, expected 'DD HH:MM'"));
             }
+            let day: u32 = parts[0].parse()
+                .map_err(|_| anyhow::anyhow!("Invalid day of month: {}", parts[0]))?;
+            if day < 1 || day > 31 {
+                return Err(anyhow::anyhow!("Day of month must be between 1 and 31"));
+            }
             let time = NaiveTime::parse_from_str(parts[1], "%H:%M")
                 .map_err(|_| anyhow::anyhow!("Invalid time format"))?;
-            // Simplified: add 30 days
-            let next = now.date_naive().and_time(time).and_utc() + Duration::days(30);
+
+            // Try to create the date for this month
+            let mut year = now.year();
+            let mut month = now.month();
+
+            // Try current month first
+            if let Some(date) = chrono::NaiveDate::from_ymd_opt(year, month, day) {
+                let next = date.and_time(time).and_utc();
+                if next > now {
+                    return Ok(next);
+                }
+            }
+
+            // Move to next month
+            month += 1;
+            if month > 12 {
+                month = 1;
+                year += 1;
+            }
+
+            // Find the next valid date (handle months with fewer days)
+            loop {
+                if let Some(date) = chrono::NaiveDate::from_ymd_opt(year, month, day) {
+                    return Ok(date.and_time(time).and_utc());
+                }
+                // Day doesn't exist in this month (e.g., Feb 30), try next month
+                month += 1;
+                if month > 12 {
+                    month = 1;
+                    year += 1;
+                }
+                // Safety check to prevent infinite loop
+                if year > now.year() + 2 {
+                    return Err(anyhow::anyhow!("Could not find valid date for day {}", day));
+                }
+            }
+        }
+        "cron" => {
+            // schedule_value format: standard cron expression
+            // e.g., "0 2 * * *" (every day at 2 AM)
+            // e.g., "0 0 * * 1" (every Monday at midnight)
+            // e.g., "0 */6 * * *" (every 6 hours)
+            use cron::Schedule;
+            use std::str::FromStr;
+
+            let schedule = Schedule::from_str(schedule_value)
+                .map_err(|e| anyhow::anyhow!("Invalid cron expression '{}': {}", schedule_value, e))?;
+
+            // Get the next occurrence after now
+            let next = schedule.upcoming(chrono::Utc)
+                .next()
+                .ok_or_else(|| anyhow::anyhow!("Could not calculate next run time from cron expression"))?;
+
             Ok(next)
         }
         _ => {
-            // Default: run in 24 hours
+            // Unknown schedule type - log warning and default to 24 hours
+            log::warn!(
+                "Unknown schedule_type '{}', defaulting to 24 hours from now",
+                schedule_type
+            );
             Ok(now + Duration::days(1))
         }
     }
@@ -3248,5 +3332,166 @@ pub async fn delete_siem_settings(
     .await?;
 
     Ok(result.rows_affected() > 0)
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{Datelike, Timelike, Weekday};
+
+    #[test]
+    fn test_calculate_next_run_daily() {
+        // Test daily schedule
+        let next = calculate_next_run("daily", "02:00").expect("Failed to calculate daily schedule");
+
+        // Should be at 02:00
+        assert_eq!(next.hour(), 2);
+        assert_eq!(next.minute(), 0);
+
+        // Should be in the future
+        assert!(next > Utc::now());
+    }
+
+    #[test]
+    fn test_calculate_next_run_daily_next_day() {
+        // If we specify a time that's already passed today, it should be tomorrow
+        let now = Utc::now();
+        let test_time = format!("{:02}:{:02}", (now.hour() + 23) % 24, 0);
+
+        let next = calculate_next_run("daily", &test_time).expect("Failed to calculate daily schedule");
+
+        // Should be in the future
+        assert!(next > now);
+    }
+
+    #[test]
+    fn test_calculate_next_run_weekly() {
+        // Test weekly schedule
+        let next = calculate_next_run("weekly", "monday 02:00").expect("Failed to calculate weekly schedule");
+
+        // Should be at 02:00
+        assert_eq!(next.hour(), 2);
+        assert_eq!(next.minute(), 0);
+
+        // Should be on Monday
+        assert_eq!(next.weekday(), Weekday::Mon);
+
+        // Should be in the future
+        assert!(next > Utc::now());
+    }
+
+    #[test]
+    fn test_calculate_next_run_weekly_abbreviated() {
+        // Test weekly schedule with abbreviated day names
+        let next = calculate_next_run("weekly", "fri 14:30").expect("Failed to calculate weekly schedule");
+
+        // Should be at 14:30
+        assert_eq!(next.hour(), 14);
+        assert_eq!(next.minute(), 30);
+
+        // Should be on Friday
+        assert_eq!(next.weekday(), Weekday::Fri);
+
+        // Should be in the future
+        assert!(next > Utc::now());
+    }
+
+    #[test]
+    fn test_calculate_next_run_monthly() {
+        // Test monthly schedule
+        let next = calculate_next_run("monthly", "15 03:00").expect("Failed to calculate monthly schedule");
+
+        // Should be at 03:00
+        assert_eq!(next.hour(), 3);
+        assert_eq!(next.minute(), 0);
+
+        // Should be on day 15
+        assert_eq!(next.day(), 15);
+
+        // Should be in the future
+        assert!(next > Utc::now());
+    }
+
+    #[test]
+    fn test_calculate_next_run_cron() {
+        // Test cron expression: every day at 4 AM
+        let next = calculate_next_run("cron", "0 0 4 * * *").expect("Failed to calculate cron schedule");
+
+        // Should be at 04:00
+        assert_eq!(next.hour(), 4);
+        assert_eq!(next.minute(), 0);
+
+        // Should be in the future
+        assert!(next > Utc::now());
+    }
+
+    #[test]
+    fn test_calculate_next_run_cron_complex() {
+        // Test cron expression: every Monday at 2:30 AM
+        // Note: cron crate uses seconds field, format is: sec min hour day_of_month month day_of_week
+        // Day of week: 0 and 7 = Sunday, 1 = Monday
+        let next = calculate_next_run("cron", "0 30 2 * * Mon").expect("Failed to calculate cron schedule");
+
+        // Should be at 02:30
+        assert_eq!(next.hour(), 2);
+        assert_eq!(next.minute(), 30);
+
+        // Should be on Monday
+        assert_eq!(next.weekday(), Weekday::Mon);
+
+        // Should be in the future
+        assert!(next > Utc::now());
+    }
+
+    #[test]
+    fn test_calculate_next_run_invalid_daily() {
+        // Test invalid daily format
+        let result = calculate_next_run("daily", "invalid");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_calculate_next_run_invalid_weekly() {
+        // Test invalid weekly format - missing day
+        let result = calculate_next_run("weekly", "02:00");
+        assert!(result.is_err());
+
+        // Test invalid day name
+        let result = calculate_next_run("weekly", "funday 02:00");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_calculate_next_run_invalid_monthly() {
+        // Test invalid monthly format - day out of range
+        let result = calculate_next_run("monthly", "32 02:00");
+        assert!(result.is_err());
+
+        // Test invalid monthly format - missing time
+        let result = calculate_next_run("monthly", "15");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_calculate_next_run_invalid_cron() {
+        // Test invalid cron expression
+        let result = calculate_next_run("cron", "invalid cron");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_calculate_next_run_unknown_type() {
+        // Unknown schedule type should default to 24 hours
+        let now = Utc::now();
+        let next = calculate_next_run("unknown_type", "some_value").expect("Should handle unknown type");
+
+        // Should be approximately 24 hours from now
+        let diff = next - now;
+        assert!(diff.num_hours() >= 23 && diff.num_hours() <= 25);
+    }
 }
 

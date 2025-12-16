@@ -159,7 +159,7 @@ impl Default for ScanConfig {
 }
 
 // DNS Reconnaissance result (re-exported from scanner module)
-pub use crate::scanner::dns_recon::{DnsReconResult, DnsRecord};
+pub use crate::scanner::dns_recon::DnsReconResult;
 
 // WebSocket progress message types
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -13,6 +13,8 @@ const NotificationSettings: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [testingSlack, setTestingSlack] = useState(false);
   const [testingTeams, setTestingTeams] = useState(false);
+  const [testingEmail, setTestingEmail] = useState(false);
+  const [smtpConfigured, setSmtpConfigured] = useState<boolean | null>(null);
   const [formData, setFormData] = useState({
     email_on_scan_complete: false,
     email_on_critical_vuln: true,
@@ -23,6 +25,7 @@ const NotificationSettings: React.FC = () => {
 
   useEffect(() => {
     loadSettings();
+    checkSmtpStatus();
   }, []);
 
   const loadSettings = async () => {
@@ -45,6 +48,16 @@ const NotificationSettings: React.FC = () => {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const checkSmtpStatus = async () => {
+    try {
+      const response = await notificationAPI.checkSmtpStatus();
+      setSmtpConfigured(response.data.configured);
+    } catch (error) {
+      console.error('Failed to check SMTP status:', error);
+      setSmtpConfigured(false);
     }
   };
 
@@ -112,6 +125,33 @@ const NotificationSettings: React.FC = () => {
     }
   };
 
+  const handleTestEmail = async () => {
+    if (!formData.email_address) {
+      toast.error('Please enter an email address first');
+      return;
+    }
+
+    if (!smtpConfigured) {
+      toast.error('SMTP is not configured on the server. Contact your administrator.');
+      return;
+    }
+
+    setTestingEmail(true);
+    try {
+      // Save first if there are unsaved changes
+      if (formData.email_address !== settings?.email_address) {
+        await notificationAPI.updateSettings({ email_address: formData.email_address });
+      }
+
+      const response = await notificationAPI.testEmail();
+      toast.success(response.data.message);
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to send test email');
+    } finally {
+      setTestingEmail(false);
+    }
+  };
+
   if (loading) {
     return (
       <Card>
@@ -136,19 +176,57 @@ const NotificationSettings: React.FC = () => {
             <label className="block text-sm font-medium text-slate-300 mb-2">
               Notification Email Address
             </label>
-            <div className="relative">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-              <input
-                type="email"
-                value={formData.email_address}
-                onChange={(e) => setFormData({ ...formData, email_address: e.target.value })}
-                className="w-full bg-dark-bg border border-dark-border rounded-lg pl-10 pr-4 py-2 text-white focus:ring-2 focus:ring-primary focus:border-transparent"
-                placeholder="your@email.com"
-              />
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <input
+                  type="email"
+                  value={formData.email_address}
+                  onChange={(e) => setFormData({ ...formData, email_address: e.target.value })}
+                  className="w-full bg-dark-bg border border-dark-border rounded-lg pl-10 pr-4 py-2 text-white focus:ring-2 focus:ring-primary focus:border-transparent"
+                  placeholder="your@email.com"
+                />
+              </div>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={handleTestEmail}
+                disabled={!formData.email_address || testingEmail || !smtpConfigured}
+                title={!smtpConfigured ? 'SMTP not configured on server' : 'Send test email'}
+              >
+                {testingEmail ? (
+                  <>
+                    <LoadingSpinner />
+                    <span className="ml-2">Sending...</span>
+                  </>
+                ) : (
+                  <>
+                    <Send className="h-4 w-4 mr-2" />
+                    Test
+                  </>
+                )}
+              </Button>
             </div>
-            <p className="text-xs text-slate-500 mt-1">
-              Email address where notifications will be sent
-            </p>
+            <div className="flex items-center justify-between mt-1">
+              <p className="text-xs text-slate-500">
+                Email address where notifications will be sent
+              </p>
+              {smtpConfigured !== null && (
+                <span className={`text-xs flex items-center gap-1 ${smtpConfigured ? 'text-green-400' : 'text-amber-400'}`}>
+                  {smtpConfigured ? (
+                    <>
+                      <CheckCircle className="h-3 w-3" />
+                      SMTP configured
+                    </>
+                  ) : (
+                    <>
+                      <AlertTriangle className="h-3 w-3" />
+                      SMTP not configured
+                    </>
+                  )}
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Notification Options */}
@@ -198,20 +276,38 @@ const NotificationSettings: React.FC = () => {
             </label>
           </div>
 
-          {/* Info Box */}
-          <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-            <div className="flex items-start gap-3">
-              <Mail className="h-5 w-5 text-blue-400 mt-0.5" />
-              <div>
-                <p className="text-sm text-blue-200">
-                  Email notifications require SMTP to be configured on the server.
-                </p>
-                <p className="text-xs text-blue-300/70 mt-1">
-                  Contact your administrator if you're not receiving emails.
-                </p>
+          {/* Info Box - Show different message based on SMTP status */}
+          {smtpConfigured === false ? (
+            <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="h-5 w-5 text-amber-400 mt-0.5" />
+                <div>
+                  <p className="text-sm text-amber-200">
+                    SMTP is not configured on this server. Email notifications are disabled.
+                  </p>
+                  <p className="text-xs text-amber-300/70 mt-1">
+                    Contact your administrator to configure SMTP settings (SMTP_HOST, SMTP_USER, etc.)
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+              <div className="flex items-start gap-3">
+                <Mail className="h-5 w-5 text-blue-400 mt-0.5" />
+                <div>
+                  <p className="text-sm text-blue-200">
+                    {smtpConfigured
+                      ? 'Email notifications are ready. Use the Test button to verify delivery.'
+                      : 'Checking SMTP configuration...'}
+                  </p>
+                  <p className="text-xs text-blue-300/70 mt-1">
+                    Contact your administrator if you're not receiving emails.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Webhook Integrations */}
           <div className="space-y-4 pt-4 border-t border-dark-border">

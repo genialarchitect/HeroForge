@@ -1,3 +1,6 @@
+// Allow unused code for internal helper functions
+#![allow(dead_code)]
+
 use anyhow::Result;
 use log::{debug, info, warn};
 use reqwest::Client;
@@ -187,4 +190,382 @@ fn is_disallowed(url: &Url, disallowed_paths: &HashSet<String>) -> bool {
         }
     }
     false
+}
+
+/// Parse robots.txt content and extract disallowed paths
+fn parse_robots_txt(content: &str) -> HashSet<String> {
+    let mut disallowed = HashSet::new();
+    for line in content.lines() {
+        let line = line.trim();
+        if line.to_lowercase().starts_with("disallow:") {
+            if let Some(path) = line.split(':').nth(1) {
+                let path = path.trim();
+                if !path.is_empty() {
+                    disallowed.insert(path.to_string());
+                }
+            }
+        }
+    }
+    disallowed
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ==================== URL Extraction Tests ====================
+
+    #[test]
+    fn test_extract_links_absolute_urls() {
+        let html = r#"
+            <html>
+            <body>
+                <a href="https://example.com/page1">Page 1</a>
+                <a href="https://example.com/page2">Page 2</a>
+            </body>
+            </html>
+        "#;
+        let base_url = Url::parse("https://example.com/").unwrap();
+        let links = extract_links(html, &base_url);
+
+        assert_eq!(links.len(), 2);
+        assert!(links.iter().any(|u| u.as_str() == "https://example.com/page1"));
+        assert!(links.iter().any(|u| u.as_str() == "https://example.com/page2"));
+    }
+
+    #[test]
+    fn test_extract_links_relative_urls() {
+        let html = r#"
+            <html>
+            <body>
+                <a href="/about">About</a>
+                <a href="contact.html">Contact</a>
+                <a href="../parent">Parent</a>
+            </body>
+            </html>
+        "#;
+        let base_url = Url::parse("https://example.com/subdir/page.html").unwrap();
+        let links = extract_links(html, &base_url);
+
+        assert_eq!(links.len(), 3);
+        assert!(links.iter().any(|u| u.as_str() == "https://example.com/about"));
+        assert!(links.iter().any(|u| u.as_str() == "https://example.com/subdir/contact.html"));
+        assert!(links.iter().any(|u| u.as_str() == "https://example.com/parent"));
+    }
+
+    #[test]
+    fn test_extract_links_skips_javascript() {
+        let html = r#"
+            <html>
+            <body>
+                <a href="javascript:void(0)">Click</a>
+                <a href="javascript:alert('xss')">Alert</a>
+                <a href="/real-link">Real Link</a>
+            </body>
+            </html>
+        "#;
+        let base_url = Url::parse("https://example.com/").unwrap();
+        let links = extract_links(html, &base_url);
+
+        assert_eq!(links.len(), 1);
+        assert_eq!(links[0].as_str(), "https://example.com/real-link");
+    }
+
+    #[test]
+    fn test_extract_links_skips_mailto() {
+        let html = r#"
+            <html>
+            <body>
+                <a href="mailto:test@example.com">Email</a>
+                <a href="tel:+1234567890">Call</a>
+                <a href="/contact">Contact Page</a>
+            </body>
+            </html>
+        "#;
+        let base_url = Url::parse("https://example.com/").unwrap();
+        let links = extract_links(html, &base_url);
+
+        assert_eq!(links.len(), 1);
+        assert_eq!(links[0].as_str(), "https://example.com/contact");
+    }
+
+    #[test]
+    fn test_extract_links_skips_fragments() {
+        let html = r##"
+            <html>
+            <body>
+                <a href="#section1">Section 1</a>
+                <a href="#top">Top</a>
+                <a href="/page#anchor">Page with Anchor</a>
+            </body>
+            </html>
+        "##;
+        let base_url = Url::parse("https://example.com/").unwrap();
+        let links = extract_links(html, &base_url);
+
+        // Pure fragments are skipped, but URLs with fragments are kept
+        assert_eq!(links.len(), 1);
+        assert!(links[0].as_str().contains("/page"));
+    }
+
+    #[test]
+    fn test_extract_links_empty_html() {
+        let html = "";
+        let base_url = Url::parse("https://example.com/").unwrap();
+        let links = extract_links(html, &base_url);
+
+        assert!(links.is_empty());
+    }
+
+    #[test]
+    fn test_extract_links_no_anchor_tags() {
+        let html = r#"
+            <html>
+            <body>
+                <p>No links here</p>
+                <div>Just some text</div>
+            </body>
+            </html>
+        "#;
+        let base_url = Url::parse("https://example.com/").unwrap();
+        let links = extract_links(html, &base_url);
+
+        assert!(links.is_empty());
+    }
+
+    #[test]
+    fn test_extract_links_only_http_https() {
+        let html = r#"
+            <html>
+            <body>
+                <a href="ftp://example.com/file">FTP</a>
+                <a href="file:///etc/passwd">File</a>
+                <a href="http://example.com/http">HTTP</a>
+                <a href="https://example.com/https">HTTPS</a>
+            </body>
+            </html>
+        "#;
+        let base_url = Url::parse("https://example.com/").unwrap();
+        let links = extract_links(html, &base_url);
+
+        assert_eq!(links.len(), 2);
+        assert!(links.iter().any(|u| u.scheme() == "http"));
+        assert!(links.iter().any(|u| u.scheme() == "https"));
+    }
+
+    // ==================== Robots.txt Parsing Tests ====================
+
+    #[test]
+    fn test_parse_robots_txt_basic() {
+        let content = r#"
+User-agent: *
+Disallow: /admin
+Disallow: /private
+Allow: /public
+"#;
+        let disallowed = parse_robots_txt(content);
+
+        assert_eq!(disallowed.len(), 2);
+        assert!(disallowed.contains("/admin"));
+        assert!(disallowed.contains("/private"));
+    }
+
+    #[test]
+    fn test_parse_robots_txt_case_insensitive() {
+        let content = r#"
+User-agent: *
+DISALLOW: /Admin
+disallow: /Private
+Disallow: /SECRET
+"#;
+        let disallowed = parse_robots_txt(content);
+
+        assert_eq!(disallowed.len(), 3);
+        assert!(disallowed.contains("/Admin"));
+        assert!(disallowed.contains("/Private"));
+        assert!(disallowed.contains("/SECRET"));
+    }
+
+    #[test]
+    fn test_parse_robots_txt_empty_disallow() {
+        let content = r#"
+User-agent: *
+Disallow:
+Disallow: /valid
+"#;
+        let disallowed = parse_robots_txt(content);
+
+        // Empty disallow should be ignored
+        assert_eq!(disallowed.len(), 1);
+        assert!(disallowed.contains("/valid"));
+    }
+
+    #[test]
+    fn test_parse_robots_txt_with_whitespace() {
+        let content = r#"
+User-agent: *
+Disallow:   /admin
+Disallow:  /private
+"#;
+        let disallowed = parse_robots_txt(content);
+
+        assert_eq!(disallowed.len(), 2);
+        assert!(disallowed.contains("/admin"));
+        assert!(disallowed.contains("/private"));
+    }
+
+    #[test]
+    fn test_parse_robots_txt_empty_content() {
+        let content = "";
+        let disallowed = parse_robots_txt(content);
+
+        assert!(disallowed.is_empty());
+    }
+
+    #[test]
+    fn test_parse_robots_txt_no_disallow() {
+        let content = r#"
+User-agent: *
+Allow: /
+"#;
+        let disallowed = parse_robots_txt(content);
+
+        assert!(disallowed.is_empty());
+    }
+
+    // ==================== is_disallowed Tests ====================
+
+    #[test]
+    fn test_is_disallowed_exact_match() {
+        let mut disallowed = HashSet::new();
+        disallowed.insert("/admin".to_string());
+        disallowed.insert("/private".to_string());
+
+        let url = Url::parse("https://example.com/admin").unwrap();
+        assert!(is_disallowed(&url, &disallowed));
+
+        let url = Url::parse("https://example.com/admin/users").unwrap();
+        assert!(is_disallowed(&url, &disallowed));
+    }
+
+    #[test]
+    fn test_is_disallowed_prefix_match() {
+        let mut disallowed = HashSet::new();
+        disallowed.insert("/admin".to_string());
+
+        let url = Url::parse("https://example.com/admin/settings").unwrap();
+        assert!(is_disallowed(&url, &disallowed));
+
+        let url = Url::parse("https://example.com/admin123").unwrap();
+        assert!(is_disallowed(&url, &disallowed));
+    }
+
+    #[test]
+    fn test_is_disallowed_not_matching() {
+        let mut disallowed = HashSet::new();
+        disallowed.insert("/admin".to_string());
+        disallowed.insert("/private".to_string());
+
+        let url = Url::parse("https://example.com/public").unwrap();
+        assert!(!is_disallowed(&url, &disallowed));
+
+        let url = Url::parse("https://example.com/").unwrap();
+        assert!(!is_disallowed(&url, &disallowed));
+    }
+
+    #[test]
+    fn test_is_disallowed_empty_set() {
+        let disallowed = HashSet::new();
+
+        let url = Url::parse("https://example.com/anything").unwrap();
+        assert!(!is_disallowed(&url, &disallowed));
+    }
+
+    #[test]
+    fn test_is_disallowed_root() {
+        let mut disallowed = HashSet::new();
+        disallowed.insert("/".to_string());
+
+        let url = Url::parse("https://example.com/anything").unwrap();
+        assert!(is_disallowed(&url, &disallowed));
+
+        let url = Url::parse("https://example.com/").unwrap();
+        assert!(is_disallowed(&url, &disallowed));
+    }
+
+    // ==================== is_same_domain Tests ====================
+
+    #[test]
+    fn test_is_same_domain_exact() {
+        let url1 = Url::parse("https://example.com/page1").unwrap();
+        let url2 = Url::parse("https://example.com/page2").unwrap();
+        assert!(is_same_domain(&url1, &url2));
+    }
+
+    #[test]
+    fn test_is_same_domain_different_schemes() {
+        let url1 = Url::parse("http://example.com/page1").unwrap();
+        let url2 = Url::parse("https://example.com/page2").unwrap();
+        assert!(is_same_domain(&url1, &url2));
+    }
+
+    #[test]
+    fn test_is_same_domain_different_domains() {
+        let url1 = Url::parse("https://example.com/page1").unwrap();
+        let url2 = Url::parse("https://other.com/page2").unwrap();
+        assert!(!is_same_domain(&url1, &url2));
+    }
+
+    #[test]
+    fn test_is_same_domain_subdomain() {
+        let url1 = Url::parse("https://www.example.com/page1").unwrap();
+        let url2 = Url::parse("https://example.com/page2").unwrap();
+        // Subdomains are treated as different hosts
+        assert!(!is_same_domain(&url1, &url2));
+    }
+
+    #[test]
+    fn test_is_same_domain_different_ports() {
+        let url1 = Url::parse("https://example.com:8080/page1").unwrap();
+        let url2 = Url::parse("https://example.com/page2").unwrap();
+        // Host comparison doesn't include port
+        assert!(is_same_domain(&url1, &url2));
+    }
+
+    // ==================== normalize_url Tests ====================
+
+    #[test]
+    fn test_normalize_url_removes_fragment() {
+        let url = Url::parse("https://example.com/page#section").unwrap();
+        let normalized = normalize_url(&url);
+        assert_eq!(normalized, "https://example.com/page");
+    }
+
+    #[test]
+    fn test_normalize_url_removes_trailing_slash() {
+        let url = Url::parse("https://example.com/page/").unwrap();
+        let normalized = normalize_url(&url);
+        assert_eq!(normalized, "https://example.com/page");
+    }
+
+    #[test]
+    fn test_normalize_url_preserves_root_slash() {
+        let url = Url::parse("https://example.com/").unwrap();
+        let normalized = normalize_url(&url);
+        assert_eq!(normalized, "https://example.com/");
+    }
+
+    #[test]
+    fn test_normalize_url_preserves_query() {
+        let url = Url::parse("https://example.com/search?q=test").unwrap();
+        let normalized = normalize_url(&url);
+        assert_eq!(normalized, "https://example.com/search?q=test");
+    }
+
+    #[test]
+    fn test_normalize_url_removes_fragment_preserves_query() {
+        let url = Url::parse("https://example.com/search?q=test#results").unwrap();
+        let normalized = normalize_url(&url);
+        assert_eq!(normalized, "https://example.com/search?q=test");
+    }
 }

@@ -1,7 +1,6 @@
-use anyhow::Result;
 use sqlx::SqlitePool;
 
-use super::{NotificationEvent, Notifier, SlackNotifier, TeamsNotifier};
+use super::{EmailConfig, EmailNotifier, NotificationEvent, Notifier, SlackNotifier, TeamsNotifier};
 use crate::db;
 use crate::types::{HostInfo, Severity};
 
@@ -80,6 +79,26 @@ pub async fn send_scan_completion_notification(
             } else {
                 log::info!("Sent Teams notification for completed scan '{}'", scan_name);
             }
+        }
+    }
+
+    // Send email if enabled and SMTP is configured
+    if settings.email_on_scan_complete && !settings.email_address.is_empty() {
+        if EmailConfig::is_configured() {
+            match EmailNotifier::from_env(settings.email_address.clone()) {
+                Ok(notifier) => {
+                    if let Err(e) = notifier.send_notification(&event).await {
+                        log::error!("Failed to send email notification for scan '{}': {}", scan_name, e);
+                    } else {
+                        log::info!("Sent email notification for completed scan '{}' to {}", scan_name, settings.email_address);
+                    }
+                }
+                Err(e) => {
+                    log::error!("Failed to create email notifier: {}", e);
+                }
+            }
+        } else {
+            log::debug!("Email notification requested but SMTP not configured");
         }
     }
 }
@@ -188,6 +207,24 @@ pub async fn send_critical_vulnerability_notifications(
                     log::error!("Failed to send Teams critical vuln notification: {}", e);
                 } else {
                     log::debug!("Sent Teams notification for critical vulnerability");
+                }
+            }
+        }
+
+        // Send email if enabled and SMTP is configured
+        if !settings.email_address.is_empty() {
+            if EmailConfig::is_configured() {
+                match EmailNotifier::from_env(settings.email_address.clone()) {
+                    Ok(notifier) => {
+                        if let Err(e) = notifier.send_notification(&event).await {
+                            log::error!("Failed to send email critical vuln notification: {}", e);
+                        } else {
+                            log::debug!("Sent email notification for critical vulnerability to {}", settings.email_address);
+                        }
+                    }
+                    Err(e) => {
+                        log::error!("Failed to create email notifier: {}", e);
+                    }
                 }
             }
         }

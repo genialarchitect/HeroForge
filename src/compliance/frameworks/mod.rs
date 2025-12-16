@@ -7,6 +7,9 @@
 //! - Vulnerability-to-control mapping functions
 //! - Framework-specific check implementations
 
+// Allow dead code for framework helper functions - kept for future API expansion
+#![allow(dead_code)]
+
 pub mod cis;
 pub mod nist_800_53;
 pub mod nist_csf;

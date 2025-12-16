@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { toast } from 'react-toastify';
 import { useScanStore } from '../../store/scanStore';
-import { scanAPI } from '../../services/api';
+import { scanAPI, siemAPI } from '../../services/api';
 import { calculateHostRiskScore, getRiskLevel } from '../../utils/riskScoring';
 import Card from '../ui/Card';
 import Badge from '../ui/Badge';
@@ -14,7 +14,7 @@ import Input from '../ui/Input';
 import { ReportGenerator, ReportList } from '../reports';
 import { ComplianceAnalysis } from '../compliance';
 import NetworkMap from '../topology/NetworkMap';
-import { Server, Shield, AlertTriangle, Search, SlidersHorizontal, FileText, ClipboardCheck, List, Network } from 'lucide-react';
+import { Server, Shield, AlertTriangle, Search, SlidersHorizontal, FileText, ClipboardCheck, List, Network, Database } from 'lucide-react';
 
 type SortOption = 'ip' | 'risk' | 'vulns' | 'ports';
 type FilterOption = 'all' | 'with-vulns' | 'critical' | 'high';
@@ -32,6 +32,7 @@ const ResultsViewer: React.FC = () => {
   const [showComplianceAnalysis, setShowComplianceAnalysis] = useState(false);
   const [reportListKey, setReportListKey] = useState(0);
   const [activeTab, setActiveTab] = useState<ViewTab>('results');
+  const [exportingToSiem, setExportingToSiem] = useState(false);
 
   const scanResults = activeScan ? results.get(activeScan.id) || [] : [];
 
@@ -52,6 +53,35 @@ const ResultsViewer: React.FC = () => {
       toast.error('Failed to load scan results');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleExportToSiem = async () => {
+    if (!activeScan) return;
+
+    setExportingToSiem(true);
+    try {
+      const response = await siemAPI.exportScan(activeScan.id);
+      if (response.data.success) {
+        toast.success(
+          `Exported ${response.data.events_count} events to ${response.data.exported_to} SIEM integration(s)`
+        );
+      } else {
+        toast.warning('Export completed with issues. Check SIEM settings.');
+      }
+      if (response.data.errors && response.data.errors.length > 0) {
+        response.data.errors.forEach((error) => {
+          toast.error(`SIEM export error: ${error}`);
+        });
+      }
+    } catch (error: any) {
+      if (error.response?.status === 404) {
+        toast.error('No SIEM integrations configured. Go to Settings > SIEM Integration to set up.');
+      } else {
+        toast.error(error.response?.data?.error || 'Failed to export to SIEM');
+      }
+    } finally {
+      setExportingToSiem(false);
     }
   };
 
@@ -232,6 +262,19 @@ const ResultsViewer: React.FC = () => {
             >
               <ClipboardCheck className="h-4 w-4" />
               Compliance
+            </button>
+            <button
+              onClick={handleExportToSiem}
+              disabled={activeScan?.status !== 'completed' || exportingToSiem}
+              className="px-4 py-2 rounded-lg border border-purple-500 text-purple-500 hover:bg-purple-500/10 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Export scan results to configured SIEM integrations"
+            >
+              {exportingToSiem ? (
+                <LoadingSpinner />
+              ) : (
+                <Database className="h-4 w-4" />
+              )}
+              {exportingToSiem ? 'Exporting...' : 'SIEM'}
             </button>
             <button
               onClick={() => setShowReportGenerator(true)}

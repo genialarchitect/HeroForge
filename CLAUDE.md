@@ -158,53 +158,172 @@ src/
 | `/dashboard` | Scan list and new scan form |
 | `/dashboard/:scanId` | Scan details with results/progress |
 | `/admin` | Admin panel (requires admin role) |
-| `/settings` | Target Groups, Scheduled Scans, Templates, Notifications, Profile |
+| `/settings` | Target Groups, Scheduled Scans, Templates, Notifications, Profile, API Keys, JIRA, SIEM |
 | `/assets` | Asset inventory management |
 | `/webapp-scan` | Web application security scanning |
 | `/dns-tools` | DNS reconnaissance tools |
 | `/compliance` | Compliance framework analysis |
+| `/remediation` | Vulnerability remediation workflow board |
 
 ### REST API Endpoints
 
-**Authentication:** `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/me`
+#### Authentication & User Management
+- `POST /api/auth/register` - Register new user
+- `POST /api/auth/login` - Login and receive JWT token
+- `POST /api/auth/refresh` - Refresh JWT token
+- `POST /api/auth/logout` - Logout user
+- `GET /api/auth/me` - Get current user info
+- `PUT /api/auth/profile` - Update user profile
+- `PUT /api/auth/password` - Change password
 
-**MFA:** `POST /api/mfa/setup`, `POST /api/mfa/verify`, `POST /api/mfa/disable`
+#### MFA (Multi-Factor Authentication)
+- `POST /api/auth/mfa/setup` - Initialize MFA setup (returns TOTP secret)
+- `POST /api/auth/mfa/verify-setup` - Complete MFA setup with verification code
+- `POST /api/auth/mfa/verify` - Verify MFA during login (public endpoint)
+- `DELETE /api/auth/mfa` - Disable MFA
+- `POST /api/auth/mfa/recovery-codes` - Regenerate recovery codes
 
-**Scans:** `GET|POST /api/scans`, `GET|DELETE /api/scans/{id}`, `POST /api/scans/compare`
+#### GDPR Compliance
+- `GET /api/auth/terms-status` - Get terms acceptance status
+- `POST /api/auth/accept-terms` - Accept terms of service
+- `GET /api/auth/export` - Export all user data (GDPR data portability)
+- `DELETE /api/auth/account` - Delete user account and all data
 
-**Reports:** `GET|POST /api/reports`, `GET /api/reports/{id}`, `GET /api/reports/{id}/download`
+#### Scans
+- `GET /api/scans` - List all scans
+- `POST /api/scans` - Create new scan (rate limited: 10/hour)
+- `GET /api/scans/stats` - Get aggregated scan statistics
+- `GET /api/scans/{id}` - Get scan details
+- `DELETE /api/scans/{id}` - Delete scan
+- `GET /api/scans/{id}/results` - Get scan results
+- `GET /api/scans/{id}/export` - Export scan as CSV
+- `GET /api/scans/{id}/topology` - Get network topology visualization data
+- `POST /api/scans/compare` - Compare two scan results
+- `POST /api/scans/bulk-export` - Bulk export multiple scans
+- `POST /api/scans/bulk-delete` - Bulk delete multiple scans
+- `GET /api/scan-presets` - Get predefined scan configurations
 
-**Templates:** CRUD at `/api/templates`, `POST /api/templates/{id}/scan` to create scan from template
+#### Reports
+- `POST /api/reports` - Generate report (JSON, HTML, PDF, CSV)
+- `GET /api/reports` - List all reports
+- `GET /api/reports/templates` - Get report templates
+- `GET /api/reports/{id}` - Get report details
+- `GET /api/reports/{id}/download` - Download report file
+- `DELETE /api/reports/{id}` - Delete report
 
-**Target Groups:** CRUD at `/api/target-groups`
+#### Scan Templates
+- `POST /api/templates` - Create scan template
+- `GET /api/templates` - List templates
+- `GET /api/templates/{id}` - Get template details
+- `PUT /api/templates/{id}` - Update template
+- `DELETE /api/templates/{id}` - Delete template
+- `GET /api/templates/{id}/export` - Export template as JSON
+- `POST /api/templates/import` - Import template from JSON
+- `POST /api/templates/{id}/scan` - Create scan from template
 
-**Scheduled Scans:** CRUD at `/api/scheduled-scans`
+#### Target Groups
+- `POST /api/target-groups` - Create target group
+- `GET /api/target-groups` - List target groups
+- `GET /api/target-groups/{id}` - Get target group
+- `PUT /api/target-groups/{id}` - Update target group
+- `DELETE /api/target-groups/{id}` - Delete target group
 
-**Notifications:** `GET|PUT /api/notifications/settings`
+#### Scheduled Scans
+- `POST /api/scheduled-scans` - Create scheduled scan
+- `GET /api/scheduled-scans` - List scheduled scans
+- `GET /api/scheduled-scans/{id}` - Get scheduled scan
+- `PUT /api/scheduled-scans/{id}` - Update scheduled scan
+- `DELETE /api/scheduled-scans/{id}` - Delete scheduled scan
+- `GET /api/scheduled-scans/{id}/history` - Get execution history
 
-**Analytics:** `GET /api/analytics/dashboard`, `GET /api/analytics/trends`
+#### Notifications
+- `GET /api/notifications/settings` - Get notification settings
+- `PUT /api/notifications/settings` - Update notification settings
+- `POST /api/notifications/test-slack` - Test Slack webhook
+- `POST /api/notifications/test-teams` - Test Microsoft Teams webhook
 
-**Admin:** `GET /api/admin/users`, `PUT /api/admin/users/{id}/roles`, `DELETE /api/admin/users/{id}`, `GET /api/admin/audit-logs`
+#### Analytics
+- `GET /api/analytics/summary` - Get analytics summary
+- `GET /api/analytics/hosts` - Get hosts discovered over time
+- `GET /api/analytics/vulnerabilities` - Get vulnerabilities over time
+- `GET /api/analytics/services` - Get top services found
+- `GET /api/analytics/frequency` - Get scan frequency data
 
-**Compliance:** `/api/compliance/*` - Framework analysis and reporting
+#### Asset Inventory
+- `GET /api/assets` - List assets (filters: `status`, `tags`, `days_inactive`)
+- `GET /api/assets/{id}` - Get asset details
+- `PATCH /api/assets/{id}` - Update asset metadata (status, tags, notes)
+- `DELETE /api/assets/{id}` - Delete asset
+- `GET /api/assets/{id}/history` - Get asset scan history
 
-**Vulnerabilities:** `/api/vulnerabilities/*` - Vulnerability management and remediation
+#### Vulnerability Management
+- `GET /api/vulnerabilities` - List vulnerabilities (requires `scan_id`, optional `status`, `severity`)
+- `GET /api/vulnerabilities/stats` - Get vulnerability statistics
+- `GET /api/vulnerabilities/{id}` - Get vulnerability details
+- `PUT /api/vulnerabilities/{id}` - Update vulnerability (status, assignee, notes, due_date)
+- `POST /api/vulnerabilities/{id}/comments` - Add comment to vulnerability
+- `GET /api/vulnerabilities/{id}/timeline` - Get vulnerability remediation timeline
+- `POST /api/vulnerabilities/{id}/verify` - Mark vulnerability for re-verification
+- `POST /api/vulnerabilities/bulk-update` - Bulk update vulnerability status
+- `POST /api/vulnerabilities/bulk-export` - Bulk export to CSV/JSON
+- `POST /api/vulnerabilities/bulk-assign` - Bulk assign to user
 
-**Assets:** `/api/assets/*` - Asset inventory CRUD
+#### Compliance
+- `GET /api/compliance/frameworks` - List available compliance frameworks
+- `GET /api/compliance/frameworks/{id}` - Get framework details
+- `GET /api/compliance/frameworks/{id}/controls` - Get framework controls
+- `POST /api/scans/{id}/compliance` - Run compliance analysis on scan
+- `GET /api/scans/{id}/compliance` - Get compliance results for scan
+- `POST /api/scans/{id}/compliance/report` - Generate compliance report (PDF/HTML/JSON)
+- `GET /api/compliance/reports/{id}/download` - Download compliance report
 
-**DNS:** `/api/dns/*` - DNS reconnaissance
+#### DNS Reconnaissance
+- `POST /api/dns/recon` - Perform DNS reconnaissance (subdomains, zone transfers, records)
+- `GET /api/dns/recon` - List DNS recon results
+- `GET /api/dns/recon/{id}` - Get specific DNS recon result
+- `DELETE /api/dns/recon/{id}` - Delete DNS recon result
+- `GET /api/dns/wordlist` - Get built-in subdomain wordlist
 
-**Web App:** `/api/webapp/*` - Web application scanning
+#### Web Application Scanning
+- `POST /api/webapp/scan` - Start web application scan (XSS, SQLi, headers, forms)
+- `GET /api/webapp/scan/{scan_id}` - Get web app scan status/results
 
-**Integrations:** `/api/jira/*`, `/api/siem/*` - External system integrations
+#### JIRA Integration
+- `GET /api/integrations/jira/settings` - Get JIRA settings
+- `POST /api/integrations/jira/settings` - Create/update JIRA settings
+- `POST /api/integrations/jira/test` - Test JIRA connection
+- `GET /api/integrations/jira/projects` - List JIRA projects
+- `GET /api/integrations/jira/issue-types` - List JIRA issue types
+- `POST /api/vulnerabilities/{id}/create-ticket` - Create JIRA ticket from vulnerability
 
-**API Keys:** `/api/api-keys/*` - API key management
+#### SIEM Integration
+- `GET /api/integrations/siem/settings` - Get all SIEM settings
+- `POST /api/integrations/siem/settings` - Create SIEM settings (syslog, splunk, elasticsearch)
+- `PUT /api/integrations/siem/settings/{id}` - Update SIEM settings
+- `DELETE /api/integrations/siem/settings/{id}` - Delete SIEM settings
+- `POST /api/integrations/siem/settings/{id}/test` - Test SIEM connection
+- `POST /api/integrations/siem/export/{scan_id}` - Export scan to SIEM
 
-**Dashboard:** `/api/dashboard/*` - Dashboard widgets and customization
+#### API Keys
+- `GET /api/api-keys` - List API keys
+- `POST /api/api-keys` - Create API key
+- `PATCH /api/api-keys/{id}` - Update API key
+- `DELETE /api/api-keys/{id}` - Revoke API key
 
-**Scan Presets:** `/api/scan-presets/*` - Predefined scan configurations
+#### Dashboard Customization
+- `GET /api/dashboard/widgets` - Get dashboard widget configuration
+- `PUT /api/dashboard/widgets` - Update dashboard widget layout
+- `GET /api/dashboard/data/{widget_type}` - Get widget data (recent_scans, vulnerability_summary, compliance_scores, scan_activity_chart, top_risky_hosts, critical_vulns, upcoming_scheduled_scans)
 
-**WebSocket:** `WS /api/ws/scans/{id}` (requires JWT query param)
+#### Admin (requires admin role)
+- `GET /api/admin/users` - List all users
+- `PUT /api/admin/users/{id}/roles` - Update user roles
+- `DELETE /api/admin/users/{id}` - Delete user
+- `GET /api/admin/audit-logs` - Get audit logs
+
+#### Other
+- `GET /api/privacy-policy` - Get privacy policy (public, no auth)
+- `WS /api/ws/scans/{id}` - WebSocket for real-time scan progress (requires JWT query param)
 
 ### Data Flow
 
@@ -262,17 +381,113 @@ Supported frameworks in `compliance/frameworks/`:
 
 | Variable | Description |
 |----------|-------------|
-| `JWT_SECRET` | JWT signing key (auto-generated if not set) |
+| `JWT_SECRET` | **Required.** JWT signing key for authentication tokens |
 | `DATABASE_URL` | SQLite path (default: `./heroforge.db`) |
 | `DATABASE_ENCRYPTION_KEY` | SQLCipher encryption key (enables AES-256 database encryption) |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` | Email notifications |
-| `SMTP_FROM_ADDRESS`, `SMTP_FROM_NAME` | Email sender info |
+| `BCRYPT_COST` | Password hashing cost factor (default: 12) |
+| `TOTP_ENCRYPTION_KEY` | Encryption key for MFA TOTP secrets |
+| `ADMIN_USERNAME` | Username to auto-grant admin role on registration |
+| `CORS_ALLOWED_ORIGINS` | Comma-separated list of allowed CORS origins |
+| `REPORTS_DIR` | Directory for generated reports (default: `./reports`) |
+| `SMTP_HOST` | SMTP server hostname |
+| `SMTP_PORT` | SMTP server port |
+| `SMTP_USER` | SMTP authentication username |
+| `SMTP_PASSWORD` | SMTP authentication password |
+| `SMTP_FROM_ADDRESS` | Email sender address |
+| `SMTP_FROM_NAME` | Email sender display name |
 | `BACKUP_GPG_PASSPHRASE` | GPG passphrase for encrypted database backups |
-| `SLACK_WEBHOOK_URL` | Slack notifications |
-| `TEAMS_WEBHOOK_URL` | Microsoft Teams notifications |
-| `JIRA_URL`, `JIRA_USER`, `JIRA_API_TOKEN` | Jira integration |
-| `SPLUNK_HEC_URL`, `SPLUNK_HEC_TOKEN` | Splunk SIEM integration |
-| `ELASTICSEARCH_URL` | Elasticsearch SIEM integration |
+
+## Integrations
+
+### Notification Channels
+
+HeroForge supports multi-channel notifications for scan events:
+
+**Slack Integration:**
+- Configure via Settings > Notifications in web UI
+- Provide Slack Incoming Webhook URL
+- Events: Scan completed, Critical vulnerabilities found, Scheduled scan started/completed
+
+**Microsoft Teams Integration:**
+- Configure via Settings > Notifications in web UI
+- Provide Teams Incoming Webhook URL
+- Same event types as Slack
+
+**Email Notifications:**
+- Requires SMTP environment variables (see above)
+- Sends formatted HTML emails for scan completion and critical findings
+
+### JIRA Integration
+
+Create JIRA tickets directly from discovered vulnerabilities:
+
+1. Configure in Settings > JIRA:
+   - JIRA URL (e.g., `https://yourcompany.atlassian.net`)
+   - Username (email) and API token
+   - Default project key and issue type
+   - Optional default assignee
+
+2. Features:
+   - Auto-maps vulnerability severity to JIRA priority
+   - Formats vulnerability details in ticket description
+   - Links ticket back to vulnerability in HeroForge
+   - Supports custom labels per ticket
+
+### SIEM Integration
+
+Export scan results and vulnerability findings to SIEM systems:
+
+**Supported SIEM Types:**
+| Type | Configuration |
+|------|---------------|
+| Syslog | Endpoint URL (host:port), Protocol (tcp/udp) |
+| Splunk HEC | HEC endpoint URL, HEC token (required) |
+| Elasticsearch | Elasticsearch URL, API key (optional) |
+
+**Exported Events:**
+- `scan_complete` - Scan finished with summary
+- `vulnerability_found` - Each vulnerability with severity, CVE IDs, CVSS scores
+- `host_discovered` - New hosts found
+
+Configure via Settings > SIEM or API endpoints.
+
+### Compliance Frameworks
+
+Supported frameworks for compliance analysis:
+
+| Framework | ID | Description |
+|-----------|-----|-------------|
+| PCI-DSS 4.0 | `pci_dss` | Payment Card Industry Data Security Standard |
+| NIST 800-53 | `nist_800_53` | Security and Privacy Controls |
+| NIST CSF | `nist_csf` | Cybersecurity Framework |
+| CIS Benchmarks | `cis` | Center for Internet Security Benchmarks |
+| HIPAA | `hipaa` | Health Insurance Portability and Accountability Act |
+| SOC 2 | `soc2` | Service Organization Control 2 |
+| FERPA | `ferpa` | Family Educational Rights and Privacy Act |
+| OWASP Top 10 | `owasp_top10` | Web Application Security Risks |
+
+Run compliance analysis via:
+```bash
+# API
+POST /api/scans/{id}/compliance
+{ "frameworks": ["pci_dss", "nist_800_53", "owasp_top10"] }
+
+# Generate report
+POST /api/scans/{id}/compliance/report
+{ "frameworks": ["pci_dss"], "format": "pdf", "include_evidence": true }
+```
+
+## Rate Limiting
+
+The API implements rate limiting per IP address:
+
+| Endpoint Category | Limit | Window |
+|-------------------|-------|--------|
+| Auth endpoints (`/api/auth/*`) | 5 requests | per minute |
+| Scan creation (`POST /api/scans`) | 10 requests | per hour |
+| General API endpoints | 100 requests | per minute |
+
+Rate limit responses return HTTP 429 with `Retry-After` header.
 
 ## Important Notes
 

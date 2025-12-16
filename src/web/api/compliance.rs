@@ -3,6 +3,9 @@
 //! Provides REST API endpoints for compliance framework management,
 //! running compliance analysis on scans, and retrieving compliance findings.
 
+// Allow unused structs for API request/response types not yet exposed
+#![allow(dead_code)]
+
 use actix_web::{web, HttpResponse, Result};
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;

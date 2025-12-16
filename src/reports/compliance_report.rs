@@ -11,7 +11,7 @@ use std::path::Path;
 use tokio::fs;
 
 use crate::compliance::types::{
-    ComplianceFramework, ComplianceSummary, FrameworkSummary, CategorySummary, ControlStatus,
+    ComplianceSummary, FrameworkSummary, CategorySummary,
 };
 use crate::reports::types::ReportFormat;
 

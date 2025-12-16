@@ -10,6 +10,18 @@ use crate::scanner::webapp::{WebAppScanConfig, scan_webapp};
 use crate::types::WebAppScanResult;
 // Auth is extracted via web::ReqData
 
+/// Valid security checks that can be enabled
+const VALID_CHECKS: &[&str] = &["headers", "forms", "sqli", "xss", "info_disclosure"];
+
+/// Maximum allowed crawl depth
+const MAX_CRAWL_DEPTH: usize = 10;
+
+/// Maximum allowed pages to crawl
+const MAX_PAGES_LIMIT: usize = 1000;
+
+/// Minimum pages to crawl
+const MIN_PAGES_LIMIT: usize = 1;
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct StartWebAppScanRequest {
     pub target_url: String,
@@ -56,27 +68,91 @@ async fn start_webapp_scan(
 ) -> Result<HttpResponse> {
     log::info!("User {} starting webapp scan for {}", claims.sub, req.target_url);
 
-    // Validate URL
+    // Validate URL is not empty
     if req.target_url.is_empty() {
         return Ok(HttpResponse::BadRequest().json(serde_json::json!({
             "error": "target_url is required"
         })));
     }
 
+    // Trim whitespace and validate URL format
+    let target_url = req.target_url.trim();
+
     // Basic URL validation
-    if !req.target_url.starts_with("http://") && !req.target_url.starts_with("https://") {
+    if !target_url.starts_with("http://") && !target_url.starts_with("https://") {
         return Ok(HttpResponse::BadRequest().json(serde_json::json!({
             "error": "target_url must start with http:// or https://"
         })));
     }
 
+    // Parse and validate URL structure
+    let parsed_url = match url::Url::parse(target_url) {
+        Ok(url) => url,
+        Err(e) => {
+            return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+                "error": format!("Invalid URL format: {}", e)
+            })));
+        }
+    };
+
     // Security check: prevent scanning localhost/private IPs by default
-    if let Ok(url) = url::Url::parse(&req.target_url) {
-        if let Some(host) = url.host_str() {
-            if host == "localhost" || host == "127.0.0.1" || host.starts_with("192.168.")
-                || host.starts_with("10.") || host.starts_with("172.16.") {
+    if let Some(host) = parsed_url.host_str() {
+        if host == "localhost" || host == "127.0.0.1" || host == "::1" {
+            return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+                "error": "Scanning localhost is not allowed"
+            })));
+        }
+
+        // Check for private IP ranges
+        if host.starts_with("192.168.") || host.starts_with("10.")
+            || host.starts_with("172.16.") || host.starts_with("172.17.")
+            || host.starts_with("172.18.") || host.starts_with("172.19.")
+            || host.starts_with("172.20.") || host.starts_with("172.21.")
+            || host.starts_with("172.22.") || host.starts_with("172.23.")
+            || host.starts_with("172.24.") || host.starts_with("172.25.")
+            || host.starts_with("172.26.") || host.starts_with("172.27.")
+            || host.starts_with("172.28.") || host.starts_with("172.29.")
+            || host.starts_with("172.30.") || host.starts_with("172.31.") {
+            return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+                "error": "Scanning private IP addresses is not allowed"
+            })));
+        }
+    } else {
+        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "URL must have a valid host"
+        })));
+    }
+
+    // Validate max_depth
+    if let Some(depth) = req.max_depth {
+        if depth == 0 || depth > MAX_CRAWL_DEPTH {
+            return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+                "error": format!("max_depth must be between 1 and {}", MAX_CRAWL_DEPTH)
+            })));
+        }
+    }
+
+    // Validate max_pages
+    if let Some(pages) = req.max_pages {
+        if pages < MIN_PAGES_LIMIT || pages > MAX_PAGES_LIMIT {
+            return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+                "error": format!("max_pages must be between {} and {}", MIN_PAGES_LIMIT, MAX_PAGES_LIMIT)
+            })));
+        }
+    }
+
+    // Validate checks_enabled
+    if let Some(checks) = &req.checks_enabled {
+        if checks.is_empty() {
+            return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+                "error": "At least one security check must be enabled"
+            })));
+        }
+
+        for check in checks {
+            if !VALID_CHECKS.contains(&check.as_str()) {
                 return Ok(HttpResponse::BadRequest().json(serde_json::json!({
-                    "error": "Scanning localhost or private IP addresses is not allowed"
+                    "error": format!("Invalid check '{}'. Valid checks are: {}", check, VALID_CHECKS.join(", "))
                 })));
             }
         }
@@ -87,7 +163,7 @@ async fn start_webapp_scan(
 
     // Create scan configuration
     let mut config = WebAppScanConfig::default();
-    config.target_url = req.target_url.clone();
+    config.target_url = target_url.to_string();
 
     if let Some(depth) = req.max_depth {
         config.max_depth = depth;

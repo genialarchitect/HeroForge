@@ -168,12 +168,12 @@ pub struct UpdateUserRequest {
     pub is_active: Option<bool>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct UpdateProfileRequest {
     pub email: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct ChangePasswordRequest {
     pub current_password: String,
     pub new_password: String,
@@ -494,12 +494,12 @@ pub struct MfaSetupResponse {
     pub recovery_codes: Vec<String>, // Plain-text recovery codes (only shown once)
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct MfaVerifySetupRequest {
     pub totp_code: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct MfaDisableRequest {
     pub password: String,
     pub totp_code: Option<String>, // Optional if using recovery code
@@ -744,13 +744,13 @@ pub struct RemediationTimelineEventWithUser {
 }
 
 /// Request to mark vulnerability for verification
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct VerifyVulnerabilityRequest {
     pub scan_id: Option<String>, // Optional scan ID to use for verification
 }
 
 /// Request to bulk assign vulnerabilities
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct BulkAssignVulnerabilitiesRequest {
     pub vulnerability_ids: Vec<String>,
     pub assignee_id: String,

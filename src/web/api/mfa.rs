@@ -9,6 +9,21 @@ use crate::web::auth::jwt::{verify_mfa_token, create_jwt};
 
 /// Setup MFA for the authenticated user
 /// Returns TOTP secret, QR code URL, and recovery codes
+#[utoipa::path(
+    post,
+    path = "/api/auth/mfa/setup",
+    tag = "MFA",
+    security(
+        ("bearer_auth" = [])
+    ),
+    responses(
+        (status = 200, description = "MFA setup initiated successfully"),
+        (status = 400, description = "MFA already enabled", body = crate::web::openapi::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = crate::web::openapi::ErrorResponse),
+        (status = 404, description = "User not found", body = crate::web::openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::web::openapi::ErrorResponse)
+    )
+)]
 pub async fn setup_mfa(
     pool: web::Data<SqlitePool>,
     claims: web::ReqData<auth::Claims>,
@@ -95,6 +110,24 @@ pub async fn setup_mfa(
 }
 
 /// Verify TOTP code to complete MFA setup
+#[utoipa::path(
+    post,
+    path = "/api/auth/mfa/verify-setup",
+    tag = "MFA",
+    security(
+        ("bearer_auth" = [])
+    ),
+    request_body(
+        content = inline(crate::db::models::MfaVerifySetupRequest),
+        description = "TOTP code to verify setup. Body should contain: {\"totp_code\": \"123456\"}"
+    ),
+    responses(
+        (status = 200, description = "MFA enabled successfully", body = crate::web::openapi::SuccessResponse),
+        (status = 400, description = "MFA not initialized", body = crate::web::openapi::ErrorResponse),
+        (status = 401, description = "Invalid TOTP code", body = crate::web::openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::web::openapi::ErrorResponse)
+    )
+)]
 pub async fn verify_setup(
     pool: web::Data<SqlitePool>,
     claims: web::ReqData<auth::Claims>,
@@ -162,6 +195,24 @@ pub async fn verify_setup(
 }
 
 /// Disable MFA for the authenticated user
+#[utoipa::path(
+    delete,
+    path = "/api/auth/mfa",
+    tag = "MFA",
+    security(
+        ("bearer_auth" = [])
+    ),
+    request_body(
+        content = inline(crate::db::models::MfaDisableRequest),
+        description = "Password and TOTP/recovery code. Body: {\"password\": \"...\", \"totp_code\": \"123456\"} or {\"password\": \"...\", \"recovery_code\": \"...\"}"
+    ),
+    responses(
+        (status = 200, description = "MFA disabled successfully", body = crate::web::openapi::SuccessResponse),
+        (status = 401, description = "Invalid password or code", body = crate::web::openapi::ErrorResponse),
+        (status = 404, description = "User not found", body = crate::web::openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::web::openapi::ErrorResponse)
+    )
+)]
 pub async fn disable_mfa(
     pool: web::Data<SqlitePool>,
     claims: web::ReqData<auth::Claims>,
@@ -242,6 +293,22 @@ pub async fn disable_mfa(
 }
 
 /// Verify MFA code during login
+#[utoipa::path(
+    post,
+    path = "/api/auth/mfa/verify",
+    tag = "MFA",
+    request_body(
+        content = crate::web::openapi::MfaVerifyRequestSchema,
+        description = "MFA token and TOTP/recovery code"
+    ),
+    responses(
+        (status = 200, description = "MFA verified, login complete", body = crate::web::openapi::LoginResponseSchema),
+        (status = 400, description = "Missing code", body = crate::web::openapi::ErrorResponse),
+        (status = 401, description = "Invalid token or code", body = crate::web::openapi::ErrorResponse),
+        (status = 404, description = "User not found", body = crate::web::openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::web::openapi::ErrorResponse)
+    )
+)]
 pub async fn verify_mfa(
     pool: web::Data<SqlitePool>,
     request: web::Json<models::MfaVerifyRequest>,

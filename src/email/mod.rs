@@ -1,3 +1,6 @@
+// Allow unused code for public API features not yet exposed via web routes
+#![allow(dead_code)]
+
 use anyhow::{Context, Result};
 use lettre::message::{header, MultiPart, SinglePart};
 use lettre::transport::smtp::authentication::Credentials;
