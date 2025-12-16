@@ -12,4 +12,20 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Core vendor chunks
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-ui': ['react-toastify', 'lucide-react'],
+          'vendor-state': ['zustand', '@tanstack/react-query'],
+          // Heavy libraries
+          'vendor-charts': ['recharts'],
+        },
+      },
+    },
+    // Increase chunk size warning limit slightly since we have code splitting now
+    chunkSizeWarningLimit: 600,
+  },
 })

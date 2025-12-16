@@ -121,21 +121,21 @@ impl ComplianceAnalyzer {
             framework_summaries.push(framework_summary);
         }
 
-        // Calculate overall score
-        let overall_score = if framework_summaries.is_empty() {
-            100.0
-        } else {
-            let total_weighted: f32 = framework_summaries
-                .iter()
-                .map(|s| s.compliance_score * s.total_controls as f32)
-                .sum();
-            let total_controls: usize = framework_summaries.iter().map(|s| s.total_controls).sum();
-            if total_controls > 0 {
-                total_weighted / total_controls as f32
-            } else {
-                100.0
-            }
+        // Build preliminary summary to calculate score
+        let preliminary_summary = ComplianceSummary {
+            scan_id: scan_id.to_string(),
+            frameworks: framework_summaries.clone(),
+            overall_score: 0.0, // Will be calculated
+            total_findings: findings.len(),
+            critical_findings: 0,
+            high_findings: 0,
+            medium_findings: 0,
+            low_findings: 0,
+            generated_at: Utc::now(),
         };
+
+        // Use the scoring module for weighted score calculation
+        let overall_score = calculate_compliance_score(&preliminary_summary);
 
         // Count findings by severity
         let critical_findings = findings

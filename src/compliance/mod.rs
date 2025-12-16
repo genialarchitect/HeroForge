@@ -29,22 +29,13 @@ pub mod scoring;
 // Re-export commonly used types
 pub use types::{
     ComplianceFramework,
-    ComplianceControl,
     ComplianceFinding,
     ComplianceSummary,
-    ControlStatus,
-    ControlPriority,
-    FindingSource,
     FrameworkSummary,
     CategorySummary,
-    ComplianceScanConfig,
-    ComplianceAnalysisRequest,
-    ManualOverrideRequest,
 };
 
 pub use analyzer::ComplianceAnalyzer;
-pub use scanner::ComplianceScanner;
-pub use scoring::calculate_compliance_score;
 
 use crate::types::HostInfo;
 use anyhow::Result;

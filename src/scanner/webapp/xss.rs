@@ -249,3 +249,52 @@ fn is_payload_reflected(response: &str, payload: &str) -> bool {
 
     false
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_payload_reflected_exact_match() {
+        let response = r#"<html><body><script>alert('test')</script></body></html>"#;
+        let payload = "<script>alert('test')</script>";
+        assert!(is_payload_reflected(response, payload));
+    }
+
+    #[test]
+    fn test_payload_reflected_html_encoded_safe() {
+        let response = r#"<html><body>&lt;script&gt;alert('test')&lt;/script&gt;</body></html>"#;
+        let payload = "<script>alert('test')</script>";
+        // HTML encoded response is safe
+        assert!(!is_payload_reflected(response, payload));
+    }
+
+    #[test]
+    fn test_payload_not_reflected() {
+        let response = r#"<html><body>Welcome user</body></html>"#;
+        let payload = "<script>alert('test')</script>";
+        assert!(!is_payload_reflected(response, payload));
+    }
+
+    #[test]
+    fn test_payload_reflected_img_tag() {
+        let response = r#"<html><body><img src=x onerror=alert('abc123')></body></html>"#;
+        let payload = "<img src=x onerror=alert('abc123')>";
+        assert!(is_payload_reflected(response, payload));
+    }
+
+    #[test]
+    fn test_generate_xss_payloads_not_empty() {
+        let payloads = generate_xss_payloads();
+        assert!(!payloads.is_empty());
+        assert!(payloads.len() >= 5);
+    }
+
+    #[test]
+    fn test_generate_xss_payloads_unique_markers() {
+        let payloads1 = generate_xss_payloads();
+        let payloads2 = generate_xss_payloads();
+        // Different invocations should have different markers (random)
+        assert_ne!(payloads1[0], payloads2[0]);
+    }
+}

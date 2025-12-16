@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Result};
+use base64::{engine::general_purpose::STANDARD, Engine};
 use reqwest::{header, Client};
 use serde::{Deserialize, Serialize};
 
@@ -101,7 +102,7 @@ impl JiraClient {
 
         // Basic auth: base64(username:api_token)
         let auth = format!("{}:{}", username, api_token);
-        let auth_header = format!("Basic {}", base64::encode(auth));
+        let auth_header = format!("Basic {}", STANDARD.encode(auth));
         headers.insert(
             header::AUTHORIZATION,
             header::HeaderValue::from_str(&auth_header)?,

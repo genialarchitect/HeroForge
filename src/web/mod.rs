@@ -193,9 +193,12 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .route("/vulnerabilities/stats", web::get().to(api::vulnerabilities::get_vulnerability_stats))
                     .route("/vulnerabilities/bulk-update", web::post().to(api::vulnerabilities::bulk_update_vulnerabilities))
                     .route("/vulnerabilities/bulk-export", web::post().to(api::vulnerabilities::bulk_export_vulnerabilities))
+                    .route("/vulnerabilities/bulk-assign", web::post().to(api::vulnerabilities::bulk_assign))
                     .route("/vulnerabilities/{id}", web::get().to(api::vulnerabilities::get_vulnerability))
                     .route("/vulnerabilities/{id}", web::put().to(api::vulnerabilities::update_vulnerability))
                     .route("/vulnerabilities/{id}/comments", web::post().to(api::vulnerabilities::add_comment))
+                    .route("/vulnerabilities/{id}/timeline", web::get().to(api::vulnerabilities::get_vulnerability_timeline))
+                    .route("/vulnerabilities/{id}/verify", web::post().to(api::vulnerabilities::mark_for_verification))
                     // Compliance endpoints
                     .route("/compliance/frameworks", web::get().to(api::compliance::list_frameworks))
                     .route("/compliance/frameworks/{id}", web::get().to(api::compliance::get_framework))

@@ -173,3 +173,46 @@ fn extract_max_age(hsts_value: &str) -> Option<String> {
     }
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_max_age_basic() {
+        assert_eq!(
+            extract_max_age("max-age=31536000"),
+            Some("31536000".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_max_age_with_directives() {
+        assert_eq!(
+            extract_max_age("max-age=31536000; includeSubDomains; preload"),
+            Some("31536000".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_max_age_case_insensitive() {
+        assert_eq!(
+            extract_max_age("Max-Age=15768000"),
+            Some("15768000".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_max_age_with_directive_spaces() {
+        // Spaces around semicolon separators are handled, but = must be adjacent
+        assert_eq!(
+            extract_max_age("max-age=31536000 ; includeSubDomains"),
+            Some("31536000".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_max_age_missing() {
+        assert_eq!(extract_max_age("includeSubDomains"), None);
+    }
+}

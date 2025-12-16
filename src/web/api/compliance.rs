@@ -10,11 +10,10 @@ use sqlx::SqlitePool;
 use crate::compliance::{
     analyzer::ComplianceAnalyzer,
     frameworks,
-    types::{ComplianceFramework, ComplianceFinding, ComplianceSummary, ControlStatus},
+    types::{ComplianceFramework, ComplianceFinding, ComplianceSummary},
 };
 use crate::db;
 use crate::reports::compliance_report::{ComplianceReportData, ComplianceReportRequest, generate};
-use crate::reports::types::ReportFormat;
 use crate::web::auth;
 
 /// Response for listing available compliance frameworks
@@ -499,15 +498,4 @@ pub async fn download_compliance_report(
     Ok(HttpResponse::NotFound().json(serde_json::json!({
         "error": "Report file not found"
     })))
-}
-
-/// Configure compliance routes
-pub fn configure(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::scope("/compliance")
-            .route("/frameworks", web::get().to(list_frameworks))
-            .route("/frameworks/{id}", web::get().to(get_framework))
-            .route("/frameworks/{id}/controls", web::get().to(get_framework_controls))
-            .route("/reports/{id}/download", web::get().to(download_compliance_report))
-    );
 }

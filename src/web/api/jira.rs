@@ -1,6 +1,5 @@
 use actix_web::{web, HttpResponse};
 use sqlx::SqlitePool;
-use uuid::Uuid;
 
 use crate::db::models::{CreateJiraTicketRequest, CreateJiraTicketResponse, UpsertJiraSettingsRequest};
 use crate::integrations::jira::{
@@ -361,7 +360,7 @@ pub async fn create_jira_ticket(
         vuln.host_ip
     );
 
-    let mut fields = IssueFields {
+    let fields = IssueFields {
         project: ProjectKey {
             key: settings.project_key,
         },
@@ -420,20 +419,4 @@ pub async fn create_jira_ticket(
             }))
         }
     }
-}
-
-/// Configure JIRA integration routes
-pub fn configure_routes(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::scope("/integrations/jira")
-            .route("/settings", web::get().to(get_jira_settings))
-            .route("/settings", web::post().to(upsert_jira_settings))
-            .route("/test", web::post().to(test_jira_connection))
-            .route("/projects", web::get().to(list_jira_projects))
-            .route("/issue-types", web::get().to(list_jira_issue_types)),
-    )
-    .service(
-        web::scope("/vulnerabilities")
-            .route("/{id}/create-ticket", web::post().to(create_jira_ticket)),
-    );
 }

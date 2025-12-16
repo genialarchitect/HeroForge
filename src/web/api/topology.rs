@@ -195,7 +195,7 @@ fn generate_topology(hosts: &[HostInfo]) -> TopologyResponse {
     }
 
     // Create same-subnet edges
-    for (subnet, node_ids) in &subnet_map {
+    for (_subnet, node_ids) in &subnet_map {
         if node_ids.len() > 1 {
             // For each subnet, connect nodes to potential gateway or create mesh
             if let Some(gateway_ip) = find_subnet_gateway(node_ids, &gateways) {

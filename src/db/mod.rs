@@ -2372,7 +2372,7 @@ pub async fn increment_failed_attempts(
     .fetch_optional(pool)
     .await?;
 
-    if let Some((current_count, first_attempt, _last_attempt)) = existing {
+    if let Some((current_count, _first_attempt, _last_attempt)) = existing {
         let new_count = current_count + 1;
 
         if new_count >= MAX_ATTEMPTS {
@@ -3027,7 +3027,7 @@ pub async fn update_api_key(
     user_id: &str,
     request: &models::UpdateApiKeyRequest,
 ) -> Result<models::ApiKey> {
-    let now = Utc::now();
+    let _now = Utc::now();
 
     if let Some(name) = &request.name {
         sqlx::query("UPDATE api_keys SET name = ?1 WHERE id = ?2 AND user_id = ?3")

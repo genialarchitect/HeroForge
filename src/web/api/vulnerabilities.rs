@@ -348,20 +348,3 @@ pub async fn bulk_assign(
         }
     }
 }
-
-/// Configure vulnerability routes
-pub fn configure_routes(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::scope("/vulnerabilities")
-            .route("", web::get().to(list_vulnerabilities))
-            .route("/{id}", web::get().to(get_vulnerability))
-            .route("/{id}", web::put().to(update_vulnerability))
-            .route("/{id}/comments", web::post().to(add_comment))
-            .route("/{id}/timeline", web::get().to(get_vulnerability_timeline))
-            .route("/{id}/verify", web::post().to(mark_for_verification))
-            .route("/bulk-update", web::post().to(bulk_update_vulnerabilities))
-            .route("/bulk-assign", web::post().to(bulk_assign))
-            .route("/bulk-export", web::post().to(bulk_export_vulnerabilities))
-            .route("/stats", web::get().to(get_vulnerability_stats)),
-    );
-}
