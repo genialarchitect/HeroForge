@@ -76,30 +76,31 @@ const DnsToolsPage: React.FC = () => {
 
   return (
     <Layout>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="space-y-6">
         {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">DNS Reconnaissance Tools</h1>
-              <p className="mt-2 text-gray-600">
-                Enumerate DNS records, discover subdomains, and check security configuration
-              </p>
-            </div>
-            <div className="flex items-center gap-3">
-              <Button
-                variant={viewMode === 'new' ? 'primary' : 'secondary'}
-                onClick={() => setViewMode('new')}
-              >
-                New Scan
-              </Button>
-              <Button
-                variant={viewMode === 'history' ? 'primary' : 'secondary'}
-                onClick={() => setViewMode('history')}
-              >
-                History ({recentScans.length})
-              </Button>
-            </div>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-white flex items-center gap-3">
+              <Globe className="h-8 w-8 text-primary" />
+              DNS Reconnaissance Tools
+            </h1>
+            <p className="mt-2 text-slate-400">
+              Enumerate DNS records, discover subdomains, and check security configuration
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <Button
+              variant={viewMode === 'new' ? 'primary' : 'secondary'}
+              onClick={() => setViewMode('new')}
+            >
+              New Scan
+            </Button>
+            <Button
+              variant={viewMode === 'history' ? 'primary' : 'secondary'}
+              onClick={() => setViewMode('history')}
+            >
+              History ({recentScans.length})
+            </Button>
           </div>
         </div>
 
@@ -112,28 +113,28 @@ const DnsToolsPage: React.FC = () => {
             <div>
               <Card>
                 <div className="p-6">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Scans</h3>
+                  <h3 className="text-lg font-semibold text-white mb-4">Recent Scans</h3>
                   {loading ? (
                     <div className="flex justify-center py-8">
                       <LoadingSpinner />
                     </div>
                   ) : recentScans.length === 0 ? (
-                    <p className="text-sm text-gray-500 text-center py-8">No recent scans</p>
+                    <p className="text-sm text-slate-400 text-center py-8">No recent scans</p>
                   ) : (
                     <div className="space-y-3">
                       {recentScans.slice(0, 5).map((scan) => (
                         <div
                           key={scan.id}
-                          className="p-3 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors cursor-pointer"
+                          className="p-3 bg-dark-bg rounded-lg border border-dark-border hover:bg-dark-hover transition-colors cursor-pointer"
                           onClick={() => handleViewResult(scan.id)}
                         >
                           <div className="flex items-center gap-2 mb-1">
-                            <Globe className="w-4 h-4 text-blue-500 flex-shrink-0" />
-                            <span className="text-sm font-medium text-gray-900 truncate">
+                            <Globe className="w-4 h-4 text-primary flex-shrink-0" />
+                            <span className="text-sm font-medium text-white truncate">
                               {scan.domain}
                             </span>
                           </div>
-                          <div className="flex items-center gap-2 text-xs text-gray-500">
+                          <div className="flex items-center gap-2 text-xs text-slate-400">
                             <Clock className="w-3 h-3" />
                             {new Date(scan.scan_timestamp).toLocaleDateString()}
                           </div>
@@ -164,7 +165,7 @@ const DnsToolsPage: React.FC = () => {
         {viewMode === 'history' && (
           <Card>
             <div className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">
+              <h3 className="text-lg font-semibold text-white mb-4">
                 DNS Reconnaissance History
               </h3>
               {loading ? (
@@ -173,8 +174,8 @@ const DnsToolsPage: React.FC = () => {
                 </div>
               ) : recentScans.length === 0 ? (
                 <div className="text-center py-12">
-                  <Globe className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-500">No DNS reconnaissance scans yet</p>
+                  <Globe className="w-12 h-12 text-slate-500 mx-auto mb-4" />
+                  <p className="text-slate-400">No DNS reconnaissance scans yet</p>
                   <Button
                     variant="primary"
                     onClick={() => setViewMode('new')}
@@ -185,41 +186,41 @@ const DnsToolsPage: React.FC = () => {
                 </div>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
+                  <table className="min-w-full divide-y divide-dark-border">
+                    <thead className="bg-dark-bg">
                       <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
                           Domain
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
                           Scan Date
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
                           Subdomains
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
                           Security
                         </th>
-                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th className="px-6 py-3 text-right text-xs font-medium text-slate-400 uppercase tracking-wider">
                           Actions
                         </th>
                       </tr>
                     </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
+                    <tbody className="bg-dark-surface divide-y divide-dark-border">
                       {recentScans.map((scan) => (
-                        <tr key={scan.id} className="hover:bg-gray-50">
+                        <tr key={scan.id} className="hover:bg-dark-hover">
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="flex items-center gap-2">
-                              <Globe className="w-4 h-4 text-blue-500" />
-                              <span className="text-sm font-medium text-gray-900">
+                              <Globe className="w-4 h-4 text-primary" />
+                              <span className="text-sm font-medium text-white">
                                 {scan.domain}
                               </span>
                             </div>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-400">
                             {new Date(scan.scan_timestamp).toLocaleString()}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-white">
                             {scan.subdomains_count}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
@@ -236,14 +237,14 @@ const DnsToolsPage: React.FC = () => {
                             <div className="flex items-center justify-end gap-2">
                               <button
                                 onClick={() => handleViewResult(scan.id)}
-                                className="text-blue-600 hover:text-blue-900"
+                                className="text-primary hover:text-primary-light"
                                 title="View results"
                               >
                                 <Eye className="w-4 h-4" />
                               </button>
                               <button
                                 onClick={() => handleDeleteResult(scan.id)}
-                                className="text-red-600 hover:text-red-900"
+                                className="text-severity-critical hover:text-severity-critical/80"
                                 title="Delete"
                               >
                                 <Trash2 className="w-4 h-4" />

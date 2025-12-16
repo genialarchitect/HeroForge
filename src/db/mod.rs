@@ -2495,7 +2495,8 @@ pub async fn increment_failed_attempts(
         }
     } else {
         // First failed attempt, create new record
-        let locked_until = now + chrono::Duration::minutes(LOCKOUT_DURATION_MINUTES);
+        // Set locked_until to epoch (past) since account isn't locked yet
+        let not_locked = DateTime::<Utc>::from_timestamp(0, 0).unwrap_or(now);
 
         sqlx::query(
             r#"
@@ -2504,11 +2505,11 @@ pub async fn increment_failed_attempts(
             "#,
         )
         .bind(username)
-        .bind(locked_until)
+        .bind(not_locked)
         .bind(1)
         .bind(now)
         .bind(now)
-        .bind("Initial failed login attempt")
+        .bind("Tracking failed login attempts")
         .execute(pool)
         .await?;
 
@@ -2524,6 +2525,44 @@ pub async fn reset_failed_attempts(pool: &SqlitePool, username: &str) -> Result<
         .await?;
 
     Ok(())
+}
+
+/// Unlock a user account (admin function)
+pub async fn unlock_user_account(pool: &SqlitePool, username: &str) -> Result<()> {
+    sqlx::query("DELETE FROM account_lockouts WHERE username = ?1")
+        .bind(username)
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+/// Get lockout status for a user by user_id
+pub async fn get_user_lockout_status(
+    pool: &SqlitePool,
+    username: &str,
+) -> Result<Option<models::AccountLockout>> {
+    let lockout = sqlx::query_as::<_, models::AccountLockout>(
+        "SELECT * FROM account_lockouts WHERE username = ?1",
+    )
+    .bind(username)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(lockout)
+}
+
+/// Get all locked accounts
+pub async fn get_all_locked_accounts(pool: &SqlitePool) -> Result<Vec<models::AccountLockout>> {
+    let now = Utc::now();
+    let lockouts = sqlx::query_as::<_, models::AccountLockout>(
+        "SELECT * FROM account_lockouts WHERE locked_until > ?1 ORDER BY locked_until DESC",
+    )
+    .bind(now)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(lockouts)
 }
 
 /// Get recent login attempts for a username (for audit purposes)

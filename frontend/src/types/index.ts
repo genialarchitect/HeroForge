@@ -8,6 +8,9 @@ export interface User {
   is_active?: boolean; // Added for admin console
   created_at?: string;
   mfa_enabled?: boolean; // MFA/TOTP enabled status
+  is_locked?: boolean; // Account lockout status
+  locked_until?: string; // Lockout expiration time
+  failed_attempts?: number; // Number of failed login attempts
 }
 
 export interface LoginRequest {

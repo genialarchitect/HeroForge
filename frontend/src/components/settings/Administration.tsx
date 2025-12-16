@@ -17,6 +17,8 @@ import {
   ChevronRight,
   AlertTriangle,
   Clock,
+  Unlock,
+  Lock,
 } from 'lucide-react';
 
 const AVAILABLE_ROLES: { id: string; name: string; description: string }[] = [
@@ -121,6 +123,16 @@ const Administration: React.FC = () => {
       loadUsers();
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to remove role');
+    }
+  };
+
+  const handleUnlockUser = async (user: User) => {
+    try {
+      await adminAPI.unlockUser(user.id);
+      toast.success(`Account "${user.username}" unlocked`);
+      loadUsers();
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to unlock account');
     }
   };
 
@@ -237,6 +249,12 @@ const Administration: React.FC = () => {
                         </span>
                       ))}
                     </div>
+                    {user.is_locked && (
+                      <span className="px-2 py-0.5 text-xs rounded border bg-red-500/20 text-red-400 border-red-500/30 flex items-center gap-1">
+                        <Lock className="h-3 w-3" />
+                        Locked
+                      </span>
+                    )}
                     <span className="text-xs text-slate-500">
                       {user.created_at ? formatDate(user.created_at) : 'N/A'}
                     </span>
@@ -303,6 +321,19 @@ const Administration: React.FC = () => {
                             </>
                           )}
                         </Button>
+                        {user.is_locked && (
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleUnlockUser(user);
+                            }}
+                          >
+                            <Unlock className="h-4 w-4 mr-1" />
+                            Unlock Account
+                          </Button>
+                        )}
                       </div>
                       <Button
                         variant="secondary"

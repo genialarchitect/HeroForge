@@ -48,11 +48,19 @@ pub async fn list_users(
 
     match db::get_all_users(&pool).await {
         Ok(users) => {
-            // For each user, fetch their roles
+            // For each user, fetch their roles and lockout status
             let mut users_with_roles = Vec::new();
+            let now = chrono::Utc::now();
+
             for user in users {
                 let roles = db::get_user_roles(&pool, &user.id).await.unwrap_or_default();
                 let role_names: Vec<String> = roles.iter().map(|r| r.name.clone()).collect();
+
+                // Check lockout status
+                let lockout = db::get_user_lockout_status(&pool, &user.username).await.ok().flatten();
+                let is_locked = lockout.as_ref().map(|l| l.locked_until > now).unwrap_or(false);
+                let locked_until = if is_locked { lockout.as_ref().map(|l| l.locked_until) } else { None };
+                let failed_attempts = lockout.as_ref().map(|l| l.attempt_count).unwrap_or(0);
 
                 users_with_roles.push(serde_json::json!({
                     "id": user.id,
@@ -60,7 +68,10 @@ pub async fn list_users(
                     "email": user.email,
                     "is_active": user.is_active,
                     "created_at": user.created_at,
-                    "roles": role_names
+                    "roles": role_names,
+                    "is_locked": is_locked,
+                    "locked_until": locked_until,
+                    "failed_attempts": failed_attempts
                 }));
             }
 
@@ -298,6 +309,94 @@ pub async fn remove_role(
 }
 
 // ============================================================================
+// Account Lockout Management
+// ============================================================================
+
+pub async fn unlock_user(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    user_id: web::Path<String>,
+    req: HttpRequest,
+) -> Result<HttpResponse> {
+    // Check permission
+    if !db::has_permission(&pool, &claims.sub, "manage_users").await.unwrap_or(false) {
+        return Ok(HttpResponse::Forbidden().json(serde_json::json!({
+            "error": "Insufficient permissions"
+        })));
+    }
+
+    // Get the user to find their username
+    let user = match sqlx::query_as::<_, models::User>("SELECT * FROM users WHERE id = ?1")
+        .bind(user_id.as_str())
+        .fetch_optional(pool.get_ref())
+        .await
+    {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            return Ok(HttpResponse::NotFound().json(serde_json::json!({
+                "error": "User not found"
+            })));
+        }
+        Err(e) => {
+            log::error!("Database error finding user: {}", e);
+            return Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to find user"
+            })));
+        }
+    };
+
+    // Unlock the account
+    match db::unlock_user_account(&pool, &user.username).await {
+        Ok(_) => {
+            // Log audit
+            let log = models::AuditLog {
+                id: Uuid::new_v4().to_string(),
+                user_id: claims.sub.clone(),
+                action: "user.unlock".to_string(),
+                target_type: Some("user".to_string()),
+                target_id: Some(user_id.to_string()),
+                details: Some(format!("Unlocked account for user: {}", user.username)),
+                ip_address: get_client_ip(&req),
+                created_at: Utc::now(),
+            };
+            let _ = db::create_audit_log(&pool, &log).await;
+
+            Ok(HttpResponse::Ok().json(serde_json::json!({
+                "message": "Account unlocked successfully"
+            })))
+        }
+        Err(e) => {
+            log::error!("Failed to unlock user account: {}", e);
+            Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to unlock account"
+            })))
+        }
+    }
+}
+
+pub async fn get_locked_accounts(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+) -> Result<HttpResponse> {
+    // Check permission
+    if !db::has_permission(&pool, &claims.sub, "manage_users").await.unwrap_or(false) {
+        return Ok(HttpResponse::Forbidden().json(serde_json::json!({
+            "error": "Insufficient permissions"
+        })));
+    }
+
+    match db::get_all_locked_accounts(&pool).await {
+        Ok(lockouts) => Ok(HttpResponse::Ok().json(lockouts)),
+        Err(e) => {
+            log::error!("Database error in get_locked_accounts: {}", e);
+            Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to get locked accounts"
+            })))
+        }
+    }
+}
+
+// ============================================================================
 // Scan Management Endpoints
 // ============================================================================
 
@@ -476,6 +575,10 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/users/{id}", web::delete().to(delete_user))
             .route("/users/{id}/roles", web::post().to(assign_role))
             .route("/users/{id}/roles/{role_id}", web::delete().to(remove_role))
+            .route("/users/{id}/unlock", web::post().to(unlock_user))
+
+            // Account lockout management
+            .route("/locked-accounts", web::get().to(get_locked_accounts))
 
             // Scan management
             .route("/scans", web::get().to(list_all_scans))

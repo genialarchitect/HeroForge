@@ -142,6 +142,8 @@ export const adminAPI = {
     api.post(`/admin/users/${userId}/roles`, { role_id: roleId }),
   removeRole: (userId: string, roleId: string) =>
     api.delete(`/admin/users/${userId}/roles/${roleId}`),
+  unlockUser: (userId: string) =>
+    api.post<{ message: string }>(`/admin/users/${userId}/unlock`),
 
   // Roles
   getRoles: () => api.get<Role[]>('/admin/roles'),

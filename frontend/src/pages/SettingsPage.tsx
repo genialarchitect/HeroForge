@@ -22,110 +22,148 @@ interface Tab {
   component: React.ReactNode;
 }
 
+interface TabCategory {
+  name: string;
+  tabs: Tab[];
+}
+
 const SettingsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabId>('profile');
 
-  const tabs: Tab[] = [
+  const categories: TabCategory[] = [
     {
-      id: 'profile',
-      label: 'Profile',
-      icon: <User className="h-4 w-4" />,
-      component: <Profile />,
+      name: 'Account',
+      tabs: [
+        {
+          id: 'profile',
+          label: 'Profile',
+          icon: <User className="h-4 w-4" />,
+          component: <Profile />,
+        },
+        {
+          id: 'security',
+          label: 'Security',
+          icon: <Lock className="h-4 w-4" />,
+          component: <MfaSettings />,
+        },
+        {
+          id: 'api-keys',
+          label: 'API Keys',
+          icon: <Key className="h-4 w-4" />,
+          component: <ApiKeys />,
+        },
+      ],
     },
     {
-      id: 'security',
-      label: 'Security',
-      icon: <Lock className="h-4 w-4" />,
-      component: <MfaSettings />,
+      name: 'Administration',
+      tabs: [
+        {
+          id: 'administration',
+          label: 'Users',
+          icon: <Shield className="h-4 w-4" />,
+          component: <Administration />,
+        },
+      ],
     },
     {
-      id: 'api-keys',
-      label: 'API Keys',
-      icon: <Key className="h-4 w-4" />,
-      component: <ApiKeys />,
+      name: 'Scanning',
+      tabs: [
+        {
+          id: 'target-groups',
+          label: 'Target Groups',
+          icon: <Target className="h-4 w-4" />,
+          component: <TargetGroups />,
+        },
+        {
+          id: 'scheduled-scans',
+          label: 'Scheduled Scans',
+          icon: <Clock className="h-4 w-4" />,
+          component: <ScheduledScans />,
+        },
+        {
+          id: 'templates',
+          label: 'Templates',
+          icon: <FileText className="h-4 w-4" />,
+          component: <ScanTemplates />,
+        },
+        {
+          id: 'compare-scans',
+          label: 'Compare',
+          icon: <GitCompare className="h-4 w-4" />,
+          component: <ScanComparison />,
+        },
+      ],
     },
     {
-      id: 'administration',
-      label: 'Administration',
-      icon: <Shield className="h-4 w-4" />,
-      component: <Administration />,
-    },
-    {
-      id: 'target-groups',
-      label: 'Target Groups',
-      icon: <Target className="h-4 w-4" />,
-      component: <TargetGroups />,
-    },
-    {
-      id: 'scheduled-scans',
-      label: 'Scheduled Scans',
-      icon: <Clock className="h-4 w-4" />,
-      component: <ScheduledScans />,
-    },
-    {
-      id: 'templates',
-      label: 'Scan Templates',
-      icon: <FileText className="h-4 w-4" />,
-      component: <ScanTemplates />,
-    },
-    {
-      id: 'notifications',
-      label: 'Notifications',
-      icon: <Bell className="h-4 w-4" />,
-      component: <NotificationSettings />,
-    },
-    {
-      id: 'jira-integration',
-      label: 'JIRA Integration',
-      icon: <ExternalLink className="h-4 w-4" />,
-      component: <JiraSettings />,
-    },
-    {
-      id: 'siem-integration',
-      label: 'SIEM Integration',
-      icon: <Database className="h-4 w-4" />,
-      component: <SiemSettings />,
-    },
-    {
-      id: 'compare-scans',
-      label: 'Compare Scans',
-      icon: <GitCompare className="h-4 w-4" />,
-      component: <ScanComparison />,
+      name: 'Integrations',
+      tabs: [
+        {
+          id: 'notifications',
+          label: 'Notifications',
+          icon: <Bell className="h-4 w-4" />,
+          component: <NotificationSettings />,
+        },
+        {
+          id: 'jira-integration',
+          label: 'JIRA',
+          icon: <ExternalLink className="h-4 w-4" />,
+          component: <JiraSettings />,
+        },
+        {
+          id: 'siem-integration',
+          label: 'SIEM',
+          icon: <Database className="h-4 w-4" />,
+          component: <SiemSettings />,
+        },
+      ],
     },
   ];
 
-  const activeTabData = tabs.find((t) => t.id === activeTab);
+  // Flatten tabs for easy lookup
+  const allTabs = categories.flatMap(c => c.tabs);
+  const activeTabData = allTabs.find((t) => t.id === activeTab);
 
   return (
     <Layout>
-      <div className="max-w-7xl mx-auto">
+      <div className="space-y-6">
         {/* Page Header */}
-        <div className="mb-6">
+        <div>
           <div className="flex items-center gap-3 mb-2">
             <Settings className="h-6 w-6 text-primary" />
             <h1 className="text-2xl font-bold text-white">Settings</h1>
           </div>
           <p className="text-slate-400">
-            Manage your profile, security, users, target groups, scheduled scans, templates, and notifications
+            Manage your account, scanning configuration, and integrations
           </p>
         </div>
 
-        {/* Tabs */}
-        <div className="flex gap-2 mb-6 border-b border-dark-border pb-2">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
-                activeTab === tab.id
-                  ? 'bg-dark-surface text-primary border-b-2 border-primary'
-                  : 'text-slate-400 hover:text-white hover:bg-dark-hover'
-              }`}
-            >
-              {tab.icon}
-              {tab.label}
-            </button>
-          ))}
+        {/* Categorized Tabs */}
+        <div className="bg-dark-surface rounded-lg border border-dark-border p-4">
+          <div className="flex flex-wrap gap-6">
+            {categories.map((category) => (
+              <div key={category.name} className="flex flex-col gap-2">
+                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                  {category.name}
+                </span>
+                <div className="flex gap-1">
+                  {category.tabs.map((tab) => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                        activeTab === tab.id
+                          ? 'bg-primary text-white'
+                          : 'text-slate-400 hover:text-white hover:bg-dark-hover'
+                      }`}
+                    >
+                      {tab.icon}
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* Tab Content */}
