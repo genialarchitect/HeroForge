@@ -12,8 +12,16 @@ WORKDIR /app
 COPY target/release/heroforge /app/heroforge
 COPY frontend/dist /app/frontend/dist
 
-# Create data directory for database
-RUN mkdir -p /data
+# Create non-root user and group
+RUN groupadd -r -g 1000 heroforge && \
+    useradd -r -u 1000 -g heroforge heroforge
+
+# Create data directory for database and set ownership
+RUN mkdir -p /data && \
+    chown -R heroforge:heroforge /app /data
+
+# Switch to non-root user
+USER heroforge
 
 # Expose port 8080
 EXPOSE 8080

@@ -7,6 +7,7 @@ export interface User {
   roles?: UserRole[]; // Added for admin console
   is_active?: boolean; // Added for admin console
   created_at?: string;
+  mfa_enabled?: boolean; // MFA/TOTP enabled status
 }
 
 export interface LoginRequest {
@@ -404,4 +405,303 @@ export interface UpdateProfileRequest {
 export interface ChangePasswordRequest {
   current_password: string;
   new_password: string;
+}
+
+// MFA Types
+
+export interface MfaSetupResponse {
+  secret: string;
+  qr_code_url: string;
+  recovery_codes: string[];
+}
+
+export interface MfaVerifySetupRequest {
+  totp_code: string;
+}
+
+export interface MfaDisableRequest {
+  password: string;
+  totp_code?: string;
+  recovery_code?: string;
+}
+
+export interface MfaRegenerateRecoveryCodesRequest {
+  password: string;
+  totp_code: string;
+}
+
+export interface MfaRegenerateRecoveryCodesResponse {
+  recovery_codes: string[];
+}
+
+export interface MfaVerifyRequest {
+  mfa_token: string;
+  totp_code?: string;
+  recovery_code?: string;
+}
+
+export interface MfaLoginResponse extends LoginResponse {
+  mfa_required?: boolean;
+  mfa_token?: string;
+}
+
+// Analytics Types
+
+export interface AnalyticsSummary {
+  total_scans: number;
+  total_hosts: number;
+  total_ports: number;
+  total_vulnerabilities: number;
+  critical_vulns: number;
+  high_vulns: number;
+  medium_vulns: number;
+  low_vulns: number;
+  scans_this_week: number;
+  scans_this_month: number;
+}
+
+export interface TimeSeriesDataPoint {
+  date: string;
+  value: number;
+}
+
+export interface VulnerabilityTimeSeriesDataPoint {
+  date: string;
+  critical: number;
+  high: number;
+  medium: number;
+  low: number;
+}
+
+export interface ServiceCount {
+  service: string;
+  count: number;
+}
+
+// Real-time Scan Progress Types
+
+export enum ScanPhase {
+  HostDiscovery = 'Host Discovery',
+  PortScanning = 'Port Scanning',
+  ServiceDetection = 'Service Detection',
+  Enumeration = 'Enumeration',
+  OSFingerprinting = 'OS Fingerprinting',
+  VulnerabilityScanning = 'Vulnerability Scanning',
+}
+
+export interface PhaseProgress {
+  phase: ScanPhase;
+  progress: number;
+  isActive: boolean;
+  isComplete: boolean;
+}
+
+export interface LiveMetrics {
+  hostsFound: number;
+  portsOpen: number;
+  servicesDetected: number;
+  vulnerabilitiesFound: number;
+  criticalVulns: number;
+  highVulns: number;
+  mediumVulns: number;
+  lowVulns: number;
+}
+
+export interface ScanEstimate {
+  estimatedTimeRemaining: number | null;
+  estimatedCompletion: Date | null;
+  scanSpeed: number;
+}
+
+export interface ScanActivity {
+  currentPhase: string;
+  currentActivity: string;
+  overallProgress: number;
+  phaseProgress: number;
+}
+
+// ============================================================================
+// Vulnerability Management Types
+// ============================================================================
+
+export type VulnerabilityStatus = 'open' | 'in_progress' | 'resolved' | 'false_positive' | 'accepted_risk';
+
+export interface VulnerabilityTracking {
+  id: string;
+  scan_id: string;
+  host_ip: string;
+  port: number | null;
+  vulnerability_id: string;
+  severity: string;
+  status: string;
+  assignee_id: string | null;
+  notes: string | null;
+  due_date: string | null;
+  created_at: string;
+  updated_at: string;
+  resolved_at: string | null;
+  resolved_by: string | null;
+}
+
+export interface VulnerabilityComment {
+  id: string;
+  vulnerability_tracking_id: string;
+  user_id: string;
+  comment: string;
+  created_at: string;
+}
+
+export interface VulnerabilityCommentWithUser {
+  id: string;
+  vulnerability_tracking_id: string;
+  user_id: string;
+  username: string;
+  comment: string;
+  created_at: string;
+}
+
+export interface VulnerabilityDetail {
+  vulnerability: VulnerabilityTracking;
+  comments: VulnerabilityCommentWithUser[];
+  assignee: User | null;
+  resolved_by_user: User | null;
+}
+
+export interface UpdateVulnerabilityRequest {
+  status?: string;
+  assignee_id?: string;
+  notes?: string;
+  due_date?: string;
+}
+
+export interface AddVulnerabilityCommentRequest {
+  comment: string;
+}
+
+export interface BulkUpdateVulnerabilitiesRequest {
+  vulnerability_ids: string[];
+  status?: string;
+  assignee_id?: string;
+}
+
+export interface VulnerabilityStats {
+  total: number;
+  open: number;
+  in_progress: number;
+  resolved: number;
+  false_positive: number;
+  accepted_risk: number;
+  critical: number;
+  high: number;
+  medium: number;
+  low: number;
+}
+
+// ============================================================================
+// Compliance Types
+// ============================================================================
+
+export type ComplianceFrameworkId =
+  | 'pci_dss'
+  | 'nist_800_53'
+  | 'nist_csf'
+  | 'cis'
+  | 'hipaa'
+  | 'soc2'
+  | 'ferpa'
+  | 'owasp'
+  | 'owasp_top10';
+
+export interface ComplianceFramework {
+  id: string;
+  name: string;
+  version: string;
+  description: string;
+  control_count: number;
+  automated_percentage: number;
+}
+
+export interface ComplianceControl {
+  id: string;
+  control_id: string;
+  title: string;
+  description: string;
+  category: string;
+  priority: 'High' | 'Medium' | 'Low';
+  automated: boolean;
+  remediation_guidance: string | null;
+}
+
+export interface ComplianceControlList {
+  framework_id: string;
+  framework_name: string;
+  controls: ComplianceControl[];
+  categories: string[];
+}
+
+export type ControlStatus =
+  | 'Compliant'
+  | 'NonCompliant'
+  | 'PartiallyCompliant'
+  | 'NotApplicable'
+  | 'NotAssessed'
+  | 'ManualOverride';
+
+export interface ComplianceFinding {
+  id: string;
+  scan_id: string;
+  control_id: string;
+  framework: string;
+  status: ControlStatus;
+  severity: string;
+  evidence: string[];
+  affected_hosts: string[];
+  affected_ports: number[];
+  remediation: string;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FrameworkSummary {
+  framework: string;
+  total_controls: number;
+  compliant: number;
+  non_compliant: number;
+  partially_compliant: number;
+  not_applicable: number;
+  not_assessed: number;
+  manual_overrides: number;
+  compliance_score: number;
+  by_category: CategorySummary[];
+}
+
+export interface CategorySummary {
+  category: string;
+  total: number;
+  compliant: number;
+  non_compliant: number;
+  percentage: number;
+}
+
+export interface ComplianceSummary {
+  scan_id: string;
+  frameworks: FrameworkSummary[];
+  overall_score: number;
+  total_findings: number;
+  critical_findings: number;
+  high_findings: number;
+  medium_findings: number;
+  low_findings: number;
+  generated_at: string;
+}
+
+export interface ComplianceAnalyzeRequest {
+  frameworks: ComplianceFrameworkId[];
+}
+
+export interface ComplianceAnalyzeResponse {
+  scan_id: string;
+  summary: ComplianceSummary;
+  message: string;
 }

@@ -57,13 +57,13 @@ pub async fn compare_scans(
     // Verify both scans are completed
     if scan1.status != "completed" {
         return Ok(HttpResponse::BadRequest().json(serde_json::json!({
-            "error": format!("Scan 1 is not completed (status: {})", scan1.status)
+            "error": "Scan 1 is not completed. Please wait for the scan to finish."
         })));
     }
 
     if scan2.status != "completed" {
         return Ok(HttpResponse::BadRequest().json(serde_json::json!({
-            "error": format!("Scan 2 is not completed (status: {})", scan2.status)
+            "error": "Scan 2 is not completed. Please wait for the scan to finish."
         })));
     }
 

@@ -7,9 +7,10 @@ import ScheduledScans from '../components/settings/ScheduledScans';
 import NotificationSettings from '../components/settings/NotificationSettings';
 import ScanComparison from '../components/compare/ScanComparison';
 import ScanTemplates from '../components/settings/ScanTemplates';
-import { Target, Clock, Bell, Settings, GitCompare, FileText, User, Shield } from 'lucide-react';
+import MfaSettings from '../components/settings/MfaSettings';
+import { Target, Clock, Bell, Settings, GitCompare, FileText, User, Shield, Lock } from 'lucide-react';
 
-type TabId = 'profile' | 'administration' | 'target-groups' | 'scheduled-scans' | 'templates' | 'notifications' | 'compare-scans';
+type TabId = 'profile' | 'security' | 'administration' | 'target-groups' | 'scheduled-scans' | 'templates' | 'notifications' | 'compare-scans';
 
 interface Tab {
   id: TabId;
@@ -27,6 +28,12 @@ const SettingsPage: React.FC = () => {
       label: 'Profile',
       icon: <User className="h-4 w-4" />,
       component: <Profile />,
+    },
+    {
+      id: 'security',
+      label: 'Security',
+      icon: <Lock className="h-4 w-4" />,
+      component: <MfaSettings />,
     },
     {
       id: 'administration',
@@ -78,7 +85,7 @@ const SettingsPage: React.FC = () => {
             <h1 className="text-2xl font-bold text-white">Settings</h1>
           </div>
           <p className="text-slate-400">
-            Manage your profile, users, target groups, scheduled scans, templates, and notifications
+            Manage your profile, security, users, target groups, scheduled scans, templates, and notifications
           </p>
         </div>
 

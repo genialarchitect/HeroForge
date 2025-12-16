@@ -2,19 +2,32 @@ import React, { useMemo, useState } from 'react';
 import Layout from '../components/layout/Layout';
 import ScanForm from '../components/scan/ScanForm';
 import ScanList from '../components/scan/ScanList';
-import ScanProgress from '../components/scan/ScanProgress';
+import ScanProgressCard from '../components/scan/ScanProgressCard';
+import ActiveScansWidget from '../components/scan/ActiveScansWidget';
 import ActivityFeed from '../components/scan/ActivityFeed';
 import ResultsViewer from '../components/results/ResultsViewer';
 import StatsOverview from '../components/dashboard/StatsOverview';
 import VulnerabilityChart from '../components/charts/VulnerabilityChart';
 import PortDistributionChart from '../components/charts/PortDistributionChart';
+import AnalyticsDashboard from '../components/analytics/AnalyticsDashboard';
 import { useScanStore } from '../store/scanStore';
 import { useKeyboardShortcuts, formatShortcut } from '../hooks/useKeyboardShortcuts';
-import { Keyboard } from 'lucide-react';
+import { Keyboard, LayoutDashboard, BarChart3 } from 'lucide-react';
+
+type TabId = 'scans' | 'analytics';
 
 const DashboardPage: React.FC = () => {
-  const { activeScan, results } = useScanStore();
+  const { activeScan, results, setActiveScan, scans } = useScanStore();
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [activeTab, setActiveTab] = useState<TabId>('scans');
+
+  // Handle scan selection from ActiveScansWidget
+  const handleScanSelect = (scanId: string) => {
+    const selectedScan = scans.find((s) => s.id === scanId);
+    if (selectedScan) {
+      setActiveScan(selectedScan);
+    }
+  };
 
   // Get hosts for active scan or all hosts if no active scan
   const displayHosts = useMemo(() => {
@@ -73,39 +86,77 @@ const DashboardPage: React.FC = () => {
           </button>
         </div>
 
-        {/* Statistics Overview - Full Width */}
-        <StatsOverview />
-
-        {/* Main Grid Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Column: Scan Form + Scan List */}
-          <div className="space-y-6">
-            <ScanForm />
-            <ScanList />
-          </div>
-
-          {/* Right Column: Progress, Charts, and Results */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Scan Progress */}
-            <ScanProgress scanId={activeScan?.id || null} />
-
-            {/* Activity Feed - Show for running scans */}
-            {activeScan?.status === 'running' && (
-              <ActivityFeed scanId={activeScan.id} />
-            )}
-
-            {/* Charts Row */}
-            {displayHosts.length > 0 && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <VulnerabilityChart hosts={displayHosts} />
-                <PortDistributionChart hosts={displayHosts} />
-              </div>
-            )}
-
-            {/* Results Viewer */}
-            <ResultsViewer />
-          </div>
+        {/* Tabs */}
+        <div className="flex gap-2 border-b border-dark-border pb-2">
+          <button
+            onClick={() => setActiveTab('scans')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+              activeTab === 'scans'
+                ? 'bg-dark-surface text-primary border-b-2 border-primary'
+                : 'text-slate-400 hover:text-white hover:bg-dark-hover'
+            }`}
+          >
+            <LayoutDashboard className="h-4 w-4" />
+            Scans
+          </button>
+          <button
+            onClick={() => setActiveTab('analytics')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+              activeTab === 'analytics'
+                ? 'bg-dark-surface text-primary border-b-2 border-primary'
+                : 'text-slate-400 hover:text-white hover:bg-dark-hover'
+            }`}
+          >
+            <BarChart3 className="h-4 w-4" />
+            Analytics
+          </button>
         </div>
+
+        {/* Tab Content */}
+        {activeTab === 'scans' && (
+          <>
+            {/* Statistics Overview - Full Width */}
+            <StatsOverview />
+
+            {/* Active Scans Widget - Full Width */}
+            <ActiveScansWidget onScanSelect={handleScanSelect} />
+
+            {/* Main Grid Layout */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Left Column: Scan Form + Scan List */}
+              <div className="space-y-6">
+                <ScanForm />
+                <ScanList />
+              </div>
+
+              {/* Right Column: Progress, Charts, and Results */}
+              <div className="lg:col-span-2 space-y-6">
+                {/* Enhanced Scan Progress Card */}
+                <ScanProgressCard scanId={activeScan?.id || null} />
+
+                {/* Activity Feed - Show for running scans */}
+                {activeScan?.status === 'running' && (
+                  <ActivityFeed scanId={activeScan.id} />
+                )}
+
+                {/* Charts Row */}
+                {displayHosts.length > 0 && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <VulnerabilityChart hosts={displayHosts} />
+                    <PortDistributionChart hosts={displayHosts} />
+                  </div>
+                )}
+
+                {/* Results Viewer */}
+                <ResultsViewer />
+              </div>
+            </div>
+          </>
+        )}
+
+        {activeTab === 'analytics' && (
+          <AnalyticsDashboard />
+        )}
 
         {/* Keyboard Shortcuts Modal */}
         {showShortcuts && (

@@ -1,20 +1,82 @@
 #![allow(dead_code)]
 
+pub mod analytics;
 pub mod models;
 pub mod migrations;
 
 use sqlx::sqlite::SqlitePool;
+use sqlx::Row;
 use anyhow::Result;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
+use once_cell::sync::Lazy;
+use base64::Engine;
+use sha2::{Sha256, Digest};
+use aes_gcm::{
+    aead::{Aead, KeyInit},
+    Aes256Gcm, Nonce
+};
+use rand::RngCore;
+
+/// Configurable bcrypt cost factor (defaults to 12, range 10-16)
+/// Set via BCRYPT_COST environment variable
+pub static BCRYPT_COST: Lazy<u32> = Lazy::new(|| {
+    std::env::var("BCRYPT_COST")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .map(|cost: u32| {
+            if cost < 10 {
+                log::warn!("BCRYPT_COST {} is too low, using minimum of 10", cost);
+                10
+            } else if cost > 16 {
+                log::warn!("BCRYPT_COST {} is too high, using maximum of 16", cost);
+                16
+            } else {
+                cost
+            }
+        })
+        .unwrap_or(12)
+});
 
 pub async fn init_database(database_url: &str) -> Result<SqlitePool> {
-    use sqlx::sqlite::SqlitePoolOptions;
+    use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+    use std::str::FromStr;
+
+    // Check for encryption key in environment variable
+    let encryption_key = std::env::var("DATABASE_ENCRYPTION_KEY").ok();
+
+    // Parse the database URL
+    let mut connect_options = SqliteConnectOptions::from_str(database_url)?
+        .create_if_missing(true);
+
+    // Apply encryption key if provided via PRAGMA key
+    // SQLCipher will encrypt the database with AES-256 using this key
+    if let Some(key) = &encryption_key {
+        log::info!("Database encryption is ENABLED via DATABASE_ENCRYPTION_KEY");
+        connect_options = connect_options.pragma("key", key.clone());
+
+        // Set SQLCipher configuration for maximum security
+        // PBKDF2 HMAC SHA512 with 256,000 iterations (FIPS 140-2 compliant)
+        connect_options = connect_options
+            .pragma("cipher_page_size", "4096")
+            .pragma("kdf_iter", "256000")
+            .pragma("cipher_hmac_algorithm", "HMAC_SHA512")
+            .pragma("cipher_kdf_algorithm", "PBKDF2_HMAC_SHA512");
+    } else {
+        log::warn!("Database encryption is DISABLED. Set DATABASE_ENCRYPTION_KEY environment variable to enable encryption.");
+        log::warn!("For production use, it is strongly recommended to enable database encryption.");
+    }
 
     let pool = SqlitePoolOptions::new()
         .max_connections(5)
-        .connect(database_url)
+        .connect_with(connect_options)
         .await?;
+
+    // Configure SQLite pragmas for optimal performance and reliability
+    sqlx::query("PRAGMA journal_mode=WAL").execute(&pool).await?;
+    sqlx::query("PRAGMA synchronous=NORMAL").execute(&pool).await?;
+    sqlx::query("PRAGMA foreign_keys=ON").execute(&pool).await?;
+    sqlx::query("PRAGMA busy_timeout=5000").execute(&pool).await?;
 
     // Run migrations
     run_migrations(&pool).await?;
@@ -79,14 +141,28 @@ pub async fn create_user(
     pool: &SqlitePool,
     user: &models::CreateUser,
 ) -> Result<models::User> {
+    // Validate email address format
+    crate::email_validation::validate_email(&user.email)
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+    // Validate password against NIST 800-63B guidelines
+    crate::password_validation::validate_password(&user.password)
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+    // Validate that user has accepted terms (GDPR requirement)
+    if !user.accept_terms {
+        return Err(anyhow::anyhow!("You must accept the terms and conditions to create an account"));
+    }
+
     let id = uuid::Uuid::new_v4().to_string();
-    let password_hash = bcrypt::hash(&user.password, bcrypt::DEFAULT_COST)?;
+    let password_hash = bcrypt::hash(&user.password, *BCRYPT_COST)?;
     let now = chrono::Utc::now();
+    let terms_version = "1.0"; // Current terms version
 
     let user = sqlx::query_as::<_, models::User>(
         r#"
-        INSERT INTO users (id, username, email, password_hash, created_at, is_active)
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+        INSERT INTO users (id, username, email, password_hash, created_at, is_active, accepted_terms_at, terms_version)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
         RETURNING *
         "#,
     )
@@ -96,6 +172,8 @@ pub async fn create_user(
     .bind(&password_hash)
     .bind(now)
     .bind(true)
+    .bind(now)
+    .bind(terms_version)
     .fetch_one(pool)
     .await?;
 
@@ -131,6 +209,12 @@ pub async fn update_user_profile(
     user_id: &str,
     updates: &models::UpdateProfileRequest,
 ) -> Result<models::User> {
+    // Validate email if provided
+    if let Some(ref email) = updates.email {
+        crate::email_validation::validate_email(email)
+            .map_err(|e| anyhow::anyhow!("{}", e))?;
+    }
+
     // Build dynamic update query
     let mut query = String::from("UPDATE users SET ");
     let mut params: Vec<String> = Vec::new();
@@ -367,6 +451,12 @@ pub async fn update_user(
     user_id: &str,
     updates: &models::UpdateUserRequest,
 ) -> Result<models::User> {
+    // Validate email if provided
+    if let Some(ref email) = updates.email {
+        crate::email_validation::validate_email(email)
+            .map_err(|e| anyhow::anyhow!("{}", e))?;
+    }
+
     if let Some(email) = &updates.email {
         sqlx::query("UPDATE users SET email = ?1 WHERE id = ?2")
             .bind(email)
@@ -419,6 +509,17 @@ pub async fn delete_scan_admin(pool: &SqlitePool, scan_id: &str) -> Result<()> {
         .await?;
 
     Ok(())
+}
+
+/// Delete a scan (user-level, verifies ownership)
+pub async fn delete_scan(pool: &SqlitePool, scan_id: &str, user_id: &str) -> Result<bool> {
+    let result = sqlx::query("DELETE FROM scan_results WHERE id = ?1 AND user_id = ?2")
+        .bind(scan_id)
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+
+    Ok(result.rows_affected() > 0)
 }
 
 // Audit Logging
@@ -1132,6 +1233,149 @@ fn calculate_next_run(schedule_type: &str, schedule_value: &str) -> Result<DateT
 }
 
 // ============================================================================
+// Scheduled Scan Execution History Functions
+// ============================================================================
+
+/// Create a new execution history record
+pub async fn create_execution_record(
+    pool: &SqlitePool,
+    scheduled_scan_id: &str,
+    retry_attempt: i32,
+) -> Result<models::ScheduledScanExecution> {
+    let id = Uuid::new_v4().to_string();
+    let now = Utc::now();
+
+    let record = sqlx::query_as::<_, models::ScheduledScanExecution>(
+        r#"
+        INSERT INTO scheduled_scan_executions (id, scheduled_scan_id, started_at, status, retry_attempt)
+        VALUES (?1, ?2, ?3, 'running', ?4)
+        RETURNING *
+        "#,
+    )
+    .bind(&id)
+    .bind(scheduled_scan_id)
+    .bind(now)
+    .bind(retry_attempt)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(record)
+}
+
+/// Update an execution record when scan completes
+pub async fn complete_execution_record(
+    pool: &SqlitePool,
+    execution_id: &str,
+    scan_result_id: Option<&str>,
+    status: &str,
+    error_message: Option<&str>,
+) -> Result<()> {
+    let now = Utc::now();
+
+    sqlx::query(
+        r#"
+        UPDATE scheduled_scan_executions
+        SET scan_result_id = ?1, completed_at = ?2, status = ?3, error_message = ?4
+        WHERE id = ?5
+        "#,
+    )
+    .bind(scan_result_id)
+    .bind(now)
+    .bind(status)
+    .bind(error_message)
+    .bind(execution_id)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Get execution history for a scheduled scan (limited to last 50 entries)
+pub async fn get_execution_history(
+    pool: &SqlitePool,
+    scheduled_scan_id: &str,
+) -> Result<Vec<models::ScheduledScanExecution>> {
+    let records = sqlx::query_as::<_, models::ScheduledScanExecution>(
+        r#"
+        SELECT * FROM scheduled_scan_executions
+        WHERE scheduled_scan_id = ?1
+        ORDER BY started_at DESC
+        LIMIT 50
+        "#,
+    )
+    .bind(scheduled_scan_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(records)
+}
+
+/// Clean up old execution records (keep last 50 per scheduled scan)
+pub async fn cleanup_old_executions(pool: &SqlitePool, scheduled_scan_id: &str) -> Result<()> {
+    sqlx::query(
+        r#"
+        DELETE FROM scheduled_scan_executions
+        WHERE id IN (
+            SELECT id FROM scheduled_scan_executions
+            WHERE scheduled_scan_id = ?1
+            ORDER BY started_at DESC
+            LIMIT -1 OFFSET 50
+        )
+        "#,
+    )
+    .bind(scheduled_scan_id)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Update scheduled scan retry count and error message
+pub async fn update_scheduled_scan_retry(
+    pool: &SqlitePool,
+    id: &str,
+    retry_count: i32,
+    last_error: Option<&str>,
+) -> Result<()> {
+    let now = Utc::now();
+
+    sqlx::query(
+        r#"
+        UPDATE scheduled_scans
+        SET retry_count = ?1, last_error = ?2, updated_at = ?3
+        WHERE id = ?4
+        "#,
+    )
+    .bind(retry_count)
+    .bind(last_error)
+    .bind(now)
+    .bind(id)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Reset retry count on successful execution
+pub async fn reset_scheduled_scan_retry(pool: &SqlitePool, id: &str) -> Result<()> {
+    let now = Utc::now();
+
+    sqlx::query(
+        r#"
+        UPDATE scheduled_scans
+        SET retry_count = 0, last_error = NULL, updated_at = ?1
+        WHERE id = ?2
+        "#,
+    )
+    .bind(now)
+    .bind(id)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+// ============================================================================
 // Notification Settings Functions
 // ============================================================================
 
@@ -1183,6 +1427,12 @@ pub async fn update_notification_settings(
     user_id: &str,
     request: &models::UpdateNotificationSettingsRequest,
 ) -> Result<models::NotificationSettings> {
+    // Validate email if provided
+    if let Some(ref email_address) = request.email_address {
+        crate::email_validation::validate_email(email_address)
+            .map_err(|e| anyhow::anyhow!("{}", e))?;
+    }
+
     let now = Utc::now();
 
     // Ensure settings exist first
@@ -1230,3 +1480,1063 @@ pub async fn update_notification_settings(
 
     Ok(settings)
 }
+
+// ============================================================================
+// Vulnerability Management Functions
+// ============================================================================
+
+/// Create vulnerability tracking record
+pub async fn create_vulnerability_tracking(
+    pool: &SqlitePool,
+    scan_id: &str,
+    host_ip: &str,
+    port: Option<i32>,
+    vulnerability_id: &str,
+    severity: &str,
+) -> Result<models::VulnerabilityTracking> {
+    let id = Uuid::new_v4().to_string();
+    let now = Utc::now();
+
+    let vuln = sqlx::query_as::<_, models::VulnerabilityTracking>(
+        r#"
+        INSERT INTO vulnerability_tracking
+        (id, scan_id, host_ip, port, vulnerability_id, severity, status, created_at, updated_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+        RETURNING *
+        "#,
+    )
+    .bind(&id)
+    .bind(scan_id)
+    .bind(host_ip)
+    .bind(port)
+    .bind(vulnerability_id)
+    .bind(severity)
+    .bind("open")
+    .bind(now)
+    .bind(now)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(vuln)
+}
+
+/// Get vulnerability tracking records by scan ID with optional filters
+pub async fn get_vulnerability_tracking_by_scan(
+    pool: &SqlitePool,
+    scan_id: &str,
+    status: Option<&str>,
+    severity: Option<&str>,
+) -> Result<Vec<models::VulnerabilityTracking>> {
+    let mut query = String::from("SELECT * FROM vulnerability_tracking WHERE scan_id = ?1");
+    let mut params = vec![scan_id.to_string()];
+
+    if let Some(s) = status {
+        query.push_str(" AND status = ?");
+        params.push(s.to_string());
+    }
+
+    if let Some(sev) = severity {
+        query.push_str(" AND severity = ?");
+        params.push(sev.to_string());
+    }
+
+    query.push_str(" ORDER BY created_at DESC");
+
+    let mut q = sqlx::query_as::<_, models::VulnerabilityTracking>(&query);
+    for param in &params {
+        q = q.bind(param);
+    }
+
+    let vulnerabilities = q.fetch_all(pool).await?;
+    Ok(vulnerabilities)
+}
+
+/// Get single vulnerability with details
+pub async fn get_vulnerability_detail(
+    pool: &SqlitePool,
+    vuln_id: &str,
+) -> Result<models::VulnerabilityDetail> {
+    let vulnerability = sqlx::query_as::<_, models::VulnerabilityTracking>(
+        "SELECT * FROM vulnerability_tracking WHERE id = ?1",
+    )
+    .bind(vuln_id)
+    .fetch_one(pool)
+    .await?;
+
+    // Get comments with user information
+    let comments = sqlx::query_as::<_, models::VulnerabilityCommentWithUser>(
+        r#"
+        SELECT
+            vc.id,
+            vc.vulnerability_tracking_id,
+            vc.user_id,
+            u.username,
+            vc.comment,
+            vc.created_at
+        FROM vulnerability_comments vc
+        JOIN users u ON vc.user_id = u.id
+        WHERE vc.vulnerability_tracking_id = ?1
+        ORDER BY vc.created_at ASC
+        "#,
+    )
+    .bind(vuln_id)
+    .fetch_all(pool)
+    .await?;
+
+    // Get assignee info if exists
+    let assignee = if let Some(assignee_id) = &vulnerability.assignee_id {
+        sqlx::query_as::<_, models::User>("SELECT * FROM users WHERE id = ?1")
+            .bind(assignee_id)
+            .fetch_optional(pool)
+            .await?
+            .map(|u| u.into())
+    } else {
+        None
+    };
+
+    // Get resolved_by info if exists
+    let resolved_by_user = if let Some(resolved_by) = &vulnerability.resolved_by {
+        sqlx::query_as::<_, models::User>("SELECT * FROM users WHERE id = ?1")
+            .bind(resolved_by)
+            .fetch_optional(pool)
+            .await?
+            .map(|u| u.into())
+    } else {
+        None
+    };
+
+    Ok(models::VulnerabilityDetail {
+        vulnerability,
+        comments,
+        assignee,
+        resolved_by_user,
+    })
+}
+
+/// Update vulnerability status and metadata
+pub async fn update_vulnerability_status(
+    pool: &SqlitePool,
+    vuln_id: &str,
+    request: &models::UpdateVulnerabilityRequest,
+    user_id: &str,
+) -> Result<models::VulnerabilityTracking> {
+    let now = Utc::now();
+
+    // Build update query dynamically based on provided fields
+    let mut update_parts = Vec::new();
+    let mut param_count = 2;
+
+    update_parts.push("updated_at = ?1".to_string());
+
+    if request.status.is_some() {
+        update_parts.push(format!("status = ?{}", param_count));
+        param_count += 1;
+    }
+    if request.assignee_id.is_some() {
+        update_parts.push(format!("assignee_id = ?{}", param_count));
+        param_count += 1;
+    }
+    if request.notes.is_some() {
+        update_parts.push(format!("notes = ?{}", param_count));
+        param_count += 1;
+    }
+    if request.due_date.is_some() {
+        update_parts.push(format!("due_date = ?{}", param_count));
+        param_count += 1;
+    }
+
+    // Check if status is being set to 'resolved'
+    if let Some(status) = &request.status {
+        if status == "resolved" {
+            update_parts.push(format!("resolved_at = ?{}", param_count));
+            param_count += 1;
+            update_parts.push(format!("resolved_by = ?{}", param_count));
+        }
+    }
+
+    let query = format!(
+        "UPDATE vulnerability_tracking SET {} WHERE id = ?{}",
+        update_parts.join(", "),
+        param_count
+    );
+
+    let mut q = sqlx::query(&query).bind(now);
+
+    if let Some(status) = &request.status {
+        q = q.bind(status);
+        if status == "resolved" {
+            q = q.bind(now).bind(user_id);
+        }
+    }
+    if let Some(assignee_id) = &request.assignee_id {
+        q = q.bind(assignee_id);
+    }
+    if let Some(notes) = &request.notes {
+        q = q.bind(notes);
+    }
+    if let Some(due_date) = &request.due_date {
+        q = q.bind(due_date);
+    }
+
+    q = q.bind(vuln_id);
+    q.execute(pool).await?;
+
+    // Return updated vulnerability
+    let updated = sqlx::query_as::<_, models::VulnerabilityTracking>(
+        "SELECT * FROM vulnerability_tracking WHERE id = ?1",
+    )
+    .bind(vuln_id)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(updated)
+}
+
+/// Add comment to vulnerability
+pub async fn add_vulnerability_comment(
+    pool: &SqlitePool,
+    vuln_id: &str,
+    user_id: &str,
+    comment: &str,
+) -> Result<models::VulnerabilityComment> {
+    let id = Uuid::new_v4().to_string();
+    let now = Utc::now();
+
+    let comment_record = sqlx::query_as::<_, models::VulnerabilityComment>(
+        r#"
+        INSERT INTO vulnerability_comments (id, vulnerability_tracking_id, user_id, comment, created_at)
+        VALUES (?1, ?2, ?3, ?4, ?5)
+        RETURNING *
+        "#,
+    )
+    .bind(&id)
+    .bind(vuln_id)
+    .bind(user_id)
+    .bind(comment)
+    .bind(now)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(comment_record)
+}
+
+/// Get comments for a vulnerability
+pub async fn get_vulnerability_comments(
+    pool: &SqlitePool,
+    vuln_id: &str,
+) -> Result<Vec<models::VulnerabilityComment>> {
+    let comments = sqlx::query_as::<_, models::VulnerabilityComment>(
+        "SELECT * FROM vulnerability_comments WHERE vulnerability_tracking_id = ?1 ORDER BY created_at ASC",
+    )
+    .bind(vuln_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(comments)
+}
+
+/// Bulk update vulnerability statuses
+pub async fn bulk_update_vulnerability_status(
+    pool: &SqlitePool,
+    vulnerability_ids: &[String],
+    status: Option<&str>,
+    assignee_id: Option<&str>,
+    user_id: &str,
+) -> Result<usize> {
+    if vulnerability_ids.is_empty() {
+        return Ok(0);
+    }
+
+    let now = Utc::now();
+
+    // Use a transaction for bulk updates
+    let mut tx = pool.begin().await?;
+    let mut updated_count = 0;
+
+    for vuln_id in vulnerability_ids {
+        // Build query based on what fields are being updated
+        let query_str = if let Some(s) = status {
+            if s == "resolved" {
+                "UPDATE vulnerability_tracking SET updated_at = ?1, status = ?2, resolved_at = ?3, resolved_by = ?4 WHERE id = ?5"
+            } else {
+                "UPDATE vulnerability_tracking SET updated_at = ?1, status = ?2 WHERE id = ?3"
+            }
+        } else if assignee_id.is_some() {
+            "UPDATE vulnerability_tracking SET updated_at = ?1, assignee_id = ?2 WHERE id = ?3"
+        } else {
+            "UPDATE vulnerability_tracking SET updated_at = ?1 WHERE id = ?2"
+        };
+
+        let mut q = sqlx::query(query_str).bind(now);
+
+        if let Some(s) = status {
+            q = q.bind(s);
+            if s == "resolved" {
+                q = q.bind(now).bind(user_id).bind(vuln_id);
+            } else {
+                q = q.bind(vuln_id);
+            }
+        } else if let Some(assignee) = assignee_id {
+            q = q.bind(assignee).bind(vuln_id);
+        } else {
+            q = q.bind(vuln_id);
+        }
+
+        let result = q.execute(&mut *tx).await?;
+        updated_count += result.rows_affected() as usize;
+    }
+
+    tx.commit().await?;
+    Ok(updated_count)
+}
+
+/// Get vulnerability statistics for a scan
+pub async fn get_vulnerability_statistics(
+    pool: &SqlitePool,
+    scan_id: Option<&str>,
+) -> Result<models::VulnerabilityStats> {
+    let query = if let Some(sid) = scan_id {
+        format!(
+            r#"
+            SELECT
+                COUNT(*) as total,
+                SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) as open,
+                SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END) as in_progress,
+                SUM(CASE WHEN status = 'resolved' THEN 1 ELSE 0 END) as resolved,
+                SUM(CASE WHEN status = 'false_positive' THEN 1 ELSE 0 END) as false_positive,
+                SUM(CASE WHEN status = 'accepted_risk' THEN 1 ELSE 0 END) as accepted_risk,
+                SUM(CASE WHEN severity = 'critical' THEN 1 ELSE 0 END) as critical,
+                SUM(CASE WHEN severity = 'high' THEN 1 ELSE 0 END) as high,
+                SUM(CASE WHEN severity = 'medium' THEN 1 ELSE 0 END) as medium,
+                SUM(CASE WHEN severity = 'low' THEN 1 ELSE 0 END) as low
+            FROM vulnerability_tracking
+            WHERE scan_id = '{}'
+            "#,
+            sid
+        )
+    } else {
+        r#"
+        SELECT
+            COUNT(*) as total,
+            SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) as open,
+            SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END) as in_progress,
+            SUM(CASE WHEN status = 'resolved' THEN 1 ELSE 0 END) as resolved,
+            SUM(CASE WHEN status = 'false_positive' THEN 1 ELSE 0 END) as false_positive,
+            SUM(CASE WHEN status = 'accepted_risk' THEN 1 ELSE 0 END) as accepted_risk,
+            SUM(CASE WHEN severity = 'critical' THEN 1 ELSE 0 END) as critical,
+            SUM(CASE WHEN severity = 'high' THEN 1 ELSE 0 END) as high,
+            SUM(CASE WHEN severity = 'medium' THEN 1 ELSE 0 END) as medium,
+            SUM(CASE WHEN severity = 'low' THEN 1 ELSE 0 END) as low
+        FROM vulnerability_tracking
+        "#
+        .to_string()
+    };
+
+    let row = sqlx::query(&query).fetch_one(pool).await?;
+
+    let stats = models::VulnerabilityStats {
+        total: row.try_get("total").unwrap_or(0),
+        open: row.try_get("open").unwrap_or(0),
+        in_progress: row.try_get("in_progress").unwrap_or(0),
+        resolved: row.try_get("resolved").unwrap_or(0),
+        false_positive: row.try_get("false_positive").unwrap_or(0),
+        accepted_risk: row.try_get("accepted_risk").unwrap_or(0),
+        critical: row.try_get("critical").unwrap_or(0),
+        high: row.try_get("high").unwrap_or(0),
+        medium: row.try_get("medium").unwrap_or(0),
+        low: row.try_get("low").unwrap_or(0),
+    };
+
+    Ok(stats)
+}
+
+// ============================================================================
+// Refresh Token Management Functions (NIST 800-63B)
+// ============================================================================
+
+/// Hash a token with SHA-256 for secure storage
+fn hash_token(token: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(token.as_bytes());
+    let result = hasher.finalize();
+    hex::encode(result)
+}
+
+/// Store a refresh token in the database (hashes token with SHA-256 before storing)
+pub async fn store_refresh_token(
+    pool: &SqlitePool,
+    user_id: &str,
+    token: &str,
+    expires_at: DateTime<Utc>,
+) -> Result<models::RefreshToken> {
+    let id = Uuid::new_v4().to_string();
+    let now = Utc::now();
+
+    // Hash the token with SHA-256 before storing
+    let token_hash = hash_token(token);
+
+    let stored_token = sqlx::query_as::<_, models::RefreshToken>(
+        r#"
+        INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at, created_at)
+        VALUES (?1, ?2, ?3, ?4, ?5)
+        RETURNING *
+        "#,
+    )
+    .bind(&id)
+    .bind(user_id)
+    .bind(&token_hash)
+    .bind(expires_at)
+    .bind(now)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(stored_token)
+}
+
+/// Get a refresh token by its hash (hashes the provided token before lookup)
+pub async fn get_refresh_token(
+    pool: &SqlitePool,
+    token: &str,
+) -> Result<Option<models::RefreshToken>> {
+    // Hash the token with SHA-256 before comparing
+    let token_hash = hash_token(token);
+
+    let token = sqlx::query_as::<_, models::RefreshToken>(
+        "SELECT * FROM refresh_tokens WHERE token_hash = ?1 AND revoked_at IS NULL",
+    )
+    .bind(&token_hash)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(token)
+}
+
+/// Revoke a specific refresh token (hashes the provided token before revoking)
+pub async fn revoke_refresh_token(pool: &SqlitePool, token: &str) -> Result<()> {
+    let now = Utc::now();
+
+    // Hash the token with SHA-256 before revoking
+    let token_hash = hash_token(token);
+
+    sqlx::query("UPDATE refresh_tokens SET revoked_at = ?1 WHERE token_hash = ?2")
+        .bind(now)
+        .bind(&token_hash)
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+/// Revoke all refresh tokens for a user (useful for logout all sessions)
+pub async fn revoke_all_user_refresh_tokens(pool: &SqlitePool, user_id: &str) -> Result<()> {
+    let now = Utc::now();
+
+    sqlx::query("UPDATE refresh_tokens SET revoked_at = ?1 WHERE user_id = ?2 AND revoked_at IS NULL")
+        .bind(now)
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+/// Clean up expired refresh tokens (can be called periodically)
+pub async fn cleanup_expired_refresh_tokens(pool: &SqlitePool) -> Result<()> {
+    let now = Utc::now();
+
+    sqlx::query("DELETE FROM refresh_tokens WHERE expires_at < ?1")
+        .bind(now)
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+// ============================================================================
+// Account Lockout and Login Attempt Tracking (NIST 800-53 AC-7, CIS Controls 16.11)
+// ============================================================================
+
+/// Record a login attempt (both successful and failed) for audit and security purposes
+pub async fn record_login_attempt(
+    pool: &SqlitePool,
+    username: &str,
+    success: bool,
+    ip_address: Option<&str>,
+    user_agent: Option<&str>,
+) -> Result<()> {
+    let now = Utc::now();
+
+    sqlx::query(
+        r#"
+        INSERT INTO login_attempts (username, attempt_time, success, ip_address, user_agent)
+        VALUES (?1, ?2, ?3, ?4, ?5)
+        "#,
+    )
+    .bind(username)
+    .bind(now)
+    .bind(success)
+    .bind(ip_address)
+    .bind(user_agent)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Check if an account is currently locked
+/// Returns (is_locked, locked_until, attempt_count)
+pub async fn check_account_locked(
+    pool: &SqlitePool,
+    username: &str,
+) -> Result<(bool, Option<DateTime<Utc>>, i32)> {
+    let now = Utc::now();
+
+    // First, try to get lockout record
+    let lockout: Option<(DateTime<Utc>, i32)> = sqlx::query_as(
+        "SELECT locked_until, attempt_count FROM account_lockouts WHERE username = ?1",
+    )
+    .bind(username)
+    .fetch_optional(pool)
+    .await?;
+
+    if let Some((locked_until, attempt_count)) = lockout {
+        // Check if lockout has expired
+        if locked_until > now {
+            // Account is still locked
+            return Ok((true, Some(locked_until), attempt_count));
+        } else {
+            // Lockout has expired, clean up the record
+            sqlx::query("DELETE FROM account_lockouts WHERE username = ?1")
+                .bind(username)
+                .execute(pool)
+                .await?;
+            return Ok((false, None, 0));
+        }
+    }
+
+    Ok((false, None, 0))
+}
+
+/// Increment failed login attempts and lock account if threshold is reached
+/// Returns (is_now_locked, locked_until, attempt_count)
+pub async fn increment_failed_attempts(
+    pool: &SqlitePool,
+    username: &str,
+) -> Result<(bool, Option<DateTime<Utc>>, i32)> {
+    const MAX_ATTEMPTS: i32 = 5;
+    const LOCKOUT_DURATION_MINUTES: i64 = 15;
+
+    let now = Utc::now();
+
+    // Get current lockout status
+    let existing: Option<(i32, DateTime<Utc>, DateTime<Utc>)> = sqlx::query_as(
+        "SELECT attempt_count, first_failed_attempt, last_failed_attempt FROM account_lockouts WHERE username = ?1",
+    )
+    .bind(username)
+    .fetch_optional(pool)
+    .await?;
+
+    if let Some((current_count, first_attempt, _last_attempt)) = existing {
+        let new_count = current_count + 1;
+
+        if new_count >= MAX_ATTEMPTS {
+            // Lock the account
+            let locked_until = now + chrono::Duration::minutes(LOCKOUT_DURATION_MINUTES);
+
+            sqlx::query(
+                r#"
+                UPDATE account_lockouts
+                SET attempt_count = ?1, last_failed_attempt = ?2, locked_until = ?3,
+                    lockout_reason = ?4
+                WHERE username = ?5
+                "#,
+            )
+            .bind(new_count)
+            .bind(now)
+            .bind(locked_until)
+            .bind(format!("Account locked due to {} consecutive failed login attempts", new_count))
+            .bind(username)
+            .execute(pool)
+            .await?;
+
+            return Ok((true, Some(locked_until), new_count));
+        } else {
+            // Increment attempt count but don't lock yet
+            sqlx::query(
+                "UPDATE account_lockouts SET attempt_count = ?1, last_failed_attempt = ?2 WHERE username = ?3",
+            )
+            .bind(new_count)
+            .bind(now)
+            .bind(username)
+            .execute(pool)
+            .await?;
+
+            return Ok((false, None, new_count));
+        }
+    } else {
+        // First failed attempt, create new record
+        let locked_until = now + chrono::Duration::minutes(LOCKOUT_DURATION_MINUTES);
+
+        sqlx::query(
+            r#"
+            INSERT INTO account_lockouts (username, locked_until, attempt_count, first_failed_attempt, last_failed_attempt, lockout_reason)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            "#,
+        )
+        .bind(username)
+        .bind(locked_until)
+        .bind(1)
+        .bind(now)
+        .bind(now)
+        .bind("Initial failed login attempt")
+        .execute(pool)
+        .await?;
+
+        return Ok((false, None, 1));
+    }
+}
+
+/// Reset failed login attempts after successful login
+pub async fn reset_failed_attempts(pool: &SqlitePool, username: &str) -> Result<()> {
+    sqlx::query("DELETE FROM account_lockouts WHERE username = ?1")
+        .bind(username)
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+/// Get recent login attempts for a username (for audit purposes)
+pub async fn get_recent_login_attempts(
+    pool: &SqlitePool,
+    username: &str,
+    limit: i64,
+) -> Result<Vec<models::LoginAttempt>> {
+    let attempts = sqlx::query_as::<_, models::LoginAttempt>(
+        "SELECT * FROM login_attempts WHERE username = ?1 ORDER BY attempt_time DESC LIMIT ?2",
+    )
+    .bind(username)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(attempts)
+}
+
+// ============================================================================
+// GDPR Compliance Functions
+// ============================================================================
+
+/// Accept terms and conditions for an existing user
+pub async fn accept_terms(pool: &SqlitePool, user_id: &str) -> Result<models::User> {
+    let now = Utc::now();
+    let terms_version = "1.0"; // Current terms version
+
+    let user = sqlx::query_as::<_, models::User>(
+        "UPDATE users SET accepted_terms_at = ?1, terms_version = ?2 WHERE id = ?3 RETURNING *",
+    )
+    .bind(now)
+    .bind(terms_version)
+    .bind(user_id)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(user)
+}
+
+/// Export all user data for GDPR compliance
+pub async fn export_user_data(pool: &SqlitePool, user_id: &str) -> Result<models::UserDataExport> {
+    // Get user info
+    let user = get_user_by_id(pool, user_id).await?
+        .ok_or_else(|| anyhow::anyhow!("User not found"))?;
+
+    // Get user's scans
+    let scans = get_user_scans(pool, user_id).await?;
+
+    // Get user's reports
+    let reports = get_user_reports(pool, user_id).await?;
+
+    // Get user's templates
+    let templates = get_user_templates(pool, user_id).await?;
+
+    // Get user's target groups
+    let target_groups = get_user_target_groups(pool, user_id).await?;
+
+    // Get user's scheduled scans
+    let scheduled_scans = get_user_scheduled_scans(pool, user_id).await?;
+
+    // Get user's notification settings
+    let notification_settings = get_notification_settings(pool, user_id).await.ok();
+
+    Ok(models::UserDataExport {
+        user: models::UserExportData {
+            id: user.id,
+            username: user.username,
+            email: user.email,
+            created_at: user.created_at,
+            is_active: user.is_active,
+            accepted_terms_at: user.accepted_terms_at,
+            terms_version: user.terms_version,
+        },
+        scans,
+        reports,
+        templates,
+        target_groups,
+        scheduled_scans,
+        notification_settings,
+    })
+}
+
+/// Delete user account and all associated data (GDPR right to be forgotten)
+pub async fn delete_user_account(pool: &SqlitePool, user_id: &str) -> Result<()> {
+    // Delete user's reports (files should be cleaned up separately)
+    sqlx::query("DELETE FROM reports WHERE user_id = ?1")
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+
+    // Delete user's scans
+    sqlx::query("DELETE FROM scan_results WHERE user_id = ?1")
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+
+    // Delete user's templates
+    sqlx::query("DELETE FROM scan_templates WHERE user_id = ?1")
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+
+    // Delete user's target groups
+    sqlx::query("DELETE FROM target_groups WHERE user_id = ?1")
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+
+    // Delete user's scheduled scans
+    sqlx::query("DELETE FROM scheduled_scans WHERE user_id = ?1")
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+
+    // Delete user's notification settings
+    sqlx::query("DELETE FROM notification_settings WHERE user_id = ?1")
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+
+    // Delete user's refresh tokens
+    sqlx::query("DELETE FROM refresh_tokens WHERE user_id = ?1")
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+
+    // Delete user roles
+    sqlx::query("DELETE FROM user_roles WHERE user_id = ?1")
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+
+    // Finally, delete the user
+    sqlx::query("DELETE FROM users WHERE id = ?1")
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+// ============================================================================
+// MFA (Two-Factor Authentication) Database Functions
+// ============================================================================
+
+/// Get the encryption key for TOTP secrets from environment variable
+fn get_totp_encryption_key() -> Result<[u8; 32]> {
+    let key_str = std::env::var("TOTP_ENCRYPTION_KEY")
+        .map_err(|_| anyhow::anyhow!("TOTP_ENCRYPTION_KEY environment variable not set. Generate one with: openssl rand -hex 32"))?;
+
+    // Decode hex key to bytes
+    let key_bytes = hex::decode(&key_str)
+        .map_err(|_| anyhow::anyhow!("TOTP_ENCRYPTION_KEY must be a valid hex string (64 characters)"))?;
+
+    if key_bytes.len() != 32 {
+        return Err(anyhow::anyhow!("TOTP_ENCRYPTION_KEY must be exactly 32 bytes (64 hex characters)"));
+    }
+
+    let mut key = [0u8; 32];
+    key.copy_from_slice(&key_bytes);
+    Ok(key)
+}
+
+/// Encrypt TOTP secret with AES-256-GCM
+fn encrypt_totp_secret(secret: &str) -> Result<String> {
+    let key_bytes = get_totp_encryption_key()?;
+    let cipher = Aes256Gcm::new(key_bytes.as_ref().into());
+
+    // Generate random nonce (12 bytes for AES-GCM)
+    let mut nonce_bytes = [0u8; 12];
+    rand::thread_rng().fill_bytes(&mut nonce_bytes);
+    let nonce = Nonce::from_slice(&nonce_bytes);
+
+    // Encrypt the secret
+    let ciphertext = cipher.encrypt(nonce, secret.as_bytes())
+        .map_err(|e| anyhow::anyhow!("Encryption failed: {}", e))?;
+
+    // Combine nonce + ciphertext and encode as base64
+    let mut combined = nonce_bytes.to_vec();
+    combined.extend_from_slice(&ciphertext);
+
+    Ok(base64::engine::general_purpose::STANDARD.encode(&combined))
+}
+
+/// Decrypt TOTP secret with AES-256-GCM
+fn decrypt_totp_secret(encrypted: &str) -> Result<String> {
+    let key_bytes = get_totp_encryption_key()?;
+    let cipher = Aes256Gcm::new(key_bytes.as_ref().into());
+
+    // Decode from base64
+    let combined = base64::engine::general_purpose::STANDARD
+        .decode(encrypted)
+        .map_err(|e| anyhow::anyhow!("Failed to decode encrypted TOTP secret: {}", e))?;
+
+    if combined.len() < 12 {
+        return Err(anyhow::anyhow!("Invalid encrypted TOTP secret: too short"));
+    }
+
+    // Split nonce and ciphertext
+    let (nonce_bytes, ciphertext) = combined.split_at(12);
+    let nonce = Nonce::from_slice(nonce_bytes);
+
+    // Decrypt
+    let plaintext = cipher.decrypt(nonce, ciphertext)
+        .map_err(|e| anyhow::anyhow!("Decryption failed: {}", e))?;
+
+    let secret = String::from_utf8(plaintext)
+        .map_err(|e| anyhow::anyhow!("Invalid UTF-8 in decrypted TOTP secret: {}", e))?;
+
+    Ok(secret)
+}
+
+/// Store TOTP secret for a user (encrypts with AES-256-GCM before storing)
+pub async fn store_totp_secret(pool: &SqlitePool, user_id: &str, secret: &str) -> Result<()> {
+    // Encrypt the secret with AES-256-GCM
+    let encrypted_secret = encrypt_totp_secret(secret)?;
+
+    sqlx::query("UPDATE users SET totp_secret = ?1 WHERE id = ?2")
+        .bind(&encrypted_secret)
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+/// Get TOTP secret for a user (decrypts after retrieving)
+pub async fn get_totp_secret(pool: &SqlitePool, user_id: &str) -> Result<Option<String>> {
+    let result: Option<(Option<String>,)> = sqlx::query_as(
+        "SELECT totp_secret FROM users WHERE id = ?1"
+    )
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?;
+
+    if let Some((Some(encrypted_secret),)) = result {
+        // Decrypt the secret with AES-256-GCM
+        let secret = decrypt_totp_secret(&encrypted_secret)?;
+        Ok(Some(secret))
+    } else {
+        Ok(None)
+    }
+}
+
+/// Enable MFA for a user after successful verification
+pub async fn enable_mfa(pool: &SqlitePool, user_id: &str) -> Result<()> {
+    let now = Utc::now();
+
+    sqlx::query("UPDATE users SET totp_enabled = 1, totp_verified_at = ?1 WHERE id = ?2")
+        .bind(now)
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+/// Disable MFA for a user
+pub async fn disable_mfa(pool: &SqlitePool, user_id: &str) -> Result<()> {
+    sqlx::query("UPDATE users SET totp_enabled = 0, totp_secret = NULL, totp_verified_at = NULL, recovery_codes = NULL WHERE id = ?1")
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+/// Check if MFA is enabled for a user
+pub async fn is_mfa_enabled(pool: &SqlitePool, user_id: &str) -> Result<bool> {
+    let result: Option<(bool,)> = sqlx::query_as(
+        "SELECT totp_enabled FROM users WHERE id = ?1"
+    )
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(result.map(|(enabled,)| enabled).unwrap_or(false))
+}
+
+/// Store hashed recovery codes for a user (JSON array of bcrypt hashes)
+pub async fn store_recovery_codes(pool: &SqlitePool, user_id: &str, codes: &[String]) -> Result<()> {
+    // Hash each recovery code with bcrypt
+    let mut hashed_codes = Vec::new();
+    for code in codes {
+        let hash = bcrypt::hash(code, *BCRYPT_COST)?;
+        hashed_codes.push(hash);
+    }
+
+    let codes_json = serde_json::to_string(&hashed_codes)?;
+
+    sqlx::query("UPDATE users SET recovery_codes = ?1 WHERE id = ?2")
+        .bind(&codes_json)
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+/// Verify and consume a recovery code (removes it after successful verification)
+pub async fn verify_and_consume_recovery_code(
+    pool: &SqlitePool,
+    user_id: &str,
+    code: &str,
+) -> Result<bool> {
+    // Get current recovery codes
+    let result: Option<(Option<String>,)> = sqlx::query_as(
+        "SELECT recovery_codes FROM users WHERE id = ?1"
+    )
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?;
+
+    if let Some((Some(codes_json),)) = result {
+        let mut hashed_codes: Vec<String> = serde_json::from_str(&codes_json)?;
+
+        // Check each hashed code
+        for (i, hashed_code) in hashed_codes.iter().enumerate() {
+            if bcrypt::verify(code, hashed_code).unwrap_or(false) {
+                // Code is valid - remove it from the list
+                hashed_codes.remove(i);
+
+                // Update database with remaining codes
+                let updated_json = serde_json::to_string(&hashed_codes)?;
+                sqlx::query("UPDATE users SET recovery_codes = ?1 WHERE id = ?2")
+                    .bind(&updated_json)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+
+                return Ok(true);
+            }
+        }
+    }
+
+    Ok(false)
+}
+
+// ============================================================================
+// Password History Functions (NIST 800-63B - prevent password reuse)
+// ============================================================================
+
+/// Check if a password was used recently (checks last 5 passwords)
+pub async fn check_password_history(
+    pool: &SqlitePool,
+    user_id: &str,
+    new_password: &str,
+) -> Result<bool> {
+    // Get last 5 password hashes for this user
+    let history: Vec<(String,)> = sqlx::query_as(
+        r#"
+        SELECT password_hash FROM password_history
+        WHERE user_id = ?1
+        ORDER BY created_at DESC
+        LIMIT 5
+        "#,
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?;
+
+    // Check if new password matches any recent password
+    for (old_hash,) in history {
+        if bcrypt::verify(new_password, &old_hash).unwrap_or(false) {
+            return Ok(true); // Password was used recently
+        }
+    }
+
+    Ok(false) // Password is not in recent history
+}
+
+/// Add a password hash to history and maintain limit of 5
+pub async fn add_password_to_history(
+    pool: &SqlitePool,
+    user_id: &str,
+    password_hash: &str,
+) -> Result<()> {
+    let now = Utc::now();
+
+    // Insert new password hash
+    sqlx::query(
+        r#"
+        INSERT INTO password_history (user_id, password_hash, created_at)
+        VALUES (?1, ?2, ?3)
+        "#,
+    )
+    .bind(user_id)
+    .bind(password_hash)
+    .bind(now)
+    .execute(pool)
+    .await?;
+
+    // Get count of password history entries for this user
+    let count: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM password_history WHERE user_id = ?1",
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await?;
+
+    // If more than 5, remove oldest entries
+    if count.0 > 5 {
+        let to_remove = count.0 - 5;
+        sqlx::query(
+            r#"
+            DELETE FROM password_history
+            WHERE id IN (
+                SELECT id FROM password_history
+                WHERE user_id = ?1
+                ORDER BY created_at ASC
+                LIMIT ?2
+            )
+            "#,
+        )
+        .bind(user_id)
+        .bind(to_remove)
+        .execute(pool)
+        .await?;
+    }
+
+    Ok(())
+}
+
+// ============================================================================
+// Re-export Analytics Functions
+// ============================================================================
+
+pub use analytics::{
+    get_analytics_summary,
+    get_hosts_over_time,
+    get_vulnerabilities_over_time,
+    get_top_services,
+    get_scan_frequency,
+};
+

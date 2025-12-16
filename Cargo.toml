@@ -46,6 +46,7 @@ uuid = { version = "1.10", features = ["v4", "serde"] }
 once_cell = "1.20"
 urlencoding = "2.1"
 rand = "0.8"
+regex = "1.10"
 
 # Web server
 actix-web = "4.9"
@@ -53,6 +54,7 @@ actix-cors = "0.7"
 actix-files = "0.6"
 actix = "0.13"
 actix-web-actors = "4.3"
+actix-governor = "0.5"
 futures-util = "0.3"
 
 # Authentication
@@ -65,6 +67,9 @@ lettre = "0.11"
 # Database
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "postgres", "mysql", "chrono", "uuid"] }
 
+# SQLCipher for database encryption (overrides sqlx's libsqlite3-sys)
+libsqlite3-sys = { version = "0.30", features = ["bundled-sqlcipher"] }
+
 # Database enumeration
 mysql_async = "0.34"
 mongodb = "2.8"
@@ -72,3 +77,16 @@ redis = { version = "0.24", features = ["tokio-comp", "connection-manager"] }
 
 # SMB enumeration
 # Note: SMB enumeration will use external tools (smbclient, enum4linux) via Bash commands
+
+# TOTP-based Two-Factor Authentication
+totp-rs = { version = "5.4", features = ["gen_secret", "qr"] }
+qrcode = "0.14"
+base64 = "0.22"
+
+# Cryptography for security hardening
+sha2 = "0.10"
+aes-gcm = "0.10"
+hex = "0.4"
+
+# Archive support for bulk exports
+zip = "2.2"

@@ -1,9 +1,14 @@
 pub mod admin;
+pub mod analytics;
 pub mod auth;
 pub mod compare;
+pub mod compliance;
+pub mod mfa;
 pub mod notifications;
+pub mod privacy;
 pub mod reports;
 pub mod scans;
 pub mod scheduled_scans;
 pub mod target_groups;
 pub mod templates;
+pub mod vulnerabilities;

@@ -1,10 +1,35 @@
-use actix_web::{web, HttpResponse, Result};
+use actix_web::{web, HttpRequest, HttpResponse, Result};
 use sqlx::SqlitePool;
 use uuid::Uuid;
 use chrono::Utc;
 
 use crate::db::{self, models};
 use crate::web::auth;
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/// Extract client IP address from request headers or peer address
+fn get_client_ip(req: &HttpRequest) -> Option<String> {
+    // Check X-Forwarded-For header first (for reverse proxy)
+    if let Some(forwarded) = req.headers().get("X-Forwarded-For") {
+        if let Ok(forwarded_str) = forwarded.to_str() {
+            // Take the first IP in the chain
+            if let Some(ip) = forwarded_str.split(',').next() {
+                return Some(ip.trim().to_string());
+            }
+        }
+    }
+    // Check X-Real-IP header
+    if let Some(real_ip) = req.headers().get("X-Real-IP") {
+        if let Ok(ip_str) = real_ip.to_str() {
+            return Some(ip_str.to_string());
+        }
+    }
+    // Fall back to peer address
+    req.peer_addr().map(|addr| addr.ip().to_string())
+}
 
 // ============================================================================
 // User Management Endpoints
@@ -41,9 +66,12 @@ pub async fn list_users(
 
             Ok(HttpResponse::Ok().json(users_with_roles))
         }
-        Err(e) => Ok(HttpResponse::InternalServerError().json(serde_json::json!({
-            "error": format!("Database error: {}", e)
-        }))),
+        Err(e) => {
+            log::error!("Database error in list_users: {}", e);
+            Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "An internal error occurred. Please try again later."
+            })))
+        },
     }
 }
 
@@ -80,9 +108,12 @@ pub async fn get_user(
         Ok(None) => Ok(HttpResponse::NotFound().json(serde_json::json!({
             "error": "User not found"
         }))),
-        Err(e) => Ok(HttpResponse::InternalServerError().json(serde_json::json!({
-            "error": format!("Database error: {}", e)
-        }))),
+        Err(e) => {
+            log::error!("Database error in get_user: {}", e);
+            Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "An internal error occurred. Please try again later."
+            })))
+        },
     }
 }
 
@@ -91,6 +122,7 @@ pub async fn update_user(
     claims: web::ReqData<auth::Claims>,
     user_id: web::Path<String>,
     updates: web::Json<models::UpdateUserRequest>,
+    req: HttpRequest,
 ) -> Result<HttpResponse> {
     // Check permission
     if !db::has_permission(&pool, &claims.sub, "manage_users").await.unwrap_or(false) {
@@ -109,16 +141,19 @@ pub async fn update_user(
                 target_type: Some("user".to_string()),
                 target_id: Some(user.id.clone()),
                 details: Some(serde_json::to_string(&updates.into_inner()).unwrap_or_default()),
-                ip_address: None,
+                ip_address: get_client_ip(&req),
                 created_at: Utc::now(),
             };
             let _ = db::create_audit_log(&pool, &log).await;
 
             Ok(HttpResponse::Ok().json(user))
         }
-        Err(e) => Ok(HttpResponse::InternalServerError().json(serde_json::json!({
-            "error": format!("Failed to update user: {}", e)
-        }))),
+        Err(e) => {
+            log::error!("Failed to update user: {}", e);
+            Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Update failed. Please try again."
+            })))
+        },
     }
 }
 
@@ -126,6 +161,7 @@ pub async fn delete_user(
     pool: web::Data<SqlitePool>,
     claims: web::ReqData<auth::Claims>,
     user_id: web::Path<String>,
+    req: HttpRequest,
 ) -> Result<HttpResponse> {
     // Check permission
     if !db::has_permission(&pool, &claims.sub, "manage_users").await.unwrap_or(false) {
@@ -151,7 +187,7 @@ pub async fn delete_user(
                 target_type: Some("user".to_string()),
                 target_id: Some(user_id.to_string()),
                 details: None,
-                ip_address: None,
+                ip_address: get_client_ip(&req),
                 created_at: Utc::now(),
             };
             let _ = db::create_audit_log(&pool, &log).await;
@@ -160,9 +196,12 @@ pub async fn delete_user(
                 "message": "User deleted successfully"
             })))
         }
-        Err(e) => Ok(HttpResponse::InternalServerError().json(serde_json::json!({
-            "error": format!("Failed to delete user: {}", e)
-        }))),
+        Err(e) => {
+            log::error!("Failed to delete user: {}", e);
+            Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Delete failed. Please try again."
+            })))
+        },
     }
 }
 
@@ -171,6 +210,7 @@ pub async fn assign_role(
     claims: web::ReqData<auth::Claims>,
     user_id: web::Path<String>,
     role_data: web::Json<models::AssignRoleRequest>,
+    req: HttpRequest,
 ) -> Result<HttpResponse> {
     // Check permission
     if !db::has_permission(&pool, &claims.sub, "manage_users").await.unwrap_or(false) {
@@ -189,7 +229,7 @@ pub async fn assign_role(
                 target_type: Some("user".to_string()),
                 target_id: Some(user_id.to_string()),
                 details: Some(serde_json::to_string(&role_data.into_inner()).unwrap_or_default()),
-                ip_address: None,
+                ip_address: get_client_ip(&req),
                 created_at: Utc::now(),
             };
             let _ = db::create_audit_log(&pool, &log).await;
@@ -198,9 +238,12 @@ pub async fn assign_role(
                 "message": "Role assigned successfully"
             })))
         }
-        Err(e) => Ok(HttpResponse::InternalServerError().json(serde_json::json!({
-            "error": format!("Failed to assign role: {}", e)
-        }))),
+        Err(e) => {
+            log::error!("Failed to assign role: {}", e);
+            Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to assign role. Please try again."
+            })))
+        },
     }
 }
 
@@ -208,6 +251,7 @@ pub async fn remove_role(
     pool: web::Data<SqlitePool>,
     claims: web::ReqData<auth::Claims>,
     path: web::Path<(String, String)>,
+    req: HttpRequest,
 ) -> Result<HttpResponse> {
     let (user_id, role_id) = path.into_inner();
 
@@ -235,7 +279,7 @@ pub async fn remove_role(
                 target_type: Some("user".to_string()),
                 target_id: Some(user_id),
                 details: Some(role_id),
-                ip_address: None,
+                ip_address: get_client_ip(&req),
                 created_at: Utc::now(),
             };
             let _ = db::create_audit_log(&pool, &log).await;
@@ -244,9 +288,12 @@ pub async fn remove_role(
                 "message": "Role removed successfully"
             })))
         }
-        Err(e) => Ok(HttpResponse::InternalServerError().json(serde_json::json!({
-            "error": format!("Failed to remove role: {}", e)
-        }))),
+        Err(e) => {
+            log::error!("Failed to remove role: {}", e);
+            Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to remove role. Please try again."
+            })))
+        },
     }
 }
 
@@ -267,9 +314,12 @@ pub async fn list_all_scans(
 
     match db::get_all_scans(&pool).await {
         Ok(scans) => Ok(HttpResponse::Ok().json(scans)),
-        Err(e) => Ok(HttpResponse::InternalServerError().json(serde_json::json!({
-            "error": format!("Database error: {}", e)
-        }))),
+        Err(e) => {
+            log::error!("Database error in list_all_scans: {}", e);
+            Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "An internal error occurred. Please try again later."
+            })))
+        },
     }
 }
 
@@ -277,6 +327,7 @@ pub async fn delete_scan(
     pool: web::Data<SqlitePool>,
     claims: web::ReqData<auth::Claims>,
     scan_id: web::Path<String>,
+    req: HttpRequest,
 ) -> Result<HttpResponse> {
     // Check permission
     if !db::has_permission(&pool, &claims.sub, "delete_any_scan").await.unwrap_or(false) {
@@ -295,7 +346,7 @@ pub async fn delete_scan(
                 target_type: Some("scan".to_string()),
                 target_id: Some(scan_id.to_string()),
                 details: None,
-                ip_address: None,
+                ip_address: get_client_ip(&req),
                 created_at: Utc::now(),
             };
             let _ = db::create_audit_log(&pool, &log).await;
@@ -304,9 +355,12 @@ pub async fn delete_scan(
                 "message": "Scan deleted successfully"
             })))
         }
-        Err(e) => Ok(HttpResponse::InternalServerError().json(serde_json::json!({
-            "error": format!("Failed to delete scan: {}", e)
-        }))),
+        Err(e) => {
+            log::error!("Failed to delete scan: {}", e);
+            Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Delete failed. Please try again."
+            })))
+        },
     }
 }
 
@@ -331,9 +385,12 @@ pub async fn get_audit_logs(
 
     match db::get_audit_logs(&pool, limit, offset).await {
         Ok(logs) => Ok(HttpResponse::Ok().json(logs)),
-        Err(e) => Ok(HttpResponse::InternalServerError().json(serde_json::json!({
-            "error": format!("Database error: {}", e)
-        }))),
+        Err(e) => {
+            log::error!("Database error in get_audit_logs: {}", e);
+            Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "An internal error occurred. Please try again later."
+            })))
+        },
     }
 }
 
@@ -354,9 +411,12 @@ pub async fn list_settings(
 
     match db::get_all_settings(&pool).await {
         Ok(settings) => Ok(HttpResponse::Ok().json(settings)),
-        Err(e) => Ok(HttpResponse::InternalServerError().json(serde_json::json!({
-            "error": format!("Database error: {}", e)
-        }))),
+        Err(e) => {
+            log::error!("Database error in list_settings: {}", e);
+            Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "An internal error occurred. Please try again later."
+            })))
+        },
     }
 }
 
@@ -365,6 +425,7 @@ pub async fn update_setting(
     claims: web::ReqData<auth::Claims>,
     key: web::Path<String>,
     update_data: web::Json<models::UpdateSettingRequest>,
+    req: HttpRequest,
 ) -> Result<HttpResponse> {
     // Check permission
     if !db::has_permission(&pool, &claims.sub, "manage_settings").await.unwrap_or(false) {
@@ -383,7 +444,7 @@ pub async fn update_setting(
                 target_type: Some("setting".to_string()),
                 target_id: Some(key.to_string()),
                 details: Some(serde_json::to_string(&update_data.into_inner()).unwrap_or_default()),
-                ip_address: None,
+                ip_address: get_client_ip(&req),
                 created_at: Utc::now(),
             };
             let _ = db::create_audit_log(&pool, &log).await;
@@ -392,9 +453,12 @@ pub async fn update_setting(
                 "message": "Setting updated successfully"
             })))
         }
-        Err(e) => Ok(HttpResponse::InternalServerError().json(serde_json::json!({
-            "error": format!("Failed to update setting: {}", e)
-        }))),
+        Err(e) => {
+            log::error!("Failed to update setting: {}", e);
+            Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Update failed. Please try again."
+            })))
+        },
     }
 }
 

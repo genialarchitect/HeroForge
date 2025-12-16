@@ -9,7 +9,7 @@
 
 HeroForge demonstrates **strong security posture** in most areas, with comprehensive implementation of authentication, authorization, input validation, and security headers. The application follows NIST 800-63B guidelines for password management and implements CIS Controls for account lockout.
 
-**Overall Compliance Score: 80/100** *(Updated after resolving critical credential issue)*
+**Overall Compliance Score: 85/100** *(Updated after resolving credential and rate limiting issues)*
 
 | Category | Score | Status |
 |----------|-------|--------|
@@ -21,7 +21,7 @@ HeroForge demonstrates **strong security posture** in most areas, with comprehen
 | Logging/Audit | 90% | ✅ Compliant |
 | Container Security | 85% | ⚠️ Minor Gaps |
 | GDPR Compliance | 40% | ❌ Gaps |
-| Rate Limiting | 30% | ❌ Gaps |
+| Rate Limiting | 90% | ✅ Compliant |
 
 ---
 
@@ -232,31 +232,22 @@ heroforge:
 
 ### 9. Rate Limiting (OWASP)
 
-#### ❌ Not Implemented
+#### ✅ Implemented
 
-| Endpoint Type | Recommended Limit |
-|---------------|-------------------|
-| Login | 5 requests/minute per IP |
-| Registration | 3 requests/minute per IP |
-| API (authenticated) | 100 requests/minute per user |
-| API (scan creation) | 10 scans/hour per user |
+| Endpoint Type | Limit | Status |
+|---------------|-------|--------|
+| Auth (login, register, refresh, logout) | 5 requests/minute per IP | ✅ |
+| API (authenticated endpoints) | 100 requests/minute per IP | ✅ |
+| Scan creation | Covered by API limit | ✅ |
 
-#### Recommended Implementation
+#### Implementation Details
 
-Add `actix-governor` middleware:
+Rate limiting implemented using `actix-governor` middleware in `src/web/rate_limit.rs`:
 
-```rust
-use actix_governor::{Governor, GovernorConfigBuilder};
-
-let governor_conf = GovernorConfigBuilder::default()
-    .per_second(2)
-    .burst_size(5)
-    .finish()
-    .unwrap();
-
-App::new()
-    .wrap(Governor::new(&governor_conf))
-```
+- **Auth Rate Limiter**: Strict limits (5 req/min) to prevent brute force attacks
+- **API Rate Limiter**: Moderate limits (100 req/min) for normal API usage
+- **Response Headers**: Returns `Retry-After` and `X-RateLimit-Reset` headers when rate limited
+- **429 Response**: Returns proper JSON error message with retry information
 
 ---
 
@@ -316,10 +307,11 @@ App::new()
 
 ### High Priority (Within 30 Days)
 
-2. **Implement rate limiting**
-   - Add `actix-governor` dependency
-   - Configure per-endpoint limits
-   - Add rate limit headers to responses
+2. ~~**Implement rate limiting**~~ ✅ **RESOLVED**
+   - ~~Add `actix-governor` dependency~~
+   - ~~Configure per-endpoint limits~~
+   - ~~Add rate limit headers to responses~~
+   - **Status:** Rate limiting implemented with auth (5/min) and API (100/min) limits per IP
 
 3. **Add GDPR data subject rights**
    - Implement account deletion endpoint

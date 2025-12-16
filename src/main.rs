@@ -4,10 +4,14 @@ use colored::*;
 use log::{error, info};
 use std::time::Duration;
 
+mod compliance;
 mod config;
 mod cve;
 mod db;
+mod email;
+mod email_validation;
 mod output;
+mod password_validation;
 mod reports;
 mod scanner;
 mod types;

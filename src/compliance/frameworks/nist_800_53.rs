@@ -1,0 +1,1068 @@
+//! NIST 800-53 Controls
+//!
+//! Security and privacy controls for federal information systems and organizations.
+//! This module contains a representative set of key controls from NIST SP 800-53 Rev 5.
+
+use super::super::types::{ComplianceControl, ComplianceFramework, ControlPriority};
+use crate::types::Severity;
+
+/// Total number of NIST 800-53 controls in this module
+pub const CONTROL_COUNT: usize = 75;
+
+/// Get all NIST 800-53 controls
+pub fn get_controls() -> Vec<ComplianceControl> {
+    vec![
+        // Access Control (AC) Family
+        ComplianceControl {
+            id: "NIST-AC-1".to_string(),
+            control_id: "AC-1".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Policy and Procedures".to_string(),
+            description: "Develop, document, and disseminate access control policy and procedures.".to_string(),
+            category: "Access Control".to_string(),
+            priority: ControlPriority::High,
+            automated_check: false,
+            parent_id: None,
+            cross_references: vec!["CIS-6.1".to_string(), "PCI-DSS-7.1".to_string()],
+            remediation_guidance: Some("Document and maintain access control policies reviewed annually.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-AC-2".to_string(),
+            control_id: "AC-2".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Account Management".to_string(),
+            description: "Define and manage information system accounts including identifying types, conditions, and authorizations.".to_string(),
+            category: "Access Control".to_string(),
+            priority: ControlPriority::High,
+            automated_check: true,
+            parent_id: None,
+            cross_references: vec!["CIS-5.1".to_string(), "PCI-DSS-8.1".to_string()],
+            remediation_guidance: Some("Implement centralized identity management with regular account reviews.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-AC-3".to_string(),
+            control_id: "AC-3".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Access Enforcement".to_string(),
+            description: "Enforce approved authorizations for logical access to information and system resources.".to_string(),
+            category: "Access Control".to_string(),
+            priority: ControlPriority::High,
+            automated_check: true,
+            parent_id: None,
+            cross_references: vec!["CIS-3.3".to_string(), "PCI-DSS-7.2".to_string()],
+            remediation_guidance: Some("Implement role-based access control with least privilege principle.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-AC-4".to_string(),
+            control_id: "AC-4".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Information Flow Enforcement".to_string(),
+            description: "Enforce approved authorizations for controlling the flow of information within the system and between systems.".to_string(),
+            category: "Access Control".to_string(),
+            priority: ControlPriority::High,
+            automated_check: true,
+            parent_id: None,
+            cross_references: vec!["PCI-DSS-1.3".to_string()],
+            remediation_guidance: Some("Configure network segmentation and firewall rules to control data flows.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-AC-5".to_string(),
+            control_id: "AC-5".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Separation of Duties".to_string(),
+            description: "Separate duties of individuals to prevent malicious activity without collusion.".to_string(),
+            category: "Access Control".to_string(),
+            priority: ControlPriority::Medium,
+            automated_check: false,
+            parent_id: None,
+            cross_references: vec!["PCI-DSS-6.4".to_string()],
+            remediation_guidance: Some("Implement role separation for critical functions like development and deployment.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-AC-6".to_string(),
+            control_id: "AC-6".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Least Privilege".to_string(),
+            description: "Employ the principle of least privilege, allowing only authorized accesses necessary to accomplish assigned tasks.".to_string(),
+            category: "Access Control".to_string(),
+            priority: ControlPriority::High,
+            automated_check: true,
+            parent_id: None,
+            cross_references: vec!["CIS-5.4".to_string(), "PCI-DSS-7.1".to_string()],
+            remediation_guidance: Some("Implement just-in-time access and regular privilege reviews.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-AC-7".to_string(),
+            control_id: "AC-7".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Unsuccessful Logon Attempts".to_string(),
+            description: "Enforce a limit of consecutive invalid logon attempts by a user and take action when exceeded.".to_string(),
+            category: "Access Control".to_string(),
+            priority: ControlPriority::High,
+            automated_check: true,
+            parent_id: None,
+            cross_references: vec!["PCI-DSS-8.1.6".to_string()],
+            remediation_guidance: Some("Configure account lockout after 3-5 failed attempts with progressive delays.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-AC-8".to_string(),
+            control_id: "AC-8".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "System Use Notification".to_string(),
+            description: "Display an approved system use notification message before granting access.".to_string(),
+            category: "Access Control".to_string(),
+            priority: ControlPriority::Low,
+            automated_check: true,
+            parent_id: None,
+            cross_references: vec![],
+            remediation_guidance: Some("Configure login banners on all systems with legal notice and consent.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-AC-11".to_string(),
+            control_id: "AC-11".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Device Lock".to_string(),
+            description: "Prevent access to the system by initiating a device lock after a period of inactivity.".to_string(),
+            category: "Access Control".to_string(),
+            priority: ControlPriority::Medium,
+            automated_check: true,
+            parent_id: None,
+            cross_references: vec!["CIS-4.3".to_string()],
+            remediation_guidance: Some("Configure screen lock timeout to 15 minutes or less.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-AC-17".to_string(),
+            control_id: "AC-17".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Remote Access".to_string(),
+            description: "Establish and document usage restrictions and implementation guidance for remote access.".to_string(),
+            category: "Access Control".to_string(),
+            priority: ControlPriority::High,
+            automated_check: true,
+            parent_id: None,
+            cross_references: vec!["CIS-6.4".to_string(), "PCI-DSS-8.3".to_string()],
+            remediation_guidance: Some("Require VPN with MFA for all remote access connections.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-AC-18".to_string(),
+            control_id: "AC-18".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Wireless Access".to_string(),
+            description: "Establish usage restrictions and implementation guidance for wireless access.".to_string(),
+            category: "Access Control".to_string(),
+            priority: ControlPriority::Medium,
+            automated_check: true,
+            parent_id: None,
+            cross_references: vec!["PCI-DSS-4.1".to_string()],
+            remediation_guidance: Some("Implement WPA3 Enterprise with 802.1X authentication.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-AC-19".to_string(),
+            control_id: "AC-19".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Access Control for Mobile Devices".to_string(),
+            description: "Establish usage restrictions and implementation guidance for mobile devices.".to_string(),
+            category: "Access Control".to_string(),
+            priority: ControlPriority::Medium,
+            automated_check: false,
+            parent_id: None,
+            cross_references: vec![],
+            remediation_guidance: Some("Implement MDM solution with encryption, remote wipe, and app control.".to_string()),
+        },
+
+        // Audit and Accountability (AU) Family
+        ComplianceControl {
+            id: "NIST-AU-1".to_string(),
+            control_id: "AU-1".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Policy and Procedures".to_string(),
+            description: "Develop, document, and disseminate audit and accountability policy and procedures.".to_string(),
+            category: "Audit and Accountability".to_string(),
+            priority: ControlPriority::High,
+            automated_check: false,
+            parent_id: None,
+            cross_references: vec!["CIS-8.1".to_string(), "PCI-DSS-10.1".to_string()],
+            remediation_guidance: Some("Document logging policies including what to log and retention requirements.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-AU-2".to_string(),
+            control_id: "AU-2".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Event Logging".to_string(),
+            description: "Identify the types of events that the system is capable of logging and coordinate event logging with other entities.".to_string(),
+            category: "Audit and Accountability".to_string(),
+            priority: ControlPriority::High,
+            automated_check: true,
+            parent_id: None,
+            cross_references: vec!["CIS-8.2".to_string(), "PCI-DSS-10.2".to_string()],
+            remediation_guidance: Some("Define event types to log: authentication, authorization, system changes, data access.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-AU-3".to_string(),
+            control_id: "AU-3".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Content of Audit Records".to_string(),
+            description: "Ensure audit records contain information that establishes the type, when, where, source, outcome, and identity.".to_string(),
+            category: "Audit and Accountability".to_string(),
+            priority: ControlPriority::High,
+            automated_check: true,
+            parent_id: None,
+            cross_references: vec!["CIS-8.5".to_string(), "PCI-DSS-10.3".to_string()],
+            remediation_guidance: Some("Configure logging to include timestamp, source IP, user ID, action, and result.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-AU-4".to_string(),
+            control_id: "AU-4".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Audit Log Storage Capacity".to_string(),
+            description: "Allocate audit log storage capacity and configure audit log behavior when storage capacity is reached.".to_string(),
+            category: "Audit and Accountability".to_string(),
+            priority: ControlPriority::Medium,
+            automated_check: true,
+            parent_id: None,
+            cross_references: vec!["CIS-8.3".to_string(), "PCI-DSS-10.7".to_string()],
+            remediation_guidance: Some("Monitor log storage with alerts at 80% capacity; implement log rotation.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-AU-5".to_string(),
+            control_id: "AU-5".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Response to Audit Logging Process Failures".to_string(),
+            description: "Alert personnel and take actions in the event of an audit logging process failure.".to_string(),
+            category: "Audit and Accountability".to_string(),
+            priority: ControlPriority::High,
+            automated_check: true,
+            parent_id: None,
+            cross_references: vec!["PCI-DSS-10.7".to_string()],
+            remediation_guidance: Some("Configure alerts for logging failures and fail-secure behavior.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-AU-6".to_string(),
+            control_id: "AU-6".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Audit Record Review, Analysis, and Reporting".to_string(),
+            description: "Review and analyze audit records for indications of inappropriate or unusual activity.".to_string(),
+            category: "Audit and Accountability".to_string(),
+            priority: ControlPriority::High,
+            automated_check: true,
+            parent_id: None,
+            cross_references: vec!["PCI-DSS-10.6".to_string()],
+            remediation_guidance: Some("Deploy SIEM for automated log analysis and correlation.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-AU-8".to_string(),
+            control_id: "AU-8".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Time Stamps".to_string(),
+            description: "Use internal system clocks to generate time stamps for audit records.".to_string(),
+            category: "Audit and Accountability".to_string(),
+            priority: ControlPriority::Medium,
+            automated_check: true,
+            parent_id: None,
+            cross_references: vec!["CIS-8.4".to_string(), "PCI-DSS-10.4".to_string()],
+            remediation_guidance: Some("Configure NTP synchronization to authoritative sources with monitoring.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-AU-9".to_string(),
+            control_id: "AU-9".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Protection of Audit Information".to_string(),
+            description: "Protect audit information and audit logging tools from unauthorized access, modification, and deletion.".to_string(),
+            category: "Audit and Accountability".to_string(),
+            priority: ControlPriority::High,
+            automated_check: true,
+            parent_id: None,
+            cross_references: vec!["PCI-DSS-10.5".to_string()],
+            remediation_guidance: Some("Implement write-once logging, restricted access, and log integrity monitoring.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-AU-11".to_string(),
+            control_id: "AU-11".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Audit Record Retention".to_string(),
+            description: "Retain audit records to support after-the-fact investigations and meet regulatory requirements.".to_string(),
+            category: "Audit and Accountability".to_string(),
+            priority: ControlPriority::Medium,
+            automated_check: true,
+            parent_id: None,
+            cross_references: vec!["PCI-DSS-10.7".to_string()],
+            remediation_guidance: Some("Implement log retention policies based on compliance requirements (minimum 1 year).".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-AU-12".to_string(),
+            control_id: "AU-12".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Audit Record Generation".to_string(),
+            description: "Provide audit record generation capability for defined auditable events.".to_string(),
+            category: "Audit and Accountability".to_string(),
+            priority: ControlPriority::High,
+            automated_check: true,
+            parent_id: None,
+            cross_references: vec!["CIS-1.4".to_string(), "PCI-DSS-10.2".to_string()],
+            remediation_guidance: Some("Enable audit logging on all systems for defined event categories.".to_string()),
+        },
+
+        // Configuration Management (CM) Family
+        ComplianceControl {
+            id: "NIST-CM-1".to_string(),
+            control_id: "CM-1".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Policy and Procedures".to_string(),
+            description: "Develop, document, and disseminate configuration management policy and procedures.".to_string(),
+            category: "Configuration Management".to_string(),
+            priority: ControlPriority::High,
+            automated_check: false,
+            parent_id: None,
+            cross_references: vec!["CIS-4.1".to_string(), "PCI-DSS-2.2".to_string()],
+            remediation_guidance: Some("Document configuration management policies and change control procedures.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-CM-2".to_string(),
+            control_id: "CM-2".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Baseline Configuration".to_string(),
+            description: "Develop, document, and maintain a current baseline configuration of the system.".to_string(),
+            category: "Configuration Management".to_string(),
+            priority: ControlPriority::High,
+            automated_check: true,
+            parent_id: None,
+            cross_references: vec!["PCI-DSS-2.2".to_string()],
+            remediation_guidance: Some("Create and maintain secure baseline configurations using CIS Benchmarks.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-CM-3".to_string(),
+            control_id: "CM-3".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Configuration Change Control".to_string(),
+            description: "Determine and document the types of changes to the system that are configuration-controlled.".to_string(),
+            category: "Configuration Management".to_string(),
+            priority: ControlPriority::High,
+            automated_check: false,
+            parent_id: None,
+            cross_references: vec!["PCI-DSS-6.4".to_string()],
+            remediation_guidance: Some("Implement change management process with approval workflows.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-CM-6".to_string(),
+            control_id: "CM-6".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Configuration Settings".to_string(),
+            description: "Establish and document configuration settings for system components using security configuration guides.".to_string(),
+            category: "Configuration Management".to_string(),
+            priority: ControlPriority::High,
+            automated_check: true,
+            parent_id: None,
+            cross_references: vec!["CIS-4.2".to_string(), "CIS-4.7".to_string(), "PCI-DSS-2.2".to_string()],
+            remediation_guidance: Some("Apply CIS Benchmarks and document deviations with justification.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-CM-7".to_string(),
+            control_id: "CM-7".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Least Functionality".to_string(),
+            description: "Configure the system to provide only essential capabilities and prohibit or restrict the use of non-essential functions.".to_string(),
+            category: "Configuration Management".to_string(),
+            priority: ControlPriority::High,
+            automated_check: true,
+            parent_id: None,
+            cross_references: vec!["CIS-2.3".to_string(), "CIS-2.5".to_string(), "PCI-DSS-2.2".to_string()],
+            remediation_guidance: Some("Disable unnecessary services, ports, and protocols; implement application whitelisting.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-CM-8".to_string(),
+            control_id: "CM-8".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "System Component Inventory".to_string(),
+            description: "Develop and document an inventory of system components that accurately reflects the system.".to_string(),
+            category: "Configuration Management".to_string(),
+            priority: ControlPriority::High,
+            automated_check: true,
+            parent_id: None,
+            cross_references: vec!["CIS-1.1".to_string(), "CIS-2.1".to_string(), "PCI-DSS-2.4".to_string()],
+            remediation_guidance: Some("Implement automated asset discovery and maintain a CMDB.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-CM-10".to_string(),
+            control_id: "CM-10".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Software Usage Restrictions".to_string(),
+            description: "Use software and associated documentation in accordance with contract agreements and copyright laws.".to_string(),
+            category: "Configuration Management".to_string(),
+            priority: ControlPriority::Low,
+            automated_check: false,
+            parent_id: None,
+            cross_references: vec![],
+            remediation_guidance: Some("Track software licenses and ensure compliance with usage terms.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-CM-11".to_string(),
+            control_id: "CM-11".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "User-Installed Software".to_string(),
+            description: "Establish policies and implement controls for the installation of software by users.".to_string(),
+            category: "Configuration Management".to_string(),
+            priority: ControlPriority::Medium,
+            automated_check: true,
+            parent_id: None,
+            cross_references: vec!["CIS-2.5".to_string()],
+            remediation_guidance: Some("Restrict user installation rights; implement software request process.".to_string()),
+        },
+
+        // Identification and Authentication (IA) Family
+        ComplianceControl {
+            id: "NIST-IA-1".to_string(),
+            control_id: "IA-1".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Policy and Procedures".to_string(),
+            description: "Develop, document, and disseminate identification and authentication policy and procedures.".to_string(),
+            category: "Identification and Authentication".to_string(),
+            priority: ControlPriority::High,
+            automated_check: false,
+            parent_id: None,
+            cross_references: vec!["PCI-DSS-8.1".to_string()],
+            remediation_guidance: Some("Document authentication policies including password requirements and MFA.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-IA-2".to_string(),
+            control_id: "IA-2".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Identification and Authentication (Organizational Users)".to_string(),
+            description: "Uniquely identify and authenticate organizational users and associate that identity with processes acting on behalf of those users.".to_string(),
+            category: "Identification and Authentication".to_string(),
+            priority: ControlPriority::High,
+            automated_check: true,
+            parent_id: None,
+            cross_references: vec!["CIS-6.3".to_string(), "CIS-6.4".to_string(), "CIS-6.5".to_string(), "PCI-DSS-8.2".to_string()],
+            remediation_guidance: Some("Implement MFA for all user authentication, especially privileged access.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-IA-3".to_string(),
+            control_id: "IA-3".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Device Identification and Authentication".to_string(),
+            description: "Uniquely identify and authenticate devices before establishing a connection.".to_string(),
+            category: "Identification and Authentication".to_string(),
+            priority: ControlPriority::Medium,
+            automated_check: true,
+            parent_id: None,
+            cross_references: vec![],
+            remediation_guidance: Some("Implement 802.1X for network access control and device certificates.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-IA-4".to_string(),
+            control_id: "IA-4".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Identifier Management".to_string(),
+            description: "Manage system identifiers by receiving authorization, assigning identifiers, preventing reuse, and disabling after inactivity.".to_string(),
+            category: "Identification and Authentication".to_string(),
+            priority: ControlPriority::Medium,
+            automated_check: true,
+            parent_id: None,
+            cross_references: vec!["CIS-5.3".to_string(), "PCI-DSS-8.1".to_string()],
+            remediation_guidance: Some("Implement identity lifecycle management with automated deprovisioning.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-IA-5".to_string(),
+            control_id: "IA-5".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Authenticator Management".to_string(),
+            description: "Manage system authenticators by verifying identity, establishing initial content, and ensuring sufficient strength.".to_string(),
+            category: "Identification and Authentication".to_string(),
+            priority: ControlPriority::High,
+            automated_check: true,
+            parent_id: None,
+            cross_references: vec!["CIS-5.2".to_string(), "PCI-DSS-8.2".to_string()],
+            remediation_guidance: Some("Enforce strong password policies: 12+ chars, complexity, no reuse of 24 passwords.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-IA-6".to_string(),
+            control_id: "IA-6".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Authentication Feedback".to_string(),
+            description: "Obscure feedback of authentication information during the authentication process.".to_string(),
+            category: "Identification and Authentication".to_string(),
+            priority: ControlPriority::Low,
+            automated_check: true,
+            parent_id: None,
+            cross_references: vec![],
+            remediation_guidance: Some("Configure password masking on all authentication interfaces.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-IA-7".to_string(),
+            control_id: "IA-7".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Cryptographic Module Authentication".to_string(),
+            description: "Implement mechanisms for authentication to a cryptographic module that meet applicable requirements.".to_string(),
+            category: "Identification and Authentication".to_string(),
+            priority: ControlPriority::Medium,
+            automated_check: true,
+            parent_id: None,
+            cross_references: vec![],
+            remediation_guidance: Some("Use FIPS 140-2/3 validated cryptographic modules.".to_string()),
+        },
+
+        // Incident Response (IR) Family
+        ComplianceControl {
+            id: "NIST-IR-1".to_string(),
+            control_id: "IR-1".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Policy and Procedures".to_string(),
+            description: "Develop, document, and disseminate incident response policy and procedures.".to_string(),
+            category: "Incident Response".to_string(),
+            priority: ControlPriority::High,
+            automated_check: false,
+            parent_id: None,
+            cross_references: vec!["PCI-DSS-12.10".to_string()],
+            remediation_guidance: Some("Document incident response plan with roles, responsibilities, and procedures.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-IR-2".to_string(),
+            control_id: "IR-2".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Incident Response Training".to_string(),
+            description: "Provide incident response training to system users consistent with assigned roles.".to_string(),
+            category: "Incident Response".to_string(),
+            priority: ControlPriority::Medium,
+            automated_check: false,
+            parent_id: None,
+            cross_references: vec!["PCI-DSS-12.10".to_string()],
+            remediation_guidance: Some("Conduct annual incident response training and tabletop exercises.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-IR-4".to_string(),
+            control_id: "IR-4".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Incident Handling".to_string(),
+            description: "Implement an incident handling capability including preparation, detection, analysis, containment, eradication, and recovery.".to_string(),
+            category: "Incident Response".to_string(),
+            priority: ControlPriority::High,
+            automated_check: false,
+            parent_id: None,
+            cross_references: vec!["PCI-DSS-12.10".to_string()],
+            remediation_guidance: Some("Establish incident response team and documented handling procedures.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-IR-5".to_string(),
+            control_id: "IR-5".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Incident Monitoring".to_string(),
+            description: "Track and document system security and privacy incidents.".to_string(),
+            category: "Incident Response".to_string(),
+            priority: ControlPriority::Medium,
+            automated_check: true,
+            parent_id: None,
+            cross_references: vec!["PCI-DSS-12.10".to_string()],
+            remediation_guidance: Some("Implement incident tracking system with categorization and metrics.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-IR-6".to_string(),
+            control_id: "IR-6".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Incident Reporting".to_string(),
+            description: "Require personnel to report suspected incidents to the organizational incident response capability.".to_string(),
+            category: "Incident Response".to_string(),
+            priority: ControlPriority::Medium,
+            automated_check: false,
+            parent_id: None,
+            cross_references: vec!["PCI-DSS-12.10".to_string()],
+            remediation_guidance: Some("Establish incident reporting procedures and communication channels.".to_string()),
+        },
+
+        // Risk Assessment (RA) Family
+        ComplianceControl {
+            id: "NIST-RA-1".to_string(),
+            control_id: "RA-1".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Policy and Procedures".to_string(),
+            description: "Develop, document, and disseminate risk assessment policy and procedures.".to_string(),
+            category: "Risk Assessment".to_string(),
+            priority: ControlPriority::High,
+            automated_check: false,
+            parent_id: None,
+            cross_references: vec!["PCI-DSS-12.2".to_string()],
+            remediation_guidance: Some("Document risk assessment methodology and procedures.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-RA-2".to_string(),
+            control_id: "RA-2".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Security Categorization".to_string(),
+            description: "Categorize the system and information processed, stored, and transmitted.".to_string(),
+            category: "Risk Assessment".to_string(),
+            priority: ControlPriority::High,
+            automated_check: false,
+            parent_id: None,
+            cross_references: vec!["CIS-3.1".to_string()],
+            remediation_guidance: Some("Classify systems using FIPS 199 categories: low, moderate, high impact.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-RA-3".to_string(),
+            control_id: "RA-3".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Risk Assessment".to_string(),
+            description: "Conduct an assessment of risk including likelihood and magnitude of harm.".to_string(),
+            category: "Risk Assessment".to_string(),
+            priority: ControlPriority::High,
+            automated_check: false,
+            parent_id: None,
+            cross_references: vec!["CIS-7.1".to_string(), "PCI-DSS-12.2".to_string()],
+            remediation_guidance: Some("Conduct annual risk assessments using established methodologies.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-RA-5".to_string(),
+            control_id: "RA-5".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Vulnerability Monitoring and Scanning".to_string(),
+            description: "Monitor and scan for vulnerabilities in the system and applications and remediate.".to_string(),
+            category: "Risk Assessment".to_string(),
+            priority: ControlPriority::High,
+            automated_check: true,
+            parent_id: None,
+            cross_references: vec!["CIS-7.2".to_string(), "CIS-7.5".to_string(), "CIS-7.6".to_string(), "PCI-DSS-11.2".to_string()],
+            remediation_guidance: Some("Perform vulnerability scans weekly (internal) and quarterly (external).".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-RA-7".to_string(),
+            control_id: "RA-7".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Risk Response".to_string(),
+            description: "Respond to findings from security and privacy assessments, monitoring, and audits.".to_string(),
+            category: "Risk Assessment".to_string(),
+            priority: ControlPriority::High,
+            automated_check: false,
+            parent_id: None,
+            cross_references: vec!["PCI-DSS-6.2".to_string()],
+            remediation_guidance: Some("Establish risk treatment procedures: accept, avoid, mitigate, or transfer.".to_string()),
+        },
+
+        // System and Communications Protection (SC) Family
+        ComplianceControl {
+            id: "NIST-SC-1".to_string(),
+            control_id: "SC-1".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Policy and Procedures".to_string(),
+            description: "Develop, document, and disseminate system and communications protection policy.".to_string(),
+            category: "System and Communications Protection".to_string(),
+            priority: ControlPriority::High,
+            automated_check: false,
+            parent_id: None,
+            cross_references: vec!["PCI-DSS-1.1".to_string()],
+            remediation_guidance: Some("Document network security policies including encryption and segmentation.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-SC-7".to_string(),
+            control_id: "SC-7".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Boundary Protection".to_string(),
+            description: "Monitor and control communications at external and key internal boundaries.".to_string(),
+            category: "System and Communications Protection".to_string(),
+            priority: ControlPriority::High,
+            automated_check: true,
+            parent_id: None,
+            cross_references: vec!["CIS-4.4".to_string(), "CIS-4.5".to_string(), "CIS-9.2".to_string(), "PCI-DSS-1.2".to_string()],
+            remediation_guidance: Some("Implement firewalls, IDS/IPS, and network segmentation at boundaries.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-SC-8".to_string(),
+            control_id: "SC-8".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Transmission Confidentiality and Integrity".to_string(),
+            description: "Protect the confidentiality and integrity of transmitted information.".to_string(),
+            category: "System and Communications Protection".to_string(),
+            priority: ControlPriority::High,
+            automated_check: true,
+            parent_id: None,
+            cross_references: vec!["CIS-4.6".to_string(), "PCI-DSS-4.1".to_string()],
+            remediation_guidance: Some("Use TLS 1.2+ for all data in transit; disable insecure protocols.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-SC-12".to_string(),
+            control_id: "SC-12".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Cryptographic Key Establishment and Management".to_string(),
+            description: "Establish and manage cryptographic keys using approved processes.".to_string(),
+            category: "System and Communications Protection".to_string(),
+            priority: ControlPriority::High,
+            automated_check: false,
+            parent_id: None,
+            cross_references: vec!["PCI-DSS-3.5".to_string()],
+            remediation_guidance: Some("Implement key management system with rotation, backup, and access controls.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-SC-13".to_string(),
+            control_id: "SC-13".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Cryptographic Protection".to_string(),
+            description: "Implement cryptographic mechanisms in accordance with applicable laws and policies.".to_string(),
+            category: "System and Communications Protection".to_string(),
+            priority: ControlPriority::High,
+            automated_check: true,
+            parent_id: None,
+            cross_references: vec!["PCI-DSS-3.4".to_string(), "PCI-DSS-4.1".to_string()],
+            remediation_guidance: Some("Use FIPS 140-2/3 validated cryptography; AES-256 for data at rest.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-SC-28".to_string(),
+            control_id: "SC-28".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Protection of Information at Rest".to_string(),
+            description: "Protect the confidentiality and integrity of information at rest.".to_string(),
+            category: "System and Communications Protection".to_string(),
+            priority: ControlPriority::High,
+            automated_check: true,
+            parent_id: None,
+            cross_references: vec!["CIS-3.6".to_string(), "PCI-DSS-3.4".to_string()],
+            remediation_guidance: Some("Enable full-disk encryption and database encryption for sensitive data.".to_string()),
+        },
+
+        // System and Information Integrity (SI) Family
+        ComplianceControl {
+            id: "NIST-SI-1".to_string(),
+            control_id: "SI-1".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Policy and Procedures".to_string(),
+            description: "Develop, document, and disseminate system and information integrity policy.".to_string(),
+            category: "System and Information Integrity".to_string(),
+            priority: ControlPriority::High,
+            automated_check: false,
+            parent_id: None,
+            cross_references: vec!["PCI-DSS-5.1".to_string()],
+            remediation_guidance: Some("Document integrity policies for malware protection and patch management.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-SI-2".to_string(),
+            control_id: "SI-2".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Flaw Remediation".to_string(),
+            description: "Identify, report, and correct system flaws in a timely manner.".to_string(),
+            category: "System and Information Integrity".to_string(),
+            priority: ControlPriority::High,
+            automated_check: true,
+            parent_id: None,
+            cross_references: vec!["CIS-7.3".to_string(), "CIS-7.4".to_string(), "CIS-7.7".to_string(), "CIS-12.1".to_string(), "PCI-DSS-6.2".to_string()],
+            remediation_guidance: Some("Patch critical vulnerabilities within 30 days; implement automated patching.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-SI-3".to_string(),
+            control_id: "SI-3".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Malicious Code Protection".to_string(),
+            description: "Implement malicious code protection that includes automatic updates.".to_string(),
+            category: "System and Information Integrity".to_string(),
+            priority: ControlPriority::High,
+            automated_check: true,
+            parent_id: None,
+            cross_references: vec!["CIS-10.1".to_string(), "CIS-10.2".to_string(), "PCI-DSS-5.1".to_string()],
+            remediation_guidance: Some("Deploy endpoint protection with real-time scanning and automatic updates.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-SI-4".to_string(),
+            control_id: "SI-4".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "System Monitoring".to_string(),
+            description: "Monitor the system to detect attacks, unauthorized access, and anomalous behavior.".to_string(),
+            category: "System and Information Integrity".to_string(),
+            priority: ControlPriority::High,
+            automated_check: true,
+            parent_id: None,
+            cross_references: vec!["PCI-DSS-10.6".to_string(), "PCI-DSS-11.4".to_string()],
+            remediation_guidance: Some("Deploy SIEM, IDS/IPS, and establish 24/7 security monitoring.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-SI-5".to_string(),
+            control_id: "SI-5".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Security Alerts, Advisories, and Directives".to_string(),
+            description: "Receive and respond to system security alerts, advisories, and directives.".to_string(),
+            category: "System and Information Integrity".to_string(),
+            priority: ControlPriority::Medium,
+            automated_check: false,
+            parent_id: None,
+            cross_references: vec!["PCI-DSS-6.1".to_string()],
+            remediation_guidance: Some("Subscribe to vendor security advisories and CVE feeds.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-SI-7".to_string(),
+            control_id: "SI-7".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Software, Firmware, and Information Integrity".to_string(),
+            description: "Employ integrity verification tools to detect unauthorized changes.".to_string(),
+            category: "System and Information Integrity".to_string(),
+            priority: ControlPriority::Medium,
+            automated_check: true,
+            parent_id: None,
+            cross_references: vec!["PCI-DSS-11.5".to_string()],
+            remediation_guidance: Some("Deploy file integrity monitoring on critical system files.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-SI-10".to_string(),
+            control_id: "SI-10".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Information Input Validation".to_string(),
+            description: "Check the validity of information inputs to prevent injection attacks.".to_string(),
+            category: "System and Information Integrity".to_string(),
+            priority: ControlPriority::High,
+            automated_check: true,
+            parent_id: None,
+            cross_references: vec!["PCI-DSS-6.5".to_string()],
+            remediation_guidance: Some("Implement input validation, output encoding, and parameterized queries.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-SI-12".to_string(),
+            control_id: "SI-12".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Information Management and Retention".to_string(),
+            description: "Manage and retain information within the system according to applicable laws.".to_string(),
+            category: "System and Information Integrity".to_string(),
+            priority: ControlPriority::Medium,
+            automated_check: false,
+            parent_id: None,
+            cross_references: vec!["CIS-3.4".to_string()],
+            remediation_guidance: Some("Implement data retention policies with automated enforcement.".to_string()),
+        },
+
+        // Contingency Planning (CP) Family
+        ComplianceControl {
+            id: "NIST-CP-1".to_string(),
+            control_id: "CP-1".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Policy and Procedures".to_string(),
+            description: "Develop, document, and disseminate contingency planning policy and procedures.".to_string(),
+            category: "Contingency Planning".to_string(),
+            priority: ControlPriority::High,
+            automated_check: false,
+            parent_id: None,
+            cross_references: vec!["PCI-DSS-9.5".to_string()],
+            remediation_guidance: Some("Document business continuity and disaster recovery plans.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-CP-4".to_string(),
+            control_id: "CP-4".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Contingency Plan Testing".to_string(),
+            description: "Test the contingency plan to determine effectiveness and organizational readiness.".to_string(),
+            category: "Contingency Planning".to_string(),
+            priority: ControlPriority::Medium,
+            automated_check: false,
+            parent_id: None,
+            cross_references: vec!["CIS-11.5".to_string()],
+            remediation_guidance: Some("Conduct annual DR tests including failover and restore procedures.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-CP-9".to_string(),
+            control_id: "CP-9".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "System Backup".to_string(),
+            description: "Conduct backups of system-level and user-level information.".to_string(),
+            category: "Contingency Planning".to_string(),
+            priority: ControlPriority::High,
+            automated_check: true,
+            parent_id: None,
+            cross_references: vec!["CIS-11.1".to_string(), "CIS-11.2".to_string(), "CIS-11.3".to_string(), "CIS-11.4".to_string(), "PCI-DSS-9.5".to_string()],
+            remediation_guidance: Some("Implement automated backups with encryption and offsite storage.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-CP-10".to_string(),
+            control_id: "CP-10".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "System Recovery and Reconstitution".to_string(),
+            description: "Provide for the recovery and reconstitution of the system to a known state.".to_string(),
+            category: "Contingency Planning".to_string(),
+            priority: ControlPriority::High,
+            automated_check: false,
+            parent_id: None,
+            cross_references: vec![],
+            remediation_guidance: Some("Document recovery procedures and maintain tested recovery capabilities.".to_string()),
+        },
+
+        // Media Protection (MP) Family
+        ComplianceControl {
+            id: "NIST-MP-2".to_string(),
+            control_id: "MP-2".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Media Access".to_string(),
+            description: "Restrict access to system media to authorized individuals.".to_string(),
+            category: "Media Protection".to_string(),
+            priority: ControlPriority::Medium,
+            automated_check: false,
+            parent_id: None,
+            cross_references: vec!["PCI-DSS-9.6".to_string()],
+            remediation_guidance: Some("Implement physical access controls for media storage areas.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-MP-6".to_string(),
+            control_id: "MP-6".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Media Sanitization".to_string(),
+            description: "Sanitize system media prior to disposal, release, or reuse.".to_string(),
+            category: "Media Protection".to_string(),
+            priority: ControlPriority::Medium,
+            automated_check: false,
+            parent_id: None,
+            cross_references: vec!["CIS-3.5".to_string(), "PCI-DSS-9.8".to_string()],
+            remediation_guidance: Some("Use NIST SP 800-88 approved sanitization methods; document disposal.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-MP-7".to_string(),
+            control_id: "MP-7".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Media Use".to_string(),
+            description: "Restrict the use of removable media and portable storage devices.".to_string(),
+            category: "Media Protection".to_string(),
+            priority: ControlPriority::Medium,
+            automated_check: true,
+            parent_id: None,
+            cross_references: vec!["CIS-10.3".to_string()],
+            remediation_guidance: Some("Disable USB storage via Group Policy; implement DLP for removable media.".to_string()),
+        },
+
+        // Awareness and Training (AT) Family
+        ComplianceControl {
+            id: "NIST-AT-1".to_string(),
+            control_id: "AT-1".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Policy and Procedures".to_string(),
+            description: "Develop, document, and disseminate security awareness and training policy.".to_string(),
+            category: "Awareness and Training".to_string(),
+            priority: ControlPriority::Medium,
+            automated_check: false,
+            parent_id: None,
+            cross_references: vec!["PCI-DSS-12.6".to_string()],
+            remediation_guidance: Some("Document security awareness training requirements and curriculum.".to_string()),
+        },
+        ComplianceControl {
+            id: "NIST-AT-2".to_string(),
+            control_id: "AT-2".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Literacy Training and Awareness".to_string(),
+            description: "Provide security and privacy literacy training to system users.".to_string(),
+            category: "Awareness and Training".to_string(),
+            priority: ControlPriority::Medium,
+            automated_check: false,
+            parent_id: None,
+            cross_references: vec!["PCI-DSS-12.6".to_string()],
+            remediation_guidance: Some("Conduct annual security awareness training with phishing simulations.".to_string()),
+        },
+
+        // Security Assessment and Authorization (SA) Family
+        ComplianceControl {
+            id: "NIST-SA-22".to_string(),
+            control_id: "SA-22".to_string(),
+            framework: ComplianceFramework::Nist80053,
+            title: "Unsupported System Components".to_string(),
+            description: "Replace system components when support is no longer available.".to_string(),
+            category: "System and Services Acquisition".to_string(),
+            priority: ControlPriority::High,
+            automated_check: true,
+            parent_id: None,
+            cross_references: vec!["CIS-2.2".to_string(), "CIS-9.1".to_string()],
+            remediation_guidance: Some("Track EOL dates and plan migrations for unsupported software.".to_string()),
+        },
+    ]
+}
+
+/// Map a vulnerability to relevant NIST 800-53 controls
+pub fn map_vulnerability(
+    vuln_title: &str,
+    _cve_id: Option<&str>,
+    port: Option<u16>,
+    _service: Option<&str>,
+) -> Vec<(String, Severity)> {
+    let mut mappings = Vec::new();
+    let title_lower = vuln_title.to_lowercase();
+
+    // Access control vulnerabilities
+    if title_lower.contains("unauthorized access")
+        || title_lower.contains("privilege escalation")
+    {
+        mappings.push(("NIST-AC-3".to_string(), Severity::Critical));
+        mappings.push(("NIST-AC-6".to_string(), Severity::High));
+    }
+
+    // Authentication vulnerabilities
+    if title_lower.contains("authentication bypass")
+        || title_lower.contains("missing authentication")
+        || title_lower.contains("weak password")
+    {
+        mappings.push(("NIST-IA-2".to_string(), Severity::Critical));
+        mappings.push(("NIST-IA-5".to_string(), Severity::High));
+        mappings.push(("NIST-AC-7".to_string(), Severity::High));
+    }
+
+    // Default credentials
+    if title_lower.contains("default password")
+        || title_lower.contains("default credentials")
+    {
+        mappings.push(("NIST-IA-5".to_string(), Severity::Critical));
+        mappings.push(("NIST-CM-6".to_string(), Severity::High));
+    }
+
+    // Encryption vulnerabilities
+    if title_lower.contains("unencrypted")
+        || title_lower.contains("weak encryption")
+        || title_lower.contains("ssl") && title_lower.contains("vulnerable")
+        || title_lower.contains("tls") && title_lower.contains("weak")
+    {
+        mappings.push(("NIST-SC-8".to_string(), Severity::High));
+        mappings.push(("NIST-SC-13".to_string(), Severity::High));
+        mappings.push(("NIST-SC-28".to_string(), Severity::High));
+    }
+
+    // Patching vulnerabilities
+    if title_lower.contains("outdated")
+        || title_lower.contains("unpatched")
+        || title_lower.contains("end of life")
+    {
+        mappings.push(("NIST-SI-2".to_string(), Severity::High));
+        mappings.push(("NIST-SA-22".to_string(), Severity::High));
+    }
+
+    // Injection vulnerabilities
+    if title_lower.contains("sql injection")
+        || title_lower.contains("command injection")
+        || title_lower.contains("xss")
+    {
+        mappings.push(("NIST-SI-10".to_string(), Severity::Critical));
+    }
+
+    // Missing malware protection
+    if title_lower.contains("no antivirus")
+        || title_lower.contains("malware")
+    {
+        mappings.push(("NIST-SI-3".to_string(), Severity::High));
+    }
+
+    // Logging/monitoring issues
+    if title_lower.contains("no logging")
+        || title_lower.contains("audit disabled")
+    {
+        mappings.push(("NIST-AU-2".to_string(), Severity::Medium));
+        mappings.push(("NIST-AU-12".to_string(), Severity::Medium));
+        mappings.push(("NIST-SI-4".to_string(), Severity::Medium));
+    }
+
+    // Firewall/boundary issues
+    if title_lower.contains("firewall") || title_lower.contains("open port") {
+        mappings.push(("NIST-SC-7".to_string(), Severity::Medium));
+    }
+
+    // Remote access issues
+    if port == Some(22) || port == Some(3389) || title_lower.contains("remote access") {
+        if title_lower.contains("vulnerable") || title_lower.contains("exposed") {
+            mappings.push(("NIST-AC-17".to_string(), Severity::High));
+        }
+    }
+
+    // Insecure protocols
+    if port == Some(23) || title_lower.contains("telnet") {
+        mappings.push(("NIST-SC-8".to_string(), Severity::High));
+        mappings.push(("NIST-CM-7".to_string(), Severity::Medium));
+    }
+
+    // Backup issues
+    if title_lower.contains("backup") && title_lower.contains("missing") {
+        mappings.push(("NIST-CP-9".to_string(), Severity::Medium));
+    }
+
+    mappings
+}

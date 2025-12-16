@@ -126,3 +126,37 @@ pub async fn delete_scheduled_scan(
 
     Ok(HttpResponse::NoContent().finish())
 }
+
+/// Get execution history for a scheduled scan
+pub async fn get_scheduled_scan_history(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    scan_id: web::Path<String>,
+) -> Result<HttpResponse> {
+    // First check if scan exists and belongs to user
+    let existing = db::get_scheduled_scan_by_id(&pool, &scan_id)
+        .await
+        .map_err(|e| {
+            log::error!("Database error: {}", e);
+            actix_web::error::ErrorInternalServerError("Database error")
+        })?;
+
+    match existing {
+        Some(s) => {
+            if s.user_id != claims.sub {
+                return Err(actix_web::error::ErrorForbidden("Access denied"));
+            }
+        }
+        None => return Err(actix_web::error::ErrorNotFound("Scheduled scan not found")),
+    }
+
+    // Get execution history
+    let history = db::get_execution_history(&pool, &scan_id)
+        .await
+        .map_err(|e| {
+            log::error!("Failed to fetch execution history: {}", e);
+            actix_web::error::ErrorInternalServerError("Failed to fetch execution history")
+        })?;
+
+    Ok(HttpResponse::Ok().json(history))
+}

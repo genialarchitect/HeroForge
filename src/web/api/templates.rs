@@ -12,7 +12,10 @@ pub async fn create_template(
 ) -> Result<HttpResponse> {
     let template = db::create_template(&pool, &claims.sub, &request)
         .await
-        .map_err(|_| actix_web::error::ErrorInternalServerError("Failed to create template"))?;
+        .map_err(|e| {
+            log::error!("Failed to create template: {}", e);
+            actix_web::error::ErrorInternalServerError("An internal error occurred. Please try again later.")
+        })?;
 
     Ok(HttpResponse::Ok().json(template))
 }
@@ -24,7 +27,10 @@ pub async fn get_templates(
 ) -> Result<HttpResponse> {
     let templates = db::get_user_templates(&pool, &claims.sub)
         .await
-        .map_err(|_| actix_web::error::ErrorInternalServerError("Failed to fetch templates"))?;
+        .map_err(|e| {
+            log::error!("Failed to fetch templates: {}", e);
+            actix_web::error::ErrorInternalServerError("An internal error occurred. Please try again later.")
+        })?;
 
     Ok(HttpResponse::Ok().json(templates))
 }
@@ -37,7 +43,10 @@ pub async fn get_template(
 ) -> Result<HttpResponse> {
     let template = db::get_template_by_id(&pool, &template_id)
         .await
-        .map_err(|_| actix_web::error::ErrorInternalServerError("Failed to fetch template"))?;
+        .map_err(|e| {
+            log::error!("Failed to fetch template: {}", e);
+            actix_web::error::ErrorInternalServerError("An internal error occurred. Please try again later.")
+        })?;
 
     match template {
         Some(t) => {
@@ -61,7 +70,10 @@ pub async fn update_template(
     // First check if template exists and belongs to user
     let existing = db::get_template_by_id(&pool, &template_id)
         .await
-        .map_err(|_| actix_web::error::ErrorInternalServerError("Database error"))?;
+        .map_err(|e| {
+            log::error!("Database error in update_template: {}", e);
+            actix_web::error::ErrorInternalServerError("An internal error occurred. Please try again later.")
+        })?;
 
     match existing {
         Some(t) => {
@@ -74,7 +86,10 @@ pub async fn update_template(
 
     let updated = db::update_template(&pool, &template_id, &request)
         .await
-        .map_err(|_| actix_web::error::ErrorInternalServerError("Failed to update template"))?;
+        .map_err(|e| {
+            log::error!("Failed to update template: {}", e);
+            actix_web::error::ErrorInternalServerError("Update failed. Please try again.")
+        })?;
 
     Ok(HttpResponse::Ok().json(updated))
 }
@@ -88,7 +103,10 @@ pub async fn delete_template(
     // First check if template exists and belongs to user
     let existing = db::get_template_by_id(&pool, &template_id)
         .await
-        .map_err(|_| actix_web::error::ErrorInternalServerError("Database error"))?;
+        .map_err(|e| {
+            log::error!("Database error in delete_template: {}", e);
+            actix_web::error::ErrorInternalServerError("An internal error occurred. Please try again later.")
+        })?;
 
     match existing {
         Some(t) => {
@@ -101,7 +119,10 @@ pub async fn delete_template(
 
     db::delete_template(&pool, &template_id)
         .await
-        .map_err(|_| actix_web::error::ErrorInternalServerError("Failed to delete template"))?;
+        .map_err(|e| {
+            log::error!("Failed to delete template: {}", e);
+            actix_web::error::ErrorInternalServerError("Delete failed. Please try again.")
+        })?;
 
     Ok(HttpResponse::NoContent().finish())
 }
@@ -119,7 +140,10 @@ pub async fn create_scan_from_template(
     // Fetch the template
     let template = db::get_template_by_id(&pool, &template_id)
         .await
-        .map_err(|_| actix_web::error::ErrorInternalServerError("Database error"))?;
+        .map_err(|e| {
+            log::error!("Database error in create_scan_from_template: {}", e);
+            actix_web::error::ErrorInternalServerError("An internal error occurred. Please try again later.")
+        })?;
 
     let template = match template {
         Some(t) => {
@@ -133,12 +157,18 @@ pub async fn create_scan_from_template(
 
     // Parse the template config
     let template_config: models::ScanTemplateConfig = serde_json::from_str(&template.config)
-        .map_err(|_| actix_web::error::ErrorInternalServerError("Invalid template config"))?;
+        .map_err(|e| {
+            log::error!("Invalid template config: {}", e);
+            actix_web::error::ErrorInternalServerError("Invalid template configuration.")
+        })?;
 
     // Create scan record in database
     let scan = db::create_scan(&pool, &claims.sub, &scan_request.name, &scan_request.targets)
         .await
-        .map_err(|_| actix_web::error::ErrorInternalServerError("Failed to create scan"))?;
+        .map_err(|e| {
+            log::error!("Failed to create scan from template: {}", e);
+            actix_web::error::ErrorInternalServerError("Failed to create scan. Please try again.")
+        })?;
 
     // Start scan in background
     let scan_id = scan.id.clone();
@@ -287,4 +317,148 @@ fn parse_scan_type(scan_type: &str) -> crate::types::ScanType {
         "comprehensive" => crate::types::ScanType::Comprehensive,
         _ => crate::types::ScanType::TCPConnect,
     }
+}
+
+/// Export a template as JSON file
+pub async fn export_template(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    template_id: web::Path<String>,
+) -> Result<HttpResponse> {
+    // Fetch the template
+    let template = db::get_template_by_id(&pool, &template_id)
+        .await
+        .map_err(|e| {
+            log::error!("Database error in export_template: {}", e);
+            actix_web::error::ErrorInternalServerError("An internal error occurred. Please try again later.")
+        })?;
+
+    let template = match template {
+        Some(t) => {
+            if t.user_id != claims.sub {
+                return Err(actix_web::error::ErrorForbidden("Access denied"));
+            }
+            t
+        }
+        None => return Err(actix_web::error::ErrorNotFound("Template not found")),
+    };
+
+    // Create exportable template structure
+    #[derive(serde::Serialize)]
+    struct ExportableTemplate {
+        name: String,
+        description: Option<String>,
+        config: serde_json::Value,
+        is_default: bool,
+        export_version: String,
+    }
+
+    let config_json: serde_json::Value = serde_json::from_str(&template.config)
+        .map_err(|e| {
+            log::error!("Invalid template config: {}", e);
+            actix_web::error::ErrorInternalServerError("Invalid template configuration.")
+        })?;
+
+    let exportable = ExportableTemplate {
+        name: template.name.clone(),
+        description: template.description.clone(),
+        config: config_json,
+        is_default: template.is_default,
+        export_version: "1.0".to_string(),
+    };
+
+    let json_data = serde_json::to_string_pretty(&exportable)
+        .map_err(|e| {
+            log::error!("Failed to serialize template: {}", e);
+            actix_web::error::ErrorInternalServerError("Failed to export template.")
+        })?;
+
+    let filename = format!("template_{}.json", template.name.replace(" ", "_"));
+
+    Ok(HttpResponse::Ok()
+        .content_type("application/json")
+        .insert_header(("Content-Disposition", format!("attachment; filename=\"{}\"", filename)))
+        .body(json_data))
+}
+
+/// Import a template from JSON file
+pub async fn import_template(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    payload: web::Json<ImportTemplateRequest>,
+) -> Result<HttpResponse> {
+    // Validate the imported template structure
+    let template_data = &payload.template;
+
+    // Validate name
+    if template_data.name.trim().is_empty() {
+        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "Template name cannot be empty"
+        })));
+    }
+
+    if template_data.name.len() > 255 {
+        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "Template name too long (max 255 characters)"
+        })));
+    }
+
+    // Validate config structure
+    let config: models::ScanTemplateConfig = serde_json::from_value(template_data.config.clone())
+        .map_err(|e| {
+            log::error!("Invalid template config structure: {}", e);
+            actix_web::error::ErrorBadRequest(format!("Invalid template configuration: {}", e))
+        })?;
+
+    // Validate port ranges
+    if config.port_range.0 == 0 || config.port_range.0 > config.port_range.1 {
+        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "Invalid port range"
+        })));
+    }
+
+    if let Some(udp_range) = config.udp_port_range {
+        if udp_range.0 == 0 || udp_range.0 > udp_range.1 {
+            return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+                "error": "Invalid UDP port range"
+            })));
+        }
+    }
+
+    // Validate thread count
+    if config.threads == 0 || config.threads > 1000 {
+        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "Thread count must be between 1 and 1000"
+        })));
+    }
+
+    // Create the template
+    let create_request = models::CreateTemplateRequest {
+        name: template_data.name.clone(),
+        description: template_data.description.clone(),
+        config,
+        is_default: template_data.is_default.unwrap_or(false),
+    };
+
+    let created_template = db::create_template(&pool, &claims.sub, &create_request)
+        .await
+        .map_err(|e| {
+            log::error!("Failed to create imported template: {}", e);
+            actix_web::error::ErrorInternalServerError("Failed to import template. Please try again.")
+        })?;
+
+    Ok(HttpResponse::Ok().json(created_template))
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct ImportTemplateRequest {
+    pub template: ImportedTemplate,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct ImportedTemplate {
+    pub name: String,
+    pub description: Option<String>,
+    pub config: serde_json::Value,
+    pub is_default: Option<bool>,
 }

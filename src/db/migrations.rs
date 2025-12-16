@@ -10,11 +10,20 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     create_cve_cache_table(pool).await?;
     create_reports_table(pool).await?;
     create_scheduled_scans_table(pool).await?;
+    create_scheduled_scan_executions_table(pool).await?;
     create_scan_templates_table(pool).await?;
     create_target_groups_table(pool).await?;
     create_notification_settings_table(pool).await?;
+    create_login_attempts_table(pool).await?;
+    create_account_lockouts_table(pool).await?;
+    create_refresh_tokens_table(pool).await?;
+    create_password_history_table(pool).await?;
+    create_vulnerability_tracking_table(pool).await?;
+    create_vulnerability_comments_table(pool).await?;
     seed_default_roles(pool).await?;
     seed_default_settings(pool).await?;
+    add_gdpr_consent_columns(pool).await?;
+    add_mfa_columns_to_users(pool).await?;
     Ok(())
 }
 
@@ -278,6 +287,79 @@ async fn create_scheduled_scans_table(pool: &SqlitePool) -> Result<()> {
         .execute(pool)
         .await?;
 
+    // Add retry columns for existing tables (if they don't exist)
+    add_scheduled_scans_retry_columns(pool).await?;
+
+    Ok(())
+}
+
+/// Add retry-related columns to scheduled_scans table for existing databases
+async fn add_scheduled_scans_retry_columns(pool: &SqlitePool) -> Result<()> {
+    // Check if columns already exist (SQLite doesn't support IF NOT EXISTS for ALTER TABLE)
+    let table_info: Vec<(i64, String, String, i64, Option<String>, i64)> =
+        sqlx::query_as("PRAGMA table_info(scheduled_scans)")
+        .fetch_all(pool)
+        .await?;
+
+    let has_retry_count = table_info.iter().any(|(_, name, _, _, _, _)| name == "retry_count");
+    let has_max_retries = table_info.iter().any(|(_, name, _, _, _, _)| name == "max_retries");
+    let has_last_error = table_info.iter().any(|(_, name, _, _, _, _)| name == "last_error");
+
+    if !has_retry_count {
+        sqlx::query("ALTER TABLE scheduled_scans ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0")
+            .execute(pool)
+            .await?;
+    }
+
+    if !has_max_retries {
+        sqlx::query("ALTER TABLE scheduled_scans ADD COLUMN max_retries INTEGER NOT NULL DEFAULT 3")
+            .execute(pool)
+            .await?;
+    }
+
+    if !has_last_error {
+        sqlx::query("ALTER TABLE scheduled_scans ADD COLUMN last_error TEXT")
+            .execute(pool)
+            .await?;
+    }
+
+    Ok(())
+}
+
+/// Create scheduled_scan_executions table for tracking execution history
+async fn create_scheduled_scan_executions_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS scheduled_scan_executions (
+            id TEXT PRIMARY KEY,
+            scheduled_scan_id TEXT NOT NULL,
+            scan_result_id TEXT,
+            started_at TEXT NOT NULL,
+            completed_at TEXT,
+            status TEXT NOT NULL,
+            error_message TEXT,
+            retry_attempt INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY (scheduled_scan_id) REFERENCES scheduled_scans(id) ON DELETE CASCADE,
+            FOREIGN KEY (scan_result_id) REFERENCES scan_results(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for efficient queries
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_executions_scheduled_scan_id ON scheduled_scan_executions(scheduled_scan_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_executions_started_at ON scheduled_scan_executions(started_at)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_executions_status ON scheduled_scan_executions(status)")
+        .execute(pool)
+        .await?;
+
     Ok(())
 }
 
@@ -358,6 +440,270 @@ async fn create_notification_settings_table(pool: &SqlitePool) -> Result<()> {
     )
     .execute(pool)
     .await?;
+
+    Ok(())
+}
+
+/// Create login_attempts table for tracking failed login attempts (NIST 800-53 AC-7)
+async fn create_login_attempts_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS login_attempts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL,
+            attempt_time TEXT NOT NULL,
+            success INTEGER NOT NULL,
+            ip_address TEXT,
+            user_agent TEXT
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create index for efficient username lookups
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_login_attempts_username ON login_attempts(username)")
+        .execute(pool)
+        .await?;
+
+    // Create index for time-based queries
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_login_attempts_time ON login_attempts(attempt_time)")
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+/// Create account_lockouts table for tracking locked accounts (NIST 800-53 AC-7, CIS Controls 16.11)
+async fn create_account_lockouts_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS account_lockouts (
+            username TEXT PRIMARY KEY,
+            locked_until TEXT NOT NULL,
+            attempt_count INTEGER NOT NULL,
+            first_failed_attempt TEXT NOT NULL,
+            last_failed_attempt TEXT NOT NULL,
+            lockout_reason TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create index for efficient time-based lookups
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_account_lockouts_locked_until ON account_lockouts(locked_until)")
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+/// Create refresh_tokens table for JWT refresh token management (NIST 800-63B)
+async fn create_refresh_tokens_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS refresh_tokens (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            token_hash TEXT NOT NULL UNIQUE,
+            expires_at TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            revoked_at TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for efficient lookups
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_refresh_tokens_token_hash ON refresh_tokens(token_hash)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_refresh_tokens_expires_at ON refresh_tokens(expires_at)")
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+/// Add GDPR consent tracking columns to users table
+async fn add_gdpr_consent_columns(pool: &SqlitePool) -> Result<()> {
+    // Check if columns already exist (SQLite doesn't support IF NOT EXISTS for ALTER TABLE)
+    let table_info: Vec<(i64, String, String, i64, Option<String>, i64)> = sqlx::query_as("PRAGMA table_info(users)")
+        .fetch_all(pool)
+        .await?;
+
+    let has_accepted_terms_at = table_info.iter().any(|(_, name, _, _, _, _)| name == "accepted_terms_at");
+    let has_terms_version = table_info.iter().any(|(_, name, _, _, _, _)| name == "terms_version");
+
+    if !has_accepted_terms_at {
+        sqlx::query("ALTER TABLE users ADD COLUMN accepted_terms_at TEXT")
+            .execute(pool)
+            .await?;
+    }
+
+    if !has_terms_version {
+        sqlx::query("ALTER TABLE users ADD COLUMN terms_version TEXT")
+            .execute(pool)
+            .await?;
+    }
+
+    Ok(())
+}
+
+/// Add MFA (TOTP) columns to users table for Two-Factor Authentication
+async fn add_mfa_columns_to_users(pool: &SqlitePool) -> Result<()> {
+    // Check if columns already exist (SQLite doesn't support IF NOT EXISTS for ALTER TABLE)
+    let table_info: Vec<(i64, String, String, i64, Option<String>, i64)> = sqlx::query_as("PRAGMA table_info(users)")
+        .fetch_all(pool)
+        .await?;
+
+    let has_totp_secret = table_info.iter().any(|(_, name, _, _, _, _)| name == "totp_secret");
+    let has_totp_enabled = table_info.iter().any(|(_, name, _, _, _, _)| name == "totp_enabled");
+    let has_totp_verified_at = table_info.iter().any(|(_, name, _, _, _, _)| name == "totp_verified_at");
+    let has_recovery_codes = table_info.iter().any(|(_, name, _, _, _, _)| name == "recovery_codes");
+
+    if !has_totp_secret {
+        sqlx::query("ALTER TABLE users ADD COLUMN totp_secret TEXT")
+            .execute(pool)
+            .await?;
+    }
+
+    if !has_totp_enabled {
+        sqlx::query("ALTER TABLE users ADD COLUMN totp_enabled INTEGER NOT NULL DEFAULT 0")
+            .execute(pool)
+            .await?;
+    }
+
+    if !has_totp_verified_at {
+        sqlx::query("ALTER TABLE users ADD COLUMN totp_verified_at TEXT")
+            .execute(pool)
+            .await?;
+    }
+
+    if !has_recovery_codes {
+        sqlx::query("ALTER TABLE users ADD COLUMN recovery_codes TEXT")
+            .execute(pool)
+            .await?;
+    }
+
+    Ok(())
+}
+
+/// Create password_history table for preventing password reuse (NIST 800-63B)
+async fn create_password_history_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS password_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            password_hash TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create index for efficient user lookups
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_password_history_user_id ON password_history(user_id)")
+        .execute(pool)
+        .await?;
+
+    // Create index for created_at to efficiently find oldest entries
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_password_history_created_at ON password_history(user_id, created_at)")
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+/// Create vulnerability_tracking table for vulnerability management
+async fn create_vulnerability_tracking_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS vulnerability_tracking (
+            id TEXT PRIMARY KEY,
+            scan_id TEXT NOT NULL,
+            host_ip TEXT NOT NULL,
+            port INTEGER,
+            vulnerability_id TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'open',
+            assignee_id TEXT,
+            notes TEXT,
+            due_date TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            resolved_at TEXT,
+            resolved_by TEXT,
+            FOREIGN KEY (scan_id) REFERENCES scan_results(id) ON DELETE CASCADE,
+            FOREIGN KEY (assignee_id) REFERENCES users(id) ON DELETE SET NULL,
+            FOREIGN KEY (resolved_by) REFERENCES users(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for efficient queries
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_vuln_tracking_scan_id ON vulnerability_tracking(scan_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_vuln_tracking_status ON vulnerability_tracking(status)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_vuln_tracking_severity ON vulnerability_tracking(severity)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_vuln_tracking_assignee ON vulnerability_tracking(assignee_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_vuln_tracking_host_ip ON vulnerability_tracking(host_ip)")
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+/// Create vulnerability_comments table for vulnerability discussion
+async fn create_vulnerability_comments_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS vulnerability_comments (
+            id TEXT PRIMARY KEY,
+            vulnerability_tracking_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            comment TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (vulnerability_tracking_id) REFERENCES vulnerability_tracking(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create index for efficient comment retrieval
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_vuln_comments_vuln_id ON vulnerability_comments(vulnerability_tracking_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_vuln_comments_user_id ON vulnerability_comments(user_id)")
+        .execute(pool)
+        .await?;
 
     Ok(())
 }

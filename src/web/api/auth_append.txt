@@ -1,0 +1,88 @@
+
+pub async fn refresh(
+    pool: web::Data<SqlitePool>,
+    request: web::Json<models::RefreshTokenRequest>,
+) -> Result<HttpResponse> {
+    // Verify refresh token
+    let claims = match auth::verify_refresh_token(&request.refresh_token) {
+        Ok(claims) => claims,
+        Err(_) => {
+            return Ok(HttpResponse::Unauthorized().json(serde_json::json!({
+                "error": "Invalid refresh token"
+            })));
+        }
+    };
+
+    // Hash the token using bcrypt for lookup
+    let token_hash = bcrypt::hash(&request.refresh_token, 4)
+        .map_err(|_| actix_web::error::ErrorInternalServerError("Failed to hash token"))?;
+
+    // Check if token is in database and not revoked
+    let stored_token = match db::get_refresh_token(&pool, &token_hash).await {
+        Ok(Some(token)) => token,
+        Ok(None) => {
+            return Ok(HttpResponse::Unauthorized().json(serde_json::json!({
+                "error": "Refresh token not found or revoked"
+            })));
+        }
+        Err(_) => {
+            return Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Database error"
+            })));
+        }
+    };
+
+    // Check if token is expired
+    if stored_token.expires_at < chrono::Utc::now() {
+        return Ok(HttpResponse::Unauthorized().json(serde_json::json!({
+            "error": "Refresh token expired"
+        })));
+    }
+
+    // Get user
+    let user = match db::get_user_by_id(&pool, &claims.sub).await {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            return Ok(HttpResponse::NotFound().json(serde_json::json!({
+                "error": "User not found"
+            })));
+        }
+        Err(_) => {
+            return Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Database error"
+            })));
+        }
+    };
+
+    // Get user roles
+    let roles = db::get_user_roles(&pool, &user.id).await.unwrap_or_default();
+    let role_names: Vec<String> = roles.iter().map(|r| r.name.clone()).collect();
+
+    // Create new access token
+    let access_token = auth::create_jwt(&user.id, &user.username, role_names)
+        .map_err(|_| actix_web::error::ErrorInternalServerError("Failed to create token"))?;
+
+    Ok(HttpResponse::Ok().json(models::RefreshTokenResponse {
+        access_token,
+    }))
+}
+
+pub async fn logout(
+    pool: web::Data<SqlitePool>,
+    request: web::Json<models::RefreshTokenRequest>,
+) -> Result<HttpResponse> {
+    // Hash the token to find in database
+    let token_hash = bcrypt::hash(&request.refresh_token, 4)
+        .map_err(|_| actix_web::error::ErrorInternalServerError("Failed to hash token"))?;
+
+    if let Err(e) = db::revoke_refresh_token(&pool, &token_hash).await {
+        eprintln!("Failed to revoke refresh token: {}", e);
+        return Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+            "error": "Failed to logout"
+        })));
+    }
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "message": "Successfully logged out"
+    })))
+}

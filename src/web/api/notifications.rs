@@ -11,7 +11,10 @@ pub async fn get_notification_settings(
 ) -> Result<HttpResponse> {
     let settings = db::get_notification_settings(&pool, &claims.sub)
         .await
-        .map_err(|_| actix_web::error::ErrorInternalServerError("Failed to fetch notification settings"))?;
+        .map_err(|e| {
+            log::error!("Failed to fetch notification settings: {}", e);
+            actix_web::error::ErrorInternalServerError("An internal error occurred. Please try again later.")
+        })?;
 
     Ok(HttpResponse::Ok().json(settings))
 }
@@ -24,7 +27,10 @@ pub async fn update_notification_settings(
 ) -> Result<HttpResponse> {
     let updated_settings = db::update_notification_settings(&pool, &claims.sub, &request)
         .await
-        .map_err(|_| actix_web::error::ErrorInternalServerError("Failed to update notification settings"))?;
+        .map_err(|e| {
+            log::error!("Failed to update notification settings: {}", e);
+            actix_web::error::ErrorInternalServerError("Update failed. Please try again.")
+        })?;
 
     Ok(HttpResponse::Ok().json(updated_settings))
 }

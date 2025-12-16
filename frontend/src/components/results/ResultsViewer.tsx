@@ -11,7 +11,8 @@ import ServiceBanner from './ServiceBanner';
 import ExportButton from './ExportButton';
 import Input from '../ui/Input';
 import { ReportGenerator, ReportList } from '../reports';
-import { Server, Shield, AlertTriangle, Search, SlidersHorizontal, FileText } from 'lucide-react';
+import { ComplianceAnalysis } from '../compliance';
+import { Server, Shield, AlertTriangle, Search, SlidersHorizontal, FileText, ClipboardCheck } from 'lucide-react';
 
 type SortOption = 'ip' | 'risk' | 'vulns' | 'ports';
 type FilterOption = 'all' | 'with-vulns' | 'critical' | 'high';
@@ -25,6 +26,7 @@ const ResultsViewer: React.FC = () => {
   const [filterBy, setFilterBy] = useState<FilterOption>('all');
   const [showFilters, setShowFilters] = useState(false);
   const [showReportGenerator, setShowReportGenerator] = useState(false);
+  const [showComplianceAnalysis, setShowComplianceAnalysis] = useState(false);
   const [reportListKey, setReportListKey] = useState(0);
 
   const scanResults = activeScan ? results.get(activeScan.id) || [] : [];
@@ -184,6 +186,14 @@ const ResultsViewer: React.FC = () => {
               scanName={activeScan?.name}
               disabled={filteredAndSortedHosts.length === 0}
             />
+            <button
+              onClick={() => setShowComplianceAnalysis(true)}
+              disabled={activeScan?.status !== 'completed'}
+              className="px-4 py-2 rounded-lg border border-green-500 text-green-500 hover:bg-green-500/10 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ClipboardCheck className="h-4 w-4" />
+              Compliance
+            </button>
             <button
               onClick={() => setShowReportGenerator(true)}
               disabled={activeScan?.status !== 'completed'}
@@ -383,6 +393,15 @@ const ResultsViewer: React.FC = () => {
           scanName={activeScan.name}
           onClose={() => setShowReportGenerator(false)}
           onReportCreated={() => setReportListKey((k) => k + 1)}
+        />
+      )}
+
+      {/* Compliance Analysis Modal */}
+      {showComplianceAnalysis && activeScan && (
+        <ComplianceAnalysis
+          scanId={activeScan.id}
+          scanName={activeScan.name}
+          onClose={() => setShowComplianceAnalysis(false)}
         />
       )}
     </div>

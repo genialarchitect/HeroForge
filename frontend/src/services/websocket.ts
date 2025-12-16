@@ -6,21 +6,31 @@ export interface ScanProgressMessage {
 export class WebSocketManager {
   private ws: WebSocket | null = null;
   private scanId: string;
+  private token: string;
   private reconnectAttempts: number = 0;
   private maxReconnectAttempts: number = 10;
   private reconnectDelay: number = 1000;
   private messageHandlers: ((message: ScanProgressMessage) => void)[] = [];
   private statusHandlers: ((status: 'connecting' | 'connected' | 'disconnected' | 'failed') => void)[] = [];
 
-  constructor(scanId: string) {
+  constructor(scanId: string, token?: string) {
     this.scanId = scanId;
+    // Get token from parameter or localStorage
+    this.token = token || localStorage.getItem('token') || '';
   }
 
   connect() {
+    if (!this.token) {
+      console.error('WebSocket connection failed: No authentication token available');
+      this.updateStatus('failed');
+      return;
+    }
+
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.hostname;
     const port = window.location.port || (protocol === 'wss:' ? '443' : '80');
-    const wsUrl = `${protocol}//${host}:${port}/api/ws/scans/${this.scanId}`;
+    // Include JWT token as query parameter for authentication
+    const wsUrl = `${protocol}//${host}:${port}/api/ws/scans/${this.scanId}?token=${encodeURIComponent(this.token)}`;
 
     this.updateStatus('connecting');
 

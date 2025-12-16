@@ -1,12 +1,13 @@
 pub mod api;
 pub mod auth;
 pub mod broadcast;
+pub mod rate_limit;
 pub mod scheduler;
 pub mod websocket;
 
 use actix_cors::Cors;
 use actix_files as fs;
-use actix_web::{middleware::Logger, web, App, HttpServer};
+use actix_web::{middleware::{DefaultHeaders, Logger}, web, App, HttpServer};
 use std::sync::Arc;
 
 pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::Result<()> {
@@ -20,39 +21,116 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
 
     log::info!("Starting web server at http://{}", bind_address);
 
+    // Log rate limiting configuration
+    log::info!("Rate limiting enabled:");
+    log::info!("  - Auth endpoints: 5 requests/minute per IP");
+    log::info!("  - API endpoints: 100 requests/minute per IP");
+    log::info!("  - Scan creation: 10 requests/hour per IP");
+
     HttpServer::new(move || {
-        let cors = Cors::default()
-            .allowed_origin("http://localhost:3000")
-            .allowed_origin("http://localhost:5173")
+        // Configure CORS origins from environment variable or use defaults
+        let mut cors = Cors::default();
+
+        // Default development and production origins
+        let default_origins = vec![
+            "http://localhost:3000",
+            "http://localhost:5173",
+            "https://heroforge.genialarchitect.io",
+        ];
+
+        // Check for custom CORS origins from environment
+        if let Ok(custom_origins) = std::env::var("CORS_ALLOWED_ORIGINS") {
+            log::info!("Using custom CORS origins from environment variable");
+            for origin in custom_origins.split(',') {
+                let origin = origin.trim();
+                if !origin.is_empty() {
+                    log::info!("Adding CORS origin: {}", origin);
+                    cors = cors.allowed_origin(origin);
+                }
+            }
+        } else {
+            // Use default origins
+            log::info!("Using default CORS origins");
+            for origin in default_origins {
+                log::info!("Adding CORS origin: {}", origin);
+                cors = cors.allowed_origin(origin);
+            }
+        }
+
+        cors = cors
             .allowed_methods(vec!["GET", "POST", "PUT", "DELETE"])
             .allowed_headers(vec![
                 actix_web::http::header::AUTHORIZATION,
                 actix_web::http::header::ACCEPT,
                 actix_web::http::header::CONTENT_TYPE,
             ])
+            .supports_credentials()
             .max_age(3600);
 
         App::new()
             .app_data(web::Data::new(pool.clone()))
             .wrap(cors)
             .wrap(Logger::default())
-            // Public routes
-            .route("/api/auth/register", web::post().to(api::auth::register))
-            .route("/api/auth/login", web::post().to(api::auth::login))
-            // Protected routes
+            // Security headers per OWASP guidelines
+            .wrap(
+                DefaultHeaders::new()
+                    .add(("X-Content-Type-Options", "nosniff"))
+                    .add(("X-Frame-Options", "DENY"))
+                    .add(("X-XSS-Protection", "1; mode=block"))
+                    .add(("Referrer-Policy", "strict-origin-when-cross-origin"))
+                    // CSP hardened: Removed 'unsafe-inline' for scripts, using 'self' only
+                    // Note: Vite-built SPAs bundle all scripts, so 'self' is sufficient
+                    // For styles, we keep 'unsafe-inline' as Vite uses inline styles for hot reload
+                    // In production builds, consider using a build-time hash for styles
+                    // Added connect-src for WebSocket connections (ws: wss:)
+                    // Added object-src 'none', base-uri 'self', form-action 'self' for additional security
+                    .add(("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' ws: wss:; object-src 'none'; base-uri 'self'; form-action 'self';"))
+                    .add(("Permissions-Policy", "geolocation=(), microphone=(), camera=()"))
+                    .add(("Strict-Transport-Security", "max-age=31536000; includeSubDomains"))
+            )
+            // Public authentication routes with strict rate limiting (5 req/min per IP)
+            .service(
+                web::scope("/api/auth")
+                    .wrap(rate_limit::auth_rate_limiter())
+                    .route("/register", web::post().to(api::auth::register))
+                    .route("/login", web::post().to(api::auth::login))
+                    .route("/refresh", web::post().to(api::auth::refresh))
+                    .route("/logout", web::post().to(api::auth::logout))
+                    // MFA verification endpoint (public, but requires MFA token from login)
+                    .route("/mfa/verify", web::post().to(api::mfa::verify_mfa))
+            )
+            // Public privacy policy endpoint (no authentication required)
+            .route("/api/privacy-policy", web::get().to(api::privacy::get_privacy_policy))
+            // Protected routes with moderate rate limiting (100 req/min per IP)
             .service(
                 web::scope("/api")
+                    .wrap(rate_limit::api_rate_limiter())
                     .wrap(auth::JwtMiddleware)
                     .route("/auth/me", web::get().to(api::auth::me))
                     .route("/auth/profile", web::put().to(api::auth::update_profile))
                     .route("/auth/password", web::put().to(api::auth::change_password))
+                    // MFA management endpoints (protected, require authentication)
+                    .route("/auth/mfa/setup", web::post().to(api::mfa::setup_mfa))
+                    .route("/auth/mfa/verify-setup", web::post().to(api::mfa::verify_setup))
+                    .route("/auth/mfa", web::delete().to(api::mfa::disable_mfa))
+                    .route("/auth/mfa/recovery-codes", web::post().to(api::mfa::regenerate_recovery_codes))
+                    // GDPR compliance endpoints
+                    .route("/auth/terms-status", web::get().to(api::auth::get_terms_status))
+                    .route("/auth/accept-terms", web::post().to(api::auth::accept_terms))
+                    .route("/auth/export", web::get().to(api::auth::export_user_data))
+                    .route("/auth/account", web::delete().to(api::auth::delete_account))
+                    // Scan endpoints - scan creation has additional rate limiting at handler level
                     .route("/scans", web::post().to(api::scans::create_scan))
                     .route("/scans", web::get().to(api::scans::get_scans))
+                    .route("/scans/stats", web::get().to(api::scans::get_aggregated_stats))
                     .route("/scans/{id}", web::get().to(api::scans::get_scan))
+                    .route("/scans/{id}", web::delete().to(api::scans::delete_scan))
                     .route(
                         "/scans/{id}/results",
                         web::get().to(api::scans::get_scan_results),
                     )
+                    .route("/scans/{id}/export", web::get().to(api::scans::export_scan_csv))
+                    .route("/scans/export", web::post().to(api::scans::bulk_export_scans))
                     .route("/scans/compare", web::post().to(api::compare::compare_scans))
                     .route("/ws/scans/{id}", web::get().to(websocket::ws_handler))
                     // Report endpoints
@@ -68,6 +146,8 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .route("/templates/{id}", web::get().to(api::templates::get_template))
                     .route("/templates/{id}", web::put().to(api::templates::update_template))
                     .route("/templates/{id}", web::delete().to(api::templates::delete_template))
+                    .route("/templates/{id}/export", web::get().to(api::templates::export_template))
+                    .route("/templates/import", web::post().to(api::templates::import_template))
                     .route("/templates/{id}/scan", web::post().to(api::templates::create_scan_from_template))
                     // Target group endpoints
                     .route("/target-groups", web::post().to(api::target_groups::create_target_group))
@@ -81,9 +161,29 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .route("/scheduled-scans/{id}", web::get().to(api::scheduled_scans::get_scheduled_scan))
                     .route("/scheduled-scans/{id}", web::put().to(api::scheduled_scans::update_scheduled_scan))
                     .route("/scheduled-scans/{id}", web::delete().to(api::scheduled_scans::delete_scheduled_scan))
+                    .route("/scheduled-scans/{id}/history", web::get().to(api::scheduled_scans::get_scheduled_scan_history))
                     // Notification settings endpoints
                     .route("/notifications/settings", web::get().to(api::notifications::get_notification_settings))
                     .route("/notifications/settings", web::put().to(api::notifications::update_notification_settings))
+                    // Analytics endpoints
+                    .route("/analytics/summary", web::get().to(api::analytics::get_summary))
+                    .route("/analytics/hosts", web::get().to(api::analytics::get_hosts_over_time))
+                    .route("/analytics/vulnerabilities", web::get().to(api::analytics::get_vulnerabilities_over_time))
+                    .route("/analytics/services", web::get().to(api::analytics::get_top_services))
+                    .route("/analytics/frequency", web::get().to(api::analytics::get_scan_frequency))
+                    // Vulnerability management endpoints
+                    .route("/vulnerabilities", web::get().to(api::vulnerabilities::list_vulnerabilities))
+                    .route("/vulnerabilities/stats", web::get().to(api::vulnerabilities::get_vulnerability_stats))
+                    .route("/vulnerabilities/bulk-update", web::post().to(api::vulnerabilities::bulk_update_vulnerabilities))
+                    .route("/vulnerabilities/{id}", web::get().to(api::vulnerabilities::get_vulnerability))
+                    .route("/vulnerabilities/{id}", web::put().to(api::vulnerabilities::update_vulnerability))
+                    .route("/vulnerabilities/{id}/comments", web::post().to(api::vulnerabilities::add_comment))
+                    // Compliance endpoints
+                    .route("/compliance/frameworks", web::get().to(api::compliance::list_frameworks))
+                    .route("/compliance/frameworks/{id}", web::get().to(api::compliance::get_framework))
+                    .route("/compliance/frameworks/{id}/controls", web::get().to(api::compliance::get_framework_controls))
+                    .route("/scans/{id}/compliance", web::post().to(api::compliance::analyze_scan_compliance))
+                    .route("/scans/{id}/compliance", web::get().to(api::compliance::get_scan_compliance))
                     .configure(api::admin::configure),
             )
             // Serve frontend static files
