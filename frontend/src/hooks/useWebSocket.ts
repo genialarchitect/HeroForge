@@ -104,6 +104,7 @@ export const useWebSocket = (scanId: string | null) => {
                     version: message.version || null,
                     banner: null,
                     cpe: null,
+                    ssl_info: null,
                   }
                 }
               : port

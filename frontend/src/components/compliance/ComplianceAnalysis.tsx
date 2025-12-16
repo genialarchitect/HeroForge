@@ -21,6 +21,7 @@ import {
   ChevronRight,
   ClipboardCheck,
   RefreshCw,
+  FileDown,
 } from 'lucide-react';
 
 interface ComplianceAnalysisProps {
@@ -40,6 +41,8 @@ const ComplianceAnalysis: React.FC<ComplianceAnalysisProps> = ({
   const [analyzing, setAnalyzing] = useState(false);
   const [results, setResults] = useState<ComplianceAnalyzeResponse | null>(null);
   const [expandedFramework, setExpandedFramework] = useState<string | null>(null);
+  const [generatingReport, setGeneratingReport] = useState(false);
+  const [reportFormat, setReportFormat] = useState<'pdf' | 'html' | 'json'>('pdf');
 
   useEffect(() => {
     loadFrameworks();
@@ -100,6 +103,52 @@ const ComplianceAnalysis: React.FC<ComplianceAnalysisProps> = ({
     if (score >= 80) return 'completed';
     if (score >= 60) return 'running';
     return 'failed';
+  };
+
+  const generateReport = async () => {
+    if (!results) return;
+
+    setGeneratingReport(true);
+    try {
+      // Extract framework IDs from results
+      const frameworkIds = results.summary.frameworks.map((fw) =>
+        // Convert framework enum to ID format
+        String(fw.framework).toLowerCase().replace(/_/g, '_')
+      );
+
+      const response = await complianceAPI.generateReport(scanId, {
+        frameworks: frameworkIds,
+        format: reportFormat,
+        include_evidence: true,
+      });
+
+      // Download the report
+      const downloadResponse = await complianceAPI.downloadReport(response.data.report_id);
+
+      // Create blob URL and trigger download
+      const blob = new Blob([downloadResponse.data], {
+        type:
+          reportFormat === 'pdf'
+            ? 'application/pdf'
+            : reportFormat === 'html'
+            ? 'text/html'
+            : 'application/json',
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `compliance_report_${scanId}.${reportFormat}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      toast.success(`${reportFormat.toUpperCase()} report generated and downloaded successfully`);
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to generate report');
+    } finally {
+      setGeneratingReport(false);
+    }
   };
 
   if (loading) {
@@ -349,6 +398,47 @@ const ComplianceAnalysis: React.FC<ComplianceAnalysisProps> = ({
                   )}
                 </div>
               ))}
+            </div>
+
+            {/* Report Generation */}
+            <div className="mt-6 pt-4 border-t border-dark-border">
+              <h3 className="text-lg font-semibold text-white mb-4">
+                Generate Compliance Report
+              </h3>
+              <div className="flex items-center gap-4">
+                <div className="flex gap-2">
+                  {(['pdf', 'html', 'json'] as const).map((format) => (
+                    <button
+                      key={format}
+                      onClick={() => setReportFormat(format)}
+                      className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                        reportFormat === format
+                          ? 'bg-primary text-white'
+                          : 'bg-dark-surface text-slate-400 hover:bg-dark-hover'
+                      }`}
+                    >
+                      {format.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+                <Button
+                  onClick={generateReport}
+                  disabled={generatingReport}
+                  className="ml-auto"
+                >
+                  {generatingReport ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 animate-spin mr-2" />
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <FileDown className="h-4 w-4 mr-2" />
+                      Generate Report
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
 
             {/* Action Buttons */}

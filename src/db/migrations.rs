@@ -20,6 +20,17 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     create_password_history_table(pool).await?;
     create_vulnerability_tracking_table(pool).await?;
     create_vulnerability_comments_table(pool).await?;
+    create_remediation_timeline_table(pool).await?;
+    create_api_keys_table(pool).await?;
+    create_user_dashboard_config_table(pool).await?;
+    create_assets_table(pool).await?;
+    create_asset_ports_table(pool).await?;
+    create_asset_history_table(pool).await?;
+    create_jira_settings_table(pool).await?;
+    add_jira_ticket_id_to_vulnerability_tracking(pool).await?;
+    create_siem_settings_table(pool).await?;
+    add_notification_webhook_columns(pool).await?;
+    create_dns_recon_results_table(pool).await?;
     seed_default_roles(pool).await?;
     seed_default_settings(pool).await?;
     add_gdpr_consent_columns(pool).await?;
@@ -675,6 +686,70 @@ async fn create_vulnerability_tracking_table(pool: &SqlitePool) -> Result<()> {
         .execute(pool)
         .await?;
 
+    // Add remediation workflow columns for existing tables (if they don't exist)
+    add_remediation_workflow_columns(pool).await?;
+
+    Ok(())
+}
+
+/// Add remediation workflow columns to vulnerability_tracking table
+async fn add_remediation_workflow_columns(pool: &SqlitePool) -> Result<()> {
+    // Check if columns already exist (SQLite doesn't support IF NOT EXISTS for ALTER TABLE)
+    let table_info: Vec<(i64, String, String, i64, Option<String>, i64)> =
+        sqlx::query_as("PRAGMA table_info(vulnerability_tracking)")
+        .fetch_all(pool)
+        .await?;
+
+    let has_priority = table_info.iter().any(|(_, name, _, _, _, _)| name == "priority");
+    let has_remediation_steps = table_info.iter().any(|(_, name, _, _, _, _)| name == "remediation_steps");
+    let has_estimated_effort = table_info.iter().any(|(_, name, _, _, _, _)| name == "estimated_effort");
+    let has_actual_effort = table_info.iter().any(|(_, name, _, _, _, _)| name == "actual_effort");
+    let has_verification_scan_id = table_info.iter().any(|(_, name, _, _, _, _)| name == "verification_scan_id");
+    let has_verified_at = table_info.iter().any(|(_, name, _, _, _, _)| name == "verified_at");
+    let has_verified_by = table_info.iter().any(|(_, name, _, _, _, _)| name == "verified_by");
+
+    if !has_priority {
+        sqlx::query("ALTER TABLE vulnerability_tracking ADD COLUMN priority TEXT DEFAULT 'medium'")
+            .execute(pool)
+            .await?;
+    }
+
+    if !has_remediation_steps {
+        sqlx::query("ALTER TABLE vulnerability_tracking ADD COLUMN remediation_steps TEXT")
+            .execute(pool)
+            .await?;
+    }
+
+    if !has_estimated_effort {
+        sqlx::query("ALTER TABLE vulnerability_tracking ADD COLUMN estimated_effort INTEGER")
+            .execute(pool)
+            .await?;
+    }
+
+    if !has_actual_effort {
+        sqlx::query("ALTER TABLE vulnerability_tracking ADD COLUMN actual_effort INTEGER")
+            .execute(pool)
+            .await?;
+    }
+
+    if !has_verification_scan_id {
+        sqlx::query("ALTER TABLE vulnerability_tracking ADD COLUMN verification_scan_id TEXT")
+            .execute(pool)
+            .await?;
+    }
+
+    if !has_verified_at {
+        sqlx::query("ALTER TABLE vulnerability_tracking ADD COLUMN verified_at TEXT")
+            .execute(pool)
+            .await?;
+    }
+
+    if !has_verified_by {
+        sqlx::query("ALTER TABLE vulnerability_tracking ADD COLUMN verified_by TEXT")
+            .execute(pool)
+            .await?;
+    }
+
     Ok(())
 }
 
@@ -707,3 +782,362 @@ async fn create_vulnerability_comments_table(pool: &SqlitePool) -> Result<()> {
 
     Ok(())
 }
+
+/// Create remediation_timeline table for tracking vulnerability remediation history
+async fn create_remediation_timeline_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS remediation_timeline (
+            id TEXT PRIMARY KEY,
+            vulnerability_tracking_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            old_value TEXT,
+            new_value TEXT,
+            comment TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (vulnerability_tracking_id) REFERENCES vulnerability_tracking(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for efficient timeline retrieval
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_remediation_timeline_vuln_id ON remediation_timeline(vulnerability_tracking_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_remediation_timeline_created_at ON remediation_timeline(created_at)")
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+/// Create api_keys table for user-managed API keys
+async fn create_api_keys_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS api_keys (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            key_hash TEXT NOT NULL UNIQUE,
+            prefix TEXT NOT NULL,
+            permissions TEXT,
+            created_at TEXT NOT NULL,
+            last_used_at TEXT,
+            expires_at TEXT,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for efficient lookups
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_api_keys_key_hash ON api_keys(key_hash)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_api_keys_is_active ON api_keys(is_active)")
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+/// Create assets table for persistent asset inventory
+async fn create_assets_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS assets (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            ip_address TEXT NOT NULL,
+            hostname TEXT,
+            mac_address TEXT,
+            first_seen TEXT NOT NULL,
+            last_seen TEXT NOT NULL,
+            scan_count INTEGER NOT NULL DEFAULT 1,
+            os_family TEXT,
+            os_version TEXT,
+            status TEXT NOT NULL DEFAULT 'active',
+            tags TEXT NOT NULL DEFAULT '[]',
+            notes TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            UNIQUE(user_id, ip_address)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for efficient queries
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_assets_user_id ON assets(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_assets_ip_address ON assets(ip_address)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_assets_status ON assets(status)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_assets_last_seen ON assets(last_seen)")
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+/// Create asset_ports table for tracking ports on assets
+async fn create_asset_ports_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS asset_ports (
+            id TEXT PRIMARY KEY,
+            asset_id TEXT NOT NULL,
+            port INTEGER NOT NULL,
+            protocol TEXT NOT NULL,
+            service_name TEXT,
+            service_version TEXT,
+            first_seen TEXT NOT NULL,
+            last_seen TEXT NOT NULL,
+            current_state TEXT NOT NULL,
+            FOREIGN KEY (asset_id) REFERENCES assets(id) ON DELETE CASCADE,
+            UNIQUE(asset_id, port, protocol)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for efficient queries
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_asset_ports_asset_id ON asset_ports(asset_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_asset_ports_port ON asset_ports(port)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_asset_ports_state ON asset_ports(current_state)")
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+/// Create asset_history table for tracking changes over time
+async fn create_asset_history_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS asset_history (
+            id TEXT PRIMARY KEY,
+            asset_id TEXT NOT NULL,
+            scan_id TEXT NOT NULL,
+            changes TEXT NOT NULL,
+            recorded_at TEXT NOT NULL,
+            FOREIGN KEY (asset_id) REFERENCES assets(id) ON DELETE CASCADE,
+            FOREIGN KEY (scan_id) REFERENCES scan_results(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for efficient queries
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_asset_history_asset_id ON asset_history(asset_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_asset_history_scan_id ON asset_history(scan_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_asset_history_recorded_at ON asset_history(recorded_at)")
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+/// Create jira_settings table for JIRA integration configuration
+async fn create_jira_settings_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS jira_settings (
+            user_id TEXT PRIMARY KEY,
+            jira_url TEXT NOT NULL,
+            username TEXT NOT NULL,
+            api_token TEXT NOT NULL,
+            project_key TEXT NOT NULL,
+            issue_type TEXT NOT NULL,
+            default_assignee TEXT,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Add jira_ticket_id column to vulnerability_tracking table
+async fn add_jira_ticket_id_to_vulnerability_tracking(pool: &SqlitePool) -> Result<()> {
+    // Check if column already exists (SQLite doesn't support IF NOT EXISTS for ALTER TABLE)
+    let table_info: Vec<(i64, String, String, i64, Option<String>, i64)> =
+        sqlx::query_as("PRAGMA table_info(vulnerability_tracking)")
+        .fetch_all(pool)
+        .await?;
+
+    let has_jira_ticket_id = table_info.iter().any(|(_, name, _, _, _, _)| name == "jira_ticket_id");
+    let has_jira_ticket_key = table_info.iter().any(|(_, name, _, _, _, _)| name == "jira_ticket_key");
+
+    if !has_jira_ticket_id {
+        sqlx::query("ALTER TABLE vulnerability_tracking ADD COLUMN jira_ticket_id TEXT")
+            .execute(pool)
+            .await?;
+    }
+
+    if !has_jira_ticket_key {
+        sqlx::query("ALTER TABLE vulnerability_tracking ADD COLUMN jira_ticket_key TEXT")
+            .execute(pool)
+            .await?;
+    }
+
+    // Create index for JIRA ticket lookups
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_vuln_tracking_jira_ticket ON vulnerability_tracking(jira_ticket_id)")
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+/// Create siem_settings table for SIEM integration configuration
+async fn create_siem_settings_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS siem_settings (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            siem_type TEXT NOT NULL,
+            endpoint_url TEXT NOT NULL,
+            api_key TEXT,
+            protocol TEXT,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            export_on_scan_complete INTEGER NOT NULL DEFAULT 0,
+            export_on_critical_vuln INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create index for efficient user lookups
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_siem_settings_user_id ON siem_settings(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_siem_settings_enabled ON siem_settings(enabled)")
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+/// Create dns_recon_results table for DNS reconnaissance results
+async fn create_dns_recon_results_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS dns_recon_results (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            domain TEXT NOT NULL,
+            result_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for efficient queries
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dns_recon_user_id ON dns_recon_results(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dns_recon_domain ON dns_recon_results(domain)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dns_recon_created_at ON dns_recon_results(created_at)")
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+/// Create user_dashboard_config table for storing dashboard widget configurations
+async fn create_user_dashboard_config_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS user_dashboard_config (
+            user_id TEXT PRIMARY KEY,
+            widgets TEXT NOT NULL DEFAULT '[]',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Add webhook columns to notification_settings table for Slack and Teams integration
+async fn add_notification_webhook_columns(pool: &SqlitePool) -> Result<()> {
+    // Check if columns already exist (SQLite doesn't support IF NOT EXISTS for ALTER TABLE)
+    let table_info: Vec<(i64, String, String, i64, Option<String>, i64)> =
+        sqlx::query_as("PRAGMA table_info(notification_settings)")
+        .fetch_all(pool)
+        .await?;
+
+    let has_slack_webhook_url = table_info.iter().any(|(_, name, _, _, _, _)| name == "slack_webhook_url");
+    let has_teams_webhook_url = table_info.iter().any(|(_, name, _, _, _, _)| name == "teams_webhook_url");
+
+    if !has_slack_webhook_url {
+        sqlx::query("ALTER TABLE notification_settings ADD COLUMN slack_webhook_url TEXT")
+            .execute(pool)
+            .await?;
+    }
+
+    if !has_teams_webhook_url {
+        sqlx::query("ALTER TABLE notification_settings ADD COLUMN teams_webhook_url TEXT")
+            .execute(pool)
+            .await?;
+    }
+
+    Ok(())
+}
+

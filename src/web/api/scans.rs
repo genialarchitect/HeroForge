@@ -351,7 +351,9 @@ pub async fn create_scan(
 
     // Start scan in background
     let scan_id = scan.id.clone();
+    let scan_name = scan.name.clone();
     let pool_clone = pool.get_ref().clone();
+    let user_id = claims.sub.clone();
 
     // Parse enumeration depth from string
     let enum_depth = scan_request
@@ -418,6 +420,48 @@ pub async fn create_scan(
                 let duration = start_time.elapsed();
                 let results_json = serde_json::to_string(&results).unwrap_or_default();
 
+                // Update asset inventory from scan results
+                for host in &results {
+                    // Upsert asset
+                    let asset_result = db::assets::upsert_asset(
+                        &pool_clone,
+                        &user_id,
+                        &host.target.ip.to_string(),
+                        host.target.hostname.as_deref(),
+                        None, // mac_address not available in HostInfo
+                        host.os_guess.as_ref().map(|os| os.os_family.as_str()),
+                        host.os_guess.as_ref().and_then(|os| os.os_version.as_deref()),
+                        &scan_id,
+                    )
+                    .await;
+
+                    if let Ok(asset) = asset_result {
+                        // Upsert ports for this asset
+                        for port_info in &host.ports {
+                            let protocol_str = match port_info.protocol {
+                                crate::types::Protocol::TCP => "TCP",
+                                crate::types::Protocol::UDP => "UDP",
+                            };
+                            let state_str = match port_info.state {
+                                crate::types::PortState::Open => "Open",
+                                crate::types::PortState::Closed => "Closed",
+                                crate::types::PortState::Filtered => "Filtered",
+                                crate::types::PortState::OpenFiltered => "OpenFiltered",
+                            };
+                            let _ = db::assets::upsert_asset_port(
+                                &pool_clone,
+                                &asset.id,
+                                port_info.port as i32,
+                                protocol_str,
+                                port_info.service.as_ref().map(|s| s.name.as_str()),
+                                port_info.service.as_ref().and_then(|s| s.version.as_deref()),
+                                state_str,
+                            )
+                            .await;
+                        }
+                    }
+                }
+
                 // Send completion message
                 let _ = tx.send(crate::types::ScanProgressMessage::ScanCompleted {
                     scan_id: scan_id.clone(),
@@ -433,6 +477,32 @@ pub async fn create_scan(
                     None,
                 )
                 .await;
+
+                // Send notifications asynchronously (don't block on completion)
+                let pool_for_notifications = pool_clone.clone();
+                let user_id_for_notifications = user_id.clone();
+                let scan_name_for_notifications = scan_name.clone();
+                let results_for_notifications = results.clone();
+
+                tokio::spawn(async move {
+                    // Send scan completion notification
+                    crate::notifications::sender::send_scan_completion_notification(
+                        &pool_for_notifications,
+                        &user_id_for_notifications,
+                        &scan_name_for_notifications,
+                        &results_for_notifications,
+                    )
+                    .await;
+
+                    // Send critical vulnerability notifications
+                    crate::notifications::sender::send_critical_vulnerability_notifications(
+                        &pool_for_notifications,
+                        &user_id_for_notifications,
+                        &scan_name_for_notifications,
+                        &results_for_notifications,
+                    )
+                    .await;
+                });
             }
             Err(e) => {
                 let error_msg = e.to_string();
@@ -595,6 +665,12 @@ fn parse_scan_type(s: &str) -> crate::types::ScanType {
         "syn" | "tcp_syn" | "tcp-syn" => crate::types::ScanType::TCPSyn,
         _ => crate::types::ScanType::TCPConnect,
     }
+}
+
+/// Request body for bulk scan delete
+#[derive(Debug, serde::Deserialize)]
+pub struct BulkDeleteRequest {
+    pub scan_ids: Vec<String>,
 }
 
 /// Request body for bulk scan export
@@ -857,6 +933,61 @@ pub async fn bulk_export_scans(
         .content_type("application/zip")
         .insert_header(("Content-Disposition", "attachment; filename=\"scans_export.zip\""))
         .body(zip_data))
+}
+
+/// Bulk delete multiple scans
+pub async fn bulk_delete_scans(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    request: web::Json<BulkDeleteRequest>,
+) -> Result<HttpResponse> {
+    // Validate request
+    if request.scan_ids.is_empty() {
+        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "At least one scan ID must be specified"
+        })));
+    }
+
+    if request.scan_ids.len() > 100 {
+        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "Maximum 100 scans per delete request"
+        })));
+    }
+
+    let mut deleted_count = 0;
+    let mut failed_ids = Vec::new();
+
+    // Delete each scan (verifies ownership)
+    for scan_id in &request.scan_ids {
+        match db::delete_scan(&pool, scan_id, &claims.sub).await {
+            Ok(true) => {
+                deleted_count += 1;
+                log::info!("User {} deleted scan {} via bulk operation", claims.username, scan_id);
+            }
+            Ok(false) => {
+                // Scan doesn't exist or user doesn't own it
+                failed_ids.push(scan_id.clone());
+            }
+            Err(e) => {
+                log::error!("Failed to delete scan {}: {}", scan_id, e);
+                failed_ids.push(scan_id.clone());
+            }
+        }
+    }
+
+    if failed_ids.is_empty() {
+        Ok(HttpResponse::Ok().json(serde_json::json!({
+            "deleted": deleted_count,
+            "message": format!("Successfully deleted {} scan(s)", deleted_count)
+        })))
+    } else {
+        Ok(HttpResponse::Ok().json(serde_json::json!({
+            "deleted": deleted_count,
+            "failed": failed_ids.len(),
+            "failed_ids": failed_ids,
+            "message": format!("Deleted {} scan(s), {} failed", deleted_count, failed_ids.len())
+        })))
+    }
 }
 
 /// Get aggregated statistics for all active scans

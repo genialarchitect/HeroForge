@@ -6,8 +6,8 @@ import Checkbox from '../ui/Checkbox';
 import Card from '../ui/Card';
 import { scanAPI, targetGroupAPI, templateAPI } from '../../services/api';
 import { useScanStore } from '../../store/scanStore';
-import { Target, Hash, Cpu, Search, Radio, Wifi, FolderOpen, Save } from 'lucide-react';
-import { EnumDepth, EnumService, ScanType, TargetGroup } from '../../types';
+import { Target, Hash, Cpu, Search, Radio, Wifi, FolderOpen, Save, Zap, Radar, Globe, EyeOff } from 'lucide-react';
+import { EnumDepth, EnumService, ScanType, TargetGroup, ScanPreset } from '../../types';
 
 const SCAN_TYPES: { id: ScanType; label: string; description: string }[] = [
   { id: 'tcp_connect', label: 'TCP Connect', description: 'Standard TCP scan (most reliable)' },
@@ -58,6 +58,8 @@ const ScanForm: React.FC = () => {
   const [saveAsTemplate, setSaveAsTemplate] = useState(false);
   const [templateName, setTemplateName] = useState('');
   const [templateDescription, setTemplateDescription] = useState('');
+  const [presets, setPresets] = useState<ScanPreset[]>([]);
+  const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
 
   const { addScan } = useScanStore();
 
@@ -65,6 +67,7 @@ const ScanForm: React.FC = () => {
 
   useEffect(() => {
     loadTargetGroups();
+    loadPresets();
   }, []);
 
   const loadTargetGroups = async () => {
@@ -76,9 +79,75 @@ const ScanForm: React.FC = () => {
     }
   };
 
+  const loadPresets = async () => {
+    try {
+      const response = await scanAPI.getPresets();
+      setPresets(response.data);
+    } catch (error) {
+      console.error('Failed to load scan presets:', error);
+    }
+  };
+
   const useTargetGroup = (group: TargetGroup) => {
     const targets = JSON.parse(group.targets || '[]');
     setTarget(targets.join(', '));
+  };
+
+  const applyPreset = (preset: ScanPreset) => {
+    setSelectedPreset(preset.id);
+
+    // Special handling for web app scan preset
+    if (preset.id === 'webapp') {
+      // Set specific web ports instead of the range
+      setPortStart(80);
+      setPortEnd(8443);
+    } else {
+      setPortStart(preset.port_range[0]);
+      setPortEnd(preset.port_range[1]);
+    }
+
+    setThreads(preset.threads);
+    setScanType(preset.scan_type);
+    setOsDetection(preset.enable_os_detection);
+    setServiceDetection(preset.enable_service_detection);
+    setVulnScan(preset.enable_vuln_scan);
+    setEnableEnumeration(preset.enable_enumeration);
+
+    if (preset.enum_depth) {
+      setEnumDepth(preset.enum_depth);
+    }
+
+    if (preset.udp_port_range) {
+      setUdpPortStart(preset.udp_port_range[0]);
+      setUdpPortEnd(preset.udp_port_range[1]);
+    }
+
+    if (preset.udp_retries) {
+      setUdpRetries(preset.udp_retries);
+    }
+
+    if (preset.enum_services) {
+      setSelectedServices(preset.enum_services);
+    } else {
+      setSelectedServices([]);
+    }
+
+    toast.success(`Applied "${preset.name}" preset`);
+  };
+
+  const getPresetIcon = (iconName: string) => {
+    switch (iconName) {
+      case 'Zap':
+        return Zap;
+      case 'Radar':
+        return Radar;
+      case 'Globe':
+        return Globe;
+      case 'EyeOff':
+        return EyeOff;
+      default:
+        return Zap;
+    }
   };
 
   const validateSingleTarget = (input: string): boolean => {
@@ -218,6 +287,42 @@ const ScanForm: React.FC = () => {
     <Card>
       <h3 className="text-xl font-semibold text-white mb-4">Create New Scan</h3>
       <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Scan Presets */}
+        {presets.length > 0 && (
+          <div className="space-y-3 pb-4 border-b border-dark-border">
+            <div className="flex items-center space-x-2">
+              <Zap className="h-5 w-5 text-yellow-400" />
+              <p className="text-sm font-medium text-slate-300">Quick Presets</p>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {presets.map((preset) => {
+                const IconComponent = getPresetIcon(preset.icon);
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => applyPreset(preset)}
+                    className={`px-3 py-3 text-sm rounded-lg border transition-all text-left ${
+                      selectedPreset === preset.id
+                        ? 'bg-gradient-to-br from-yellow-600/20 to-orange-600/20 border-yellow-500 text-white shadow-lg'
+                        : 'bg-dark-surface border-dark-border text-slate-400 hover:border-slate-500 hover:bg-dark-surface/50'
+                    }`}
+                  >
+                    <div className="flex items-center space-x-2 mb-1">
+                      <IconComponent className={`h-4 w-4 ${selectedPreset === preset.id ? 'text-yellow-400' : 'text-slate-500'}`} />
+                      <div className="font-medium">{preset.name}</div>
+                    </div>
+                    <div className="text-xs opacity-70 line-clamp-2">{preset.description}</div>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-xs text-slate-500 italic">
+              Select a preset to auto-configure scan settings, or customize manually below.
+            </p>
+          </div>
+        )}
+
         <Input
           label="Scan Name"
           type="text"
@@ -277,7 +382,10 @@ const ScanForm: React.FC = () => {
             min={1}
             max={65535}
             value={portStart}
-            onChange={(e) => setPortStart(Number(e.target.value))}
+            onChange={(e) => {
+              setPortStart(Number(e.target.value));
+              setSelectedPreset(null);
+            }}
           />
           <Input
             label="End Port"
@@ -285,7 +393,10 @@ const ScanForm: React.FC = () => {
             min={1}
             max={65535}
             value={portEnd}
-            onChange={(e) => setPortEnd(Number(e.target.value))}
+            onChange={(e) => {
+              setPortEnd(Number(e.target.value));
+              setSelectedPreset(null);
+            }}
           />
         </div>
 
@@ -300,7 +411,10 @@ const ScanForm: React.FC = () => {
               min={1}
               max={100}
               value={threads}
-              onChange={(e) => setThreads(Number(e.target.value))}
+              onChange={(e) => {
+                setThreads(Number(e.target.value));
+                setSelectedPreset(null);
+              }}
               className="w-full h-2 bg-dark-surface rounded-lg appearance-none cursor-pointer slider"
             />
           </div>
@@ -317,7 +431,10 @@ const ScanForm: React.FC = () => {
               <button
                 key={type.id}
                 type="button"
-                onClick={() => setScanType(type.id)}
+                onClick={() => {
+                  setScanType(type.id);
+                  setSelectedPreset(null);
+                }}
                 className={`px-3 py-2 text-sm rounded-lg border transition-colors text-left ${
                   scanType === type.id
                     ? 'bg-primary/20 border-primary text-white'

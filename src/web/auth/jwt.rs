@@ -1,4 +1,6 @@
+use actix_web::{dev::Payload, Error as ActixError, FromRequest, HttpMessage, HttpRequest};
 use chrono::{Duration, Utc};
+use futures_util::future::{ready, Ready};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
@@ -140,4 +142,21 @@ pub fn verify_mfa_token(token: &str) -> Result<MfaClaims, Box<dyn Error>> {
     }
 
     Ok(token_data.claims)
+}
+
+// Implement FromRequest for Claims to allow direct extraction from route handlers
+impl FromRequest for Claims {
+    type Error = ActixError;
+    type Future = Ready<Result<Self, Self::Error>>;
+
+    fn from_request(req: &HttpRequest, _payload: &mut Payload) -> Self::Future {
+        // Extract Claims from request extensions (placed there by JwtMiddleware)
+        if let Some(claims) = req.extensions().get::<Claims>() {
+            ready(Ok(claims.clone()))
+        } else {
+            ready(Err(actix_web::error::ErrorUnauthorized(
+                "Authentication required",
+            )))
+        }
+    }
 }

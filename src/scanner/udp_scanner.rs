@@ -229,6 +229,7 @@ pub async fn scan_target_udp_ports(
                             banner: None,
                             cpe: None,
                             enumeration: None,
+                            ssl_info: None,
                         })
                     })
             } else {
@@ -238,6 +239,7 @@ pub async fn scan_target_udp_ports(
                     banner: None,
                     cpe: None,
                     enumeration: None,
+                    ssl_info: None,
                 })
             };
 

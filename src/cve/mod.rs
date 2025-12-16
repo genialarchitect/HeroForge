@@ -291,6 +291,7 @@ mod tests {
             banner: None,
             cpe: None,
             enumeration: None,
+            ssl_info: None,
         };
 
         let vulns = scanner.lookup_service_cves(&service, 80).await.unwrap();

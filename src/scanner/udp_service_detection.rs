@@ -51,6 +51,7 @@ fn detect_dns_service(response: &[u8]) -> Option<ServiceInfo> {
         banner: Some(format!("DNS response ({} bytes)", response.len())),
         cpe: None,
         enumeration: None,
+        ssl_info: None,
     })
 }
 
@@ -156,6 +157,7 @@ fn detect_ntp_service(response: &[u8]) -> Option<ServiceInfo> {
         banner: Some(banner),
         cpe: None,
         enumeration: None,
+        ssl_info: None,
     })
 }
 
@@ -194,6 +196,7 @@ fn detect_snmp_service(response: &[u8]) -> Option<ServiceInfo> {
         banner: Some(banner),
         cpe: None,
         enumeration: None,
+        ssl_info: None,
     })
 }
 
@@ -279,6 +282,7 @@ fn detect_netbios_service(response: &[u8]) -> Option<ServiceInfo> {
         banner: Some(banner),
         cpe: None,
         enumeration: None,
+        ssl_info: None,
     })
 }
 
@@ -350,6 +354,7 @@ fn detect_tftp_service(response: &[u8]) -> Option<ServiceInfo> {
         banner: Some(banner),
         cpe: None,
         enumeration: None,
+        ssl_info: None,
     })
 }
 
@@ -387,6 +392,7 @@ fn detect_ssdp_service(response: &[u8]) -> Option<ServiceInfo> {
         banner: Some(banner),
         cpe: None,
         enumeration: None,
+        ssl_info: None,
     })
 }
 
@@ -420,6 +426,7 @@ fn detect_sip_service(response: &[u8]) -> Option<ServiceInfo> {
         banner: Some(banner),
         cpe: None,
         enumeration: None,
+        ssl_info: None,
     })
 }
 
@@ -447,6 +454,7 @@ fn detect_dhcp_service(response: &[u8]) -> Option<ServiceInfo> {
         banner: Some(format!("DHCP {} response", msg_type)),
         cpe: None,
         enumeration: None,
+        ssl_info: None,
     })
 }
 
@@ -469,6 +477,7 @@ fn detect_generic_service(port: u16, response: &[u8]) -> Option<ServiceInfo> {
         banner,
         cpe: None,
         enumeration: None,
+        ssl_info: None,
     })
 }
 

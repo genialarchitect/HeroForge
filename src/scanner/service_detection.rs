@@ -24,10 +24,39 @@ pub async fn detect_services(
             .await;
 
             port_info.service = service;
+
+            // If this is an HTTPS port, perform SSL/TLS scanning
+            if is_https_port(port_info.port) {
+                if let Some(ref mut svc) = port_info.service {
+                    debug!("Scanning SSL/TLS for {}:{}", host_info.target.ip, port_info.port);
+
+                    // Use hostname if available, otherwise use IP
+                    let ip_string = host_info.target.ip.to_string();
+                    let target_host = host_info
+                        .target
+                        .hostname
+                        .as_ref()
+                        .map(|h| h.as_str())
+                        .unwrap_or(&ip_string);
+
+                    if let Ok(ssl_info) =
+                        crate::scanner::ssl_scanner::scan_ssl(target_host, port_info.port, config.timeout).await
+                    {
+                        svc.ssl_info = Some(ssl_info);
+                    } else {
+                        debug!("SSL scan failed for {}:{}", host_info.target.ip, port_info.port);
+                    }
+                }
+            }
         }
     }
 
     Ok(())
+}
+
+/// Check if port is commonly used for HTTPS
+fn is_https_port(port: u16) -> bool {
+    matches!(port, 443 | 8443 | 9443 | 10443 | 8080 | 8000 | 9000)
 }
 
 async fn detect_service_on_port(
@@ -49,6 +78,7 @@ async fn detect_service_on_port(
         banner: banner.clone(),
         cpe: None,
         enumeration: None,
+        ssl_info: None,
     };
 
     // Parse banner to extract service details

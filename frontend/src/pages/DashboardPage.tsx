@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { toast } from 'react-toastify';
 import Layout from '../components/layout/Layout';
 import ScanForm from '../components/scan/ScanForm';
 import ScanList from '../components/scan/ScanList';
@@ -10,16 +11,21 @@ import StatsOverview from '../components/dashboard/StatsOverview';
 import VulnerabilityChart from '../components/charts/VulnerabilityChart';
 import PortDistributionChart from '../components/charts/PortDistributionChart';
 import AnalyticsDashboard from '../components/analytics/AnalyticsDashboard';
+import DashboardCustomizer from '../components/dashboard/DashboardCustomizer';
+import BulkActionBar, { BulkAction } from '../components/ui/BulkActionBar';
 import { useScanStore } from '../store/scanStore';
 import { useKeyboardShortcuts, formatShortcut } from '../hooks/useKeyboardShortcuts';
-import { Keyboard, LayoutDashboard, BarChart3 } from 'lucide-react';
+import { scanAPI } from '../services/api';
+import { Keyboard, LayoutDashboard, BarChart3, Trash2, Download, Grid } from 'lucide-react';
 
-type TabId = 'scans' | 'analytics';
+type TabId = 'overview' | 'scans' | 'analytics';
 
 const DashboardPage: React.FC = () => {
-  const { activeScan, results, setActiveScan, scans } = useScanStore();
+  const { activeScan, results, setActiveScan, scans, setScans } = useScanStore();
   const [showShortcuts, setShowShortcuts] = useState(false);
-  const [activeTab, setActiveTab] = useState<TabId>('scans');
+  const [activeTab, setActiveTab] = useState<TabId>('overview');
+  const [selectedScanIds, setSelectedScanIds] = useState<Set<string>>(new Set());
+  const [isProcessingBulk, setIsProcessingBulk] = useState(false);
 
   // Handle scan selection from ActiveScansWidget
   const handleScanSelect = (scanId: string) => {
@@ -28,6 +34,101 @@ const DashboardPage: React.FC = () => {
       setActiveScan(selectedScan);
     }
   };
+
+  // Bulk action handlers
+  const handleBulkAction = async (actionId: string) => {
+    if (selectedScanIds.size === 0) return;
+
+    setIsProcessingBulk(true);
+    try {
+      switch (actionId) {
+        case 'delete':
+          await handleBulkDelete();
+          break;
+        case 'export-json':
+          await handleBulkExport('json');
+          break;
+        case 'export-csv':
+          await handleBulkExport('csv');
+          break;
+        default:
+          toast.warning('Unknown action');
+      }
+    } catch (error) {
+      console.error('Bulk action failed:', error);
+      toast.error('Bulk action failed');
+    } finally {
+      setIsProcessingBulk(false);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    try {
+      const response = await scanAPI.bulkDelete(Array.from(selectedScanIds));
+
+      if (response.data.failed && response.data.failed > 0) {
+        toast.warning(response.data.message);
+      } else {
+        toast.success(response.data.message);
+      }
+
+      // Refresh scan list
+      const updatedScans = await scanAPI.getAll();
+      setScans(updatedScans.data);
+      setSelectedScanIds(new Set());
+    } catch (error) {
+      toast.error('Failed to delete scans');
+      throw error;
+    }
+  };
+
+  const handleBulkExport = async (format: string) => {
+    try {
+      const response = await scanAPI.bulkExport(Array.from(selectedScanIds), format, {
+        include_vulnerabilities: true,
+        include_services: true,
+      });
+
+      // Create download link
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `scans_export.zip`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      toast.success(`Exported ${selectedScanIds.size} scan(s) successfully`);
+      setSelectedScanIds(new Set());
+    } catch (error) {
+      toast.error('Failed to export scans');
+      throw error;
+    }
+  };
+
+  const bulkActions: BulkAction[] = [
+    {
+      id: 'delete',
+      label: 'Delete',
+      icon: <Trash2 className="h-4 w-4" />,
+      variant: 'danger',
+      requiresConfirmation: true,
+      confirmationMessage: `Are you sure you want to delete ${selectedScanIds.size} scan${selectedScanIds.size !== 1 ? 's' : ''}? This action cannot be undone.`,
+    },
+    {
+      id: 'export-json',
+      label: 'Export JSON',
+      icon: <Download className="h-4 w-4" />,
+      variant: 'secondary',
+    },
+    {
+      id: 'export-csv',
+      label: 'Export CSV',
+      icon: <Download className="h-4 w-4" />,
+      variant: 'secondary',
+    },
+  ];
 
   // Get hosts for active scan or all hosts if no active scan
   const displayHosts = useMemo(() => {
@@ -89,6 +190,17 @@ const DashboardPage: React.FC = () => {
         {/* Tabs */}
         <div className="flex gap-2 border-b border-dark-border pb-2">
           <button
+            onClick={() => setActiveTab('overview')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+              activeTab === 'overview'
+                ? 'bg-dark-surface text-primary border-b-2 border-primary'
+                : 'text-slate-400 hover:text-white hover:bg-dark-hover'
+            }`}
+          >
+            <Grid className="h-4 w-4" />
+            Overview
+          </button>
+          <button
             onClick={() => setActiveTab('scans')}
             className={`flex items-center gap-2 px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
               activeTab === 'scans'
@@ -113,6 +225,10 @@ const DashboardPage: React.FC = () => {
         </div>
 
         {/* Tab Content */}
+        {activeTab === 'overview' && (
+          <DashboardCustomizer />
+        )}
+
         {activeTab === 'scans' && (
           <>
             {/* Statistics Overview - Full Width */}
@@ -126,7 +242,10 @@ const DashboardPage: React.FC = () => {
               {/* Left Column: Scan Form + Scan List */}
               <div className="space-y-6">
                 <ScanForm />
-                <ScanList />
+                <ScanList
+                  selectedIds={selectedScanIds}
+                  onSelectionChange={setSelectedScanIds}
+                />
               </div>
 
               {/* Right Column: Progress, Charts, and Results */}
@@ -157,6 +276,15 @@ const DashboardPage: React.FC = () => {
         {activeTab === 'analytics' && (
           <AnalyticsDashboard />
         )}
+
+        {/* Bulk Action Bar */}
+        <BulkActionBar
+          selectedCount={selectedScanIds.size}
+          onClear={() => setSelectedScanIds(new Set())}
+          actions={bulkActions}
+          onAction={handleBulkAction}
+          isProcessing={isProcessingBulk}
+        />
 
         {/* Keyboard Shortcuts Modal */}
         {showShortcuts && (

@@ -7,6 +7,11 @@ import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import AdminPage from './pages/AdminPage';
 import SettingsPage from './pages/SettingsPage';
+import AssetsPage from './pages/AssetsPage';
+import WebAppScanPage from './pages/WebAppScanPage';
+import DnsToolsPage from './pages/DnsToolsPage';
+import CompliancePage from './pages/CompliancePage';
+import RemediationPage from './pages/RemediationPage';
 
 // Protected Route wrapper
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -69,6 +74,46 @@ function App() {
           element={
             <ProtectedRoute>
               <SettingsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/assets"
+          element={
+            <ProtectedRoute>
+              <AssetsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/webapp-scan"
+          element={
+            <ProtectedRoute>
+              <WebAppScanPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dns-tools"
+          element={
+            <ProtectedRoute>
+              <DnsToolsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/compliance"
+          element={
+            <ProtectedRoute>
+              <CompliancePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/remediation"
+          element={
+            <ProtectedRoute>
+              <RemediationPage />
             </ProtectedRoute>
           }
         />

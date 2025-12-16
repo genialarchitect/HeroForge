@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useAuthStore } from '../../store/authStore';
 import Button from '../ui/Button';
-import { Shield, LogOut, User, LayoutDashboard, Users, Settings } from 'lucide-react';
+import { Shield, LogOut, User, LayoutDashboard, Users, Settings, Server, Globe, Network, ShieldCheck } from 'lucide-react';
 
 const Header: React.FC = () => {
   const { user, logout } = useAuth();
@@ -39,6 +39,50 @@ const Header: React.FC = () => {
                 >
                   <LayoutDashboard className="h-4 w-4" />
                   Dashboard
+                </Link>
+                <Link
+                  to="/assets"
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
+                    location.pathname.startsWith('/assets')
+                      ? 'bg-primary/10 text-primary font-medium'
+                      : 'text-slate-400 hover:text-white hover:bg-dark-hover'
+                  }`}
+                >
+                  <Server className="h-4 w-4" />
+                  Assets
+                </Link>
+                <Link
+                  to="/webapp-scan"
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
+                    location.pathname.startsWith('/webapp-scan')
+                      ? 'bg-primary/10 text-primary font-medium'
+                      : 'text-slate-400 hover:text-white hover:bg-dark-hover'
+                  }`}
+                >
+                  <Globe className="h-4 w-4" />
+                  Web Scan
+                </Link>
+                <Link
+                  to="/dns-tools"
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
+                    location.pathname.startsWith('/dns-tools')
+                      ? 'bg-primary/10 text-primary font-medium'
+                      : 'text-slate-400 hover:text-white hover:bg-dark-hover'
+                  }`}
+                >
+                  <Network className="h-4 w-4" />
+                  DNS Tools
+                </Link>
+                <Link
+                  to="/compliance"
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
+                    location.pathname.startsWith('/compliance')
+                      ? 'bg-primary/10 text-primary font-medium'
+                      : 'text-slate-400 hover:text-white hover:bg-dark-hover'
+                  }`}
+                >
+                  <ShieldCheck className="h-4 w-4" />
+                  Compliance
                 </Link>
                 <Link
                   to="/settings"

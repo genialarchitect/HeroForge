@@ -74,6 +74,24 @@ export interface CreateScanRequest {
   enum_services?: EnumService[];
 }
 
+export interface ScanPreset {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  port_range: [number, number];
+  threads: number;
+  scan_type: ScanType;
+  enable_os_detection: boolean;
+  enable_service_detection: boolean;
+  enable_vuln_scan: boolean;
+  enable_enumeration: boolean;
+  enum_depth?: EnumDepth;
+  udp_port_range?: [number, number];
+  udp_retries?: number;
+  enum_services?: EnumService[];
+}
+
 export interface HostInfo {
   target: {
     ip: string;
@@ -101,7 +119,27 @@ export interface PortInfo {
     name: string;
     version: string | null;
     banner: string | null;
+    ssl_info: SslInfo | null;
   } | null;
+}
+
+export interface SslInfo {
+  cert_valid: boolean;
+  cert_expired: boolean;
+  days_until_expiry: number | null;
+  self_signed: boolean;
+  hostname_mismatch: boolean;
+  issuer: string;
+  subject: string;
+  valid_from: string;
+  valid_until: string;
+  protocols: string[];
+  cipher_suites: string[];
+  weak_ciphers: string[];
+  weak_protocols: string[];
+  hsts_enabled: boolean;
+  hsts_max_age: number | null;
+  chain_issues: string[];
 }
 
 export interface Vulnerability {
@@ -362,6 +400,8 @@ export interface NotificationSettings {
   email_on_scan_complete: boolean;
   email_on_critical_vuln: boolean;
   email_address: string;
+  slack_webhook_url?: string | null;
+  teams_webhook_url?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -370,6 +410,8 @@ export interface UpdateNotificationSettingsRequest {
   email_on_scan_complete?: boolean;
   email_on_critical_vuln?: boolean;
   email_address?: string;
+  slack_webhook_url?: string | null;
+  teams_webhook_url?: string | null;
 }
 
 // Scan Templates
@@ -541,6 +583,17 @@ export interface VulnerabilityTracking {
   updated_at: string;
   resolved_at: string | null;
   resolved_by: string | null;
+  jira_ticket_id: string | null;
+  jira_ticket_key: string | null;
+  jira_ticket_url?: string;
+  // Remediation workflow fields
+  priority: string | null;
+  remediation_steps: string | null;
+  estimated_effort: number | null;
+  actual_effort: number | null;
+  verification_scan_id: string | null;
+  verified_at: string | null;
+  verified_by: string | null;
 }
 
 export interface VulnerabilityComment {
@@ -560,11 +613,25 @@ export interface VulnerabilityCommentWithUser {
   created_at: string;
 }
 
+export interface RemediationTimelineEvent {
+  id: string;
+  vulnerability_tracking_id: string;
+  user_id: string;
+  username: string;
+  event_type: string;
+  old_value: string | null;
+  new_value: string | null;
+  comment: string | null;
+  created_at: string;
+}
+
 export interface VulnerabilityDetail {
   vulnerability: VulnerabilityTracking;
   comments: VulnerabilityCommentWithUser[];
+  timeline: RemediationTimelineEvent[];
   assignee: User | null;
   resolved_by_user: User | null;
+  verified_by_user: User | null;
 }
 
 export interface UpdateVulnerabilityRequest {
@@ -572,6 +639,11 @@ export interface UpdateVulnerabilityRequest {
   assignee_id?: string;
   notes?: string;
   due_date?: string;
+  // Remediation workflow fields
+  priority?: string;
+  remediation_steps?: string;
+  estimated_effort?: number;
+  actual_effort?: number;
 }
 
 export interface AddVulnerabilityCommentRequest {
@@ -582,6 +654,15 @@ export interface BulkUpdateVulnerabilitiesRequest {
   vulnerability_ids: string[];
   status?: string;
   assignee_id?: string;
+}
+
+export interface BulkAssignVulnerabilitiesRequest {
+  vulnerability_ids: string[];
+  assignee_id: string;
+}
+
+export interface VerifyVulnerabilityRequest {
+  scan_id?: string;
 }
 
 export interface VulnerabilityStats {
@@ -647,6 +728,40 @@ export type ControlStatus =
   | 'NotAssessed'
   | 'ManualOverride';
 
+// API Keys types
+export interface ApiKey {
+  id: string;
+  user_id: string;
+  name: string;
+  prefix: string;
+  permissions: string[] | null;
+  created_at: string;
+  last_used_at: string | null;
+  expires_at: string | null;
+  is_active: boolean;
+}
+
+export interface CreateApiKeyRequest {
+  name: string;
+  permissions?: string[];
+  expires_at?: string;
+}
+
+export interface CreateApiKeyResponse {
+  id: string;
+  name: string;
+  key: string; // Full key (only returned once)
+  prefix: string;
+  permissions: string[] | null;
+  created_at: string;
+  expires_at: string | null;
+}
+
+export interface UpdateApiKeyRequest {
+  name?: string;
+  permissions?: string[];
+}
+
 export interface ComplianceFinding {
   id: string;
   scan_id: string;
@@ -705,3 +820,50 @@ export interface ComplianceAnalyzeResponse {
   summary: ComplianceSummary;
   message: string;
 }
+
+// SIEM Integration types
+export interface SiemSettings {
+  id: string;
+  user_id: string;
+  siem_type: "syslog" | "splunk" | "elasticsearch";
+  endpoint_url: string;
+  api_key: string | null;
+  protocol: string | null; // For syslog: "tcp" or "udp"
+  enabled: boolean;
+  export_on_scan_complete: boolean;
+  export_on_critical_vuln: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateSiemSettingsRequest {
+  siem_type: "syslog" | "splunk" | "elasticsearch";
+  endpoint_url: string;
+  api_key?: string;
+  protocol?: string;
+  enabled: boolean;
+  export_on_scan_complete: boolean;
+  export_on_critical_vuln: boolean;
+}
+
+export interface UpdateSiemSettingsRequest {
+  endpoint_url?: string;
+  api_key?: string;
+  protocol?: string;
+  enabled?: boolean;
+  export_on_scan_complete?: boolean;
+  export_on_critical_vuln?: boolean;
+}
+
+export interface SiemTestResponse {
+  success: boolean;
+  message: string;
+}
+
+export interface SiemExportResponse {
+  success: boolean;
+  exported_to: number;
+  events_count: number;
+  errors: string[];
+}
+

@@ -123,33 +123,31 @@ src/
 │   ├── host_discovery.rs, port_scanner.rs, syn_scanner.rs
 │   ├── service_detection.rs, os_fingerprint.rs
 │   ├── udp_scanner.rs, udp_probes.rs, udp_service_detection.rs
+│   ├── ssl_scanner.rs   # SSL/TLS certificate analysis
+│   ├── dns_recon.rs     # DNS reconnaissance (subdomains, zone transfers, records)
 │   ├── comparison.rs    # Scan diff between results
-│   └── enumeration/     # Service-specific enumeration (http, dns, smb, ftp, ssh, etc.)
+│   ├── webapp/          # Web application scanning (XSS, SQLi, headers, forms, crawler)
+│   └── enumeration/     # Service-specific enumeration (http, dns, smb, ftp, ssh, snmp, etc.)
 ├── cve/                 # CVE lookup: offline_db → cache → NVD API
 ├── vuln/                # Vulnerability scanning and misconfiguration detection
-├── compliance/          # Security compliance checks (CIS, NIST, GDPR)
+├── compliance/          # Security compliance frameworks
+│   ├── frameworks/      # CIS, NIST 800-53, NIST CSF, PCI-DSS, HIPAA, SOC2, FERPA, OWASP
+│   ├── controls/        # Control mappings and compliance checks
+│   └── analyzer.rs, scanner.rs, scoring.rs
+├── notifications/       # Multi-channel notifications (Slack, Microsoft Teams, email)
+├── integrations/        # External integrations
+│   ├── jira.rs          # Jira ticket creation
+│   └── siem/            # SIEM integrations (Splunk, Elasticsearch, Syslog)
 ├── email/               # SMTP notifications (scan complete, critical vulns)
 ├── reports/             # Report generation (JSON, HTML, PDF, CSV) with risk scoring
 ├── output/              # CLI output formatting (terminal, json, csv)
-├── db/                  # SQLite via sqlx (models.rs, migrations.rs, analytics.rs)
+├── db/                  # SQLite via sqlx (models.rs, migrations.rs, analytics.rs, assets.rs)
 └── web/                 # Actix-web server
     ├── auth/            # JWT auth (jwt.rs, middleware.rs)
-    ├── api/             # REST endpoints (auth, scans, admin, reports, templates, mfa, analytics, etc.)
+    ├── api/             # REST endpoints (see API section below)
     ├── websocket/       # Real-time scan progress with aggregation
     ├── rate_limit.rs    # Request rate limiting
     └── scheduler.rs     # Background job scheduler
-```
-
-### Frontend Structure
-
-```
-frontend/src/
-├── App.tsx, main.tsx    # Entry point and routing
-├── components/          # Reusable UI (forms, tables, modals)
-├── pages/               # Login, Dashboard, Settings, Admin
-├── services/            # Axios API clients
-├── store/               # Zustand global state
-├── hooks/, types/, utils/
 ```
 
 ### Frontend Routes
@@ -161,6 +159,10 @@ frontend/src/
 | `/dashboard/:scanId` | Scan details with results/progress |
 | `/admin` | Admin panel (requires admin role) |
 | `/settings` | Target Groups, Scheduled Scans, Templates, Notifications, Profile |
+| `/assets` | Asset inventory management |
+| `/webapp-scan` | Web application security scanning |
+| `/dns-tools` | DNS reconnaissance tools |
+| `/compliance` | Compliance framework analysis |
 
 ### REST API Endpoints
 
@@ -184,11 +186,25 @@ frontend/src/
 
 **Admin:** `GET /api/admin/users`, `PUT /api/admin/users/{id}/roles`, `DELETE /api/admin/users/{id}`, `GET /api/admin/audit-logs`
 
+**Compliance:** `/api/compliance/*` - Framework analysis and reporting
+
+**Vulnerabilities:** `/api/vulnerabilities/*` - Vulnerability management and remediation
+
+**Assets:** `/api/assets/*` - Asset inventory CRUD
+
+**DNS:** `/api/dns/*` - DNS reconnaissance
+
+**Web App:** `/api/webapp/*` - Web application scanning
+
+**Integrations:** `/api/jira/*`, `/api/siem/*` - External system integrations
+
+**API Keys:** `/api/api-keys/*` - API key management
+
+**Dashboard:** `/api/dashboard/*` - Dashboard widgets and customization
+
+**Scan Presets:** `/api/scan-presets/*` - Predefined scan configurations
+
 **WebSocket:** `WS /api/ws/scans/{id}` (requires JWT query param)
-
-### Database Models (`db/models.rs`)
-
-User, Role, UserRole (RBAC) | ScanResult | Report | ScanTemplate | TargetGroup | ScheduledScan | NotificationSettings | AuditLog
 
 ### Data Flow
 
@@ -207,6 +223,18 @@ Progress updates sent via `ScanProgressMessage` broadcast channel to WebSocket c
 1. **Offline DB** (`cve::offline_db`) - Embedded common CVEs
 2. **SQLite Cache** (`cve::cache`) - Cached NVD results (30-day TTL)
 3. **NVD API** (`cve::nvd_client`) - Real-time queries on cache miss
+
+### Compliance Frameworks
+
+Supported frameworks in `compliance/frameworks/`:
+- CIS Benchmarks
+- NIST 800-53
+- NIST CSF (Cybersecurity Framework)
+- PCI-DSS
+- HIPAA
+- SOC 2
+- FERPA
+- OWASP Top 10
 
 ### Key Architectural Patterns
 
@@ -236,10 +264,15 @@ Progress updates sent via `ScanProgressMessage` broadcast channel to WebSocket c
 |----------|-------------|
 | `JWT_SECRET` | JWT signing key (auto-generated if not set) |
 | `DATABASE_URL` | SQLite path (default: `./heroforge.db`) |
-| `DATABASE_ENCRYPTION_KEY` | **SQLCipher encryption key** (enables AES-256 database encryption) |
+| `DATABASE_ENCRYPTION_KEY` | SQLCipher encryption key (enables AES-256 database encryption) |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` | Email notifications |
 | `SMTP_FROM_ADDRESS`, `SMTP_FROM_NAME` | Email sender info |
 | `BACKUP_GPG_PASSPHRASE` | GPG passphrase for encrypted database backups |
+| `SLACK_WEBHOOK_URL` | Slack notifications |
+| `TEAMS_WEBHOOK_URL` | Microsoft Teams notifications |
+| `JIRA_URL`, `JIRA_USER`, `JIRA_API_TOKEN` | Jira integration |
+| `SPLUNK_HEC_URL`, `SPLUNK_HEC_TOKEN` | Splunk SIEM integration |
+| `ELASTICSEARCH_URL` | Elasticsearch SIEM integration |
 
 ## Important Notes
 

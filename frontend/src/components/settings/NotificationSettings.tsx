@@ -5,16 +5,20 @@ import { NotificationSettings as NotificationSettingsType } from '../../types';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
 import LoadingSpinner from '../ui/LoadingSpinner';
-import { Bell, Mail, AlertTriangle, Save, CheckCircle } from 'lucide-react';
+import { Bell, Mail, AlertTriangle, Save, CheckCircle, MessageSquare, Send } from 'lucide-react';
 
 const NotificationSettings: React.FC = () => {
   const [settings, setSettings] = useState<NotificationSettingsType | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [testingSlack, setTestingSlack] = useState(false);
+  const [testingTeams, setTestingTeams] = useState(false);
   const [formData, setFormData] = useState({
     email_on_scan_complete: false,
     email_on_critical_vuln: true,
     email_address: '',
+    slack_webhook_url: '',
+    teams_webhook_url: '',
   });
 
   useEffect(() => {
@@ -30,6 +34,8 @@ const NotificationSettings: React.FC = () => {
         email_on_scan_complete: response.data.email_on_scan_complete,
         email_on_critical_vuln: response.data.email_on_critical_vuln,
         email_address: response.data.email_address || '',
+        slack_webhook_url: response.data.slack_webhook_url || '',
+        teams_webhook_url: response.data.teams_webhook_url || '',
       });
     } catch (error: any) {
       // 404 means no settings yet - use defaults
@@ -59,6 +65,50 @@ const NotificationSettings: React.FC = () => {
       toast.error(error.response?.data?.error || 'Failed to save settings');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleTestSlack = async () => {
+    if (!formData.slack_webhook_url) {
+      toast.error('Please enter a Slack webhook URL first');
+      return;
+    }
+
+    setTestingSlack(true);
+    try {
+      // Save first if there are unsaved changes
+      if (formData.slack_webhook_url !== settings?.slack_webhook_url) {
+        await notificationAPI.updateSettings({ slack_webhook_url: formData.slack_webhook_url });
+      }
+
+      const response = await notificationAPI.testSlack();
+      toast.success(response.data.message);
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to send test message');
+    } finally {
+      setTestingSlack(false);
+    }
+  };
+
+  const handleTestTeams = async () => {
+    if (!formData.teams_webhook_url) {
+      toast.error('Please enter a Teams webhook URL first');
+      return;
+    }
+
+    setTestingTeams(true);
+    try {
+      // Save first if there are unsaved changes
+      if (formData.teams_webhook_url !== settings?.teams_webhook_url) {
+        await notificationAPI.updateSettings({ teams_webhook_url: formData.teams_webhook_url });
+      }
+
+      const response = await notificationAPI.testTeams();
+      toast.success(response.data.message);
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to send test message');
+    } finally {
+      setTestingTeams(false);
     }
   };
 
@@ -160,6 +210,96 @@ const NotificationSettings: React.FC = () => {
                   Contact your administrator if you're not receiving emails.
                 </p>
               </div>
+            </div>
+          </div>
+
+          {/* Webhook Integrations */}
+          <div className="space-y-4 pt-4 border-t border-dark-border">
+            <h4 className="text-sm font-medium text-slate-300 flex items-center gap-2">
+              <MessageSquare className="h-4 w-4" />
+              Webhook Integrations
+            </h4>
+
+            {/* Slack Webhook */}
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">
+                Slack Webhook URL
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="url"
+                  value={formData.slack_webhook_url}
+                  onChange={(e) => setFormData({ ...formData, slack_webhook_url: e.target.value })}
+                  className="flex-1 bg-dark-bg border border-dark-border rounded-lg px-4 py-2 text-white focus:ring-2 focus:ring-primary focus:border-transparent"
+                  placeholder="https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={handleTestSlack}
+                  disabled={!formData.slack_webhook_url || testingSlack}
+                >
+                  {testingSlack ? (
+                    <>
+                      <LoadingSpinner />
+                      <span className="ml-2">Testing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send className="h-4 w-4 mr-2" />
+                      Test
+                    </>
+                  )}
+                </Button>
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                Send scan notifications to a Slack channel. Create a webhook at{' '}
+                <a
+                  href="https://api.slack.com/messaging/webhooks"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline"
+                >
+                  Slack Incoming Webhooks
+                </a>
+              </p>
+            </div>
+
+            {/* Teams Webhook */}
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">
+                Microsoft Teams Webhook URL
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="url"
+                  value={formData.teams_webhook_url}
+                  onChange={(e) => setFormData({ ...formData, teams_webhook_url: e.target.value })}
+                  className="flex-1 bg-dark-bg border border-dark-border rounded-lg px-4 py-2 text-white focus:ring-2 focus:ring-primary focus:border-transparent"
+                  placeholder="https://outlook.office.com/webhook/YOUR/WEBHOOK/URL"
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={handleTestTeams}
+                  disabled={!formData.teams_webhook_url || testingTeams}
+                >
+                  {testingTeams ? (
+                    <>
+                      <LoadingSpinner />
+                      <span className="ml-2">Testing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send className="h-4 w-4 mr-2" />
+                      Test
+                    </>
+                  )}
+                </Button>
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                Send scan notifications to a Teams channel. Create a webhook in your Teams channel connectors.
+              </p>
             </div>
           </div>
 

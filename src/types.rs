@@ -39,6 +39,28 @@ pub struct ServiceInfo {
     pub cpe: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enumeration: Option<crate::scanner::enumeration::types::EnumerationResult>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ssl_info: Option<SslInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SslInfo {
+    pub cert_valid: bool,
+    pub cert_expired: bool,
+    pub days_until_expiry: Option<i64>,
+    pub self_signed: bool,
+    pub hostname_mismatch: bool,
+    pub issuer: String,
+    pub subject: String,
+    pub valid_from: String,
+    pub valid_until: String,
+    pub protocols: Vec<String>,
+    pub cipher_suites: Vec<String>,
+    pub weak_ciphers: Vec<String>,
+    pub weak_protocols: Vec<String>,
+    pub hsts_enabled: bool,
+    pub hsts_max_age: Option<u64>,
+    pub chain_issues: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -136,6 +158,9 @@ impl Default for ScanConfig {
     }
 }
 
+// DNS Reconnaissance result (re-exported from scanner module)
+pub use crate::scanner::dns_recon::{DnsReconResult, DnsRecord};
+
 // WebSocket progress message types
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
@@ -186,6 +211,14 @@ pub enum ScanProgressMessage {
         port: u16,
         findings_count: usize,
     },
+    DnsRecordFound {
+        domain: String,
+        record_type: String,
+        value: String,
+    },
+    SubdomainFound {
+        subdomain: String,
+    },
     ScanProgress {
         phase: String,
         progress: f32,
@@ -199,4 +232,35 @@ pub enum ScanProgressMessage {
     Error {
         message: String,
     },
+}
+
+// Web Application Scanning types
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebAppScanResult {
+    pub url: String,
+    pub pages_crawled: usize,
+    pub findings: Vec<WebAppFinding>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebAppFinding {
+    pub finding_type: FindingType,
+    pub url: String,
+    pub parameter: Option<String>,
+    pub evidence: String,
+    pub severity: Severity,
+    pub remediation: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum FindingType {
+    MissingSecurityHeader,
+    InsecureHeader,
+    SqlInjection,
+    CrossSiteScripting,
+    SensitiveInfoDisclosure,
+    InsecureForm,
+    WeakCryptography,
+    DirectoryListing,
+    Other,
 }

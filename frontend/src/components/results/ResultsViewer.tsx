@@ -8,14 +8,17 @@ import Badge from '../ui/Badge';
 import LoadingSpinner from '../ui/LoadingSpinner';
 import VulnerabilityCard from './VulnerabilityCard';
 import ServiceBanner from './ServiceBanner';
+import SslInfoComponent from './SslInfo';
 import ExportButton from './ExportButton';
 import Input from '../ui/Input';
 import { ReportGenerator, ReportList } from '../reports';
 import { ComplianceAnalysis } from '../compliance';
-import { Server, Shield, AlertTriangle, Search, SlidersHorizontal, FileText, ClipboardCheck } from 'lucide-react';
+import NetworkMap from '../topology/NetworkMap';
+import { Server, Shield, AlertTriangle, Search, SlidersHorizontal, FileText, ClipboardCheck, List, Network } from 'lucide-react';
 
 type SortOption = 'ip' | 'risk' | 'vulns' | 'ports';
 type FilterOption = 'all' | 'with-vulns' | 'critical' | 'high';
+type ViewTab = 'results' | 'topology';
 
 const ResultsViewer: React.FC = () => {
   const { activeScan, results } = useScanStore();
@@ -28,6 +31,7 @@ const ResultsViewer: React.FC = () => {
   const [showReportGenerator, setShowReportGenerator] = useState(false);
   const [showComplianceAnalysis, setShowComplianceAnalysis] = useState(false);
   const [reportListKey, setReportListKey] = useState(0);
+  const [activeTab, setActiveTab] = useState<ViewTab>('results');
 
   const scanResults = activeScan ? results.get(activeScan.id) || [] : [];
 
@@ -168,8 +172,43 @@ const ResultsViewer: React.FC = () => {
         </div>
       </Card>
 
-      {/* Search and Filters */}
+      {/* View Tabs */}
       <Card>
+        <div className="flex gap-2 border-b border-dark-border pb-2">
+          <button
+            onClick={() => setActiveTab('results')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+              activeTab === 'results'
+                ? 'bg-dark-surface text-primary border-b-2 border-primary'
+                : 'text-slate-400 hover:text-white hover:bg-dark-hover'
+            }`}
+          >
+            <List className="h-4 w-4" />
+            Results
+          </button>
+          <button
+            onClick={() => setActiveTab('topology')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+              activeTab === 'topology'
+                ? 'bg-dark-surface text-primary border-b-2 border-primary'
+                : 'text-slate-400 hover:text-white hover:bg-dark-hover'
+            }`}
+          >
+            <Network className="h-4 w-4" />
+            Topology
+          </button>
+        </div>
+      </Card>
+
+      {/* Tab Content */}
+      {activeTab === 'topology' && activeScan && (
+        <NetworkMap scanId={activeScan.id} />
+      )}
+
+      {activeTab === 'results' && (
+        <>
+          {/* Search and Filters */}
+          <Card>
         <div className="space-y-3">
           <div className="flex items-center gap-3">
             <div className="flex-1">
@@ -344,6 +383,12 @@ const ResultsViewer: React.FC = () => {
                                       service={port.service.name}
                                     />
                                   )}
+                                  {port.service?.ssl_info && (
+                                    <SslInfoComponent
+                                      sslInfo={port.service.ssl_info}
+                                      port={port.port}
+                                    />
+                                  )}
                                 </div>
                               </div>
                             ))}
@@ -384,6 +429,8 @@ const ResultsViewer: React.FC = () => {
           scanId={activeScan.id}
           onGenerateNew={() => setShowReportGenerator(true)}
         />
+      )}
+        </>
       )}
 
       {/* Report Generator Modal */}

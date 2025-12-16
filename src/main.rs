@@ -10,6 +10,8 @@ mod cve;
 mod db;
 mod email;
 mod email_validation;
+mod integrations;
+mod notifications;
 mod output;
 mod password_validation;
 mod reports;

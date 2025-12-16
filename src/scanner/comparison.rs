@@ -326,6 +326,7 @@ mod tests {
                         banner: None,
                         cpe: None,
                         enumeration: None,
+                        ssl_info: None,
                     }),
                 })
                 .collect(),

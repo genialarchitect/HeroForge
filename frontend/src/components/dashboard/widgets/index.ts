@@ -1,0 +1,8 @@
+export { default as WidgetContainer } from './WidgetContainer';
+export { default as RecentScansWidget } from './RecentScansWidget';
+export { default as VulnerabilitySummaryWidget } from './VulnerabilitySummaryWidget';
+export { default as ComplianceScoresWidget } from './ComplianceScoresWidget';
+export { default as ScanActivityWidget } from './ScanActivityWidget';
+export { default as TopRiskyHostsWidget } from './TopRiskyHostsWidget';
+export { default as CriticalVulnsWidget } from './CriticalVulnsWidget';
+export { default as UpcomingScansWidget } from './UpcomingScansWidget';

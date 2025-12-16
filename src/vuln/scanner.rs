@@ -24,6 +24,9 @@ pub async fn scan_vulnerabilities_with_db(
     // Add misconfiguration checks
     vulnerabilities.extend(check_misconfigurations(host_info));
 
+    // Add SSL/TLS vulnerabilities
+    vulnerabilities.extend(check_ssl_vulnerabilities(host_info));
+
     Ok(vulnerabilities)
 }
 
@@ -40,6 +43,9 @@ pub async fn scan_vulnerabilities(
 
     // Add misconfiguration checks
     vulnerabilities.extend(check_misconfigurations(host_info));
+
+    // Add SSL/TLS vulnerabilities
+    vulnerabilities.extend(check_ssl_vulnerabilities(host_info));
 
     Ok(vulnerabilities)
 }
@@ -156,6 +162,140 @@ fn check_misconfigurations(host_info: &HostInfo) -> Vec<Vulnerability> {
     vulns
 }
 
+/// Check for SSL/TLS security issues
+fn check_ssl_vulnerabilities(host_info: &HostInfo) -> Vec<Vulnerability> {
+    let mut vulns = Vec::new();
+
+    for port in &host_info.ports {
+        if let Some(ref service) = port.service {
+            if let Some(ref ssl) = service.ssl_info {
+                let port_str = format!("{}:{}", host_info.target.ip, port.port);
+
+                // Check for expired certificates
+                if ssl.cert_expired {
+                    vulns.push(Vulnerability {
+                        cve_id: None,
+                        title: "Expired SSL/TLS Certificate".to_string(),
+                        severity: Severity::High,
+                        description: format!(
+                            "The SSL/TLS certificate on {} has expired on {}. This will cause browser warnings and connection failures.",
+                            port_str, ssl.valid_until
+                        ),
+                        affected_service: Some(format!("{}:{}", service.name, port.port)),
+                    });
+                }
+
+                // Check for certificates expiring soon
+                if !ssl.cert_expired {
+                    if let Some(days) = ssl.days_until_expiry {
+                        if days < 30 && days > 0 {
+                            vulns.push(Vulnerability {
+                                cve_id: None,
+                                title: "SSL/TLS Certificate Expiring Soon".to_string(),
+                                severity: Severity::Medium,
+                                description: format!(
+                                    "The SSL/TLS certificate on {} will expire in {} days on {}. Plan certificate renewal.",
+                                    port_str, days, ssl.valid_until
+                                ),
+                                affected_service: Some(format!("{}:{}", service.name, port.port)),
+                            });
+                        }
+                    }
+                }
+
+                // Check for self-signed certificates
+                if ssl.self_signed {
+                    vulns.push(Vulnerability {
+                        cve_id: None,
+                        title: "Self-Signed SSL/TLS Certificate".to_string(),
+                        severity: Severity::Medium,
+                        description: format!(
+                            "The SSL/TLS certificate on {} is self-signed. Use a certificate from a trusted CA for production systems.",
+                            port_str
+                        ),
+                        affected_service: Some(format!("{}:{}", service.name, port.port)),
+                    });
+                }
+
+                // Check for hostname mismatch
+                if ssl.hostname_mismatch {
+                    vulns.push(Vulnerability {
+                        cve_id: None,
+                        title: "SSL/TLS Certificate Hostname Mismatch".to_string(),
+                        severity: Severity::High,
+                        description: format!(
+                            "The SSL/TLS certificate on {} does not match the hostname. Certificate is for: {}",
+                            port_str, ssl.subject
+                        ),
+                        affected_service: Some(format!("{}:{}", service.name, port.port)),
+                    });
+                }
+
+                // Check for weak protocols
+                if !ssl.weak_protocols.is_empty() {
+                    vulns.push(Vulnerability {
+                        cve_id: None,
+                        title: "Weak SSL/TLS Protocols Enabled".to_string(),
+                        severity: Severity::High,
+                        description: format!(
+                            "Weak or deprecated SSL/TLS protocols detected on {}: {}. Disable SSLv3, TLS 1.0, and TLS 1.1.",
+                            port_str,
+                            ssl.weak_protocols.join(", ")
+                        ),
+                        affected_service: Some(format!("{}:{}", service.name, port.port)),
+                    });
+                }
+
+                // Check for weak ciphers
+                if !ssl.weak_ciphers.is_empty() {
+                    vulns.push(Vulnerability {
+                        cve_id: None,
+                        title: "Weak SSL/TLS Cipher Suites Enabled".to_string(),
+                        severity: Severity::Medium,
+                        description: format!(
+                            "Weak cipher suites detected on {}: {}. Disable RC4, DES, 3DES, and export ciphers.",
+                            port_str,
+                            ssl.weak_ciphers.join(", ")
+                        ),
+                        affected_service: Some(format!("{}:{}", service.name, port.port)),
+                    });
+                }
+
+                // Check for missing HSTS
+                if !ssl.hsts_enabled && port.port == 443 {
+                    vulns.push(Vulnerability {
+                        cve_id: None,
+                        title: "Missing HTTP Strict Transport Security (HSTS)".to_string(),
+                        severity: Severity::Low,
+                        description: format!(
+                            "HSTS header not detected on {}. Enable HSTS to prevent SSL stripping attacks.",
+                            port_str
+                        ),
+                        affected_service: Some(format!("{}:{}", service.name, port.port)),
+                    });
+                }
+
+                // Check for certificate chain issues
+                if !ssl.chain_issues.is_empty() {
+                    vulns.push(Vulnerability {
+                        cve_id: None,
+                        title: "SSL/TLS Certificate Chain Issues".to_string(),
+                        severity: Severity::Medium,
+                        description: format!(
+                            "Certificate chain issues detected on {}: {}",
+                            port_str,
+                            ssl.chain_issues.join(", ")
+                        ),
+                        affected_service: Some(format!("{}:{}", service.name, port.port)),
+                    });
+                }
+            }
+        }
+    }
+
+    vulns
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -183,6 +323,7 @@ mod tests {
                         banner: None,
                         cpe: None,
                         enumeration: None,
+                        ssl_info: None,
                     }),
                 })
                 .collect(),

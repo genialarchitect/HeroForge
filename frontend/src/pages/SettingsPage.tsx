@@ -8,9 +8,12 @@ import NotificationSettings from '../components/settings/NotificationSettings';
 import ScanComparison from '../components/compare/ScanComparison';
 import ScanTemplates from '../components/settings/ScanTemplates';
 import MfaSettings from '../components/settings/MfaSettings';
-import { Target, Clock, Bell, Settings, GitCompare, FileText, User, Shield, Lock } from 'lucide-react';
+import ApiKeys from '../components/settings/ApiKeys';
+import JiraSettings from '../components/settings/JiraSettings';
+import SiemSettings from '../components/settings/SiemSettings';
+import { Target, Clock, Bell, Settings, GitCompare, FileText, User, Shield, Lock, Key, ExternalLink, Database } from 'lucide-react';
 
-type TabId = 'profile' | 'security' | 'administration' | 'target-groups' | 'scheduled-scans' | 'templates' | 'notifications' | 'compare-scans';
+type TabId = 'profile' | 'security' | 'api-keys' | 'administration' | 'target-groups' | 'scheduled-scans' | 'templates' | 'notifications' | 'jira-integration' | 'siem-integration' | 'compare-scans';
 
 interface Tab {
   id: TabId;
@@ -34,6 +37,12 @@ const SettingsPage: React.FC = () => {
       label: 'Security',
       icon: <Lock className="h-4 w-4" />,
       component: <MfaSettings />,
+    },
+    {
+      id: 'api-keys',
+      label: 'API Keys',
+      icon: <Key className="h-4 w-4" />,
+      component: <ApiKeys />,
     },
     {
       id: 'administration',
@@ -64,6 +73,18 @@ const SettingsPage: React.FC = () => {
       label: 'Notifications',
       icon: <Bell className="h-4 w-4" />,
       component: <NotificationSettings />,
+    },
+    {
+      id: 'jira-integration',
+      label: 'JIRA Integration',
+      icon: <ExternalLink className="h-4 w-4" />,
+      component: <JiraSettings />,
+    },
+    {
+      id: 'siem-integration',
+      label: 'SIEM Integration',
+      icon: <Database className="h-4 w-4" />,
+      component: <SiemSettings />,
     },
     {
       id: 'compare-scans',

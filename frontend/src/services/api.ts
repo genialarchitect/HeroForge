@@ -42,11 +42,24 @@ import type {
   VulnerabilityComment,
   UpdateVulnerabilityRequest,
   BulkUpdateVulnerabilitiesRequest,
+  BulkAssignVulnerabilitiesRequest,
+  VerifyVulnerabilityRequest,
+  RemediationTimelineEvent,
   VulnerabilityStats,
   ComplianceFramework,
   ComplianceControlList,
   ComplianceAnalyzeRequest,
   ComplianceAnalyzeResponse,
+  ScanPreset,
+  ApiKey,
+  CreateApiKeyRequest,
+  CreateApiKeyResponse,
+  UpdateApiKeyRequest,
+  SiemSettings,
+  CreateSiemSettingsRequest,
+  UpdateSiemSettingsRequest,
+  SiemTestResponse,
+  SiemExportResponse,
 } from '../types';
 
 const api = axios.create({
@@ -100,6 +113,22 @@ export const scanAPI = {
   getById: (id: string) => api.get<ScanResult>(`/scans/${id}`),
   getResults: (id: string) => api.get<HostInfo[]>(`/scans/${id}/results`),
   delete: (id: string) => api.delete<{ message: string }>(`/scans/${id}`),
+  getPresets: () => api.get<ScanPreset[]>('/scan-presets'),
+  bulkDelete: (scan_ids: string[]) =>
+    api.post<{ deleted: number; failed?: number; failed_ids?: string[]; message: string }>(
+      '/scans/bulk-delete',
+      { scan_ids }
+    ),
+  bulkExport: (scan_ids: string[], format: string, options?: { include_vulnerabilities?: boolean; include_services?: boolean }) =>
+    api.post(
+      '/scans/bulk-export',
+      {
+        scan_ids,
+        format,
+        ...options,
+      },
+      { responseType: 'blob' }
+    ),
 };
 
 export const adminAPI = {
@@ -183,6 +212,15 @@ export const notificationAPI = {
   getSettings: () => api.get<NotificationSettings>('/notifications/settings'),
   updateSettings: (data: UpdateNotificationSettingsRequest) =>
     api.put<NotificationSettings>('/notifications/settings', data),
+  testSlack: () => api.post<{ success: boolean; message: string }>('/notifications/test-slack'),
+  testTeams: () => api.post<{ success: boolean; message: string }>('/notifications/test-teams'),
+};
+
+export const apiKeyAPI = {
+  getAll: () => api.get<ApiKey[]>('/api-keys'),
+  create: (data: CreateApiKeyRequest) => api.post<CreateApiKeyResponse>('/api-keys', data),
+  update: (id: string, data: UpdateApiKeyRequest) => api.patch<ApiKey>(`/api-keys/${id}`, data),
+  delete: (id: string) => api.delete<{ message: string }>(`/api-keys/${id}`),
 };
 
 export const compareAPI = {
@@ -239,10 +277,26 @@ export const vulnerabilityAPI = {
   bulkUpdate: (data: BulkUpdateVulnerabilitiesRequest) =>
     api.post<{ updated: number }>('/vulnerabilities/bulk-update', data),
 
+  bulkExport: (vulnerability_ids: string[], format: string) =>
+    api.post(
+      '/vulnerabilities/bulk-export',
+      { vulnerability_ids, format },
+      { responseType: 'blob' }
+    ),
+
   getStats: (scan_id?: string) => {
     const queryParams = scan_id ? `?scan_id=${scan_id}` : '';
     return api.get<VulnerabilityStats>(`/vulnerabilities/stats${queryParams}`);
   },
+
+  getTimeline: (id: string) =>
+    api.get<RemediationTimelineEvent[]>(`/vulnerabilities/${id}/timeline`),
+
+  markForVerification: (id: string, data: VerifyVulnerabilityRequest) =>
+    api.post<VulnerabilityTracking>(`/vulnerabilities/${id}/verify`, data),
+
+  bulkAssign: (data: BulkAssignVulnerabilitiesRequest) =>
+    api.post<{ updated: number }>('/vulnerabilities/bulk-assign', data),
 };
 
 export const complianceAPI = {
@@ -265,6 +319,126 @@ export const complianceAPI = {
   // Get compliance results for a scan
   getScanCompliance: (scanId: string) =>
     api.get<ComplianceAnalyzeResponse>(`/scans/${scanId}/compliance`),
+
+  // Generate a compliance report
+  generateReport: (
+    scanId: string,
+    data: { frameworks: string[]; format: 'pdf' | 'html' | 'json'; include_evidence?: boolean }
+  ) =>
+    api.post<{
+      report_id: string;
+      file_path: string;
+      file_size: number;
+      format: string;
+      download_url: string;
+      message: string;
+    }>(`/scans/${scanId}/compliance/report`, data),
+
+  // Download a compliance report
+  downloadReport: (reportId: string) =>
+    api.get(`/compliance/reports/${reportId}/download`, { responseType: 'blob' }),
+};
+
+export const jiraAPI = {
+  // Get JIRA settings for current user
+  getSettings: () => api.get('/integrations/jira/settings'),
+
+  // Update JIRA settings
+  updateSettings: (data: {
+    jira_url: string;
+    username: string;
+    api_token: string;
+    project_key: string;
+    issue_type: string;
+    default_assignee?: string;
+    enabled: boolean;
+  }) => api.post('/integrations/jira/settings', data),
+
+  // Test JIRA connection
+  testConnection: () => api.post('/integrations/jira/test'),
+
+  // List available JIRA projects
+  listProjects: () => api.get<Array<{ id: string; key: string; name: string }>>('/integrations/jira/projects'),
+
+  // List available issue types for the configured project
+  listIssueTypes: () => api.get<Array<{ id: string; name: string; description?: string }>>('/integrations/jira/issue-types'),
+
+  // Create JIRA ticket from vulnerability
+  createTicket: (vulnerabilityId: string, data?: { assignee?: string; labels?: string[] }) =>
+    api.post<{
+      jira_ticket_id: string;
+      jira_ticket_key: string;
+      jira_ticket_url: string;
+    }>(`/vulnerabilities/${vulnerabilityId}/create-ticket`, data || {}),
+};
+
+export const dnsAPI = {
+  // Perform DNS reconnaissance
+  performRecon: (data: {
+    domain: string;
+    includeSubdomains?: boolean;
+    customWordlist?: string[];
+    timeoutSecs?: number;
+  }) =>
+    api.post('/dns/recon', {
+      domain: data.domain,
+      include_subdomains: data.includeSubdomains,
+      custom_wordlist: data.customWordlist,
+      timeout_secs: data.timeoutSecs,
+    }),
+
+  // List all DNS recon results
+  listResults: () => api.get('/dns/recon'),
+
+  // Get specific DNS recon result
+  getResult: (id: string) => api.get(`/dns/recon/${id}`),
+
+  // Delete DNS recon result
+  deleteResult: (id: string) => api.delete(`/dns/recon/${id}`),
+
+  // Get built-in subdomain wordlist
+  getWordlist: () => api.get<{ wordlist: string[]; count: number }>('/dns/wordlist'),
+};
+
+export const siemAPI = {
+  // Get all SIEM settings
+  getSettings: () => api.get<SiemSettings[]>('/integrations/siem/settings'),
+
+  // Create new SIEM settings
+  createSettings: (data: CreateSiemSettingsRequest) =>
+    api.post<SiemSettings>('/integrations/siem/settings', data),
+
+  // Update SIEM settings
+  updateSettings: (id: string, data: UpdateSiemSettingsRequest) =>
+    api.put<SiemSettings>(`/integrations/siem/settings/${id}`, data),
+
+  // Delete SIEM settings
+  deleteSettings: (id: string) =>
+    api.delete(`/integrations/siem/settings/${id}`),
+
+  // Test SIEM connection
+  testConnection: (id: string) =>
+    api.post<SiemTestResponse>(`/integrations/siem/settings/${id}/test`),
+
+  // Manually export a scan to SIEM
+  exportScan: (scanId: string) =>
+    api.post<SiemExportResponse>(`/integrations/siem/export/${scanId}`),
+};
+
+export const webappAPI = {
+  // Start a new web application scan
+  startScan: (data: {
+    target_url: string;
+    max_depth?: number;
+    max_pages?: number;
+    respect_robots_txt?: boolean;
+    checks_enabled?: string[];
+  }) =>
+    api.post('/webapp/scan', data),
+
+  // Get scan status and results
+  getScan: (scanId: string) =>
+    api.get(`/webapp/scan/${scanId}`),
 };
 
 export default api;

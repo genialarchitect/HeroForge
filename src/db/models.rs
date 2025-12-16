@@ -386,6 +386,8 @@ pub struct NotificationSettings {
     pub email_on_scan_complete: bool,
     pub email_on_critical_vuln: bool,
     pub email_address: String,
+    pub slack_webhook_url: Option<String>,
+    pub teams_webhook_url: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -395,6 +397,8 @@ pub struct UpdateNotificationSettingsRequest {
     pub email_on_scan_complete: Option<bool>,
     pub email_on_critical_vuln: Option<bool>,
     pub email_address: Option<String>,
+    pub slack_webhook_url: Option<String>,
+    pub teams_webhook_url: Option<String>,
 }
 
 // Refresh Token Models
@@ -624,6 +628,17 @@ pub struct VulnerabilityTracking {
     pub updated_at: DateTime<Utc>,
     pub resolved_at: Option<DateTime<Utc>>,
     pub resolved_by: Option<String>,
+    // Remediation workflow fields
+    pub priority: Option<String>,
+    pub remediation_steps: Option<String>,
+    pub estimated_effort: Option<i32>,
+    pub actual_effort: Option<i32>,
+    pub verification_scan_id: Option<String>,
+    pub verified_at: Option<DateTime<Utc>>,
+    pub verified_by: Option<String>,
+    // JIRA integration fields
+    pub jira_ticket_id: Option<String>,
+    pub jira_ticket_key: Option<String>,
 }
 
 /// Vulnerability comment
@@ -643,6 +658,11 @@ pub struct UpdateVulnerabilityRequest {
     pub assignee_id: Option<String>,
     pub notes: Option<String>,
     pub due_date: Option<DateTime<Utc>>,
+    // Remediation workflow fields
+    pub priority: Option<String>,
+    pub remediation_steps: Option<String>,
+    pub estimated_effort: Option<i32>,
+    pub actual_effort: Option<i32>,
 }
 
 /// Request to add comment to vulnerability
@@ -660,7 +680,7 @@ pub struct BulkUpdateVulnerabilitiesRequest {
 }
 
 /// Vulnerability statistics
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct VulnerabilityStats {
     pub total: i64,
     pub open: i64,
@@ -679,8 +699,10 @@ pub struct VulnerabilityStats {
 pub struct VulnerabilityDetail {
     pub vulnerability: VulnerabilityTracking,
     pub comments: Vec<VulnerabilityCommentWithUser>,
+    pub timeline: Vec<RemediationTimelineEventWithUser>,
     pub assignee: Option<UserInfo>,
     pub resolved_by_user: Option<UserInfo>,
+    pub verified_by_user: Option<UserInfo>,
 }
 
 /// Comment with user information
@@ -692,4 +714,254 @@ pub struct VulnerabilityCommentWithUser {
     pub username: String,
     pub comment: String,
     pub created_at: DateTime<Utc>,
+}
+
+/// Remediation timeline event for tracking all changes to vulnerability
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct RemediationTimelineEvent {
+    pub id: String,
+    pub vulnerability_tracking_id: String,
+    pub user_id: String,
+    pub event_type: String, // "status_change", "assignment", "note_added", "verification_requested", "verified"
+    pub old_value: Option<String>,
+    pub new_value: Option<String>,
+    pub comment: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Timeline event with user information
+#[derive(Debug, Serialize, Deserialize, FromRow)]
+pub struct RemediationTimelineEventWithUser {
+    pub id: String,
+    pub vulnerability_tracking_id: String,
+    pub user_id: String,
+    pub username: String,
+    pub event_type: String,
+    pub old_value: Option<String>,
+    pub new_value: Option<String>,
+    pub comment: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Request to mark vulnerability for verification
+#[derive(Debug, Serialize, Deserialize)]
+pub struct VerifyVulnerabilityRequest {
+    pub scan_id: Option<String>, // Optional scan ID to use for verification
+}
+
+/// Request to bulk assign vulnerabilities
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BulkAssignVulnerabilitiesRequest {
+    pub vulnerability_ids: Vec<String>,
+    pub assignee_id: String,
+}
+
+// ============================================================================
+// Asset Inventory Models
+// ============================================================================
+
+/// Asset tracked across multiple scans
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct Asset {
+    pub id: String,
+    pub user_id: String,
+    pub ip_address: String,
+    pub hostname: Option<String>,
+    pub mac_address: Option<String>,
+    pub first_seen: DateTime<Utc>,
+    pub last_seen: DateTime<Utc>,
+    pub scan_count: i32,
+    pub os_family: Option<String>,
+    pub os_version: Option<String>,
+    pub status: String, // "active", "inactive"
+    pub tags: String,   // JSON array of tags
+    pub notes: Option<String>,
+}
+
+/// Port associated with an asset
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct AssetPort {
+    pub id: String,
+    pub asset_id: String,
+    pub port: i32,
+    pub protocol: String,
+    pub service_name: Option<String>,
+    pub service_version: Option<String>,
+    pub first_seen: DateTime<Utc>,
+    pub last_seen: DateTime<Utc>,
+    pub current_state: String, // "open", "closed", "filtered"
+}
+
+/// Historical record of asset changes
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct AssetHistory {
+    pub id: String,
+    pub asset_id: String,
+    pub scan_id: String,
+    pub changes: String, // JSON object of changes
+    pub recorded_at: DateTime<Utc>,
+}
+
+/// Request to update asset metadata
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateAssetRequest {
+    pub status: Option<String>,
+    pub tags: Option<Vec<String>>,
+    pub notes: Option<String>,
+}
+
+/// Asset with port details for API responses
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AssetDetail {
+    pub asset: Asset,
+    pub ports: Vec<AssetPort>,
+    pub history: Vec<AssetHistoryWithScan>,
+}
+
+/// Asset history with scan information
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AssetHistoryWithScan {
+    pub id: String,
+    pub scan_id: String,
+    pub scan_name: String,
+    pub changes: serde_json::Value,
+    pub recorded_at: DateTime<Utc>,
+}
+
+// ============================================================================
+// API Keys Models
+// ============================================================================
+
+/// API key record in database (key_hash is bcrypt hashed)
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct ApiKey {
+    pub id: String,
+    pub user_id: String,
+    pub name: String,
+    #[serde(skip_serializing)]
+    pub key_hash: String,
+    pub prefix: String, // First 8 chars for display (e.g., "hf_xxxxx")
+    pub permissions: Option<String>, // JSON array of permissions
+    pub created_at: DateTime<Utc>,
+    pub last_used_at: Option<DateTime<Utc>>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub is_active: bool,
+}
+
+/// Request to create new API key
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateApiKeyRequest {
+    pub name: String,
+    pub permissions: Option<Vec<String>>,
+    pub expires_at: Option<DateTime<Utc>>,
+}
+
+/// Response when creating API key (includes full key ONCE)
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateApiKeyResponse {
+    pub id: String,
+    pub name: String,
+    pub key: String, // Full API key (only returned once)
+    pub prefix: String,
+    pub permissions: Option<Vec<String>>,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: Option<DateTime<Utc>>,
+}
+
+/// Request to update API key
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateApiKeyRequest {
+    pub name: Option<String>,
+    pub permissions: Option<Vec<String>>,
+}
+
+// ============================================================================
+// JIRA Integration Models
+// ============================================================================
+
+/// JIRA integration settings for a user
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct JiraSettings {
+    pub user_id: String,
+    pub jira_url: String,
+    pub username: String,
+    #[serde(skip_serializing)]
+    pub api_token: String,
+    pub project_key: String,
+    pub issue_type: String,
+    pub default_assignee: Option<String>,
+    pub enabled: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Request to create or update JIRA settings
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpsertJiraSettingsRequest {
+    pub jira_url: String,
+    pub username: String,
+    pub api_token: String,
+    pub project_key: String,
+    pub issue_type: String,
+    pub default_assignee: Option<String>,
+    pub enabled: bool,
+}
+
+/// Request to create a JIRA ticket from a vulnerability
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateJiraTicketRequest {
+    pub assignee: Option<String>,
+    pub labels: Option<Vec<String>>,
+}
+
+/// Response after creating a JIRA ticket
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateJiraTicketResponse {
+    pub jira_ticket_id: String,
+    pub jira_ticket_key: String,
+    pub jira_ticket_url: String,
+}
+
+
+// ============================================================================
+// SIEM Integration Models
+// ============================================================================
+
+/// SIEM integration settings for a user
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct SiemSettings {
+    pub id: String,
+    pub user_id: String,
+    pub siem_type: String, // "syslog", "splunk", "elasticsearch"
+    pub endpoint_url: String,
+    pub api_key: Option<String>,
+    pub protocol: Option<String>, // For syslog: "tcp" or "udp"
+    pub enabled: bool,
+    pub export_on_scan_complete: bool,
+    pub export_on_critical_vuln: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Request to create SIEM settings
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateSiemSettingsRequest {
+    pub siem_type: String,
+    pub endpoint_url: String,
+    pub api_key: Option<String>,
+    pub protocol: Option<String>,
+    pub enabled: bool,
+    pub export_on_scan_complete: bool,
+    pub export_on_critical_vuln: bool,
+}
+
+/// Request to update SIEM settings
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateSiemSettingsRequest {
+    pub endpoint_url: Option<String>,
+    pub api_key: Option<String>,
+    pub protocol: Option<String>,
+    pub enabled: Option<bool>,
+    pub export_on_scan_complete: Option<bool>,
+    pub export_on_critical_vuln: Option<bool>,
 }

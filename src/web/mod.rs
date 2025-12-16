@@ -125,12 +125,16 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .route("/scans/stats", web::get().to(api::scans::get_aggregated_stats))
                     .route("/scans/{id}", web::get().to(api::scans::get_scan))
                     .route("/scans/{id}", web::delete().to(api::scans::delete_scan))
+                    // Scan presets endpoint
+                    .route("/scan-presets", web::get().to(api::scan_presets::get_presets))
                     .route(
                         "/scans/{id}/results",
                         web::get().to(api::scans::get_scan_results),
                     )
                     .route("/scans/{id}/export", web::get().to(api::scans::export_scan_csv))
-                    .route("/scans/export", web::post().to(api::scans::bulk_export_scans))
+                    .route("/scans/{id}/topology", web::get().to(api::topology::get_scan_topology))
+                    .route("/scans/bulk-export", web::post().to(api::scans::bulk_export_scans))
+                    .route("/scans/bulk-delete", web::post().to(api::scans::bulk_delete_scans))
                     .route("/scans/compare", web::post().to(api::compare::compare_scans))
                     .route("/ws/scans/{id}", web::get().to(websocket::ws_handler))
                     // Report endpoints
@@ -165,16 +169,30 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     // Notification settings endpoints
                     .route("/notifications/settings", web::get().to(api::notifications::get_notification_settings))
                     .route("/notifications/settings", web::put().to(api::notifications::update_notification_settings))
+                    .route("/notifications/test-slack", web::post().to(api::notifications::test_slack_webhook))
+                    .route("/notifications/test-teams", web::post().to(api::notifications::test_teams_webhook))
+                    // API Keys endpoints
+                    .route("/api-keys", web::get().to(api::api_keys::get_api_keys))
+                    .route("/api-keys", web::post().to(api::api_keys::create_api_key))
+                    .route("/api-keys/{id}", web::patch().to(api::api_keys::update_api_key))
+                    .route("/api-keys/{id}", web::delete().to(api::api_keys::delete_api_key))
                     // Analytics endpoints
                     .route("/analytics/summary", web::get().to(api::analytics::get_summary))
                     .route("/analytics/hosts", web::get().to(api::analytics::get_hosts_over_time))
                     .route("/analytics/vulnerabilities", web::get().to(api::analytics::get_vulnerabilities_over_time))
                     .route("/analytics/services", web::get().to(api::analytics::get_top_services))
                     .route("/analytics/frequency", web::get().to(api::analytics::get_scan_frequency))
+                    // Asset Inventory endpoints
+                    .route("/assets", web::get().to(api::assets::get_assets))
+                    .route("/assets/{id}", web::get().to(api::assets::get_asset))
+                    .route("/assets/{id}", web::patch().to(api::assets::update_asset))
+                    .route("/assets/{id}", web::delete().to(api::assets::delete_asset))
+                    .route("/assets/{id}/history", web::get().to(api::assets::get_asset_history))
                     // Vulnerability management endpoints
                     .route("/vulnerabilities", web::get().to(api::vulnerabilities::list_vulnerabilities))
                     .route("/vulnerabilities/stats", web::get().to(api::vulnerabilities::get_vulnerability_stats))
                     .route("/vulnerabilities/bulk-update", web::post().to(api::vulnerabilities::bulk_update_vulnerabilities))
+                    .route("/vulnerabilities/bulk-export", web::post().to(api::vulnerabilities::bulk_export_vulnerabilities))
                     .route("/vulnerabilities/{id}", web::get().to(api::vulnerabilities::get_vulnerability))
                     .route("/vulnerabilities/{id}", web::put().to(api::vulnerabilities::update_vulnerability))
                     .route("/vulnerabilities/{id}/comments", web::post().to(api::vulnerabilities::add_comment))
@@ -184,7 +202,32 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .route("/compliance/frameworks/{id}/controls", web::get().to(api::compliance::get_framework_controls))
                     .route("/scans/{id}/compliance", web::post().to(api::compliance::analyze_scan_compliance))
                     .route("/scans/{id}/compliance", web::get().to(api::compliance::get_scan_compliance))
-                    .configure(api::admin::configure),
+                    .route("/scans/{id}/compliance/report", web::post().to(api::compliance::generate_compliance_report))
+                    .route("/compliance/reports/{id}/download", web::get().to(api::compliance::download_compliance_report))
+                    // DNS reconnaissance endpoints
+                    .route("/dns/recon", web::post().to(api::dns::perform_dns_recon))
+                    .route("/dns/recon", web::get().to(api::dns::list_dns_recon_results))
+                    .route("/dns/recon/{id}", web::get().to(api::dns::get_dns_recon_result))
+                    .route("/dns/recon/{id}", web::delete().to(api::dns::delete_dns_recon_result))
+                    .route("/dns/wordlist", web::get().to(api::dns::get_wordlist))
+                    // Web Application scanning endpoints
+                    .configure(api::webapp::configure)
+                    // JIRA integration endpoints
+                    .route("/integrations/jira/settings", web::get().to(api::jira::get_jira_settings))
+                    .route("/integrations/jira/settings", web::post().to(api::jira::upsert_jira_settings))
+                    .route("/integrations/jira/test", web::post().to(api::jira::test_jira_connection))
+                    .route("/integrations/jira/projects", web::get().to(api::jira::list_jira_projects))
+                    .route("/integrations/jira/issue-types", web::get().to(api::jira::list_jira_issue_types))
+                    .route("/vulnerabilities/{id}/create-ticket", web::post().to(api::jira::create_jira_ticket))
+                    // SIEM integration endpoints
+                    .route("/integrations/siem/settings", web::get().to(api::siem::get_siem_settings))
+                    .route("/integrations/siem/settings", web::post().to(api::siem::create_siem_settings))
+                    .route("/integrations/siem/settings/{id}", web::put().to(api::siem::update_siem_settings))
+                    .route("/integrations/siem/settings/{id}", web::delete().to(api::siem::delete_siem_settings))
+                    .route("/integrations/siem/settings/{id}/test", web::post().to(api::siem::test_siem_connection))
+                    .route("/integrations/siem/export/{scan_id}", web::post().to(api::siem::export_scan_to_siem))
+                    .configure(api::admin::configure)
+                    .configure(api::dashboard::configure),
             )
             // Serve frontend static files
             .service(fs::Files::new("/", "./frontend/dist").index_file("index.html"))

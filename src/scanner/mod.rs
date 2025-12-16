@@ -1,14 +1,17 @@
 use anyhow::Result;
 pub mod comparison;
+pub mod dns_recon;
 pub mod enumeration;
 pub mod host_discovery;
 pub mod os_fingerprint;
 pub mod port_scanner;
 pub mod service_detection;
+pub mod ssl_scanner;
 pub mod syn_scanner;
 pub mod udp_probes;
 pub mod udp_scanner;
 pub mod udp_service_detection;
+pub mod webapp;
 
 use crate::types::{HostInfo, ScanConfig, ScanProgressMessage, ScanTarget};
 use log::{debug, info, warn};

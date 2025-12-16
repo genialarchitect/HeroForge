@@ -43,8 +43,8 @@ pub async fn generate(data: &ReportData, reports_dir: &str) -> Result<(String, i
     Ok((path_str, file_size))
 }
 
-/// Try generating PDF using wkhtmltopdf
-async fn try_wkhtmltopdf(html_path: &Path, pdf_path: &Path) -> Result<()> {
+/// Try generating PDF using wkhtmltopdf (public for compliance reports)
+pub async fn try_wkhtmltopdf(html_path: &Path, pdf_path: &Path) -> Result<()> {
     debug!("Attempting PDF generation with wkhtmltopdf");
 
     let status = Command::new("wkhtmltopdf")
@@ -72,8 +72,8 @@ async fn try_wkhtmltopdf(html_path: &Path, pdf_path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Try generating PDF using chromium headless
-async fn try_chromium(html_path: &Path, pdf_path: &Path) -> Result<()> {
+/// Try generating PDF using chromium headless (public for compliance reports)
+pub async fn try_chromium(html_path: &Path, pdf_path: &Path) -> Result<()> {
     debug!("Attempting PDF generation with chromium");
 
     // Try different chromium binary names
