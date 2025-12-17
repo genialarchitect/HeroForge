@@ -1009,9 +1009,96 @@ pub async fn bulk_export_scans(
                         })?;
                     name
                 }
+                "pdf" => {
+                    // Generate PDF report for this scan
+                    use crate::reports::types::{
+                        ReportData, ReportTemplate, ReportOptions,
+                        ReportSummary, FindingDetail, RemediationRecommendation,
+                    };
+                    use crate::reports::formats::{html, pdf};
+
+                    // Build report data from scan
+                    let report_id = uuid::Uuid::new_v4().to_string();
+                    let template = ReportTemplate::technical();
+                    let sections = template.default_sections.clone();
+                    let summary = ReportSummary::from_hosts(&hosts);
+                    let findings = FindingDetail::from_vulnerabilities(&hosts);
+                    let remediation = RemediationRecommendation::from_findings(&findings);
+
+                    let report_data = ReportData {
+                        id: report_id.clone(),
+                        name: scan.name.clone(),
+                        description: Some(format!("Export of scan {}", scan.id)),
+                        scan_id: scan.id.clone(),
+                        scan_name: scan.name.clone(),
+                        created_at: chrono::Utc::now(),
+                        scan_date: scan.completed_at.unwrap_or(scan.created_at),
+                        template,
+                        sections,
+                        options: ReportOptions::default(),
+                        hosts: hosts.clone(),
+                        summary,
+                        findings,
+                        remediation,
+                    };
+
+                    // Generate HTML content first (same as single PDF generation)
+                    let html_content = html::generate_html(&report_data);
+
+                    // Write temporary HTML file
+                    let temp_html_path = temp_dir.join(format!("temp_{}.html", report_id));
+                    tokio::fs::write(&temp_html_path, &html_content).await
+                        .map_err(|e| {
+                            log::error!("Failed to write temp HTML: {}", e);
+                            actix_web::error::ErrorInternalServerError("Failed to write temp HTML")
+                        })?;
+
+                    // Generate PDF from HTML
+                    let pdf_temp_path = temp_dir.join(format!("temp_{}.pdf", report_id));
+
+                    // Try wkhtmltopdf first, then chromium
+                    let pdf_result = pdf::try_wkhtmltopdf(&temp_html_path, &pdf_temp_path).await;
+                    if pdf_result.is_err() {
+                        log::warn!("wkhtmltopdf failed for scan {}, trying chromium...", scan.id);
+                        pdf::try_chromium(&temp_html_path, &pdf_temp_path).await
+                            .map_err(|e| {
+                                log::error!("PDF generation failed for scan {}: {}", scan.id, e);
+                                actix_web::error::ErrorInternalServerError(
+                                    "PDF generation failed. Please ensure wkhtmltopdf or chromium is installed."
+                                )
+                            })?;
+                    }
+
+                    // Clean up temp HTML
+                    let _ = tokio::fs::remove_file(&temp_html_path).await;
+
+                    // Read the generated PDF
+                    let pdf_data = tokio::fs::read(&pdf_temp_path).await
+                        .map_err(|e| {
+                            log::error!("Failed to read generated PDF: {}", e);
+                            actix_web::error::ErrorInternalServerError("Failed to read generated PDF")
+                        })?;
+
+                    // Clean up temp PDF
+                    let _ = tokio::fs::remove_file(&pdf_temp_path).await;
+
+                    // Add PDF to ZIP archive
+                    let name = format!("{}_{}.pdf", safe_name, scan.id);
+                    zip.start_file(&name, options)
+                        .map_err(|e| {
+                            log::error!("Failed to add PDF to ZIP: {}", e);
+                            actix_web::error::ErrorInternalServerError("Failed to add PDF to archive")
+                        })?;
+                    zip.write_all(&pdf_data)
+                        .map_err(|e| {
+                            log::error!("Failed to write PDF to ZIP: {}", e);
+                            actix_web::error::ErrorInternalServerError("Failed to write PDF to archive")
+                        })?;
+                    name
+                }
                 _ => {
                     return Ok(HttpResponse::BadRequest().json(serde_json::json!({
-                        "error": "PDF export not yet implemented for bulk operations"
+                        "error": "Invalid format. Must be 'json', 'csv', or 'pdf'"
                     })));
                 }
             };

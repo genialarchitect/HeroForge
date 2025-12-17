@@ -476,7 +476,7 @@ async fn send_completion_email(
 /// Send scan failure email notification
 async fn send_failure_email(
     pool: &SqlitePool,
-    _email_service: &EmailService,
+    email_service: &EmailService,
     user_id: &str,
     scan_name: &str,
     error_message: &str,
@@ -484,75 +484,13 @@ async fn send_failure_email(
     // Get user notification settings
     let settings = db::get_notification_settings(pool, user_id).await?;
 
-    // Always send failure emails (important for scheduled scans)
-    // Create a custom email for failures
-    let _subject = format!("Scheduled Scan FAILED: {}", scan_name);
-    let _text_body = format!(
-        r#"Scheduled Scan Failed: {}
+    // Send the failure email
+    email_service
+        .send_scan_failed(&settings.email_address, scan_name, error_message)
+        .await?;
 
-Your scheduled scan failed to complete successfully.
-
-Error Details:
-{}
-
-Please check your scan configuration or contact support if the issue persists.
-
-This scan will be retried automatically according to your retry settings.
-"#,
-        scan_name, error_message
-    );
-
-    let _html_body = format!(
-        r#"<!DOCTYPE html>
-<html>
-<head>
-    <style>
-        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
-        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-        .header {{ background-color: #dc2626; color: white; padding: 20px; text-align: center; }}
-        .content {{ background-color: #f9fafb; padding: 20px; }}
-        .error {{ background-color: #fef2f2; border-left: 4px solid #dc2626; padding: 15px; margin: 15px 0; }}
-        .footer {{ text-align: center; padding: 20px; color: #6b7280; font-size: 12px; }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>Scheduled Scan Failed</h1>
-        </div>
-        <div class="content">
-            <p>Your scheduled scan <strong>{}</strong> failed to complete successfully.</p>
-            <div class="error">
-                <h3>Error Details:</h3>
-                <p>{}</p>
-            </div>
-            <p>Please check your scan configuration or contact support if the issue persists.</p>
-            <p>This scan will be retried automatically according to your retry settings.</p>
-        </div>
-        <div class="footer">
-            <p>This is an automated notification from HeroForge Security Scanner.</p>
-        </div>
-    </div>
-</body>
-</html>"#,
-        scan_name, error_message
-    );
-
-    // Use the internal send_email method via a custom implementation
-    // Since we can't directly access the private method, we'll use a workaround
-    // by creating a dummy summary and using send_scan_completed
-    // Actually, let's just skip this for now and log instead
-    log::warn!(
-        "Scheduled scan '{}' failed for user {}: {}",
-        scan_name,
-        settings.email_address,
-        error_message
-    );
-
-    // TODO: Add a public send_failure method to EmailService for better handling
-    // For now, just log the failure
     log::info!(
-        "Would send failure email to {} for scan '{}' (email sending not yet implemented for failures)",
+        "Sent scan failure email to {} for scan '{}'",
         settings.email_address,
         scan_name
     );

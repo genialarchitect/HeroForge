@@ -2,6 +2,8 @@ use actix_web::{get, put, web, HttpResponse};
 use serde_json::json;
 use sqlx::{Row, SqlitePool};
 
+use crate::compliance::analyzer::ComplianceAnalyzer;
+use crate::compliance::types::ComplianceFramework;
 use crate::db::models::*;
 use crate::db::models_dashboard::*;
 use crate::web::auth::jwt::Claims;
@@ -172,17 +174,76 @@ async fn get_vulnerability_summary_data(
 }
 
 async fn get_compliance_scores_data(
-    _pool: &SqlitePool,
-    _user_id: &str,
+    pool: &SqlitePool,
+    user_id: &str,
 ) -> Result<serde_json::Value, actix_web::Error> {
-    // TODO: Implement real compliance score calculation
-    Ok(json!({
-        "scores": [
-            { "framework": "CIS", "score": 85, "total": 100 },
-            { "framework": "NIST", "score": 78, "total": 100 },
-            { "framework": "GDPR", "score": 92, "total": 100 }
-        ]
-    }))
+    // Query the most recent completed scan with results for this user
+    let scan = sqlx::query_as::<_, ScanResult>(
+        r#"
+        SELECT * FROM scan_results
+        WHERE user_id = ? AND status = 'completed' AND results IS NOT NULL
+        ORDER BY completed_at DESC
+        LIMIT 1
+        "#
+    )
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| {
+        eprintln!("Database error fetching scan for compliance scores: {}", e);
+        actix_web::error::ErrorInternalServerError("Failed to fetch compliance data")
+    })?;
+
+    // If no completed scans with results exist, return empty scores
+    let scan = match scan {
+        Some(s) => s,
+        None => return Ok(json!({ "scores": [] })),
+    };
+
+    // Parse scan results to get host info
+    let hosts: Vec<crate::types::HostInfo> = match &scan.results {
+        Some(results_json) => {
+            serde_json::from_str(results_json).unwrap_or_default()
+        }
+        None => return Ok(json!({ "scores": [] })),
+    };
+
+    // If no hosts were found in scan results, return empty scores
+    if hosts.is_empty() {
+        return Ok(json!({ "scores": [] }));
+    }
+
+    // Run compliance analysis with common frameworks
+    let frameworks = vec![
+        ComplianceFramework::PciDss4,
+        ComplianceFramework::Nist80053,
+        ComplianceFramework::CisBenchmarks,
+        ComplianceFramework::OwaspTop10,
+    ];
+
+    let analyzer = ComplianceAnalyzer::new(frameworks);
+    let summary = match analyzer.analyze(&hosts, &scan.id).await {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Compliance analysis error: {}", e);
+            return Ok(json!({ "scores": [] }));
+        }
+    };
+
+    // Convert framework summaries to the expected format
+    let scores: Vec<serde_json::Value> = summary
+        .frameworks
+        .iter()
+        .map(|fw| {
+            json!({
+                "framework": fw.framework.name(),
+                "score": fw.compliance_score.round() as i32,
+                "total": fw.total_controls
+            })
+        })
+        .collect();
+
+    Ok(json!({ "scores": scores }))
 }
 
 async fn get_scan_activity_chart_data(

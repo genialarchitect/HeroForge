@@ -86,7 +86,9 @@ pub async fn setup_mfa(
     // Generate 10 recovery codes (8 characters each, alphanumeric)
     let recovery_codes = generate_recovery_codes(10);
 
-    // Store the TOTP secret in database (not enabled yet, needs verification)
+    // Store the TOTP secret in database (MFA is NOT enabled yet - totp_enabled remains false)
+    // The user must call /api/auth/mfa/verify-setup with a valid TOTP code to complete setup
+    // This ensures the user has successfully added the secret to their authenticator app
     if let Err(e) = db::store_totp_secret(&pool, user_id, &secret_str).await {
         log::error!("Failed to store TOTP secret: {}", e);
         return Ok(HttpResponse::InternalServerError().json(serde_json::json!({

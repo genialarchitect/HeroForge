@@ -50,8 +50,7 @@ pub async fn create_report(
     };
 
     // Verify ownership (unless admin)
-    if scan.user_id != claims.sub {
-        // TODO: Check for admin role
+    if scan.user_id != claims.sub && !claims.roles.contains(&"admin".to_string()) {
         return HttpResponse::Forbidden().json(serde_json::json!({"error": "Access denied"}));
     }
 

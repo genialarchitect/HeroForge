@@ -151,8 +151,8 @@ Response:
 - **Skew:** 1 step (allows codes from previous/next 30-second window)
 
 ### Secret Storage
-- TOTP secrets are base64 encoded before storage
-- **TODO:** Implement proper encryption using a dedicated encryption key (currently marked with TODO comment)
+- TOTP secrets are encrypted with AES-256-GCM before storage
+- Encryption key is loaded from the `TOTP_ENCRYPTION_KEY` environment variable
 - Secrets are only returned during initial setup, never exposed afterward
 
 ### Recovery Codes
@@ -276,17 +276,16 @@ curl -X POST http://localhost:8080/api/auth/mfa/verify \
 ## Security Considerations
 
 ### Current Implementation
-- TOTP secrets are base64 encoded but **not encrypted**
+- TOTP secrets are encrypted with AES-256-GCM using a key from `TOTP_ENCRYPTION_KEY` environment variable
 - Recovery codes are properly hashed with bcrypt
 - Rate limiting protects against brute force
 - MFA tokens expire in 5 minutes
 - Recovery codes are single-use
 
 ### Recommended Improvements
-1. **Encrypt TOTP secrets:** Use a dedicated encryption key (e.g., from environment variable) to encrypt secrets before storage
-2. **Add TOTP backup methods:** Consider adding SMS or email backup codes
-3. **Audit logging:** Log MFA setup, disable, and failed verification attempts
-4. **Account recovery:** Implement admin-assisted account recovery for users who lose both authenticator and recovery codes
+1. **Add TOTP backup methods:** Consider adding SMS or email backup codes
+2. **Audit logging:** Log MFA setup, disable, and failed verification attempts
+3. **Account recovery:** Implement admin-assisted account recovery for users who lose both authenticator and recovery codes
 
 ## Frontend Integration Notes
 

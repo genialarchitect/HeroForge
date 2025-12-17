@@ -322,20 +322,226 @@ async fn check_zone_transfer(
     }
 }
 
-/// Attempt AXFR request (simplified implementation)
-async fn attempt_axfr_request(_ns_addr: SocketAddr, _domain: &str) -> Result<bool> {
-    // Note: Full AXFR implementation requires more complex trust-dns usage
-    // For now, we return false (not vulnerable) as a conservative default
-    // A full implementation would use trust-dns-client to send AXFR queries
+/// Attempt AXFR request using raw DNS protocol over TCP
+async fn attempt_axfr_request(ns_addr: SocketAddr, domain: &str) -> Result<bool> {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpStream;
 
-    // TODO: Implement full AXFR using trust-dns-client
-    // This would require:
-    // 1. Create TCP connection to nameserver
-    // 2. Send AXFR query
-    // 3. Parse response to check if zone transfer was successful
+    debug!("Attempting AXFR request to {} for domain {}", ns_addr, domain);
 
-    debug!("AXFR check not fully implemented - returning conservative result");
-    Ok(false)
+    // Connect to the nameserver on port 53 via TCP
+    let mut stream = TcpStream::connect(ns_addr).await?;
+
+    // Build the AXFR query
+    let query = build_axfr_query(domain)?;
+
+    // DNS over TCP requires a 2-byte length prefix
+    let length = (query.len() as u16).to_be_bytes();
+    stream.write_all(&length).await?;
+    stream.write_all(&query).await?;
+    stream.flush().await?;
+
+    // Read the response length (2 bytes)
+    let mut length_buf = [0u8; 2];
+    stream.read_exact(&mut length_buf).await?;
+    let response_length = u16::from_be_bytes(length_buf) as usize;
+
+    // Sanity check on response length
+    if response_length < 12 || response_length > 65535 {
+        debug!("Invalid response length: {}", response_length);
+        return Ok(false);
+    }
+
+    // Read the response
+    let mut response = vec![0u8; response_length];
+    stream.read_exact(&mut response).await?;
+
+    // Parse the response to check if zone transfer was successful
+    let vulnerable = parse_axfr_response(&response);
+
+    if vulnerable {
+        info!("Zone transfer vulnerability detected for domain {}", domain);
+    } else {
+        debug!("Zone transfer not allowed for domain {}", domain);
+    }
+
+    Ok(vulnerable)
+}
+
+/// Build an AXFR DNS query packet
+fn build_axfr_query(domain: &str) -> Result<Vec<u8>> {
+    let mut query = Vec::new();
+
+    // DNS Header (12 bytes)
+    // Transaction ID (2 bytes) - random value
+    let transaction_id: u16 = rand::random();
+    query.extend_from_slice(&transaction_id.to_be_bytes());
+
+    // Flags (2 bytes) - standard query (0x0000)
+    // QR=0 (query), Opcode=0 (standard), AA=0, TC=0, RD=1, RA=0, Z=0, RCODE=0
+    query.extend_from_slice(&[0x00, 0x00]);
+
+    // QDCOUNT (2 bytes) - 1 question
+    query.extend_from_slice(&[0x00, 0x01]);
+
+    // ANCOUNT (2 bytes) - 0 answers
+    query.extend_from_slice(&[0x00, 0x00]);
+
+    // NSCOUNT (2 bytes) - 0 authority records
+    query.extend_from_slice(&[0x00, 0x00]);
+
+    // ARCOUNT (2 bytes) - 0 additional records
+    query.extend_from_slice(&[0x00, 0x00]);
+
+    // Question Section
+    // QNAME - domain name in DNS label format
+    encode_domain_name(domain, &mut query)?;
+
+    // QTYPE (2 bytes) - 252 (AXFR)
+    query.extend_from_slice(&[0x00, 0xFC]);
+
+    // QCLASS (2 bytes) - 1 (IN - Internet)
+    query.extend_from_slice(&[0x00, 0x01]);
+
+    Ok(query)
+}
+
+/// Encode a domain name in DNS wire format (length-prefixed labels)
+fn encode_domain_name(domain: &str, buffer: &mut Vec<u8>) -> Result<()> {
+    // Split domain into labels and encode each with length prefix
+    for label in domain.split('.') {
+        let label_bytes = label.as_bytes();
+        if label_bytes.is_empty() {
+            continue;
+        }
+        if label_bytes.len() > 63 {
+            return Err(anyhow::anyhow!("DNS label too long: {}", label));
+        }
+        buffer.push(label_bytes.len() as u8);
+        buffer.extend_from_slice(label_bytes);
+    }
+    // Null byte to terminate the domain name
+    buffer.push(0x00);
+    Ok(())
+}
+
+/// Parse AXFR response to determine if zone transfer was successful
+fn parse_axfr_response(response: &[u8]) -> bool {
+    // Minimum DNS header size is 12 bytes
+    if response.len() < 12 {
+        debug!("Response too short: {} bytes", response.len());
+        return false;
+    }
+
+    // Parse flags (bytes 2-3)
+    let flags = u16::from_be_bytes([response[2], response[3]]);
+
+    // Check QR bit (bit 15) - should be 1 for response
+    if (flags & 0x8000) == 0 {
+        debug!("Not a response (QR=0)");
+        return false;
+    }
+
+    // Check RCODE (bits 0-3) - should be 0 for success
+    let rcode = flags & 0x000F;
+    if rcode != 0 {
+        debug!("AXFR refused or error, RCODE: {}", rcode);
+        // RCODE values:
+        // 0 = No error
+        // 1 = Format error
+        // 2 = Server failure
+        // 3 = Name error (NXDOMAIN)
+        // 4 = Not implemented
+        // 5 = Refused
+        // 9 = Not authorized
+        return false;
+    }
+
+    // Parse answer count (bytes 6-7)
+    let ancount = u16::from_be_bytes([response[6], response[7]]);
+
+    // A successful AXFR will have multiple answer records
+    // The zone transfer starts and ends with SOA records
+    // If we got any answer records with RCODE=0, the server allowed the transfer
+    if ancount > 0 {
+        debug!("AXFR response has {} answer records", ancount);
+
+        // Try to verify this is actually zone data by looking for SOA record
+        // A valid AXFR starts with an SOA record (type 6)
+        if let Some(is_soa) = check_first_answer_is_soa(response) {
+            if is_soa {
+                debug!("First answer is SOA - zone transfer successful");
+                return true;
+            }
+        }
+
+        // Even if we can't parse the records, having answers with RCODE=0
+        // for an AXFR query indicates the transfer was allowed
+        return true;
+    }
+
+    debug!("AXFR response has no answer records");
+    false
+}
+
+/// Check if the first answer record is an SOA record (AXFR always starts with SOA)
+fn check_first_answer_is_soa(response: &[u8]) -> Option<bool> {
+    // Skip the header (12 bytes)
+    let mut offset = 12;
+
+    // Skip the question section
+    // QDCOUNT is at bytes 4-5
+    let qdcount = u16::from_be_bytes([response[4], response[5]]) as usize;
+
+    for _ in 0..qdcount {
+        // Skip QNAME
+        offset = skip_dns_name(response, offset)?;
+        // Skip QTYPE (2) and QCLASS (2)
+        offset += 4;
+        if offset > response.len() {
+            return None;
+        }
+    }
+
+    // Now we're at the answer section
+    // Skip the name of the first answer
+    offset = skip_dns_name(response, offset)?;
+
+    // Check we have enough bytes for TYPE
+    if offset + 2 > response.len() {
+        return None;
+    }
+
+    // Read TYPE (2 bytes)
+    let rtype = u16::from_be_bytes([response[offset], response[offset + 1]]);
+
+    // SOA record type is 6
+    Some(rtype == 6)
+}
+
+/// Skip a DNS name in wire format (handles compression)
+fn skip_dns_name(data: &[u8], mut offset: usize) -> Option<usize> {
+    loop {
+        if offset >= data.len() {
+            return None;
+        }
+
+        let len = data[offset];
+
+        // Check for compression pointer (top 2 bits set)
+        if (len & 0xC0) == 0xC0 {
+            // Compression pointer - 2 bytes total, we're done
+            return Some(offset + 2);
+        }
+
+        // Check for end of name
+        if len == 0 {
+            return Some(offset + 1);
+        }
+
+        // Regular label - skip length byte + label bytes
+        offset += 1 + (len as usize);
+    }
 }
 
 /// Enumerate subdomains using a wordlist
@@ -427,5 +633,109 @@ mod tests {
         assert!(!wordlist.is_empty());
         assert!(wordlist.contains(&"www".to_string()));
         assert!(wordlist.contains(&"mail".to_string()));
+    }
+
+    #[test]
+    fn test_encode_domain_name() {
+        let mut buffer = Vec::new();
+        encode_domain_name("example.com", &mut buffer).unwrap();
+        // Expected: \x07example\x03com\x00
+        assert_eq!(buffer, vec![7, b'e', b'x', b'a', b'm', b'p', b'l', b'e', 3, b'c', b'o', b'm', 0]);
+    }
+
+    #[test]
+    fn test_encode_domain_name_subdomain() {
+        let mut buffer = Vec::new();
+        encode_domain_name("www.example.com", &mut buffer).unwrap();
+        // Expected: \x03www\x07example\x03com\x00
+        assert_eq!(buffer, vec![3, b'w', b'w', b'w', 7, b'e', b'x', b'a', b'm', b'p', b'l', b'e', 3, b'c', b'o', b'm', 0]);
+    }
+
+    #[test]
+    fn test_build_axfr_query() {
+        let query = build_axfr_query("example.com").unwrap();
+        // Check minimum length (12 byte header + domain + 4 bytes for type/class)
+        assert!(query.len() >= 12 + 13 + 4);
+        // Check QDCOUNT = 1
+        assert_eq!(query[4], 0);
+        assert_eq!(query[5], 1);
+        // Check QTYPE = 252 (AXFR) at end of query
+        assert_eq!(query[query.len() - 4], 0x00);
+        assert_eq!(query[query.len() - 3], 0xFC);
+        // Check QCLASS = 1 (IN) at end
+        assert_eq!(query[query.len() - 2], 0x00);
+        assert_eq!(query[query.len() - 1], 0x01);
+    }
+
+    #[test]
+    fn test_parse_axfr_response_refused() {
+        // Simulate a refused AXFR response (RCODE = 5)
+        let response = vec![
+            0x00, 0x01, // Transaction ID
+            0x80, 0x05, // Flags: QR=1, RCODE=5 (refused)
+            0x00, 0x01, // QDCOUNT = 1
+            0x00, 0x00, // ANCOUNT = 0
+            0x00, 0x00, // NSCOUNT = 0
+            0x00, 0x00, // ARCOUNT = 0
+        ];
+        assert!(!parse_axfr_response(&response));
+    }
+
+    #[test]
+    fn test_parse_axfr_response_success() {
+        // Simulate a successful AXFR response with SOA record
+        let mut response = vec![
+            0x00, 0x01, // Transaction ID
+            0x84, 0x00, // Flags: QR=1, AA=1, RCODE=0 (success)
+            0x00, 0x01, // QDCOUNT = 1
+            0x00, 0x01, // ANCOUNT = 1 (has answer)
+            0x00, 0x00, // NSCOUNT = 0
+            0x00, 0x00, // ARCOUNT = 0
+            // Question section: example.com AXFR IN
+            0x07, b'e', b'x', b'a', b'm', b'p', b'l', b'e',
+            0x03, b'c', b'o', b'm', 0x00,
+            0x00, 0xFC, // QTYPE = AXFR
+            0x00, 0x01, // QCLASS = IN
+            // Answer section: SOA record
+            0x07, b'e', b'x', b'a', b'm', b'p', b'l', b'e',
+            0x03, b'c', b'o', b'm', 0x00,
+            0x00, 0x06, // TYPE = SOA (6)
+            0x00, 0x01, // CLASS = IN
+            0x00, 0x00, 0x00, 0x3C, // TTL = 60
+            0x00, 0x10, // RDLENGTH = 16 (placeholder)
+        ];
+        // Add some placeholder RDATA for SOA (simplified)
+        response.extend_from_slice(&[0; 16]);
+
+        assert!(parse_axfr_response(&response));
+    }
+
+    #[test]
+    fn test_parse_axfr_response_too_short() {
+        let response = vec![0x00, 0x01, 0x80, 0x00]; // Only 4 bytes
+        assert!(!parse_axfr_response(&response));
+    }
+
+    #[test]
+    fn test_skip_dns_name_regular() {
+        let data = vec![
+            0x07, b'e', b'x', b'a', b'm', b'p', b'l', b'e',
+            0x03, b'c', b'o', b'm', 0x00,
+            0xFF, 0xFF, // Extra bytes after name
+        ];
+        let result = skip_dns_name(&data, 0);
+        assert_eq!(result, Some(13)); // Ends after null byte
+    }
+
+    #[test]
+    fn test_skip_dns_name_compressed() {
+        // Compression pointer: 0xC0 0x0C means pointer to offset 12
+        let data = vec![
+            0x03, b'w', b'w', b'w',
+            0xC0, 0x0C, // Compression pointer
+            0xFF, 0xFF, // Extra bytes
+        ];
+        let result = skip_dns_name(&data, 0);
+        assert_eq!(result, Some(6)); // Ends after 2-byte pointer
     }
 }

@@ -9,7 +9,7 @@
 //! **Requires root privileges or CAP_NET_RAW capability.**
 
 use std::collections::HashMap;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -21,6 +21,17 @@ use pnet::packet::udp::UdpPacket;
 use tokio::net::UdpSocket;
 use tokio::sync::{mpsc, Semaphore};
 use tokio::time::timeout;
+
+/// ICMPv6 type for Destination Unreachable
+const ICMPV6_DEST_UNREACHABLE: u8 = 1;
+/// ICMPv6 code for Port Unreachable
+const ICMPV6_PORT_UNREACHABLE: u8 = 4;
+/// ICMPv6 header length (type + code + checksum + unused)
+const ICMPV6_HEADER_LEN: usize = 8;
+/// IPv6 header length (fixed at 40 bytes)
+const IPV6_HEADER_LEN: usize = 40;
+/// ICMPv6 protocol number
+const IPPROTO_ICMPV6: i32 = 58;
 
 use crate::scanner::udp_probes::{get_udp_probe, get_udp_service_name, DEFAULT_UDP_PORTS};
 use crate::scanner::udp_service_detection;
@@ -302,8 +313,12 @@ async fn scan_udp_port(target: IpAddr, port: u16, timeout_duration: Duration) ->
     let probe = get_udp_probe(port);
     let start = std::time::Instant::now();
 
-    // Bind to any available port
-    let socket = match UdpSocket::bind("0.0.0.0:0").await {
+    // Bind to any available port (use appropriate address family for target)
+    let bind_addr = match target {
+        IpAddr::V4(_) => "0.0.0.0:0",
+        IpAddr::V6(_) => "[::]:0",
+    };
+    let socket = match UdpSocket::bind(bind_addr).await {
         Ok(s) => s,
         Err(e) => {
             trace!("Failed to bind UDP socket: {}", e);
@@ -368,13 +383,14 @@ async fn scan_udp_port(target: IpAddr, port: u16, timeout_duration: Duration) ->
 
 /// Listen for ICMP "port unreachable" messages
 async fn icmp_listener(target: IpAddr, tx: mpsc::Sender<u16>) -> Result<()> {
-    let target_ip = match target {
-        IpAddr::V4(ip) => ip,
-        IpAddr::V6(_) => {
-            return Err(anyhow!("IPv6 ICMP listening not yet implemented"));
-        }
-    };
+    match target {
+        IpAddr::V4(ip) => icmp_listener_v4(ip, tx).await,
+        IpAddr::V6(ip) => icmp_listener_v6(ip, tx).await,
+    }
+}
 
+/// Listen for ICMPv4 "port unreachable" messages
+async fn icmp_listener_v4(target_ip: Ipv4Addr, tx: mpsc::Sender<u16>) -> Result<()> {
     // Create raw ICMP socket using libc
     let fd = unsafe {
         libc::socket(libc::AF_INET, libc::SOCK_RAW, libc::IPPROTO_ICMP)
@@ -407,6 +423,57 @@ async fn icmp_listener(target: IpAddr, tx: mpsc::Sender<u16>) -> Result<()> {
             Ok(Ok(len)) => {
                 if let Some(port) = parse_icmp_unreachable(&buf[..len], target_ip) {
                     debug!("ICMP port unreachable for UDP port {}", port);
+                    let _ = tx.send(port).await;
+                }
+            }
+            Ok(Err(_)) | Err(_) => {
+                // Timeout or error, continue listening
+                continue;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Listen for ICMPv6 "port unreachable" messages
+async fn icmp_listener_v6(target_ip: Ipv6Addr, tx: mpsc::Sender<u16>) -> Result<()> {
+    // Create raw ICMPv6 socket using libc
+    let fd = unsafe {
+        libc::socket(libc::AF_INET6, libc::SOCK_RAW, IPPROTO_ICMPV6)
+    };
+
+    if fd < 0 {
+        let errno = unsafe { *libc::__errno_location() };
+        return Err(anyhow!(
+            "Failed to create raw ICMPv6 socket (requires root/CAP_NET_RAW): errno={}",
+            errno
+        ));
+    }
+
+    // Set non-blocking
+    unsafe {
+        let flags = libc::fcntl(fd, libc::F_GETFL);
+        libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
+    }
+
+    // Wrap in tokio async fd
+    use std::os::unix::io::FromRawFd;
+    let std_socket = unsafe { std::net::UdpSocket::from_raw_fd(fd) };
+    let async_socket = tokio::net::UdpSocket::from_std(std_socket)?;
+
+    let mut buf = vec![0u8; 65535];
+
+    loop {
+        // Check if channel is closed
+        if tx.is_closed() {
+            break;
+        }
+
+        match timeout(Duration::from_millis(100), async_socket.recv(&mut buf)).await {
+            Ok(Ok(len)) => {
+                if let Some(port) = parse_icmpv6_unreachable(&buf[..len], target_ip) {
+                    debug!("ICMPv6 port unreachable for UDP port {}", port);
                     let _ = tx.send(port).await;
                 }
             }
@@ -477,6 +544,89 @@ fn parse_icmp_unreachable(packet: &[u8], target_ip: Ipv4Addr) -> Option<u16> {
     Some(udp_packet.get_destination())
 }
 
+/// Parse ICMPv6 packet to extract destination port from embedded UDP header
+///
+/// ICMPv6 Destination Unreachable packet structure:
+/// - Type (1 byte): 1 = Destination Unreachable
+/// - Code (1 byte): 4 = Port Unreachable
+/// - Checksum (2 bytes)
+/// - Unused (4 bytes)
+/// - Original IPv6 header (40 bytes) + as much of the original packet as possible
+/// - Original UDP header starts at offset 48 from start of ICMPv6 payload
+///
+/// Note: For raw ICMPv6 sockets on Linux, the kernel strips the outer IPv6 header,
+/// so we receive the ICMPv6 message starting from the type field.
+fn parse_icmpv6_unreachable(packet: &[u8], target_ip: Ipv6Addr) -> Option<u16> {
+    // Minimum packet size: ICMPv6 header (8) + IPv6 header (40) + UDP ports (4)
+    if packet.len() < ICMPV6_HEADER_LEN + IPV6_HEADER_LEN + 4 {
+        trace!(
+            "ICMPv6 packet too short: {} bytes (need at least {})",
+            packet.len(),
+            ICMPV6_HEADER_LEN + IPV6_HEADER_LEN + 4
+        );
+        return None;
+    }
+
+    // Check ICMPv6 type (Destination Unreachable = 1)
+    let icmpv6_type = packet[0];
+    if icmpv6_type != ICMPV6_DEST_UNREACHABLE {
+        trace!("ICMPv6 type {} is not Destination Unreachable (1)", icmpv6_type);
+        return None;
+    }
+
+    // Check ICMPv6 code (Port Unreachable = 4)
+    let icmpv6_code = packet[1];
+    if icmpv6_code != ICMPV6_PORT_UNREACHABLE {
+        trace!("ICMPv6 code {} is not Port Unreachable (4)", icmpv6_code);
+        return None;
+    }
+
+    // Skip ICMPv6 header (8 bytes) to get to the original IPv6 packet
+    let original_ipv6 = &packet[ICMPV6_HEADER_LEN..];
+
+    // Verify we have enough data for the IPv6 header
+    if original_ipv6.len() < IPV6_HEADER_LEN + 4 {
+        trace!("Original IPv6 packet in ICMPv6 too short");
+        return None;
+    }
+
+    // Extract source address from original IPv6 header (bytes 8-23)
+    // This should match our scanner's source address, but more importantly
+    // the destination in the original packet should be our target
+    let mut dest_addr_bytes = [0u8; 16];
+    dest_addr_bytes.copy_from_slice(&original_ipv6[24..40]);
+    let original_dest = Ipv6Addr::from(dest_addr_bytes);
+
+    // The destination of the original packet should be our target
+    if original_dest != target_ip {
+        trace!(
+            "ICMPv6 original dest {} doesn't match target {}",
+            original_dest,
+            target_ip
+        );
+        return None;
+    }
+
+    // Check Next Header field to verify it's UDP (17)
+    let next_header = original_ipv6[6];
+    if next_header != 17 {
+        // 17 = UDP
+        trace!("Original packet next header {} is not UDP (17)", next_header);
+        return None;
+    }
+
+    // Get UDP header (starts right after IPv6 header for packets without extension headers)
+    let udp_data = &original_ipv6[IPV6_HEADER_LEN..];
+
+    // Extract destination port from UDP header (bytes 2-3)
+    if udp_data.len() < 4 {
+        return None;
+    }
+
+    let dest_port = u16::from_be_bytes([udp_data[2], udp_data[3]]);
+    Some(dest_port)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -494,5 +644,78 @@ mod tests {
         assert!(!DEFAULT_UDP_PORTS.is_empty());
         assert!(DEFAULT_UDP_PORTS.contains(&53)); // DNS
         assert!(DEFAULT_UDP_PORTS.contains(&161)); // SNMP
+    }
+
+    #[test]
+    fn test_parse_icmpv6_unreachable() {
+        // Create a mock ICMPv6 Destination Unreachable (Port Unreachable) packet
+        // ICMPv6 header: type=1, code=4, checksum=0x0000, unused=0x00000000
+        // Followed by original IPv6 header and UDP header
+        let target_ip: Ipv6Addr = "2001:db8::1".parse().unwrap();
+
+        let mut packet = vec![0u8; ICMPV6_HEADER_LEN + IPV6_HEADER_LEN + 8];
+
+        // ICMPv6 header
+        packet[0] = ICMPV6_DEST_UNREACHABLE; // Type = 1
+        packet[1] = ICMPV6_PORT_UNREACHABLE; // Code = 4
+        // Checksum and unused are zeros
+
+        // Original IPv6 header (starts at offset 8)
+        let ipv6_start = ICMPV6_HEADER_LEN;
+        packet[ipv6_start] = 0x60; // Version 6, Traffic Class (high nibble)
+        packet[ipv6_start + 6] = 17; // Next Header = UDP (17)
+        packet[ipv6_start + 7] = 64; // Hop Limit
+
+        // Source address (bytes 8-23 of IPv6 header): ::1 (our scanner)
+        packet[ipv6_start + 23] = 1;
+
+        // Destination address (bytes 24-39 of IPv6 header): target_ip
+        let dest_bytes = target_ip.octets();
+        packet[ipv6_start + 24..ipv6_start + 40].copy_from_slice(&dest_bytes);
+
+        // Original UDP header (starts at offset 8 + 40 = 48)
+        let udp_start = ICMPV6_HEADER_LEN + IPV6_HEADER_LEN;
+        // Source port: 12345
+        packet[udp_start] = 0x30;
+        packet[udp_start + 1] = 0x39;
+        // Destination port: 53 (DNS)
+        packet[udp_start + 2] = 0x00;
+        packet[udp_start + 3] = 0x35;
+
+        // Test parsing
+        let result = parse_icmpv6_unreachable(&packet, target_ip);
+        assert_eq!(result, Some(53));
+
+        // Test with wrong target
+        let wrong_target: Ipv6Addr = "2001:db8::2".parse().unwrap();
+        let result = parse_icmpv6_unreachable(&packet, wrong_target);
+        assert_eq!(result, None);
+
+        // Test with wrong ICMPv6 type
+        let mut wrong_type_packet = packet.clone();
+        wrong_type_packet[0] = 128; // Echo Request
+        let result = parse_icmpv6_unreachable(&wrong_type_packet, target_ip);
+        assert_eq!(result, None);
+
+        // Test with wrong ICMPv6 code
+        let mut wrong_code_packet = packet.clone();
+        wrong_code_packet[1] = 0; // No route to destination
+        let result = parse_icmpv6_unreachable(&wrong_code_packet, target_ip);
+        assert_eq!(result, None);
+
+        // Test with packet too short
+        let short_packet = vec![0u8; 10];
+        let result = parse_icmpv6_unreachable(&short_packet, target_ip);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_icmpv6_constants() {
+        // Verify constants match RFC 4443
+        assert_eq!(ICMPV6_DEST_UNREACHABLE, 1);
+        assert_eq!(ICMPV6_PORT_UNREACHABLE, 4);
+        assert_eq!(ICMPV6_HEADER_LEN, 8);
+        assert_eq!(IPV6_HEADER_LEN, 40);
+        assert_eq!(IPPROTO_ICMPV6, 58);
     }
 }

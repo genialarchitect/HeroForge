@@ -281,6 +281,91 @@ Please log in to the HeroForge dashboard immediately to review these findings an
             .await
     }
 
+    /// Send an email notification when a scheduled scan fails
+    pub async fn send_scan_failed(
+        &self,
+        user_email: &str,
+        scan_name: &str,
+        error_message: &str,
+    ) -> Result<()> {
+        let subject = format!("Scheduled Scan FAILED: {}", scan_name);
+
+        let html_body = format!(
+            r#"<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .header {{ background-color: #dc2626; color: white; padding: 20px; text-align: center; }}
+        .content {{ background-color: #f9fafb; padding: 20px; }}
+        .error {{ background-color: #fef2f2; border-left: 4px solid #dc2626; padding: 15px; margin: 15px 0; }}
+        .error-code {{ background-color: #1f2937; color: #f3f4f6; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 13px; white-space: pre-wrap; word-wrap: break-word; }}
+        .footer {{ text-align: center; padding: 20px; color: #6b7280; font-size: 12px; }}
+        .warning-icon {{ font-size: 48px; margin-bottom: 10px; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="warning-icon">&#9888;</div>
+            <h1>Scheduled Scan Failed</h1>
+        </div>
+        <div class="content">
+            <p>Your scheduled scan <strong>{}</strong> failed to complete successfully.</p>
+
+            <div class="error">
+                <h3>Error Details</h3>
+                <div class="error-code">{}</div>
+            </div>
+
+            <p><strong>What you can do:</strong></p>
+            <ul>
+                <li>Check your scan configuration for any issues</li>
+                <li>Verify that target hosts are reachable</li>
+                <li>Review scan permissions and credentials</li>
+                <li>Contact support if the issue persists</li>
+            </ul>
+
+            <p>This scan will be retried automatically according to your retry settings.</p>
+
+            <p>Please log in to the HeroForge dashboard to review your scheduled scan configuration.</p>
+        </div>
+        <div class="footer">
+            <p>This is an automated notification from HeroForge Security Scanner.</p>
+            <p>To manage your notification settings, please visit your account settings.</p>
+        </div>
+    </div>
+</body>
+</html>"#,
+            scan_name, error_message
+        );
+
+        let text_body = format!(
+            r#"Scheduled Scan FAILED: {}
+
+Your scheduled scan failed to complete successfully.
+
+Error Details:
+{}
+
+What you can do:
+- Check your scan configuration for any issues
+- Verify that target hosts are reachable
+- Review scan permissions and credentials
+- Contact support if the issue persists
+
+This scan will be retried automatically according to your retry settings.
+
+Please log in to the HeroForge dashboard to review your scheduled scan configuration.
+"#,
+            scan_name, error_message
+        );
+
+        self.send_email(user_email, &subject, &text_body, &html_body)
+            .await
+    }
+
     /// Send a generic email with both HTML and text parts
     async fn send_email(
         &self,
