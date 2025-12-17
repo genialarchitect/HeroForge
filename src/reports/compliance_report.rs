@@ -17,8 +17,11 @@ use std::collections::HashMap;
 use std::path::Path;
 use tokio::fs;
 
+use crate::compliance::frameworks;
+use crate::compliance::manual_assessment::default_rubrics;
 use crate::compliance::manual_assessment::types::{
-    AssessmentEvidence, EvidenceType, ManualAssessment, OverallRating, ReviewStatus,
+    AssessmentEvidence, ComplianceRubric, EvidenceType, ManualAssessment, OverallRating,
+    ReviewStatus,
 };
 use crate::compliance::types::{
     CategorySummary, ComplianceFramework, ComplianceSummary, ControlStatus, FrameworkSummary,
@@ -1793,7 +1796,18 @@ pub fn build_combined_results(
     let mut combined_frameworks = Vec::new();
 
     for fw_summary in &automated_summary.frameworks {
-        let framework_id = fw_summary.framework.id();
+        let framework = fw_summary.framework;
+        let framework_id = framework.id();
+
+        // Get all controls for this framework from the frameworks module
+        let all_controls = frameworks::get_controls(framework);
+
+        // Get rubrics for this framework for criterion name lookups
+        let framework_rubrics = default_rubrics::get_rubrics_by_framework(framework_id);
+        let rubrics_by_control: HashMap<&str, &ComplianceRubric> = framework_rubrics
+            .iter()
+            .map(|r| (r.control_id.as_str(), r))
+            .collect();
 
         // Get all manual assessments for this framework
         let fw_manual_assessments: Vec<&ManualAssessment> = manual_assessments
@@ -1803,13 +1817,11 @@ pub fn build_combined_results(
             })
             .collect();
 
-        // Build control results (simplified - in real implementation would iterate through actual controls)
-        let mut control_results: Vec<CombinedControlResult> = Vec::new();
-        let mut manual_by_control: HashMap<String, &ManualAssessment> = HashMap::new();
-
-        for assessment in &fw_manual_assessments {
-            manual_by_control.insert(assessment.control_id.clone(), assessment);
-        }
+        // Build lookup for manual assessments by control_id
+        let manual_by_control: HashMap<String, &ManualAssessment> = fw_manual_assessments
+            .iter()
+            .map(|a| (a.control_id.clone(), *a))
+            .collect();
 
         // Track statistics
         let mut automated_only = 0usize;
@@ -1819,27 +1831,57 @@ pub fn build_combined_results(
         let mut non_compliant = 0usize;
         let mut partially_compliant = 0usize;
         let mut not_applicable = 0usize;
-        // Tracked for statistics completeness; will be used in future report summaries
-        #[allow(unused_variables, unused_assignments)]
         let mut not_assessed_count = 0usize;
 
-        // For each manual assessment, create a combined control result
-        for (control_id, assessment) in &manual_by_control {
-            let manual_status = overall_rating_to_control_status(&assessment.overall_rating);
+        // Track manual assessments per category for category breakdown
+        let mut manual_by_category: HashMap<String, usize> = HashMap::new();
 
-            // Check if we have automated data for this control
-            // (In real implementation, this would check actual control findings)
-            let has_automated = false; // Simplified - would need control-level data
+        // Build control results by iterating through all framework controls
+        let mut control_results: Vec<CombinedControlResult> = Vec::new();
 
-            let assessment_method = if has_automated {
-                both_methods += 1;
-                AssessmentMethod::Both
-            } else {
-                manual_only += 1;
-                AssessmentMethod::Manual
+        for control in &all_controls {
+            let control_id = &control.control_id;
+            let has_manual = manual_by_control.contains_key(control_id);
+            // Check if this control can be automated (has automated_check = true)
+            let has_automated = control.automated_check;
+
+            // Determine assessment method
+            let assessment_method = match (has_automated, has_manual) {
+                (true, true) => {
+                    both_methods += 1;
+                    AssessmentMethod::Both
+                }
+                (true, false) => {
+                    automated_only += 1;
+                    AssessmentMethod::Automated
+                }
+                (false, true) => {
+                    manual_only += 1;
+                    AssessmentMethod::Manual
+                }
+                (false, false) => {
+                    not_assessed_count += 1;
+                    AssessmentMethod::NotAssessed
+                }
             };
 
-            let combined_status = combine_compliance_status(None, Some(manual_status));
+            // Get manual assessment if available
+            let manual_assessment_opt = manual_by_control.get(control_id).copied();
+            let manual_status = manual_assessment_opt
+                .map(|a| overall_rating_to_control_status(&a.overall_rating));
+
+            // For automated status, we derive it from the framework summary statistics
+            // In a more complete implementation, this would come from per-control finding data
+            let automated_status = if has_automated {
+                // Use NotAssessed as placeholder since we don't have per-control automated findings
+                // The actual status would come from compliance findings in a full implementation
+                Some(ControlStatus::NotAssessed)
+            } else {
+                None
+            };
+
+            // Combine statuses
+            let combined_status = combine_compliance_status(automated_status, manual_status);
 
             // Count by status
             match combined_status {
@@ -1847,75 +1889,93 @@ pub fn build_combined_results(
                 ControlStatus::NonCompliant => non_compliant += 1,
                 ControlStatus::PartiallyCompliant => partially_compliant += 1,
                 ControlStatus::NotApplicable => not_applicable += 1,
-                ControlStatus::NotAssessed => not_assessed_count += 1,
-                ControlStatus::ManualOverride => compliant += 1, // Treat as compliant for scoring
+                ControlStatus::NotAssessed => {} // Already counted above
+                ControlStatus::ManualOverride => compliant += 1,
             }
 
-            // Build evidence items
-            let evidence_items = evidence_by_assessment
-                .get(&assessment.id)
-                .cloned()
-                .unwrap_or_default();
-            let evidence_count = evidence_items.len();
+            // Track manual assessments by category
+            if has_manual {
+                *manual_by_category.entry(control.category.clone()).or_insert(0) += 1;
+            }
 
-            // Build criterion ratings summary
-            let criteria_ratings: Vec<CriterionRatingSummary> = assessment
-                .criteria_responses
-                .iter()
-                .map(|cr| CriterionRatingSummary {
-                    criterion_id: cr.criterion_id.clone(),
-                    criterion_name: cr.criterion_id.clone(), // Would need rubric lookup for actual name
-                    rating: cr.rating,
-                    rating_label: rating_to_label(cr.rating),
-                    notes: cr.notes.clone(),
-                })
-                .collect();
+            // Build manual assessment summary if available
+            let manual_assessment_summary = manual_assessment_opt.map(|assessment| {
+                let evidence_items = evidence_by_assessment
+                    .get(&assessment.id)
+                    .cloned()
+                    .unwrap_or_default();
+                let evidence_count = evidence_items.len();
 
-            let assessor_name = user_names.get(&assessment.user_id).cloned();
+                // Build criterion ratings with proper names from rubric
+                let rubric_opt = rubrics_by_control.get(control_id.as_str()).copied();
+                let criteria_ratings: Vec<CriterionRatingSummary> = assessment
+                    .criteria_responses
+                    .iter()
+                    .map(|cr| {
+                        // Look up criterion name from rubric
+                        let criterion_name = rubric_opt
+                            .and_then(|rubric| {
+                                rubric
+                                    .assessment_criteria
+                                    .iter()
+                                    .find(|c| c.id == cr.criterion_id)
+                                    .map(|c| c.question.clone())
+                            })
+                            .unwrap_or_else(|| cr.criterion_id.clone());
 
-            let manual_assessment_summary = ManualAssessmentSummary {
-                assessment_id: assessment.id.clone(),
-                assessor_name,
-                assessor_user_id: assessment.user_id.clone(),
-                assessment_period_start: assessment.assessment_period_start,
-                assessment_period_end: assessment.assessment_period_end,
-                overall_rating: assessment.overall_rating.clone(),
-                rating_score: assessment.rating_score,
-                review_status: assessment.review_status.clone(),
-                findings: assessment.findings.clone(),
-                recommendations: assessment.recommendations.clone(),
-                evidence_summary: assessment.evidence_summary.clone(),
-                evidence_count,
-                evidence_items,
-                criteria_ratings,
-                created_at: assessment.created_at,
-                updated_at: assessment.updated_at,
-            };
+                        CriterionRatingSummary {
+                            criterion_id: cr.criterion_id.clone(),
+                            criterion_name,
+                            rating: cr.rating,
+                            rating_label: rating_to_label(cr.rating),
+                            notes: cr.notes.clone(),
+                        }
+                    })
+                    .collect();
+
+                let assessor_name = user_names.get(&assessment.user_id).cloned();
+
+                ManualAssessmentSummary {
+                    assessment_id: assessment.id.clone(),
+                    assessor_name,
+                    assessor_user_id: assessment.user_id.clone(),
+                    assessment_period_start: assessment.assessment_period_start,
+                    assessment_period_end: assessment.assessment_period_end,
+                    overall_rating: assessment.overall_rating.clone(),
+                    rating_score: assessment.rating_score,
+                    review_status: assessment.review_status.clone(),
+                    findings: assessment.findings.clone(),
+                    recommendations: assessment.recommendations.clone(),
+                    evidence_summary: assessment.evidence_summary.clone(),
+                    evidence_count,
+                    evidence_items,
+                    criteria_ratings,
+                    created_at: assessment.created_at,
+                    updated_at: assessment.updated_at,
+                }
+            });
+
+            let evidence_count = manual_assessment_summary
+                .as_ref()
+                .map(|s| s.evidence_count)
+                .unwrap_or(0);
 
             control_results.push(CombinedControlResult {
                 control_id: control_id.clone(),
-                control_title: control_id.clone(), // Would need control lookup for actual title
-                framework: fw_summary.framework,
-                category: String::new(), // Would need control lookup
+                control_title: control.title.clone(),
+                framework,
+                category: control.category.clone(),
                 assessment_method,
-                automated_status: None,
-                manual_status: Some(manual_status),
+                automated_status,
+                manual_status,
                 combined_status,
                 manual_evidence_count: evidence_count,
-                manual_findings: assessment.findings.clone(),
-                manual_recommendations: assessment.recommendations.clone(),
-                manual_assessment: Some(manual_assessment_summary),
-                automated_evidence: Vec::new(),
-                remediation: assessment.recommendations.clone(),
+                manual_findings: manual_assessment_opt.and_then(|a| a.findings.clone()),
+                manual_recommendations: manual_assessment_opt.and_then(|a| a.recommendations.clone()),
+                manual_assessment: manual_assessment_summary,
+                automated_evidence: Vec::new(), // Would come from compliance findings
+                remediation: control.remediation_guidance.clone(),
             });
-        }
-
-        // Add automated-only controls based on framework summary
-        // (These are controls that were assessed by scan but not manually reviewed)
-        let remaining_assessed = fw_summary.compliant + fw_summary.non_compliant
-            + fw_summary.partially_compliant - (both_methods);
-        if remaining_assessed > 0 {
-            automated_only = remaining_assessed;
         }
 
         // Calculate scores
@@ -1934,14 +1994,16 @@ pub fn build_combined_results(
             fw_summary.compliance_score
         };
 
-        // Build category summary with combined data
+        // Build category summary with combined data using control-to-category mapping
         let combined_categories: Vec<CombinedCategorySummary> = fw_summary
             .by_category
             .iter()
             .map(|cat| {
-                // Count manual assessments in this category
-                // (Simplified - would need control-to-category mapping)
-                let manually_assessed = 0usize;
+                // Count manual assessments in this category using our mapping
+                let manually_assessed = manual_by_category
+                    .get(&cat.category)
+                    .copied()
+                    .unwrap_or(0);
 
                 CombinedCategorySummary {
                     category: cat.category.clone(),
@@ -1955,16 +2017,16 @@ pub fn build_combined_results(
             .collect();
 
         combined_frameworks.push(CombinedFrameworkSummary {
-            framework: fw_summary.framework,
-            total_controls: fw_summary.total_controls,
+            framework,
+            total_controls: all_controls.len(),
             automated_only,
             manual_only,
             both_methods,
-            not_assessed: fw_summary.not_assessed,
-            compliant: fw_summary.compliant.max(compliant),
-            non_compliant: fw_summary.non_compliant.max(non_compliant),
-            partially_compliant: fw_summary.partially_compliant.max(partially_compliant),
-            not_applicable: fw_summary.not_applicable.max(not_applicable),
+            not_assessed: not_assessed_count,
+            compliant,
+            non_compliant,
+            partially_compliant,
+            not_applicable,
             automated_score: fw_summary.compliance_score,
             manual_score,
             combined_score,

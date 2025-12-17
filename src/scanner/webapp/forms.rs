@@ -23,6 +23,7 @@ pub struct InputField {
     pub name: String,
     pub input_type: String,
     pub value: Option<String>,
+    pub autocomplete: Option<String>,
 }
 
 /// Detect and analyze forms on discovered pages
@@ -77,15 +78,18 @@ pub async fn detect_forms(
                             // Check for autocomplete on password fields
                             for input in &form_data.inputs {
                                 if input.input_type == "password" {
-                                    // This is a simplified check; real implementation would need to parse autocomplete attribute
-                                    findings.push(WebAppFinding {
-                                        finding_type: FindingType::InsecureForm,
-                                        url: url.to_string(),
-                                        parameter: Some(input.name.clone()),
-                                        evidence: "Password field may allow autocomplete".to_string(),
-                                        severity: Severity::Low,
-                                        remediation: "Set autocomplete='off' or autocomplete='new-password' on password fields to prevent browsers from caching credentials.".to_string(),
-                                    });
+                                    // Check autocomplete attribute for security
+                                    let autocomplete_finding = check_password_autocomplete(input);
+                                    if let Some((evidence, severity)) = autocomplete_finding {
+                                        findings.push(WebAppFinding {
+                                            finding_type: FindingType::InsecureForm,
+                                            url: url.to_string(),
+                                            parameter: Some(input.name.clone()),
+                                            evidence,
+                                            severity,
+                                            remediation: "Set autocomplete='off' or autocomplete='new-password' on password fields to prevent browsers from caching credentials.".to_string(),
+                                        });
+                                    }
                                     break; // Only report once per form
                                 }
                             }
@@ -128,6 +132,9 @@ fn parse_form(base_url: &Url, form_element: &scraper::ElementRef) -> FormData {
         .unwrap_or("GET")
         .to_uppercase();
 
+    // Get form-level autocomplete attribute (applies to all inputs unless overridden)
+    let form_autocomplete = form_element.value().attr("autocomplete").map(|v| v.to_lowercase());
+
     // Parse input fields
     let mut inputs = Vec::new();
     if let Ok(input_selector) = Selector::parse("input, textarea, select") {
@@ -135,11 +142,18 @@ fn parse_form(base_url: &Url, form_element: &scraper::ElementRef) -> FormData {
             if let Some(name) = input.value().attr("name") {
                 let input_type = input.value().attr("type").unwrap_or("text").to_string();
                 let value = input.value().attr("value").map(|v| v.to_string());
+                // Get input-level autocomplete, fall back to form-level if not specified
+                let autocomplete = input
+                    .value()
+                    .attr("autocomplete")
+                    .map(|v| v.to_lowercase())
+                    .or_else(|| form_autocomplete.clone());
 
                 inputs.push(InputField {
                     name: name.to_string(),
                     input_type,
                     value,
+                    autocomplete,
                 });
             }
         }
@@ -172,6 +186,46 @@ fn has_csrf_token(form: &FormData) -> bool {
     })
 }
 
+/// Check password field autocomplete attribute for security issues
+/// Returns Some((evidence, severity)) if insecure, None if secure
+fn check_password_autocomplete(input: &InputField) -> Option<(String, Severity)> {
+    match &input.autocomplete {
+        Some(value) => {
+            let value = value.trim().to_lowercase();
+            match value.as_str() {
+                // Secure values - autocomplete explicitly disabled
+                "off" => None,
+                // Secure values - browser password manager integration (acceptable for login forms)
+                "current-password" | "new-password" => None,
+                // Explicitly enabled - insecure for password fields
+                "on" => Some((
+                    format!(
+                        "Password field '{}' has autocomplete explicitly enabled (autocomplete=\"on\")",
+                        input.name
+                    ),
+                    Severity::Medium,
+                )),
+                // Other values (e.g., "username", custom values) - potentially insecure
+                other => Some((
+                    format!(
+                        "Password field '{}' has non-standard autocomplete value (autocomplete=\"{}\")",
+                        input.name, other
+                    ),
+                    Severity::Low,
+                )),
+            }
+        }
+        // No autocomplete attribute - browser default behavior (typically enabled)
+        None => Some((
+            format!(
+                "Password field '{}' has no autocomplete attribute (browser default allows autocomplete)",
+                input.name
+            ),
+            Severity::Low,
+        )),
+    }
+}
+
 /// Check if a form is likely a login form based on heuristics
 fn is_login_form_heuristic(inputs: &[InputField]) -> bool {
     inputs.iter().any(|i| {
@@ -192,6 +246,17 @@ mod tests {
             name: name.to_string(),
             input_type: input_type.to_string(),
             value: value.map(|v| v.to_string()),
+            autocomplete: None,
+        }
+    }
+
+    // Helper to create InputField with autocomplete for tests
+    fn input_with_autocomplete(name: &str, input_type: &str, value: Option<&str>, autocomplete: Option<&str>) -> InputField {
+        InputField {
+            name: name.to_string(),
+            input_type: input_type.to_string(),
+            value: value.map(|v| v.to_string()),
+            autocomplete: autocomplete.map(|v| v.to_string()),
         }
     }
 
@@ -549,5 +614,193 @@ mod tests {
         let form_data = parse_form(&base_url, &form_element);
 
         assert_eq!(form_data.action, "https://other.com/api/submit");
+    }
+
+    // ==================== check_password_autocomplete Tests ====================
+
+    #[test]
+    fn test_autocomplete_off_is_secure() {
+        let input = input_with_autocomplete("password", "password", None, Some("off"));
+        assert!(check_password_autocomplete(&input).is_none());
+    }
+
+    #[test]
+    fn test_autocomplete_off_case_insensitive() {
+        let input = input_with_autocomplete("password", "password", None, Some("OFF"));
+        assert!(check_password_autocomplete(&input).is_none());
+    }
+
+    #[test]
+    fn test_autocomplete_current_password_is_secure() {
+        let input = input_with_autocomplete("password", "password", None, Some("current-password"));
+        assert!(check_password_autocomplete(&input).is_none());
+    }
+
+    #[test]
+    fn test_autocomplete_new_password_is_secure() {
+        let input = input_with_autocomplete("password", "password", None, Some("new-password"));
+        assert!(check_password_autocomplete(&input).is_none());
+    }
+
+    #[test]
+    fn test_autocomplete_on_is_insecure() {
+        let input = input_with_autocomplete("password", "password", None, Some("on"));
+        let result = check_password_autocomplete(&input);
+        assert!(result.is_some());
+        let (evidence, severity) = result.unwrap();
+        assert!(evidence.contains("autocomplete explicitly enabled"));
+        assert_eq!(severity, Severity::Medium);
+    }
+
+    #[test]
+    fn test_autocomplete_missing_is_insecure() {
+        let input = input_with_autocomplete("password", "password", None, None);
+        let result = check_password_autocomplete(&input);
+        assert!(result.is_some());
+        let (evidence, severity) = result.unwrap();
+        assert!(evidence.contains("no autocomplete attribute"));
+        assert_eq!(severity, Severity::Low);
+    }
+
+    #[test]
+    fn test_autocomplete_nonstandard_value() {
+        let input = input_with_autocomplete("password", "password", None, Some("username"));
+        let result = check_password_autocomplete(&input);
+        assert!(result.is_some());
+        let (evidence, severity) = result.unwrap();
+        assert!(evidence.contains("non-standard autocomplete value"));
+        assert_eq!(severity, Severity::Low);
+    }
+
+    #[test]
+    fn test_autocomplete_with_whitespace() {
+        let input = input_with_autocomplete("password", "password", None, Some("  off  "));
+        assert!(check_password_autocomplete(&input).is_none());
+    }
+
+    // ==================== parse_form autocomplete extraction Tests ====================
+
+    #[test]
+    fn test_parse_form_extracts_autocomplete() {
+        let html = r#"
+            <form action="/submit" method="POST">
+                <input type="text" name="username" autocomplete="username">
+                <input type="password" name="password" autocomplete="off">
+            </form>
+        "#;
+        let document = Html::parse_document(html);
+        let selector = scraper::Selector::parse("form").unwrap();
+        let form_element = document.select(&selector).next().unwrap();
+        let base_url = Url::parse("https://example.com/").unwrap();
+
+        let form_data = parse_form(&base_url, &form_element);
+
+        let username_input = form_data.inputs.iter().find(|i| i.name == "username").unwrap();
+        assert_eq!(username_input.autocomplete, Some("username".to_string()));
+
+        let password_input = form_data.inputs.iter().find(|i| i.name == "password").unwrap();
+        assert_eq!(password_input.autocomplete, Some("off".to_string()));
+    }
+
+    #[test]
+    fn test_parse_form_inherits_form_autocomplete() {
+        let html = r#"
+            <form action="/submit" method="POST" autocomplete="off">
+                <input type="text" name="username">
+                <input type="password" name="password">
+            </form>
+        "#;
+        let document = Html::parse_document(html);
+        let selector = scraper::Selector::parse("form").unwrap();
+        let form_element = document.select(&selector).next().unwrap();
+        let base_url = Url::parse("https://example.com/").unwrap();
+
+        let form_data = parse_form(&base_url, &form_element);
+
+        // Both inputs should inherit form-level autocomplete="off"
+        for input in &form_data.inputs {
+            assert_eq!(input.autocomplete, Some("off".to_string()));
+        }
+    }
+
+    #[test]
+    fn test_parse_form_input_autocomplete_overrides_form() {
+        let html = r#"
+            <form action="/submit" method="POST" autocomplete="off">
+                <input type="text" name="username" autocomplete="username">
+                <input type="password" name="password">
+            </form>
+        "#;
+        let document = Html::parse_document(html);
+        let selector = scraper::Selector::parse("form").unwrap();
+        let form_element = document.select(&selector).next().unwrap();
+        let base_url = Url::parse("https://example.com/").unwrap();
+
+        let form_data = parse_form(&base_url, &form_element);
+
+        let username_input = form_data.inputs.iter().find(|i| i.name == "username").unwrap();
+        // Input-level autocomplete overrides form-level
+        assert_eq!(username_input.autocomplete, Some("username".to_string()));
+
+        let password_input = form_data.inputs.iter().find(|i| i.name == "password").unwrap();
+        // Password inherits form-level autocomplete
+        assert_eq!(password_input.autocomplete, Some("off".to_string()));
+    }
+
+    #[test]
+    fn test_parse_form_no_autocomplete_attribute() {
+        let html = r#"
+            <form action="/submit" method="POST">
+                <input type="password" name="password">
+            </form>
+        "#;
+        let document = Html::parse_document(html);
+        let selector = scraper::Selector::parse("form").unwrap();
+        let form_element = document.select(&selector).next().unwrap();
+        let base_url = Url::parse("https://example.com/").unwrap();
+
+        let form_data = parse_form(&base_url, &form_element);
+
+        let password_input = form_data.inputs.iter().find(|i| i.name == "password").unwrap();
+        assert_eq!(password_input.autocomplete, None);
+    }
+
+    #[test]
+    fn test_parse_form_autocomplete_current_password() {
+        let html = r#"
+            <form action="/login" method="POST">
+                <input type="text" name="username" autocomplete="username">
+                <input type="password" name="password" autocomplete="current-password">
+            </form>
+        "#;
+        let document = Html::parse_document(html);
+        let selector = scraper::Selector::parse("form").unwrap();
+        let form_element = document.select(&selector).next().unwrap();
+        let base_url = Url::parse("https://example.com/").unwrap();
+
+        let form_data = parse_form(&base_url, &form_element);
+
+        let password_input = form_data.inputs.iter().find(|i| i.name == "password").unwrap();
+        assert_eq!(password_input.autocomplete, Some("current-password".to_string()));
+    }
+
+    #[test]
+    fn test_parse_form_autocomplete_new_password() {
+        let html = r#"
+            <form action="/register" method="POST">
+                <input type="password" name="password" autocomplete="new-password">
+                <input type="password" name="confirm_password" autocomplete="new-password">
+            </form>
+        "#;
+        let document = Html::parse_document(html);
+        let selector = scraper::Selector::parse("form").unwrap();
+        let form_element = document.select(&selector).next().unwrap();
+        let base_url = Url::parse("https://example.com/").unwrap();
+
+        let form_data = parse_form(&base_url, &form_element);
+
+        for input in &form_data.inputs {
+            assert_eq!(input.autocomplete, Some("new-password".to_string()));
+        }
     }
 }

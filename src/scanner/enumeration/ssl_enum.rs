@@ -4,9 +4,11 @@ use super::types::{EnumDepth, EnumerationResult, Finding, FindingType, ServiceTy
 use crate::types::{ScanProgressMessage, ScanTarget};
 use anyhow::Result;
 use log::{debug, info};
+use rustls::pki_types::ServerName;
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::TcpStream;
+use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::broadcast::Sender;
 
@@ -261,6 +263,29 @@ pub async fn enumerate_ssl(
                 }
             }
         }
+    }
+
+    // Light/Aggressive: Check for HSTS header
+    if matches!(depth, EnumDepth::Light | EnumDepth::Aggressive) {
+        let hsts_findings = check_hsts(&target_ip, port, hostname, timeout).await;
+        for finding in &hsts_findings {
+            if finding.finding_type == FindingType::SecurityConfig {
+                // Extract HSTS info for metadata
+                if let Some(max_age) = finding.metadata.get("max_age") {
+                    metadata.insert("hsts_max_age".to_string(), max_age.clone());
+                }
+                if let Some(include_subdomains) = finding.metadata.get("include_subdomains") {
+                    metadata.insert("hsts_include_subdomains".to_string(), include_subdomains.clone());
+                }
+                if let Some(preload) = finding.metadata.get("preload") {
+                    metadata.insert("hsts_preload".to_string(), preload.clone());
+                }
+                send_progress(&progress_tx, &target_ip, port, "SecurityConfig", "HSTS enabled");
+            } else if finding.finding_type == FindingType::Misconfiguration {
+                send_progress(&progress_tx, &target_ip, port, "Misconfiguration", "HSTS not enabled or misconfigured");
+            }
+        }
+        findings.extend(hsts_findings);
     }
 
     // Aggressive: Heartbleed vulnerability check
@@ -592,70 +617,321 @@ fn send_progress(
     }
 }
 
-/// Check HSTS (HTTP Strict Transport Security) header
+/// HSTS detection result containing parsed header information
+#[derive(Debug, Clone)]
+struct HstsInfo {
+    /// Whether HSTS header is present
+    enabled: bool,
+    /// max-age value in seconds
+    max_age: Option<u64>,
+    /// Whether includeSubDomains directive is present
+    include_subdomains: bool,
+    /// Whether preload directive is present
+    preload: bool,
+    /// The raw header value
+    raw_value: Option<String>,
+}
+
+impl Default for HstsInfo {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            max_age: None,
+            include_subdomains: false,
+            preload: false,
+            raw_value: None,
+        }
+    }
+}
+
+/// Parse the HSTS header value
+fn parse_hsts_header(value: &str) -> HstsInfo {
+    let mut info = HstsInfo {
+        enabled: true,
+        raw_value: Some(value.to_string()),
+        ..Default::default()
+    };
+
+    for directive in value.split(';') {
+        let directive = directive.trim().to_lowercase();
+
+        if directive.starts_with("max-age=") {
+            if let Some(max_age_str) = directive.strip_prefix("max-age=") {
+                if let Ok(max_age) = max_age_str.parse::<u64>() {
+                    info.max_age = Some(max_age);
+                }
+            }
+        } else if directive == "includesubdomains" {
+            info.include_subdomains = true;
+        } else if directive == "preload" {
+            info.preload = true;
+        }
+    }
+
+    info
+}
+
+/// Check HSTS (HTTP Strict Transport Security) header by establishing a proper TLS connection
 /// Returns findings about HSTS configuration
 async fn check_hsts(target_ip: &str, port: u16, hostname: Option<&str>, timeout: Duration) -> Vec<Finding> {
     let mut findings = Vec::new();
     let target_ip = target_ip.to_string();
     let hostname = hostname.map(|s| s.to_string());
 
-    let result = tokio::task::spawn_blocking(move || -> Option<(bool, Option<String>)> {
-        // Build HTTP request (for future use when full TLS handshake is implemented)
+    let result = tokio::task::spawn_blocking(move || -> Option<HstsInfo> {
+        // Determine the host to use for SNI and Host header
         let host = hostname.as_deref().unwrap_or(&target_ip);
-        let _request = format!(
-            "HEAD / HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n",
-            host
-        );
 
-        // Connect with TLS
+        // Connect to the target
         let addr = format!("{}:{}", target_ip, port);
-        let mut stream = TcpStream::connect_timeout(&addr.parse().ok()?, timeout).ok()?;
-        stream.set_read_timeout(Some(timeout)).ok()?;
-        stream.set_write_timeout(Some(timeout)).ok()?;
+        let tcp_stream = match TcpStream::connect_timeout(&addr.parse().ok()?, timeout) {
+            Ok(stream) => stream,
+            Err(e) => {
+                debug!("Failed to connect to {} for HSTS check: {}", addr, e);
+                return None;
+            }
+        };
 
-        // Do TLS handshake first
-        let client_hello = build_client_hello_with_sni(hostname.as_deref());
-        stream.write_all(&client_hello).ok()?;
-        stream.flush().ok()?;
-
-        // Read server hello
-        let mut response = vec![0u8; 8192];
-        let n = stream.read(&mut response).ok()?;
-        if n < 5 || response[0] != 0x16 {
+        if tcp_stream.set_read_timeout(Some(timeout)).is_err() {
+            return None;
+        }
+        if tcp_stream.set_write_timeout(Some(timeout)).is_err() {
             return None;
         }
 
-        // For simplicity, we'll check for HSTS in the raw response
-        // In a full implementation, we'd complete the TLS handshake and send HTTP request
-        // For now, we'll return None to indicate we couldn't check
-        // A proper implementation would use native-tls or rustls
-        None
+        // Configure rustls client with a permissive verifier for security scanning
+        // We need to accept any certificate since we're scanning targets, not validating them
+        let config = rustls::ClientConfig::builder()
+            .dangerous()
+            .with_custom_certificate_verifier(Arc::new(InsecureCertVerifier))
+            .with_no_client_auth();
+
+        // Create server name for SNI
+        let server_name = match ServerName::try_from(host.to_string()) {
+            Ok(name) => name,
+            Err(e) => {
+                debug!("Invalid server name '{}' for HSTS check: {}", host, e);
+                return None;
+            }
+        };
+
+        // Establish TLS connection
+        let client = match rustls::ClientConnection::new(Arc::new(config), server_name) {
+            Ok(c) => c,
+            Err(e) => {
+                debug!("Failed to create TLS client for HSTS check: {}", e);
+                return None;
+            }
+        };
+
+        let mut socket = rustls::StreamOwned::new(client, tcp_stream);
+
+        // Send HTTP HEAD request to check HSTS
+        let request = format!(
+            "HEAD / HTTP/1.1\r\nHost: {}\r\nConnection: close\r\nUser-Agent: HeroForge Security Scanner\r\n\r\n",
+            host
+        );
+
+        if let Err(e) = socket.write_all(request.as_bytes()) {
+            debug!("Failed to send HTTP request for HSTS check: {}", e);
+            return None;
+        }
+
+        if let Err(e) = socket.flush() {
+            debug!("Failed to flush socket for HSTS check: {}", e);
+            return None;
+        }
+
+        // Read HTTP response headers
+        let mut response = Vec::new();
+        let mut buf = [0u8; 4096];
+        let mut total_read = 0;
+        const MAX_RESPONSE_SIZE: usize = 16384; // 16KB max for headers
+
+        loop {
+            match socket.read(&mut buf) {
+                Ok(0) => break, // EOF
+                Ok(n) => {
+                    response.extend_from_slice(&buf[..n]);
+                    total_read += n;
+
+                    // Check if we've read the headers (look for \r\n\r\n)
+                    if response.windows(4).any(|w| w == b"\r\n\r\n") {
+                        break;
+                    }
+
+                    // Prevent reading too much data
+                    if total_read > MAX_RESPONSE_SIZE {
+                        break;
+                    }
+                }
+                Err(e) => {
+                    debug!("Error reading HSTS response: {}", e);
+                    break;
+                }
+            }
+        }
+
+        // Convert response to string and parse headers
+        let response_str = String::from_utf8_lossy(&response);
+
+        // Find Strict-Transport-Security header (case-insensitive)
+        for line in response_str.lines() {
+            let line_lower = line.to_lowercase();
+            if line_lower.starts_with("strict-transport-security:") {
+                if let Some(value) = line.split(':').nth(1) {
+                    return Some(parse_hsts_header(value.trim()));
+                }
+            }
+        }
+
+        // No HSTS header found
+        Some(HstsInfo::default())
     }).await.ok().flatten();
 
-    if let Some((has_hsts, hsts_value)) = result {
-        if has_hsts {
-            let mut finding = Finding::new(
-                FindingType::SecurityConfig,
-                "HSTS (Strict-Transport-Security) enabled".to_string(),
-            );
-            if let Some(value) = hsts_value {
-                finding = finding.with_metadata("hsts_value".to_string(), value);
+    match result {
+        Some(hsts_info) if hsts_info.enabled => {
+            // HSTS is enabled - create findings with details
+            let mut description = "HSTS (Strict-Transport-Security) enabled".to_string();
+
+            if let Some(max_age) = hsts_info.max_age {
+                let days = max_age / 86400;
+                description.push_str(&format!(" (max-age: {} days)", days));
             }
+
+            if hsts_info.include_subdomains {
+                description.push_str(", includeSubDomains");
+            }
+
+            if hsts_info.preload {
+                description.push_str(", preload eligible");
+            }
+
+            let mut finding = Finding::with_confidence(
+                FindingType::SecurityConfig,
+                description,
+                95,
+            );
+
+            if let Some(ref raw) = hsts_info.raw_value {
+                finding = finding.with_metadata("hsts_value".to_string(), raw.clone());
+            }
+            if let Some(max_age) = hsts_info.max_age {
+                finding = finding.with_metadata("max_age".to_string(), max_age.to_string());
+            }
+            finding = finding.with_metadata("include_subdomains".to_string(), hsts_info.include_subdomains.to_string());
+            finding = finding.with_metadata("preload".to_string(), hsts_info.preload.to_string());
+
             findings.push(finding);
-        } else {
+
+            // Check for HSTS configuration issues
+            if let Some(max_age) = hsts_info.max_age {
+                // Warn if max-age is too short (less than 6 months / 15768000 seconds)
+                if max_age < 15768000 {
+                    findings.push(
+                        Finding::with_confidence(
+                            FindingType::Misconfiguration,
+                            format!("HSTS max-age is short ({} days) - recommend at least 6 months", max_age / 86400),
+                            75,
+                        )
+                        .with_metadata("severity".to_string(), "Low".to_string())
+                        .with_metadata("current_max_age".to_string(), max_age.to_string())
+                        .with_metadata("recommended_min".to_string(), "15768000".to_string()),
+                    );
+                }
+            }
+
+            // Note if preload-eligible configuration is present
+            if hsts_info.include_subdomains && hsts_info.preload {
+                if let Some(max_age) = hsts_info.max_age {
+                    // Preload requires max-age >= 1 year (31536000 seconds)
+                    if max_age >= 31536000 {
+                        findings.push(
+                            Finding::new(
+                                FindingType::SecurityConfig,
+                                "HSTS configuration meets preload requirements".to_string(),
+                            )
+                            .with_metadata("preload_eligible".to_string(), "true".to_string()),
+                        );
+                    }
+                }
+            }
+        }
+        Some(_) => {
+            // HSTS not enabled
             findings.push(
                 Finding::with_confidence(
                     FindingType::Misconfiguration,
                     "HSTS not enabled - vulnerable to protocol downgrade attacks".to_string(),
-                    80,
+                    85,
                 )
                 .with_metadata("severity".to_string(), "Medium".to_string())
-                .with_metadata("recommendation".to_string(), "Enable Strict-Transport-Security header".to_string()),
+                .with_metadata("recommendation".to_string(),
+                    "Enable Strict-Transport-Security header with max-age of at least 6 months".to_string())
+                .with_metadata("example".to_string(),
+                    "Strict-Transport-Security: max-age=31536000; includeSubDomains".to_string()),
             );
+        }
+        None => {
+            // Could not check HSTS (connection failed, etc.)
+            debug!("Could not check HSTS - connection or TLS handshake failed");
         }
     }
 
     findings
+}
+
+/// Custom certificate verifier that accepts any certificate
+/// This is necessary for security scanning where we need to examine targets
+/// regardless of their certificate validity
+#[derive(Debug)]
+struct InsecureCertVerifier;
+
+impl rustls::client::danger::ServerCertVerifier for InsecureCertVerifier {
+    fn verify_server_cert(
+        &self,
+        _end_entity: &rustls::pki_types::CertificateDer<'_>,
+        _intermediates: &[rustls::pki_types::CertificateDer<'_>],
+        _server_name: &ServerName<'_>,
+        _ocsp_response: &[u8],
+        _now: rustls::pki_types::UnixTime,
+    ) -> Result<rustls::client::danger::ServerCertVerified, rustls::Error> {
+        // Accept any certificate for scanning purposes
+        Ok(rustls::client::danger::ServerCertVerified::assertion())
+    }
+
+    fn verify_tls12_signature(
+        &self,
+        _message: &[u8],
+        _cert: &rustls::pki_types::CertificateDer<'_>,
+        _dss: &rustls::DigitallySignedStruct,
+    ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        _message: &[u8],
+        _cert: &rustls::pki_types::CertificateDer<'_>,
+        _dss: &rustls::DigitallySignedStruct,
+    ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
+        vec![
+            rustls::SignatureScheme::RSA_PKCS1_SHA256,
+            rustls::SignatureScheme::RSA_PKCS1_SHA384,
+            rustls::SignatureScheme::RSA_PKCS1_SHA512,
+            rustls::SignatureScheme::ECDSA_NISTP256_SHA256,
+            rustls::SignatureScheme::ECDSA_NISTP384_SHA384,
+            rustls::SignatureScheme::ECDSA_NISTP521_SHA512,
+            rustls::SignatureScheme::RSA_PSS_SHA256,
+            rustls::SignatureScheme::RSA_PSS_SHA384,
+            rustls::SignatureScheme::RSA_PSS_SHA512,
+            rustls::SignatureScheme::ED25519,
+        ]
+    }
 }
 
 /// Check for Heartbleed vulnerability (CVE-2014-0160)
@@ -879,5 +1155,61 @@ mod tests {
         // Check payload length is larger than actual (malformed)
         let payload_len = ((hb[6] as u16) << 8) | (hb[7] as u16);
         assert_eq!(payload_len, 0x4000); // 16384
+    }
+
+    #[test]
+    fn test_parse_hsts_header_basic() {
+        let hsts = parse_hsts_header("max-age=31536000");
+        assert!(hsts.enabled);
+        assert_eq!(hsts.max_age, Some(31536000));
+        assert!(!hsts.include_subdomains);
+        assert!(!hsts.preload);
+    }
+
+    #[test]
+    fn test_parse_hsts_header_with_subdomains() {
+        let hsts = parse_hsts_header("max-age=31536000; includeSubDomains");
+        assert!(hsts.enabled);
+        assert_eq!(hsts.max_age, Some(31536000));
+        assert!(hsts.include_subdomains);
+        assert!(!hsts.preload);
+    }
+
+    #[test]
+    fn test_parse_hsts_header_full() {
+        let hsts = parse_hsts_header("max-age=31536000; includeSubDomains; preload");
+        assert!(hsts.enabled);
+        assert_eq!(hsts.max_age, Some(31536000));
+        assert!(hsts.include_subdomains);
+        assert!(hsts.preload);
+        assert!(hsts.raw_value.is_some());
+    }
+
+    #[test]
+    fn test_parse_hsts_header_case_insensitive() {
+        let hsts = parse_hsts_header("Max-Age=15768000; INCLUDESUBDOMAINS; PRELOAD");
+        assert!(hsts.enabled);
+        assert_eq!(hsts.max_age, Some(15768000));
+        assert!(hsts.include_subdomains);
+        assert!(hsts.preload);
+    }
+
+    #[test]
+    fn test_parse_hsts_header_with_spaces() {
+        let hsts = parse_hsts_header("max-age=31536000 ; includeSubDomains ; preload");
+        assert!(hsts.enabled);
+        assert_eq!(hsts.max_age, Some(31536000));
+        assert!(hsts.include_subdomains);
+        assert!(hsts.preload);
+    }
+
+    #[test]
+    fn test_hsts_info_default() {
+        let hsts = HstsInfo::default();
+        assert!(!hsts.enabled);
+        assert!(hsts.max_age.is_none());
+        assert!(!hsts.include_subdomains);
+        assert!(!hsts.preload);
+        assert!(hsts.raw_value.is_none());
     }
 }
