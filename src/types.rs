@@ -130,6 +130,9 @@ pub struct ScanConfig {
     /// Timeout for UDP scanner per port (default: 3s)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub udp_timeout: Option<Duration>,
+    /// Optional VPN configuration ID to connect through before scanning
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vpn_config_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -171,6 +174,7 @@ impl Default for ScanConfig {
             dns_timeout: None,
             syn_timeout: None,
             udp_timeout: None,
+            vpn_config_id: None,
         }
     }
 }
@@ -270,6 +274,24 @@ pub enum ScanProgressMessage {
         total_hosts: usize,
     },
     Error {
+        message: String,
+    },
+    // VPN connection status messages
+    VpnConnecting {
+        config_name: String,
+    },
+    VpnConnected {
+        config_name: String,
+        assigned_ip: Option<String>,
+    },
+    VpnDisconnecting {
+        config_name: String,
+    },
+    VpnDisconnected {
+        config_name: String,
+    },
+    VpnError {
+        config_name: String,
         message: String,
     },
 }

@@ -11,9 +11,10 @@ import MfaSettings from '../components/settings/MfaSettings';
 import ApiKeys from '../components/settings/ApiKeys';
 import JiraSettings from '../components/settings/JiraSettings';
 import SiemSettings from '../components/settings/SiemSettings';
-import { Target, Clock, Bell, Settings, GitCompare, FileText, User, Shield, Lock, Key, ExternalLink, Database } from 'lucide-react';
+import VpnSettings from '../components/settings/VpnSettings';
+import { Target, Clock, Bell, Settings, GitCompare, FileText, User, Shield, Lock, Key, ExternalLink, Database, Wifi } from 'lucide-react';
 
-type TabId = 'profile' | 'security' | 'api-keys' | 'administration' | 'target-groups' | 'scheduled-scans' | 'templates' | 'notifications' | 'jira-integration' | 'siem-integration' | 'compare-scans';
+type TabId = 'profile' | 'security' | 'api-keys' | 'administration' | 'target-groups' | 'scheduled-scans' | 'templates' | 'vpn' | 'notifications' | 'jira-integration' | 'siem-integration' | 'compare-scans';
 
 interface Tab {
   id: TabId;
@@ -85,6 +86,12 @@ const SettingsPage: React.FC = () => {
           label: 'Templates',
           icon: <FileText className="h-4 w-4" />,
           component: <ScanTemplates />,
+        },
+        {
+          id: 'vpn',
+          label: 'VPN',
+          icon: <Wifi className="h-4 w-4" />,
+          component: <VpnSettings />,
         },
         {
           id: 'compare-scans',

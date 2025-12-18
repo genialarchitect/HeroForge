@@ -21,6 +21,7 @@ pub mod target_groups;
 pub mod templates;
 pub mod topology;
 pub mod vulnerabilities;
+pub mod vpn;
 pub mod webapp;
 
 #[cfg(test)]

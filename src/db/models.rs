@@ -95,6 +95,8 @@ pub struct CreateScanRequest {
     pub udp_retries: u8,
     /// Optional target group ID to associate with this scan
     pub target_group_id: Option<String>,
+    /// Optional VPN configuration ID to connect through for this scan
+    pub vpn_config_id: Option<String>,
 }
 
 fn default_udp_retries() -> u8 {

@@ -397,6 +397,8 @@ fn build_scan_config(config: &models::ScheduledScanConfig) -> Result<ScanConfig>
         dns_timeout: None,
         syn_timeout: None,
         udp_timeout: None,
+        // Scheduled scans don't support VPN (use regular scan API with vpn_config_id)
+        vpn_config_id: None,
     })
 }
 

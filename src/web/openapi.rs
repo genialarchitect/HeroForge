@@ -163,6 +163,8 @@ pub struct CreateScanRequestSchema {
     pub udp_port_range: Option<(u16, u16)>,
     /// Number of UDP retries
     pub udp_retries: Option<u8>,
+    /// VPN configuration ID to connect through for this scan
+    pub vpn_config_id: Option<String>,
 }
 
 /// Scan result

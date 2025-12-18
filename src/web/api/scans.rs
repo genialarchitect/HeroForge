@@ -5,9 +5,10 @@ use ipnetwork::IpNetwork;
 use std::io::Write;
 
 use crate::db::{self, models};
-use crate::types::{ScanConfig, HostInfo};
+use crate::types::{ScanConfig, HostInfo, ScanProgressMessage};
 use crate::web::auth;
 use crate::scanner;
+use crate::vpn::{VpnManager, ConnectionMode, VpnType};
 
 /// Configuration for target validation
 struct ValidationConfig {
@@ -422,20 +423,119 @@ pub async fn create_scan(
         dns_timeout: None,
         syn_timeout: None,
         udp_timeout: None,
+        vpn_config_id: scan_request.vpn_config_id.clone(),
     };
+
+    // Clone vpn_config_id for the spawned task
+    let vpn_config_id = config.vpn_config_id.clone();
 
     tokio::spawn(async move {
         // Create broadcast channel for this scan
         let tx = crate::web::broadcast::create_scan_channel(scan_id.clone()).await;
 
         // Send scan started message
-        let _ = tx.send(crate::types::ScanProgressMessage::ScanStarted {
+        let _ = tx.send(ScanProgressMessage::ScanStarted {
             scan_id: scan_id.clone(),
             timestamp: chrono::Utc::now().to_rfc3339(),
         });
 
         // Update status to running
         let _ = db::update_scan_status(&pool_clone, &scan_id, "running", None, None).await;
+
+        // Connect to VPN if configured for this scan
+        let mut vpn_connection_id: Option<String> = None;
+        let mut vpn_config_name: Option<String> = None;
+
+        if let Some(vpn_id) = &vpn_config_id {
+            // Get VPN config for connection
+            if let Ok(Some(vpn_config)) = crate::db::vpn::get_vpn_config_by_id(&pool_clone, vpn_id).await {
+                vpn_config_name = Some(vpn_config.name.clone());
+
+                // Parse VPN type from config
+                let vpn_type = match vpn_config.vpn_type.parse::<VpnType>() {
+                    Ok(t) => t,
+                    Err(e) => {
+                        log::error!("Invalid VPN type for config {}: {}", vpn_id, e);
+                        let _ = tx.send(ScanProgressMessage::VpnError {
+                            config_name: vpn_config.name.clone(),
+                            message: format!("Invalid VPN type: {}", e),
+                        });
+                        let _ = db::update_scan_status(
+                            &pool_clone,
+                            &scan_id,
+                            "failed",
+                            None,
+                            Some(&format!("Invalid VPN type: {}", e)),
+                        )
+                        .await;
+                        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                        crate::web::broadcast::remove_scan_channel(&scan_id).await;
+                        return;
+                    }
+                };
+
+                // Send VPN connecting message
+                let _ = tx.send(ScanProgressMessage::VpnConnecting {
+                    config_name: vpn_config.name.clone(),
+                });
+
+                // Connect to VPN
+                let config_file_path = std::path::Path::new(&vpn_config.config_file_path);
+                match VpnManager::global()
+                    .connect(
+                        &user_id,
+                        vpn_id,
+                        &vpn_config.name,
+                        vpn_type,
+                        config_file_path,
+                        vpn_config.encrypted_credentials.as_deref(),
+                        ConnectionMode::PerScan,
+                        Some(scan_id.clone()),
+                    )
+                    .await
+                {
+                    Ok(conn_info) => {
+                        vpn_connection_id = Some(conn_info.id.clone());
+                        let _ = tx.send(ScanProgressMessage::VpnConnected {
+                            config_name: vpn_config.name.clone(),
+                            assigned_ip: conn_info.assigned_ip.clone(),
+                        });
+                        log::info!(
+                            "VPN connected for scan {}: {} (IP: {:?})",
+                            scan_id,
+                            vpn_config.name,
+                            conn_info.assigned_ip
+                        );
+
+                        // Update last_used_at for the VPN config
+                        let _ = crate::db::vpn::update_vpn_config_last_used(&pool_clone, vpn_id).await;
+                    }
+                    Err(e) => {
+                        log::error!("Failed to connect VPN for scan {}: {}", scan_id, e);
+                        let _ = tx.send(ScanProgressMessage::VpnError {
+                            config_name: vpn_config.name.clone(),
+                            message: e.to_string(),
+                        });
+                        let _ = tx.send(ScanProgressMessage::Error {
+                            message: format!("VPN connection failed: {}", e),
+                        });
+                        let _ = db::update_scan_status(
+                            &pool_clone,
+                            &scan_id,
+                            "failed",
+                            None,
+                            Some(&format!("VPN connection failed: {}", e)),
+                        )
+                        .await;
+
+                        // Clean up broadcast channel
+                        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                        crate::web::broadcast::remove_scan_channel(&scan_id).await;
+                        return;
+                    }
+                }
+            }
+        }
 
         // Run the scan with progress tracking
         let start_time = std::time::Instant::now();
@@ -544,6 +644,32 @@ pub async fn create_scan(
                     Some(&error_msg),
                 )
                 .await;
+            }
+        }
+
+        // Disconnect VPN if it was connected for this scan
+        if let Some(conn_id) = vpn_connection_id {
+            if let Some(config_name) = &vpn_config_name {
+                let _ = tx.send(ScanProgressMessage::VpnDisconnecting {
+                    config_name: config_name.clone(),
+                });
+            }
+
+            if let Err(e) = VpnManager::global().disconnect_scan(&scan_id).await {
+                log::error!("Failed to disconnect VPN after scan {}: {}", scan_id, e);
+                if let Some(config_name) = &vpn_config_name {
+                    let _ = tx.send(ScanProgressMessage::VpnError {
+                        config_name: config_name.clone(),
+                        message: format!("Failed to disconnect: {}", e),
+                    });
+                }
+            } else {
+                if let Some(config_name) = &vpn_config_name {
+                    let _ = tx.send(ScanProgressMessage::VpnDisconnected {
+                        config_name: config_name.clone(),
+                    });
+                }
+                log::info!("VPN disconnected after scan {} (connection {})", scan_id, conn_id);
             }
         }
 

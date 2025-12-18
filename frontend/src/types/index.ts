@@ -105,6 +105,8 @@ export interface CreateScanRequest {
   enable_enumeration?: boolean;
   enum_depth?: EnumDepth;
   enum_services?: EnumService[];
+  // VPN options
+  vpn_config_id?: string;
 }
 
 export interface ScanPreset {
@@ -1050,5 +1052,61 @@ export interface CombinedComplianceResults {
   combined_score: number;
   framework_scores: Record<string, number>;
   generated_at: string;
+}
+
+// ============================================================================
+// VPN Types
+// ============================================================================
+
+export type VpnType = 'openvpn' | 'wireguard';
+export type VpnConnectionMode = 'per_scan' | 'persistent';
+
+export interface VpnConfig {
+  id: string;
+  name: string;
+  vpn_type: VpnType;
+  requires_credentials: boolean;
+  has_credentials: boolean;
+  is_default: boolean;
+  created_at: string;
+  last_used_at: string | null;
+}
+
+export interface VpnStatus {
+  connected: boolean;
+  config_id: string | null;
+  config_name: string | null;
+  connection_mode: VpnConnectionMode | null;
+  assigned_ip: string | null;
+  connected_since: string | null;
+  interface_name: string | null;
+}
+
+export interface UploadVpnConfigRequest {
+  name: string;
+  vpn_type: VpnType;
+  config_file: string; // base64 encoded
+  original_filename: string;
+  username?: string;
+  password?: string;
+}
+
+export interface UpdateVpnConfigRequest {
+  name?: string;
+  username?: string;
+  password?: string;
+  is_default?: boolean;
+}
+
+export interface VpnConnectRequest {
+  config_id: string;
+  connection_mode: VpnConnectionMode;
+}
+
+export interface VpnTestResult {
+  success: boolean;
+  message: string;
+  assigned_ip?: string;
+  connection_time_ms?: number;
 }
 

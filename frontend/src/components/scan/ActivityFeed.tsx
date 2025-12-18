@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Server, Wifi, Code, AlertTriangle, Shield, Activity, Filter } from 'lucide-react';
+import { Server, Wifi, WifiOff, Code, AlertTriangle, Shield, Activity, Filter, Globe } from 'lucide-react';
 import { useScanStore } from '../../store/scanStore';
 import Card from '../ui/Card';
 import Badge from '../ui/Badge';
@@ -52,6 +52,16 @@ const ActivityFeed: React.FC<ActivityFeedProps> = ({ scanId, maxItems = 50 }) =>
       case 'scanStarted':
       case 'scanCompleted':
         return <Shield className="h-4 w-4 text-green-400" />;
+      case 'vpnConnecting':
+        return <Globe className="h-4 w-4 text-yellow-400 animate-pulse" />;
+      case 'vpnConnected':
+        return <Globe className="h-4 w-4 text-green-400" />;
+      case 'vpnDisconnecting':
+        return <WifiOff className="h-4 w-4 text-yellow-400" />;
+      case 'vpnDisconnected':
+        return <WifiOff className="h-4 w-4 text-slate-400" />;
+      case 'vpnError':
+        return <Globe className="h-4 w-4 text-red-400" />;
       default:
         return <Activity className="h-4 w-4 text-slate-400" />;
     }
@@ -112,6 +122,43 @@ const ActivityFeed: React.FC<ActivityFeedProps> = ({ scanId, maxItems = 50 }) =>
         );
       case 'error':
         return <span className="text-red-400">Error: {event.data?.message}</span>;
+      case 'vpnConnecting':
+        return (
+          <>
+            <span className="text-yellow-400">Connecting to VPN:</span>{' '}
+            <span className="text-white">{event.data?.config_name}</span>
+          </>
+        );
+      case 'vpnConnected':
+        return (
+          <>
+            <span className="text-green-400 font-medium">VPN connected</span> - {event.data?.config_name}
+            {event.data?.assigned_ip && (
+              <> (IP: <code className="text-primary font-mono">{event.data.assigned_ip}</code>)</>
+            )}
+          </>
+        );
+      case 'vpnDisconnecting':
+        return (
+          <>
+            <span className="text-yellow-400">Disconnecting from VPN:</span>{' '}
+            <span className="text-white">{event.data?.config_name}</span>
+          </>
+        );
+      case 'vpnDisconnected':
+        return (
+          <>
+            <span className="text-slate-400">VPN disconnected:</span>{' '}
+            <span className="text-white">{event.data?.config_name}</span>
+          </>
+        );
+      case 'vpnError':
+        return (
+          <>
+            <span className="text-red-400">VPN Error ({event.data?.config_name}):</span>{' '}
+            {event.data?.message}
+          </>
+        );
       default:
         return <span className="text-slate-400">{event.type}</span>;
     }
@@ -129,6 +176,15 @@ const ActivityFeed: React.FC<ActivityFeedProps> = ({ scanId, maxItems = 50 }) =>
         default:
           return 'border-l-severity-low bg-severity-low/5';
       }
+    }
+    if (event.type === 'vpnConnecting' || event.type === 'vpnDisconnecting') {
+      return 'border-l-yellow-500 bg-yellow-500/5';
+    }
+    if (event.type === 'vpnConnected') {
+      return 'border-l-green-500 bg-green-500/5';
+    }
+    if (event.type === 'vpnError') {
+      return 'border-l-red-500 bg-red-500/5';
     }
     return 'border-l-slate-600 bg-dark-bg';
   };

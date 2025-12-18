@@ -17,6 +17,7 @@ mod password_validation;
 mod reports;
 mod scanner;
 mod types;
+mod vpn;
 mod vuln;
 mod web;
 
@@ -352,6 +353,8 @@ fn build_scan_config(
         dns_timeout: None,
         syn_timeout: None,
         udp_timeout: None,
+        // CLI doesn't support VPN (only web API does)
+        vpn_config_id: None,
     }
 }
 

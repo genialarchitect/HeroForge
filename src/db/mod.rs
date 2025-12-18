@@ -27,6 +27,7 @@ pub mod scans;
 pub mod settings;
 pub mod users;
 pub mod vulnerabilities;
+pub mod vpn;
 
 // Core imports used by this module
 use sqlx::sqlite::SqlitePool;
@@ -318,4 +319,25 @@ pub use analytics::{
     get_vulnerabilities_over_time,
     get_top_services,
     get_scan_frequency,
+};
+
+// ============================================================================
+// Re-exports from vpn module
+// ============================================================================
+
+pub use vpn::{
+    create_vpn_config,
+    get_user_vpn_configs,
+    get_vpn_config_by_id,
+    update_vpn_config,
+    update_vpn_config_last_used,
+    delete_vpn_config,
+    get_default_vpn_config,
+    create_vpn_connection,
+    update_vpn_connection_connected,
+    update_vpn_connection_disconnected,
+    update_vpn_connection_error,
+    get_active_vpn_connection,
+    get_vpn_connection_history,
+    cleanup_stale_connections,
 };

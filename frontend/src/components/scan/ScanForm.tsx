@@ -4,10 +4,10 @@ import Button from '../ui/Button';
 import Input from '../ui/Input';
 import Checkbox from '../ui/Checkbox';
 import Card from '../ui/Card';
-import { scanAPI, targetGroupAPI, templateAPI } from '../../services/api';
+import { scanAPI, targetGroupAPI, templateAPI, vpnAPI } from '../../services/api';
 import { useScanStore } from '../../store/scanStore';
-import { Target, Hash, Cpu, Search, Radio, Wifi, FolderOpen, Save, Zap, Radar, Globe, EyeOff } from 'lucide-react';
-import { EnumDepth, EnumService, ScanType, TargetGroup, ScanPreset } from '../../types';
+import { Target, Hash, Cpu, Search, Radio, Wifi, FolderOpen, Save, Zap, Radar, Globe, EyeOff, Shield } from 'lucide-react';
+import { EnumDepth, EnumService, ScanType, TargetGroup, ScanPreset, VpnConfig } from '../../types';
 
 const SCAN_TYPES: { id: ScanType; label: string; description: string }[] = [
   { id: 'tcp_connect', label: 'TCP Connect', description: 'Standard TCP scan (most reliable)' },
@@ -60,6 +60,8 @@ const ScanForm: React.FC = () => {
   const [templateDescription, setTemplateDescription] = useState('');
   const [presets, setPresets] = useState<ScanPreset[]>([]);
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
+  const [vpnConfigs, setVpnConfigs] = useState<VpnConfig[]>([]);
+  const [selectedVpn, setSelectedVpn] = useState<string>('');
 
   const { addScan } = useScanStore();
 
@@ -68,6 +70,7 @@ const ScanForm: React.FC = () => {
   useEffect(() => {
     loadTargetGroups();
     loadPresets();
+    loadVpnConfigs();
   }, []);
 
   const loadTargetGroups = async () => {
@@ -85,6 +88,20 @@ const ScanForm: React.FC = () => {
       setPresets(response.data);
     } catch (error) {
       console.error('Failed to load scan presets:', error);
+    }
+  };
+
+  const loadVpnConfigs = async () => {
+    try {
+      const response = await vpnAPI.getConfigs();
+      setVpnConfigs(response.data);
+      // Auto-select default VPN if available
+      const defaultVpn = response.data.find((v: VpnConfig) => v.is_default);
+      if (defaultVpn) {
+        setSelectedVpn(defaultVpn.id);
+      }
+    } catch (error) {
+      console.error('Failed to load VPN configs:', error);
     }
   };
 
@@ -217,6 +234,7 @@ const ScanForm: React.FC = () => {
         enable_enumeration: enableEnumeration,
         enum_depth: enableEnumeration ? enumDepth : undefined,
         enum_services: enableEnumeration && selectedServices.length > 0 ? selectedServices : undefined,
+        vpn_config_id: selectedVpn || undefined,
       });
 
       addScan(response.data);
@@ -488,6 +506,37 @@ const ScanForm: React.FC = () => {
             </div>
           )}
         </div>
+
+        {/* VPN Selection */}
+        {vpnConfigs.length > 0 && (
+          <div className="space-y-3 border-t border-dark-border pt-4">
+            <div className="flex items-center space-x-2">
+              <Shield className="h-5 w-5 text-green-400" />
+              <p className="text-sm font-medium text-slate-300">VPN Connection</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-400 mb-2">
+                Route scan through VPN (optional)
+              </label>
+              <select
+                value={selectedVpn}
+                onChange={(e) => setSelectedVpn(e.target.value)}
+                className="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white focus:ring-2 focus:ring-green-500 focus:border-transparent"
+              >
+                <option value="">No VPN - Direct connection</option>
+                {vpnConfigs.map((vpn) => (
+                  <option key={vpn.id} value={vpn.id}>
+                    {vpn.name} ({vpn.vpn_type.toUpperCase()})
+                    {vpn.is_default ? ' (Default)' : ''}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-slate-500">
+                VPN connects before scan and disconnects when complete. Configure VPNs in Settings.
+              </p>
+            </div>
+          </div>
+        )}
 
         <div className="space-y-2 border-t border-dark-border pt-4">
           <p className="text-sm font-medium text-slate-300 mb-2">Scan Options</p>

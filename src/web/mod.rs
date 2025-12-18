@@ -242,6 +242,17 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .route("/integrations/siem/settings/{id}", web::delete().to(api::siem::delete_siem_settings))
                     .route("/integrations/siem/settings/{id}/test", web::post().to(api::siem::test_siem_connection))
                     .route("/integrations/siem/export/{scan_id}", web::post().to(api::siem::export_scan_to_siem))
+                    // VPN integration endpoints
+                    .route("/vpn/configs", web::post().to(api::vpn::upload_vpn_config))
+                    .route("/vpn/configs", web::get().to(api::vpn::list_vpn_configs))
+                    .route("/vpn/configs/{id}", web::get().to(api::vpn::get_vpn_config))
+                    .route("/vpn/configs/{id}", web::put().to(api::vpn::update_vpn_config))
+                    .route("/vpn/configs/{id}", web::delete().to(api::vpn::delete_vpn_config))
+                    .route("/vpn/configs/{id}/test", web::post().to(api::vpn::test_vpn_connection))
+                    .route("/vpn/connect", web::post().to(api::vpn::connect_vpn))
+                    .route("/vpn/disconnect", web::post().to(api::vpn::disconnect_vpn))
+                    .route("/vpn/status", web::get().to(api::vpn::get_vpn_status))
+                    .route("/vpn/connections", web::get().to(api::vpn::get_vpn_connections))
                     .configure(api::admin::configure)
                     .configure(api::dashboard::configure),
             )

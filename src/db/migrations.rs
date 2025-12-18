@@ -42,6 +42,9 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     create_assessment_history_table(pool).await?;
     create_assessment_campaigns_table(pool).await?;
     create_campaign_assessments_table(pool).await?;
+    // VPN configuration tables
+    create_vpn_configs_table(pool).await?;
+    create_vpn_connections_table(pool).await?;
     Ok(())
 }
 
@@ -1425,6 +1428,94 @@ async fn create_campaign_assessments_table(pool: &SqlitePool) -> Result<()> {
         .await?;
 
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_campaign_assessments_assessment_id ON campaign_assessments(assessment_id)")
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+/// Create vpn_configs table for storing VPN configuration files
+async fn create_vpn_configs_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS vpn_configs (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            vpn_type TEXT NOT NULL,
+            config_file_path TEXT NOT NULL,
+            original_filename TEXT NOT NULL,
+            encrypted_credentials TEXT,
+            requires_credentials INTEGER NOT NULL DEFAULT 0,
+            is_default INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            last_used_at TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            UNIQUE(user_id, name)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for efficient queries
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_vpn_configs_user_id ON vpn_configs(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_vpn_configs_vpn_type ON vpn_configs(vpn_type)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_vpn_configs_is_default ON vpn_configs(is_default)")
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+/// Create vpn_connections table for tracking active and historical VPN connections
+async fn create_vpn_connections_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS vpn_connections (
+            id TEXT PRIMARY KEY,
+            vpn_config_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            connection_mode TEXT NOT NULL,
+            scan_id TEXT,
+            status TEXT NOT NULL,
+            process_id INTEGER,
+            interface_name TEXT,
+            assigned_ip TEXT,
+            connected_at TEXT,
+            disconnected_at TEXT,
+            error_message TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (vpn_config_id) REFERENCES vpn_configs(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (scan_id) REFERENCES scan_results(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for efficient queries
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_vpn_connections_user_id ON vpn_connections(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_vpn_connections_status ON vpn_connections(status)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_vpn_connections_scan_id ON vpn_connections(scan_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_vpn_connections_vpn_config_id ON vpn_connections(vpn_config_id)")
         .execute(pool)
         .await?;
 

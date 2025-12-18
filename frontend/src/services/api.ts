@@ -69,6 +69,12 @@ import type {
   CreateManualAssessmentRequest,
   CreateCampaignRequest,
   CombinedComplianceResults,
+  VpnConfig,
+  VpnStatus,
+  UploadVpnConfigRequest,
+  UpdateVpnConfigRequest,
+  VpnConnectRequest,
+  VpnTestResult,
 } from '../types';
 
 const api = axios.create({
@@ -581,6 +587,36 @@ export const combinedComplianceAPI = {
   // Get combined compliance results (automated + manual) for a scan
   getResults: (scanId: string) =>
     api.get<CombinedComplianceResults>(`/scans/${scanId}/compliance/combined`),
+};
+
+export const vpnAPI = {
+  // Get all VPN configs for the current user
+  getConfigs: () => api.get<VpnConfig[]>('/vpn/configs'),
+
+  // Upload a new VPN config
+  uploadConfig: (data: UploadVpnConfigRequest) =>
+    api.post<VpnConfig>('/vpn/configs', data),
+
+  // Update a VPN config
+  updateConfig: (id: string, data: UpdateVpnConfigRequest) =>
+    api.put<VpnConfig>(`/vpn/configs/${id}`, data),
+
+  // Delete a VPN config
+  deleteConfig: (id: string) => api.delete(`/vpn/configs/${id}`),
+
+  // Test a VPN connection
+  testConfig: (id: string) =>
+    api.post<VpnTestResult>(`/vpn/configs/${id}/test`),
+
+  // Get current VPN status
+  getStatus: () => api.get<VpnStatus>('/vpn/status'),
+
+  // Connect to a VPN
+  connect: (data: VpnConnectRequest) =>
+    api.post<VpnStatus>('/vpn/connect', data),
+
+  // Disconnect from VPN
+  disconnect: () => api.post<{ message: string }>('/vpn/disconnect'),
 };
 
 export default api;

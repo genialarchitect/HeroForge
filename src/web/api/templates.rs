@@ -222,6 +222,8 @@ pub async fn create_scan_from_template(
         dns_timeout: None,
         syn_timeout: None,
         udp_timeout: None,
+        // Template scans don't support VPN (use regular scan API with vpn_config_id)
+        vpn_config_id: None,
     };
 
     tokio::spawn(async move {
