@@ -1085,10 +1085,11 @@ export interface VpnStatus {
 export interface UploadVpnConfigRequest {
   name: string;
   vpn_type: VpnType;
-  config_file: string; // base64 encoded
-  original_filename: string;
+  config_data: string; // base64 encoded
+  filename: string;
   username?: string;
   password?: string;
+  set_as_default: boolean;
 }
 
 export interface UpdateVpnConfigRequest {

@@ -111,10 +111,11 @@ const VpnSettings: React.FC = () => {
           await vpnAPI.uploadConfig({
             name: uploadForm.name.trim(),
             vpn_type: uploadForm.vpnType,
-            config_file: base64,
-            original_filename: selectedFile.name,
+            config_data: base64,
+            filename: selectedFile.name,
             username: uploadForm.username || undefined,
             password: uploadForm.password || undefined,
+            set_as_default: false,
           });
 
           toast.success('VPN config uploaded successfully');
