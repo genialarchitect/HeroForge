@@ -16,6 +16,8 @@ Thumbs.db
 
 # Output files
 *.json
+!frontend/package.json
+!frontend/package-lock.json
 *.csv
 scan_results*
 test-config.toml
