@@ -78,7 +78,7 @@ libsqlite3-sys = { version = "0.30", features = ["bundled-sqlcipher"] }
 # Database enumeration
 mysql_async = "0.34"
 mongodb = "2.8"
-redis = { version = "0.24", features = ["tokio-comp", "connection-manager"] }
+redis = { version = "1.0", features = ["tokio-comp", "connection-manager"] }
 
 # SMB enumeration
 # Note: SMB enumeration will use external tools (smbclient, enum4linux) via Bash commands

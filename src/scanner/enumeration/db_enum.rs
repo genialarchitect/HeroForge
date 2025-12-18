@@ -353,11 +353,11 @@ async fn enumerate_redis(
     // redis::Client::open is synchronous, so call it directly
     if let Ok(client) = redis::Client::open(conn_str.as_str()) {
         // Now get async connection with timeout
-        match tokio::time::timeout(timeout, client.get_tokio_connection()).await {
+        match tokio::time::timeout(timeout, client.get_multiplexed_async_connection()).await {
             Ok(Ok(mut conn)) => {
                 // Try INFO command
                 match redis::cmd("INFO")
-                    .query_async::<_, String>(&mut conn)
+                    .query_async::<String>(&mut conn)
                     .await
                 {
                     Ok(info) => {
@@ -394,7 +394,7 @@ async fn enumerate_redis(
                         // For aggressive scans, try to get keyspace info
                         if matches!(depth, EnumDepth::Aggressive) {
                             if let Ok(dbsize) = redis::cmd("DBSIZE")
-                                .query_async::<_, i64>(&mut conn)
+                                .query_async::<i64>(&mut conn)
                                 .await
                             {
                                 findings.push(
@@ -407,7 +407,7 @@ async fn enumerate_redis(
                             if let Ok(config) = redis::cmd("CONFIG")
                                 .arg("GET")
                                 .arg("dir")
-                                .query_async::<_, Vec<String>>(&mut conn)
+                                .query_async::<Vec<String>>(&mut conn)
                                 .await
                             {
                                 if config.len() >= 2 {
