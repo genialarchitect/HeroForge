@@ -41,6 +41,22 @@ format = "Terminal"
 
 # Output file path (optional)
 # output_file = "scan_results"
+
+# [timeouts]
+# Optional scanner-specific timeouts (in seconds)
+# If not set, defaults are used
+#
+# Service detection banner grabbing timeout (default: 2s)
+# service_detection_timeout_secs = 2
+#
+# DNS reconnaissance query timeout (default: 5s)
+# dns_timeout_secs = 5
+#
+# SYN scanner per-port timeout (default: 2s)
+# syn_timeout_secs = 2
+#
+# UDP scanner per-port timeout (default: 3s)
+# udp_timeout_secs = 3
 "#;
 
     let mut file = fs::File::create(path)?;

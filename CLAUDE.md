@@ -29,9 +29,13 @@ cargo build --release                 # Production build
 # Deploy to production
 sudo ./deploy.sh                      # Full deploy (frontend + backend + Docker)
 
-# View logs
-docker logs heroforge -f              # Container logs
+# Container operations
+docker logs heroforge -f              # View logs
+docker exec -it heroforge /bin/bash   # Shell access
+docker restart heroforge              # Restart container
 ```
+
+**Container Configuration:** The production container runs with `CAP_NET_RAW` for raw socket operations (SYN scans), resource limits of 2 CPUs and 2GB memory, and mounts `/root/heroforge_data` for persistent storage.
 
 ## CLI Commands
 
@@ -74,6 +78,7 @@ sudo ./target/release/heroforge scan 192.168.1.0/24 --scan-type comprehensive
 cargo check                           # Fast type check (no codegen)
 cargo test                            # All tests
 cargo test -- --nocapture             # With output
+cargo test -- --test-threads=1        # Sequential (for DB-dependent tests)
 cargo test scanner::                  # Test specific module
 cargo test scanner::comparison::tests::test_compare_scans  # Specific test
 ```
@@ -84,6 +89,7 @@ cargo test scanner::comparison::tests::test_compare_scans  # Specific test
 cd frontend
 npm install                           # Install dependencies
 npm run build                         # Production build
+npm run build:check                   # TypeScript check + build
 npm run dev                           # Development server (hot reload)
 npm run lint                          # Lint TypeScript/React
 ```
@@ -163,167 +169,30 @@ src/
 | `/webapp-scan` | Web application security scanning |
 | `/dns-tools` | DNS reconnaissance tools |
 | `/compliance` | Compliance framework analysis |
+| `/manual-assessments` | Manual compliance rubric assessments |
+| `/manual-assessments/:id` | Assessment detail/edit view |
 | `/remediation` | Vulnerability remediation workflow board |
 
-### REST API Endpoints
+### REST API
 
-#### Authentication & User Management
-- `POST /api/auth/register` - Register new user
-- `POST /api/auth/login` - Login and receive JWT token
-- `POST /api/auth/refresh` - Refresh JWT token
-- `POST /api/auth/logout` - Logout user
-- `GET /api/auth/me` - Get current user info
-- `PUT /api/auth/profile` - Update user profile
-- `PUT /api/auth/password` - Change password
+Full API documentation available via Swagger UI at `/api/docs` (requires running server).
 
-#### MFA (Multi-Factor Authentication)
-- `POST /api/auth/mfa/setup` - Initialize MFA setup (returns TOTP secret)
-- `POST /api/auth/mfa/verify-setup` - Complete MFA setup with verification code
-- `POST /api/auth/mfa/verify` - Verify MFA during login (public endpoint)
-- `DELETE /api/auth/mfa` - Disable MFA
-- `POST /api/auth/mfa/recovery-codes` - Regenerate recovery codes
-
-#### GDPR Compliance
-- `GET /api/auth/terms-status` - Get terms acceptance status
-- `POST /api/auth/accept-terms` - Accept terms of service
-- `GET /api/auth/export` - Export all user data (GDPR data portability)
-- `DELETE /api/auth/account` - Delete user account and all data
-
-#### Scans
-- `GET /api/scans` - List all scans
-- `POST /api/scans` - Create new scan (rate limited: 10/hour)
-- `GET /api/scans/stats` - Get aggregated scan statistics
-- `GET /api/scans/{id}` - Get scan details
-- `DELETE /api/scans/{id}` - Delete scan
-- `GET /api/scans/{id}/results` - Get scan results
-- `GET /api/scans/{id}/export` - Export scan as CSV
-- `GET /api/scans/{id}/topology` - Get network topology visualization data
-- `POST /api/scans/compare` - Compare two scan results
-- `POST /api/scans/bulk-export` - Bulk export multiple scans
-- `POST /api/scans/bulk-delete` - Bulk delete multiple scans
-- `GET /api/scan-presets` - Get predefined scan configurations
-
-#### Reports
-- `POST /api/reports` - Generate report (JSON, HTML, PDF, CSV)
-- `GET /api/reports` - List all reports
-- `GET /api/reports/templates` - Get report templates
-- `GET /api/reports/{id}` - Get report details
-- `GET /api/reports/{id}/download` - Download report file
-- `DELETE /api/reports/{id}` - Delete report
-
-#### Scan Templates
-- `POST /api/templates` - Create scan template
-- `GET /api/templates` - List templates
-- `GET /api/templates/{id}` - Get template details
-- `PUT /api/templates/{id}` - Update template
-- `DELETE /api/templates/{id}` - Delete template
-- `GET /api/templates/{id}/export` - Export template as JSON
-- `POST /api/templates/import` - Import template from JSON
-- `POST /api/templates/{id}/scan` - Create scan from template
-
-#### Target Groups
-- `POST /api/target-groups` - Create target group
-- `GET /api/target-groups` - List target groups
-- `GET /api/target-groups/{id}` - Get target group
-- `PUT /api/target-groups/{id}` - Update target group
-- `DELETE /api/target-groups/{id}` - Delete target group
-
-#### Scheduled Scans
-- `POST /api/scheduled-scans` - Create scheduled scan
-- `GET /api/scheduled-scans` - List scheduled scans
-- `GET /api/scheduled-scans/{id}` - Get scheduled scan
-- `PUT /api/scheduled-scans/{id}` - Update scheduled scan
-- `DELETE /api/scheduled-scans/{id}` - Delete scheduled scan
-- `GET /api/scheduled-scans/{id}/history` - Get execution history
-
-#### Notifications
-- `GET /api/notifications/settings` - Get notification settings
-- `PUT /api/notifications/settings` - Update notification settings
-- `POST /api/notifications/test-slack` - Test Slack webhook
-- `POST /api/notifications/test-teams` - Test Microsoft Teams webhook
-
-#### Analytics
-- `GET /api/analytics/summary` - Get analytics summary
-- `GET /api/analytics/hosts` - Get hosts discovered over time
-- `GET /api/analytics/vulnerabilities` - Get vulnerabilities over time
-- `GET /api/analytics/services` - Get top services found
-- `GET /api/analytics/frequency` - Get scan frequency data
-
-#### Asset Inventory
-- `GET /api/assets` - List assets (filters: `status`, `tags`, `days_inactive`)
-- `GET /api/assets/{id}` - Get asset details
-- `PATCH /api/assets/{id}` - Update asset metadata (status, tags, notes)
-- `DELETE /api/assets/{id}` - Delete asset
-- `GET /api/assets/{id}/history` - Get asset scan history
-
-#### Vulnerability Management
-- `GET /api/vulnerabilities` - List vulnerabilities (requires `scan_id`, optional `status`, `severity`)
-- `GET /api/vulnerabilities/stats` - Get vulnerability statistics
-- `GET /api/vulnerabilities/{id}` - Get vulnerability details
-- `PUT /api/vulnerabilities/{id}` - Update vulnerability (status, assignee, notes, due_date)
-- `POST /api/vulnerabilities/{id}/comments` - Add comment to vulnerability
-- `GET /api/vulnerabilities/{id}/timeline` - Get vulnerability remediation timeline
-- `POST /api/vulnerabilities/{id}/verify` - Mark vulnerability for re-verification
-- `POST /api/vulnerabilities/bulk-update` - Bulk update vulnerability status
-- `POST /api/vulnerabilities/bulk-export` - Bulk export to CSV/JSON
-- `POST /api/vulnerabilities/bulk-assign` - Bulk assign to user
-
-#### Compliance
-- `GET /api/compliance/frameworks` - List available compliance frameworks
-- `GET /api/compliance/frameworks/{id}` - Get framework details
-- `GET /api/compliance/frameworks/{id}/controls` - Get framework controls
-- `POST /api/scans/{id}/compliance` - Run compliance analysis on scan
-- `GET /api/scans/{id}/compliance` - Get compliance results for scan
-- `POST /api/scans/{id}/compliance/report` - Generate compliance report (PDF/HTML/JSON)
-- `GET /api/compliance/reports/{id}/download` - Download compliance report
-
-#### DNS Reconnaissance
-- `POST /api/dns/recon` - Perform DNS reconnaissance (subdomains, zone transfers, records)
-- `GET /api/dns/recon` - List DNS recon results
-- `GET /api/dns/recon/{id}` - Get specific DNS recon result
-- `DELETE /api/dns/recon/{id}` - Delete DNS recon result
-- `GET /api/dns/wordlist` - Get built-in subdomain wordlist
-
-#### Web Application Scanning
-- `POST /api/webapp/scan` - Start web application scan (XSS, SQLi, headers, forms)
-- `GET /api/webapp/scan/{scan_id}` - Get web app scan status/results
-
-#### JIRA Integration
-- `GET /api/integrations/jira/settings` - Get JIRA settings
-- `POST /api/integrations/jira/settings` - Create/update JIRA settings
-- `POST /api/integrations/jira/test` - Test JIRA connection
-- `GET /api/integrations/jira/projects` - List JIRA projects
-- `GET /api/integrations/jira/issue-types` - List JIRA issue types
-- `POST /api/vulnerabilities/{id}/create-ticket` - Create JIRA ticket from vulnerability
-
-#### SIEM Integration
-- `GET /api/integrations/siem/settings` - Get all SIEM settings
-- `POST /api/integrations/siem/settings` - Create SIEM settings (syslog, splunk, elasticsearch)
-- `PUT /api/integrations/siem/settings/{id}` - Update SIEM settings
-- `DELETE /api/integrations/siem/settings/{id}` - Delete SIEM settings
-- `POST /api/integrations/siem/settings/{id}/test` - Test SIEM connection
-- `POST /api/integrations/siem/export/{scan_id}` - Export scan to SIEM
-
-#### API Keys
-- `GET /api/api-keys` - List API keys
-- `POST /api/api-keys` - Create API key
-- `PATCH /api/api-keys/{id}` - Update API key
-- `DELETE /api/api-keys/{id}` - Revoke API key
-
-#### Dashboard Customization
-- `GET /api/dashboard/widgets` - Get dashboard widget configuration
-- `PUT /api/dashboard/widgets` - Update dashboard widget layout
-- `GET /api/dashboard/data/{widget_type}` - Get widget data (recent_scans, vulnerability_summary, compliance_scores, scan_activity_chart, top_risky_hosts, critical_vulns, upcoming_scheduled_scans)
-
-#### Admin (requires admin role)
-- `GET /api/admin/users` - List all users
-- `PUT /api/admin/users/{id}/roles` - Update user roles
-- `DELETE /api/admin/users/{id}` - Delete user
-- `GET /api/admin/audit-logs` - Get audit logs
-
-#### Other
-- `GET /api/privacy-policy` - Get privacy policy (public, no auth)
-- `WS /api/ws/scans/{id}` - WebSocket for real-time scan progress (requires JWT query param)
+**Key endpoint categories:**
+- `/api/auth/*` - Authentication, MFA, GDPR (register, login, MFA setup, data export)
+- `/api/scans/*` - Scan CRUD, results, export, compare, bulk operations
+- `/api/reports/*` - Report generation (JSON, HTML, PDF, CSV)
+- `/api/templates/*` - Scan template management
+- `/api/target-groups/*` - Target group management
+- `/api/scheduled-scans/*` - Scheduled scan CRUD and history
+- `/api/assets/*` - Asset inventory management
+- `/api/vulnerabilities/*` - Vulnerability management and remediation workflow
+- `/api/compliance/*` - Compliance framework analysis, reports, manual rubrics, assessments, campaigns
+- `/api/dns/*` - DNS reconnaissance
+- `/api/webapp/*` - Web application scanning
+- `/api/integrations/jira/*` - JIRA ticket creation
+- `/api/integrations/siem/*` - SIEM export (Splunk, Elasticsearch, Syslog)
+- `/api/admin/*` - User management, audit logs (admin role required)
+- `WS /api/ws/scans/{id}` - WebSocket for real-time scan progress (JWT as query param)
 
 ### Data Flow
 
@@ -343,17 +212,17 @@ Progress updates sent via `ScanProgressMessage` broadcast channel to WebSocket c
 2. **SQLite Cache** (`cve::cache`) - Cached NVD results (30-day TTL)
 3. **NVD API** (`cve::nvd_client`) - Real-time queries on cache miss
 
-### Compliance Frameworks
+### Manual Compliance Assessments
 
-Supported frameworks in `compliance/frameworks/`:
-- CIS Benchmarks
-- NIST 800-53
-- NIST CSF (Cybersecurity Framework)
-- PCI-DSS
-- HIPAA
-- SOC 2
-- FERPA
-- OWASP Top 10
+For controls that cannot be digitally verified (physical security, policies, training), HeroForge provides a manual assessment rubric system in `src/compliance/manual_assessment/`:
+
+- **Rubrics** - Assessment templates with criteria, rating scales, and evidence requirements
+- **Assessments** - User-submitted evaluations with workflow (Draft → Pending Review → Approved/Rejected)
+- **Evidence** - File uploads, links, screenshots, and notes attached to assessments
+- **Campaigns** - Group multiple assessments for coordinated compliance efforts
+- **Combined Reports** - Merge automated scan results with manual assessments
+
+Default rubrics are seeded for 45+ non-automated controls across PCI-DSS, SOC2, HIPAA, and NIST 800-53.
 
 ### Key Architectural Patterns
 

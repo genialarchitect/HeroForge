@@ -55,8 +55,8 @@ pub async fn perform_dns_recon(
 ) -> Result<DnsReconResult> {
     info!("Starting DNS reconnaissance for domain: {}", domain);
 
-    let resolver = create_resolver()?;
     let scan_timeout = Duration::from_secs(timeout_secs);
+    let resolver = create_resolver(Some(scan_timeout))?;
 
     // Initialize result structure
     let mut result = DnsReconResult {
@@ -114,9 +114,12 @@ pub async fn perform_dns_recon(
 }
 
 /// Create a DNS resolver with custom configuration
-fn create_resolver() -> Result<TokioAsyncResolver> {
+///
+/// The `query_timeout` parameter controls how long each DNS query waits for a response.
+/// If not specified, defaults to 5 seconds.
+fn create_resolver(query_timeout: Option<Duration>) -> Result<TokioAsyncResolver> {
     let mut opts = ResolverOpts::default();
-    opts.timeout = Duration::from_secs(5);
+    opts.timeout = query_timeout.unwrap_or(Duration::from_secs(5));
     opts.attempts = 2;
 
     // In trust-dns-resolver 0.23, TokioAsyncResolver::tokio() returns the resolver directly

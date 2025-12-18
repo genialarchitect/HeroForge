@@ -60,6 +60,15 @@ import type {
   UpdateSiemSettingsRequest,
   SiemTestResponse,
   SiemExportResponse,
+  ComplianceRubric,
+  ManualAssessment,
+  AssessmentEvidence,
+  AssessmentCampaign,
+  CampaignWithProgress,
+  CampaignProgress,
+  CreateManualAssessmentRequest,
+  CreateCampaignRequest,
+  CombinedComplianceResults,
 } from '../types';
 
 const api = axios.create({
@@ -443,6 +452,135 @@ export const webappAPI = {
   // Get scan status and results
   getScan: (scanId: string) =>
     api.get(`/webapp/scan/${scanId}`),
+};
+
+// ============================================================================
+// Manual Compliance Assessment API
+// ============================================================================
+
+export const rubricAPI = {
+  // Get all rubrics, optionally filtered by framework
+  getAll: (frameworkId?: string) => {
+    const params = frameworkId ? `?framework_id=${frameworkId}` : '';
+    return api.get<ComplianceRubric[]>(`/compliance/rubrics${params}`);
+  },
+
+  // Get a specific rubric by ID
+  getById: (id: string) => api.get<ComplianceRubric>(`/compliance/rubrics/${id}`),
+
+  // Create a new rubric
+  create: (rubric: Partial<ComplianceRubric>) =>
+    api.post<ComplianceRubric>('/compliance/rubrics', rubric),
+
+  // Update an existing rubric
+  update: (id: string, rubric: Partial<ComplianceRubric>) =>
+    api.put<ComplianceRubric>(`/compliance/rubrics/${id}`, rubric),
+
+  // Delete a rubric
+  delete: (id: string) => api.delete(`/compliance/rubrics/${id}`),
+
+  // Get all rubrics for a specific framework
+  getByFramework: (frameworkId: string) =>
+    api.get<ComplianceRubric[]>(`/compliance/frameworks/${frameworkId}/rubrics`),
+};
+
+export const manualAssessmentAPI = {
+  // Get all manual assessments, optionally filtered
+  getAll: (frameworkId?: string, status?: string) => {
+    const params = new URLSearchParams();
+    if (frameworkId) params.append('framework_id', frameworkId);
+    if (status) params.append('status', status);
+    const queryString = params.toString();
+    return api.get<ManualAssessment[]>(`/compliance/assessments${queryString ? `?${queryString}` : ''}`);
+  },
+
+  // Get a specific assessment by ID
+  getById: (id: string) => api.get<ManualAssessment>(`/compliance/assessments/${id}`),
+
+  // Create a new assessment
+  create: (assessment: CreateManualAssessmentRequest) =>
+    api.post<ManualAssessment>('/compliance/assessments', assessment),
+
+  // Update an existing assessment
+  update: (id: string, assessment: Partial<CreateManualAssessmentRequest>) =>
+    api.put<ManualAssessment>(`/compliance/assessments/${id}`, assessment),
+
+  // Delete an assessment
+  delete: (id: string) => api.delete(`/compliance/assessments/${id}`),
+
+  // Submit assessment for review
+  submit: (id: string) =>
+    api.post<ManualAssessment>(`/compliance/assessments/${id}/submit`),
+
+  // Approve an assessment (reviewer action)
+  approve: (id: string) =>
+    api.post<ManualAssessment>(`/compliance/assessments/${id}/approve`),
+
+  // Reject an assessment with notes (reviewer action)
+  reject: (id: string, notes: string) =>
+    api.post<ManualAssessment>(`/compliance/assessments/${id}/reject`, { notes }),
+};
+
+export const assessmentEvidenceAPI = {
+  // Get all evidence for an assessment
+  getAll: (assessmentId: string) =>
+    api.get<AssessmentEvidence[]>(`/compliance/assessments/${assessmentId}/evidence`),
+
+  // Upload evidence file
+  upload: (assessmentId: string, formData: FormData) =>
+    api.post<AssessmentEvidence>(`/compliance/assessments/${assessmentId}/evidence`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    }),
+
+  // Add a link as evidence
+  addLink: (assessmentId: string, title: string, url: string, description?: string) =>
+    api.post<AssessmentEvidence>(`/compliance/assessments/${assessmentId}/evidence/link`, {
+      title,
+      url,
+      description,
+    }),
+
+  // Delete evidence
+  delete: (id: string) => api.delete(`/compliance/evidence/${id}`),
+
+  // Download evidence file
+  download: async (id: string) => {
+    const response = await api.get(`/compliance/evidence/${id}/download`, {
+      responseType: 'blob',
+    });
+    return response.data as Blob;
+  },
+};
+
+export const campaignAPI = {
+  // Get all campaigns with progress
+  getAll: () => api.get<CampaignWithProgress[]>('/compliance/campaigns'),
+
+  // Get a specific campaign with progress
+  getById: (id: string) => api.get<CampaignWithProgress>(`/compliance/campaigns/${id}`),
+
+  // Create a new campaign
+  create: (campaign: CreateCampaignRequest) =>
+    api.post<AssessmentCampaign>('/compliance/campaigns', campaign),
+
+  // Update an existing campaign
+  update: (id: string, campaign: Partial<CreateCampaignRequest>) =>
+    api.put<AssessmentCampaign>(`/compliance/campaigns/${id}`, campaign),
+
+  // Delete a campaign
+  delete: (id: string) => api.delete(`/compliance/campaigns/${id}`),
+
+  // Get campaign progress
+  getProgress: (id: string) =>
+    api.get<CampaignProgress>(`/compliance/campaigns/${id}/progress`),
+};
+
+export const combinedComplianceAPI = {
+  // Get combined compliance results (automated + manual) for a scan
+  getResults: (scanId: string) =>
+    api.get<CombinedComplianceResults>(`/scans/${scanId}/compliance/combined`),
 };
 
 export default api;

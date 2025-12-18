@@ -217,6 +217,11 @@ pub async fn create_scan_from_template(
         udp_port_range: template_config.udp_port_range,
         udp_retries: template_config.udp_retries,
         skip_host_discovery: false,
+        // Use defaults for scanner-specific timeouts
+        service_detection_timeout: None,
+        dns_timeout: None,
+        syn_timeout: None,
+        udp_timeout: None,
     };
 
     tokio::spawn(async move {

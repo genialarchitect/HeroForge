@@ -4,6 +4,7 @@ pub mod risk_scoring;
 pub mod remediation;
 pub mod storage;
 pub mod compliance_report;
+pub mod compliance;
 
 use anyhow::Result;
 use log::info;

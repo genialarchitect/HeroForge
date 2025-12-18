@@ -1,5 +1,32 @@
 export type UserRole = 'admin' | 'user' | 'auditor' | 'viewer';
 
+// Badge type definitions for type-safe severity/status rendering
+export type BadgeSeverityType = 'critical' | 'high' | 'medium' | 'low';
+export type BadgeStatusType = 'pending' | 'running' | 'completed' | 'failed';
+export type BadgeType = BadgeSeverityType | BadgeStatusType;
+
+/**
+ * Convert a severity string to a type-safe badge type.
+ * Handles both uppercase (from API) and lowercase formats.
+ */
+export function toSeverityBadgeType(severity: string): BadgeSeverityType {
+  const normalized = severity.toLowerCase();
+  switch (normalized) {
+    case 'critical':
+      return 'critical';
+    case 'high':
+      return 'high';
+    case 'medium':
+      return 'medium';
+    case 'low':
+    case 'info':
+    case 'informational':
+      return 'low';
+    default:
+      return 'low';
+  }
+}
+
 export interface User {
   id: string;
   username: string;
@@ -34,6 +61,9 @@ export interface ScanResult {
   started_at: string | null;
   completed_at: string | null;
   error_message: string | null;
+  // Computed fields (may not be present in all API responses)
+  total_hosts?: number;
+  total_ports?: number;
 }
 
 export type EnumDepth = 'passive' | 'light' | 'aggressive';
@@ -825,10 +855,12 @@ export interface ComplianceAnalyzeResponse {
 }
 
 // SIEM Integration types
+export type SiemType = "syslog" | "splunk" | "elasticsearch";
+
 export interface SiemSettings {
   id: string;
   user_id: string;
-  siem_type: "syslog" | "splunk" | "elasticsearch";
+  siem_type: SiemType;
   endpoint_url: string;
   api_key: string | null;
   protocol: string | null; // For syslog: "tcp" or "udp"
@@ -840,7 +872,7 @@ export interface SiemSettings {
 }
 
 export interface CreateSiemSettingsRequest {
-  siem_type: "syslog" | "splunk" | "elasticsearch";
+  siem_type: SiemType;
   endpoint_url: string;
   api_key?: string;
   protocol?: string;
@@ -868,5 +900,155 @@ export interface SiemExportResponse {
   exported_to: number;
   events_count: number;
   errors: string[];
+}
+
+// ============================================================================
+// Manual Compliance Assessment Types
+// ============================================================================
+
+// Rating scale types
+export type RatingScaleType = 'five_point' | 'compliance_status' | 'maturity';
+export type EvidenceType = 'file' | 'link' | 'screenshot' | 'note';
+export type OverallRating = 'compliant' | 'non_compliant' | 'partial' | 'not_applicable';
+export type ReviewStatus = 'draft' | 'pending_review' | 'approved' | 'rejected';
+export type CampaignStatus = 'draft' | 'active' | 'completed' | 'archived';
+
+export interface RatingLevel {
+  value: number;
+  label: string;
+  description: string;
+  maps_to_status: ControlStatus;
+}
+
+export interface RatingScale {
+  scale_type: RatingScaleType;
+  levels: RatingLevel[];
+}
+
+export interface AssessmentCriterion {
+  id: string;
+  question: string;
+  description: string;
+  guidance: string;
+  weight: number;
+  evidence_hint: string;
+}
+
+export interface CriterionResponse {
+  criterion_id: string;
+  rating: number;
+  notes: string;
+  evidence_ids: string[];
+}
+
+export interface EvidenceRequirement {
+  evidence_type: EvidenceType;
+  description: string;
+  required: boolean;
+}
+
+export interface ComplianceRubric {
+  id: string;
+  user_id: string | null;
+  framework_id: string;
+  control_id: string;
+  name: string;
+  description: string | null;
+  assessment_criteria: AssessmentCriterion[];
+  rating_scale: RatingScale;
+  evidence_requirements: EvidenceRequirement[];
+  is_system_default: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ManualAssessment {
+  id: string;
+  user_id: string;
+  rubric_id: string;
+  framework_id: string;
+  control_id: string;
+  assessment_period_start: string;
+  assessment_period_end: string;
+  overall_rating: OverallRating;
+  rating_score: number | null;
+  criteria_responses: CriterionResponse[];
+  evidence_summary: string | null;
+  findings: string | null;
+  recommendations: string | null;
+  review_status: ReviewStatus;
+  reviewer_notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AssessmentEvidence {
+  id: string;
+  assessment_id: string;
+  evidence_type: EvidenceType;
+  title: string;
+  description: string | null;
+  file_path: string | null;
+  file_size: number | null;
+  mime_type: string | null;
+  external_url: string | null;
+  content: string | null;
+  created_at: string;
+}
+
+export interface AssessmentCampaign {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string | null;
+  frameworks: string[];
+  due_date: string | null;
+  status: CampaignStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CampaignProgress {
+  total_controls: number;
+  assessed: number;
+  pending_review: number;
+  approved: number;
+  percentage_complete: number;
+}
+
+export interface CampaignWithProgress extends AssessmentCampaign {
+  progress: CampaignProgress;
+}
+
+// For creating/updating assessments
+export interface CreateManualAssessmentRequest {
+  rubric_id: string;
+  framework_id: string;
+  control_id: string;
+  assessment_period_start: string;
+  assessment_period_end: string;
+  overall_rating: OverallRating;
+  rating_score?: number;
+  criteria_responses: CriterionResponse[];
+  evidence_summary?: string;
+  findings?: string;
+  recommendations?: string;
+}
+
+export interface CreateCampaignRequest {
+  name: string;
+  description?: string;
+  frameworks: string[];
+  due_date?: string;
+}
+
+// Combined compliance results (automated + manual)
+export interface CombinedComplianceResults {
+  scan_id: string;
+  automated_results: ComplianceSummary | null;
+  manual_assessments: ManualAssessment[];
+  combined_score: number;
+  framework_scores: Record<string, number>;
+  generated_at: string;
 }
 

@@ -1,11 +1,15 @@
 import React from 'react';
+import { BadgeSeverityType, BadgeStatusType, BadgeType } from '../../types';
 
 interface BadgeProps {
   children: React.ReactNode;
   variant?: 'status' | 'severity';
-  type?: 'pending' | 'running' | 'completed' | 'failed' | 'critical' | 'high' | 'medium' | 'low';
+  type?: BadgeType;
   className?: string;
 }
+
+// Re-export types for convenience
+export type { BadgeSeverityType, BadgeStatusType, BadgeType };
 
 const Badge: React.FC<BadgeProps> = ({
   children,

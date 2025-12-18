@@ -3,6 +3,7 @@ import { toast } from 'react-toastify';
 import { useScanStore } from '../../store/scanStore';
 import { scanAPI, siemAPI } from '../../services/api';
 import { calculateHostRiskScore, getRiskLevel } from '../../utils/riskScoring';
+import { toSeverityBadgeType } from '../../types';
 import Card from '../ui/Card';
 import Badge from '../ui/Badge';
 import LoadingSpinner from '../ui/LoadingSpinner';
@@ -364,7 +365,7 @@ const ResultsViewer: React.FC = () => {
                     )}
                   </div>
                   <div className="flex items-center space-x-2">
-                    <Badge variant="severity" type={riskLevel.toLowerCase() as any}>
+                    <Badge variant="severity" type={toSeverityBadgeType(riskLevel)}>
                       Risk: {riskScore}
                     </Badge>
                     <Badge variant="status" type={host.is_alive ? 'completed' : 'failed'}>

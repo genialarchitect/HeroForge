@@ -28,6 +28,7 @@ pub mod controls;
 pub mod analyzer;
 pub mod scanner;
 pub mod scoring;
+pub mod manual_assessment;
 
 // Re-export commonly used types
 pub use types::{

@@ -103,7 +103,7 @@ async fn grab_banner(ip: &str, port: u16, timeout_duration: Duration) -> Option<
 
             // Try to read response
             let mut buffer = vec![0u8; 1024];
-            match timeout(Duration::from_secs(2), stream.read(&mut buffer)).await {
+            match timeout(timeout_duration, stream.read(&mut buffer)).await {
                 Ok(Ok(n)) if n > 0 => {
                     let banner = String::from_utf8_lossy(&buffer[..n]).to_string();
                     Some(banner.trim().to_string())

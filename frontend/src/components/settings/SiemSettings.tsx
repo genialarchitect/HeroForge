@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { toast } from 'react-toastify';
 import { siemAPI, scanAPI } from '../../services/api';
-import { SiemSettings as SiemSettingsType, CreateSiemSettingsRequest, UpdateSiemSettingsRequest, ScanResult } from '../../types';
+import { SiemSettings as SiemSettingsType, CreateSiemSettingsRequest, UpdateSiemSettingsRequest, ScanResult, SiemType } from '../../types';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
 import LoadingSpinner from '../ui/LoadingSpinner';
@@ -369,7 +369,7 @@ interface SiemConfigModalProps {
 
 const SiemConfigModal: React.FC<SiemConfigModalProps> = ({ settings, onClose, onSave }) => {
   const [formData, setFormData] = useState({
-    siem_type: settings?.siem_type || 'syslog' as 'syslog' | 'splunk' | 'elasticsearch',
+    siem_type: (settings?.siem_type || 'syslog') as SiemType,
     endpoint_url: settings?.endpoint_url || '',
     api_key: settings?.api_key || '',
     protocol: settings?.protocol || 'tcp',
@@ -451,7 +451,7 @@ const SiemConfigModal: React.FC<SiemConfigModalProps> = ({ settings, onClose, on
               </label>
               <select
                 value={formData.siem_type}
-                onChange={(e) => setFormData({ ...formData, siem_type: e.target.value as any })}
+                onChange={(e) => setFormData({ ...formData, siem_type: e.target.value as SiemType })}
                 className="w-full bg-dark-bg border border-dark-border rounded-lg px-4 py-2 text-white focus:ring-2 focus:ring-primary focus:border-transparent"
               >
                 <option value="syslog">Syslog (RFC 5424)</option>

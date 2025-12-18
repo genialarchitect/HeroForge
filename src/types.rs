@@ -117,6 +117,19 @@ pub struct ScanConfig {
     pub udp_retries: u8,
     // Skip host discovery and scan targets directly
     pub skip_host_discovery: bool,
+    // Scanner-specific timeouts (optional, defaults used if not set)
+    /// Timeout for service detection banner grabbing (default: 2s)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub service_detection_timeout: Option<Duration>,
+    /// Timeout for DNS reconnaissance operations (default: 5s)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dns_timeout: Option<Duration>,
+    /// Timeout for SYN scanner per port (default: 2s)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub syn_timeout: Option<Duration>,
+    /// Timeout for UDP scanner per port (default: 3s)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub udp_timeout: Option<Duration>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -154,7 +167,34 @@ impl Default for ScanConfig {
             udp_port_range: None,
             udp_retries: 2,
             skip_host_discovery: false,
+            service_detection_timeout: None,
+            dns_timeout: None,
+            syn_timeout: None,
+            udp_timeout: None,
         }
+    }
+}
+
+#[allow(dead_code)]
+impl ScanConfig {
+    /// Get service detection timeout, defaulting to 2 seconds if not configured
+    pub fn get_service_detection_timeout(&self) -> Duration {
+        self.service_detection_timeout.unwrap_or(Duration::from_secs(2))
+    }
+
+    /// Get DNS timeout, defaulting to 5 seconds if not configured
+    pub fn get_dns_timeout(&self) -> Duration {
+        self.dns_timeout.unwrap_or(Duration::from_secs(5))
+    }
+
+    /// Get SYN scanner timeout, defaulting to 2 seconds if not configured
+    pub fn get_syn_timeout(&self) -> Duration {
+        self.syn_timeout.unwrap_or(Duration::from_secs(2))
+    }
+
+    /// Get UDP scanner timeout, defaulting to 3 seconds if not configured
+    pub fn get_udp_timeout(&self) -> Duration {
+        self.udp_timeout.unwrap_or(Duration::from_secs(3))
     }
 }
 

@@ -14,6 +14,8 @@ const WebAppScanPage = lazy(() => import('./pages/WebAppScanPage'));
 const DnsToolsPage = lazy(() => import('./pages/DnsToolsPage'));
 const CompliancePage = lazy(() => import('./pages/CompliancePage'));
 const RemediationPage = lazy(() => import('./pages/RemediationPage'));
+const ManualAssessmentPage = lazy(() => import('./pages/ManualAssessmentPage'));
+const AssessmentDetailPage = lazy(() => import('./pages/AssessmentDetailPage'));
 
 // Loading fallback component
 const PageLoader: React.FC = () => (
@@ -127,6 +129,22 @@ function App() {
             element={
               <ProtectedRoute>
                 <RemediationPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/manual-assessments"
+            element={
+              <ProtectedRoute>
+                <ManualAssessmentPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/manual-assessments/:assessmentId"
+            element={
+              <ProtectedRoute>
+                <AssessmentDetailPage />
               </ProtectedRoute>
             }
           />

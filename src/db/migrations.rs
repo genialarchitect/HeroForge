@@ -35,6 +35,13 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     seed_default_settings(pool).await?;
     add_gdpr_consent_columns(pool).await?;
     add_mfa_columns_to_users(pool).await?;
+    // Manual compliance assessment system tables
+    create_compliance_rubrics_table(pool).await?;
+    create_manual_assessments_table(pool).await?;
+    create_assessment_evidence_table(pool).await?;
+    create_assessment_history_table(pool).await?;
+    create_assessment_campaigns_table(pool).await?;
+    create_campaign_assessments_table(pool).await?;
     Ok(())
 }
 
@@ -1137,6 +1144,289 @@ async fn add_notification_webhook_columns(pool: &SqlitePool) -> Result<()> {
             .execute(pool)
             .await?;
     }
+
+    Ok(())
+}
+
+/// Create compliance_rubrics table for manual assessment templates
+async fn create_compliance_rubrics_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS compliance_rubrics (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            framework_id TEXT NOT NULL,
+            control_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            criteria TEXT NOT NULL,
+            rating_scale TEXT NOT NULL,
+            evidence_requirements TEXT NOT NULL,
+            guidance TEXT,
+            weight REAL NOT NULL DEFAULT 1.0,
+            is_template INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for efficient queries
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_compliance_rubrics_user_id ON compliance_rubrics(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_compliance_rubrics_framework_id ON compliance_rubrics(framework_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_compliance_rubrics_control_id ON compliance_rubrics(control_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_compliance_rubrics_is_template ON compliance_rubrics(is_template)")
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+/// Create manual_assessments table for user-submitted compliance assessments
+async fn create_manual_assessments_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS manual_assessments (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            rubric_id TEXT NOT NULL,
+            framework_id TEXT NOT NULL,
+            control_id TEXT NOT NULL,
+            scan_id TEXT,
+            rating TEXT NOT NULL,
+            score REAL,
+            findings TEXT,
+            recommendations TEXT,
+            compensating_controls TEXT,
+            status TEXT NOT NULL DEFAULT 'draft',
+            assessed_by TEXT NOT NULL,
+            assessed_at TEXT NOT NULL,
+            reviewed_by TEXT,
+            reviewed_at TEXT,
+            approved_by TEXT,
+            approved_at TEXT,
+            valid_until TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (rubric_id) REFERENCES compliance_rubrics(id) ON DELETE CASCADE,
+            FOREIGN KEY (scan_id) REFERENCES scan_results(id) ON DELETE SET NULL,
+            FOREIGN KEY (assessed_by) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL,
+            FOREIGN KEY (approved_by) REFERENCES users(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for efficient queries
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_manual_assessments_user_id ON manual_assessments(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_manual_assessments_rubric_id ON manual_assessments(rubric_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_manual_assessments_framework_id ON manual_assessments(framework_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_manual_assessments_control_id ON manual_assessments(control_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_manual_assessments_scan_id ON manual_assessments(scan_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_manual_assessments_status ON manual_assessments(status)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_manual_assessments_assessed_by ON manual_assessments(assessed_by)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_manual_assessments_valid_until ON manual_assessments(valid_until)")
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+/// Create assessment_evidence table for file attachments and evidence links
+async fn create_assessment_evidence_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS assessment_evidence (
+            id TEXT PRIMARY KEY,
+            assessment_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            evidence_type TEXT NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT,
+            file_path TEXT,
+            file_name TEXT,
+            file_size INTEGER,
+            file_mime_type TEXT,
+            url TEXT,
+            screenshot_path TEXT,
+            metadata TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (assessment_id) REFERENCES manual_assessments(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for efficient queries
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_assessment_evidence_assessment_id ON assessment_evidence(assessment_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_assessment_evidence_user_id ON assessment_evidence(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_assessment_evidence_type ON assessment_evidence(evidence_type)")
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+/// Create assessment_history table for audit trail of assessment changes
+async fn create_assessment_history_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS assessment_history (
+            id TEXT PRIMARY KEY,
+            assessment_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            action TEXT NOT NULL,
+            field_name TEXT,
+            old_value TEXT,
+            new_value TEXT,
+            comment TEXT,
+            ip_address TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (assessment_id) REFERENCES manual_assessments(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for efficient queries
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_assessment_history_assessment_id ON assessment_history(assessment_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_assessment_history_user_id ON assessment_history(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_assessment_history_action ON assessment_history(action)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_assessment_history_created_at ON assessment_history(created_at)")
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+/// Create assessment_campaigns table for grouping assessments together
+async fn create_assessment_campaigns_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS assessment_campaigns (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            framework_id TEXT NOT NULL,
+            start_date TEXT NOT NULL,
+            end_date TEXT,
+            status TEXT NOT NULL DEFAULT 'active',
+            target_completion_date TEXT,
+            scope TEXT,
+            objectives TEXT,
+            notes TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for efficient queries
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_assessment_campaigns_user_id ON assessment_campaigns(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_assessment_campaigns_framework_id ON assessment_campaigns(framework_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_assessment_campaigns_status ON assessment_campaigns(status)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_assessment_campaigns_start_date ON assessment_campaigns(start_date)")
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+/// Create campaign_assessments junction table to link campaigns to assessments
+async fn create_campaign_assessments_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS campaign_assessments (
+            campaign_id TEXT NOT NULL,
+            assessment_id TEXT NOT NULL,
+            added_at TEXT NOT NULL,
+            added_by TEXT NOT NULL,
+            PRIMARY KEY (campaign_id, assessment_id),
+            FOREIGN KEY (campaign_id) REFERENCES assessment_campaigns(id) ON DELETE CASCADE,
+            FOREIGN KEY (assessment_id) REFERENCES manual_assessments(id) ON DELETE CASCADE,
+            FOREIGN KEY (added_by) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for efficient queries
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_campaign_assessments_campaign_id ON campaign_assessments(campaign_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_campaign_assessments_assessment_id ON campaign_assessments(assessment_id)")
+        .execute(pool)
+        .await?;
 
     Ok(())
 }

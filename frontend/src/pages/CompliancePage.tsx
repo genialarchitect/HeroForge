@@ -3,6 +3,7 @@ import { toast } from 'react-toastify';
 import { complianceAPI, scanAPI } from '../services/api';
 import type {
   ComplianceFramework,
+  ComplianceFrameworkId,
   ComplianceAnalyzeResponse,
   ScanResult,
 } from '../types';
@@ -19,7 +20,7 @@ const CompliancePage: React.FC = () => {
   const [scans, setScans] = useState<ScanResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedScan, setSelectedScan] = useState<string>('');
-  const [selectedFrameworks, setSelectedFrameworks] = useState<Set<string>>(new Set());
+  const [selectedFrameworks, setSelectedFrameworks] = useState<Set<ComplianceFrameworkId>>(new Set());
   const [analyzing, setAnalyzing] = useState(false);
   const [results, setResults] = useState<ComplianceAnalyzeResponse | null>(null);
   const [showResults, setShowResults] = useState(false);
@@ -39,7 +40,7 @@ const CompliancePage: React.FC = () => {
       setScans(scansRes.data.filter((scan) => scan.status === 'completed'));
 
       // Select common frameworks by default
-      setSelectedFrameworks(new Set(['pci_dss', 'nist_800_53', 'owasp_top10']));
+      setSelectedFrameworks(new Set<ComplianceFrameworkId>(['pci_dss', 'nist_800_53', 'owasp_top10']));
     } catch (error) {
       toast.error('Failed to load compliance data');
       console.error(error);
@@ -48,7 +49,7 @@ const CompliancePage: React.FC = () => {
     }
   };
 
-  const toggleFramework = (id: string) => {
+  const toggleFramework = (id: ComplianceFrameworkId) => {
     const newSelected = new Set(selectedFrameworks);
     if (newSelected.has(id)) {
       newSelected.delete(id);
@@ -71,7 +72,7 @@ const CompliancePage: React.FC = () => {
     setAnalyzing(true);
     try {
       const response = await complianceAPI.analyzeScan(selectedScan, {
-        frameworks: Array.from(selectedFrameworks) as any,
+        frameworks: Array.from(selectedFrameworks),
       });
       setResults(response.data);
       setShowResults(true);
@@ -149,8 +150,8 @@ const CompliancePage: React.FC = () => {
               <FrameworkCard
                 key={framework.id}
                 framework={framework}
-                isSelected={selectedFrameworks.has(framework.id)}
-                onToggle={() => toggleFramework(framework.id)}
+                isSelected={selectedFrameworks.has(framework.id as ComplianceFrameworkId)}
+                onToggle={() => toggleFramework(framework.id as ComplianceFrameworkId)}
               />
             ))}
           </div>
@@ -184,8 +185,10 @@ const CompliancePage: React.FC = () => {
                     <option value="">Choose a scan...</option>
                     {scans.map((scan) => (
                       <option key={scan.id} value={scan.id}>
-                        {scan.name} - {new Date(scan.created_at).toLocaleDateString()} (
-                        {scan.total_hosts} hosts, {scan.total_ports} ports)
+                        {scan.name} - {new Date(scan.created_at).toLocaleDateString()}
+                        {scan.total_hosts !== undefined && scan.total_ports !== undefined && (
+                          ` (${scan.total_hosts} hosts, ${scan.total_ports} ports)`
+                        )}
                       </option>
                     ))}
                   </select>

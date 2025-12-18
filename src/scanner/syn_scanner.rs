@@ -199,8 +199,8 @@ async fn scan_target_syn_ports_v4(
     // Generate random source port base
     let src_port_base: u16 = rand::thread_rng().gen_range(32768..60000);
 
-    // Send SYN packets
-    let timeout_duration = config.timeout;
+    // Send SYN packets - use specialized syn_timeout if set, otherwise fall back to general timeout
+    let timeout_duration = config.syn_timeout.unwrap_or(config.timeout);
     let mut tasks = Vec::new();
 
     for (idx, &port) in ports.iter().enumerate() {
@@ -324,8 +324,8 @@ async fn scan_target_syn_ports_v6(
     // Generate random source port base
     let src_port_base: u16 = rand::thread_rng().gen_range(32768..60000);
 
-    // Send SYN packets
-    let timeout_duration = config.timeout;
+    // Send SYN packets - use specialized syn_timeout if set, otherwise fall back to general timeout
+    let timeout_duration = config.syn_timeout.unwrap_or(config.timeout);
     let mut tasks = Vec::new();
 
     for (idx, &port) in ports.iter().enumerate() {
@@ -405,8 +405,33 @@ async fn scan_target_syn_ports_v6(
     Ok(port_infos)
 }
 
-/// Create a raw TCP socket
+/// Create a raw TCP socket for IPv4 SYN scanning.
+///
+/// # Safety Rationale
+///
+/// This function uses `unsafe` blocks for three distinct system call operations:
+///
+/// 1. **`libc::socket(AF_INET, SOCK_RAW, IPPROTO_TCP)`** - Creates a raw TCP socket
+///    - Requires root privileges or CAP_NET_RAW capability
+///    - Returns a valid file descriptor on success, -1 on failure
+///    - The caller is responsible for eventually closing the fd
+///
+/// 2. **`libc::setsockopt(..., IP_HDRINCL, ...)`** - Enables manual IP header construction
+///    - Safe because we're passing a valid fd and properly-sized option value
+///    - IP_HDRINCL allows us to craft custom IP+TCP headers for SYN packets
+///
+/// 3. **`libc::fcntl(..., O_NONBLOCK)`** - Sets socket to non-blocking mode
+///    - Safe because we're operating on a valid fd with standard flags
+///    - Non-blocking prevents the scanner from hanging on unresponsive targets
+///
+/// # Security Implications
+///
+/// Raw sockets can be used for network attacks (SYN floods, spoofing). This tool
+/// is intended for **authorized penetration testing only**. The CAP_NET_RAW
+/// requirement ensures only privileged processes can use these capabilities.
 fn create_raw_tcp_socket() -> Result<i32> {
+    // SAFETY: libc::socket returns -1 on error, valid fd otherwise
+    // The fd will be closed when scan completes (RAII via recv thread)
     let fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_RAW, libc::IPPROTO_TCP) };
 
     if fd < 0 {
@@ -415,7 +440,8 @@ fn create_raw_tcp_socket() -> Result<i32> {
         ));
     }
 
-    // Enable IP_HDRINCL to build our own IP headers
+    // SAFETY: Setting IP_HDRINCL with valid fd and properly-sized value
+    // This allows us to construct our own IP headers for SYN packets
     unsafe {
         let one: libc::c_int = 1;
         libc::setsockopt(
@@ -427,7 +453,7 @@ fn create_raw_tcp_socket() -> Result<i32> {
         );
     }
 
-    // Set non-blocking
+    // SAFETY: Setting O_NONBLOCK with valid fd and standard flags
     unsafe {
         let flags = libc::fcntl(fd, libc::F_GETFL);
         libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
@@ -436,8 +462,24 @@ fn create_raw_tcp_socket() -> Result<i32> {
     Ok(fd)
 }
 
-/// Create a raw TCP socket for IPv6
+/// Create a raw TCP socket for IPv6 SYN scanning.
+///
+/// # Safety Rationale
+///
+/// Similar to `create_raw_tcp_socket()` but for IPv6 addresses:
+///
+/// 1. **`libc::socket(AF_INET6, SOCK_RAW, IPPROTO_TCP)`** - Creates raw IPv6 TCP socket
+///    - Requires root privileges or CAP_NET_RAW capability
+///    - Unlike IPv4, we do NOT set IP_HDRINCL - the kernel handles IPv6 headers
+///    - We only construct and send the TCP segment
+///
+/// 2. **`libc::fcntl(..., O_NONBLOCK)`** - Sets socket to non-blocking mode
+///
+/// # Security Implications
+///
+/// Same as IPv4 - raw sockets require authorization and are for pentesting only.
 fn create_raw_tcp_socket_v6() -> Result<i32> {
+    // SAFETY: libc::socket returns -1 on error, valid fd otherwise
     let fd = unsafe { libc::socket(libc::AF_INET6, libc::SOCK_RAW, libc::IPPROTO_TCP) };
 
     if fd < 0 {
@@ -449,7 +491,7 @@ fn create_raw_tcp_socket_v6() -> Result<i32> {
     // For IPv6 raw sockets, we don't use IP_HDRINCL - the kernel handles the IPv6 header
     // We only need to provide the TCP segment
 
-    // Set non-blocking
+    // SAFETY: Setting O_NONBLOCK with valid fd
     unsafe {
         let flags = libc::fcntl(fd, libc::F_GETFL);
         libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK);

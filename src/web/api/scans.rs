@@ -417,6 +417,11 @@ pub async fn create_scan(
         udp_port_range: scan_request.udp_port_range,
         udp_retries: scan_request.udp_retries,
         skip_host_discovery: false, // Web API always performs discovery
+        // Use defaults for scanner-specific timeouts
+        service_detection_timeout: None,
+        dns_timeout: None,
+        syn_timeout: None,
+        udp_timeout: None,
     };
 
     tokio::spawn(async move {

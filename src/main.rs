@@ -347,6 +347,11 @@ fn build_scan_config(
         udp_port_range,
         udp_retries,
         skip_host_discovery: skip_discovery,
+        // Use defaults for scanner-specific timeouts (will use config.timeout as fallback)
+        service_detection_timeout: None,
+        dns_timeout: None,
+        syn_timeout: None,
+        udp_timeout: None,
     }
 }
 

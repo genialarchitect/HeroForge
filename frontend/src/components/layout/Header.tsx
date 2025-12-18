@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useAuthStore } from '../../store/authStore';
 import Button from '../ui/Button';
-import { Shield, LogOut, User, LayoutDashboard, Users, Settings, Server, Globe, Network, ShieldCheck } from 'lucide-react';
+import { Shield, LogOut, User, LayoutDashboard, Users, Settings, Server, Globe, Network, ShieldCheck, ClipboardCheck } from 'lucide-react';
 
 const Header: React.FC = () => {
   const { user, logout } = useAuth();
@@ -76,13 +76,24 @@ const Header: React.FC = () => {
                 <Link
                   to="/compliance"
                   className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
-                    location.pathname.startsWith('/compliance')
+                    location.pathname === '/compliance'
                       ? 'bg-primary/10 text-primary font-medium'
                       : 'text-slate-400 hover:text-white hover:bg-dark-hover'
                   }`}
                 >
                   <ShieldCheck className="h-4 w-4" />
                   Compliance
+                </Link>
+                <Link
+                  to="/manual-assessments"
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
+                    location.pathname.startsWith('/manual-assessments')
+                      ? 'bg-primary/10 text-primary font-medium'
+                      : 'text-slate-400 hover:text-white hover:bg-dark-hover'
+                  }`}
+                >
+                  <ClipboardCheck className="h-4 w-4" />
+                  Assessments
                 </Link>
                 <Link
                   to="/settings"

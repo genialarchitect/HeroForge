@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { toast } from 'react-toastify';
 import { scanAPI, compareAPI } from '../../services/api';
-import { ScanResult, ScanComparisonResponse, HostDiff, ServiceChangeType } from '../../types';
+import { ScanResult, ScanComparisonResponse, HostDiff, ServiceChangeType, toSeverityBadgeType } from '../../types';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
 import Badge from '../ui/Badge';
@@ -539,7 +539,7 @@ const ScanComparison: React.FC = () => {
                                       <span className="text-sm font-medium text-white">
                                         {vuln.cve_id || vuln.title}
                                       </span>
-                                      <Badge variant="severity" type={vuln.severity.toLowerCase() as any}>
+                                      <Badge variant="severity" type={toSeverityBadgeType(vuln.severity)}>
                                         {vuln.severity}
                                       </Badge>
                                     </div>
@@ -573,7 +573,7 @@ const ScanComparison: React.FC = () => {
                                       <span className="text-sm font-medium text-green-400 line-through">
                                         {vuln.cve_id || vuln.title}
                                       </span>
-                                      <Badge variant="severity" type={vuln.severity.toLowerCase() as any}>
+                                      <Badge variant="severity" type={toSeverityBadgeType(vuln.severity)}>
                                         {vuln.severity}
                                       </Badge>
                                     </div>

@@ -8,6 +8,7 @@ pub mod compliance;
 pub mod dashboard;
 pub mod dns;
 pub mod jira;
+pub mod manual_compliance;
 pub mod mfa;
 pub mod notifications;
 pub mod privacy;

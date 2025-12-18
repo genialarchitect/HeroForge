@@ -218,6 +218,8 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .route("/scans/{id}/compliance", web::get().to(api::compliance::get_scan_compliance))
                     .route("/scans/{id}/compliance/report", web::post().to(api::compliance::generate_compliance_report))
                     .route("/compliance/reports/{id}/download", web::get().to(api::compliance::download_compliance_report))
+                    // Manual compliance assessment endpoints
+                    .configure(api::manual_compliance::configure)
                     // DNS reconnaissance endpoints
                     .route("/dns/recon", web::post().to(api::dns::perform_dns_recon))
                     .route("/dns/recon", web::get().to(api::dns::list_dns_recon_results))

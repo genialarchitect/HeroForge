@@ -58,9 +58,23 @@ pub struct UdpScanResult {
     pub response_time: Option<Duration>,
 }
 
-/// Check if we have raw socket capability
+/// Check if we have raw socket capability for ICMP detection.
+///
+/// # Safety Rationale
+///
+/// Uses `unsafe` to call `libc::socket()` and `libc::close()`:
+/// - Tests if the process can create raw ICMP sockets (requires root/CAP_NET_RAW)
+/// - Immediately closes the test socket if successful
+/// - No resources are leaked; fd is properly closed on success
+///
+/// # Security Implications
+///
+/// Raw ICMP sockets are used to detect "port unreachable" responses during UDP
+/// scanning. This capability check ensures the scanner fails gracefully if run
+/// without proper authorization rather than producing incomplete results.
 pub fn has_raw_socket_capability() -> bool {
-    // Try to create a raw ICMP socket using libc directly
+    // SAFETY: socket() returns -1 on error, valid fd otherwise
+    // We close immediately after testing - no resource leak
     unsafe {
         let fd = libc::socket(libc::AF_INET, libc::SOCK_RAW, libc::IPPROTO_ICMP);
         if fd >= 0 {
@@ -178,8 +192,8 @@ pub async fn scan_target_udp_ports(
         }
     });
 
-    // Spawn probe tasks
-    let timeout_duration = config.timeout;
+    // Spawn probe tasks - use specialized udp_timeout if set, otherwise fall back to general timeout
+    let timeout_duration = config.udp_timeout.unwrap_or(config.timeout);
     let retries = config.udp_retries;
     let mut tasks = Vec::new();
 
@@ -389,9 +403,33 @@ async fn icmp_listener(target: IpAddr, tx: mpsc::Sender<u16>) -> Result<()> {
     }
 }
 
-/// Listen for ICMPv4 "port unreachable" messages
+/// Listen for ICMPv4 "port unreachable" messages.
+///
+/// # Safety Rationale
+///
+/// Uses multiple `unsafe` blocks for raw socket operations:
+///
+/// 1. **`libc::socket(AF_INET, SOCK_RAW, IPPROTO_ICMP)`** - Creates raw ICMP socket
+///    - Required to receive ICMP "port unreachable" responses from the target
+///    - Returns valid fd on success, -1 on failure
+///
+/// 2. **`libc::fcntl(..., O_NONBLOCK)`** - Sets non-blocking mode
+///    - Prevents the listener from blocking indefinitely
+///    - Allows proper timeout handling with tokio
+///
+/// 3. **`std::net::UdpSocket::from_raw_fd(fd)`** - Transfers fd ownership
+///    - The fd is now owned by the UdpSocket which will close it on drop
+///    - We use UdpSocket as a handle since it implements AsyncFd traits
+///    - Note: This is a raw ICMP socket wrapped in UdpSocket for async support
+///
+/// # Resource Management
+///
+/// The raw fd is converted to a std UdpSocket, then a tokio UdpSocket.
+/// When the async_socket goes out of scope (when the loop exits), the fd is
+/// automatically closed via the UdpSocket's Drop implementation.
 async fn icmp_listener_v4(target_ip: Ipv4Addr, tx: mpsc::Sender<u16>) -> Result<()> {
-    // Create raw ICMP socket using libc
+    // SAFETY: socket() returns -1 on error, valid fd on success
+    // fd ownership is transferred to std_socket below
     let fd = unsafe {
         libc::socket(libc::AF_INET, libc::SOCK_RAW, libc::IPPROTO_ICMP)
     };
@@ -400,13 +438,14 @@ async fn icmp_listener_v4(target_ip: Ipv4Addr, tx: mpsc::Sender<u16>) -> Result<
         return Err(anyhow!("Failed to create raw ICMP socket (requires root/CAP_NET_RAW)"));
     }
 
-    // Set non-blocking
+    // SAFETY: Setting O_NONBLOCK on a valid fd
     unsafe {
         let flags = libc::fcntl(fd, libc::F_GETFL);
         libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
     }
 
-    // Wrap in tokio async fd
+    // SAFETY: from_raw_fd takes ownership of fd - it will be closed on drop
+    // We're using UdpSocket as a generic async socket wrapper for the raw ICMP fd
     use std::os::unix::io::FromRawFd;
     let std_socket = unsafe { std::net::UdpSocket::from_raw_fd(fd) };
     let async_socket = tokio::net::UdpSocket::from_std(std_socket)?;
@@ -436,14 +475,25 @@ async fn icmp_listener_v4(target_ip: Ipv4Addr, tx: mpsc::Sender<u16>) -> Result<
     Ok(())
 }
 
-/// Listen for ICMPv6 "port unreachable" messages
+/// Listen for ICMPv6 "port unreachable" messages.
+///
+/// # Safety Rationale
+///
+/// Same pattern as `icmp_listener_v4` but for IPv6:
+///
+/// 1. **`libc::socket(AF_INET6, SOCK_RAW, IPPROTO_ICMPV6)`** - Creates raw ICMPv6 socket
+/// 2. **`libc::fcntl(..., O_NONBLOCK)`** - Non-blocking mode for async compatibility
+/// 3. **`std::net::UdpSocket::from_raw_fd(fd)`** - Transfers fd ownership to RAII wrapper
+///
+/// See `icmp_listener_v4` documentation for detailed safety rationale.
 async fn icmp_listener_v6(target_ip: Ipv6Addr, tx: mpsc::Sender<u16>) -> Result<()> {
-    // Create raw ICMPv6 socket using libc
+    // SAFETY: socket() returns -1 on error, valid fd on success
     let fd = unsafe {
         libc::socket(libc::AF_INET6, libc::SOCK_RAW, IPPROTO_ICMPV6)
     };
 
     if fd < 0 {
+        // SAFETY: __errno_location() is thread-local, safe to access
         let errno = unsafe { *libc::__errno_location() };
         return Err(anyhow!(
             "Failed to create raw ICMPv6 socket (requires root/CAP_NET_RAW): errno={}",
@@ -451,13 +501,13 @@ async fn icmp_listener_v6(target_ip: Ipv6Addr, tx: mpsc::Sender<u16>) -> Result<
         ));
     }
 
-    // Set non-blocking
+    // SAFETY: Setting O_NONBLOCK on a valid fd
     unsafe {
         let flags = libc::fcntl(fd, libc::F_GETFL);
         libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
     }
 
-    // Wrap in tokio async fd
+    // SAFETY: from_raw_fd takes ownership of fd - it will be closed on drop
     use std::os::unix::io::FromRawFd;
     let std_socket = unsafe { std::net::UdpSocket::from_raw_fd(fd) };
     let async_socket = tokio::net::UdpSocket::from_std(std_socket)?;

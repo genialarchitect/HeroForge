@@ -392,6 +392,11 @@ fn build_scan_config(config: &models::ScheduledScanConfig) -> Result<ScanConfig>
         udp_port_range: config.udp_port_range,
         udp_retries: config.udp_retries,
         skip_host_discovery: false,
+        // Use defaults for scanner-specific timeouts
+        service_detection_timeout: None,
+        dns_timeout: None,
+        syn_timeout: None,
+        udp_timeout: None,
     })
 }
 
