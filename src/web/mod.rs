@@ -28,7 +28,6 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
     log::info!("Rate limiting enabled:");
     log::info!("  - Auth endpoints: 5 requests/minute per IP");
     log::info!("  - API endpoints: 100 requests/minute per IP");
-    log::info!("  - Scan creation: 10 requests/hour per IP");
 
     HttpServer::new(move || {
         // Configure CORS origins from environment variable or use defaults
@@ -104,13 +103,6 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
             )
             // Public privacy policy endpoint (no authentication required)
             .route("/api/privacy-policy", web::get().to(api::privacy::get_privacy_policy))
-            // Scan creation endpoint with strict rate limiting (10 req/hour per IP)
-            .service(
-                web::scope("/api/scans")
-                    .wrap(rate_limit::scan_rate_limiter())
-                    .wrap(auth::JwtMiddleware)
-                    .route("", web::post().to(api::scans::create_scan))
-            )
             // Protected routes with moderate rate limiting (100 req/min per IP)
             .service(
                 web::scope("/api")
@@ -129,7 +121,8 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .route("/auth/accept-terms", web::post().to(api::auth::accept_terms))
                     .route("/auth/export", web::get().to(api::auth::export_user_data))
                     .route("/auth/account", web::delete().to(api::auth::delete_account))
-                    // Scan endpoints - GET uses standard API rate limit
+                    // Scan endpoints
+                    .route("/scans", web::post().to(api::scans::create_scan))
                     .route("/scans", web::get().to(api::scans::get_scans))
                     .route("/scans/stats", web::get().to(api::scans::get_aggregated_stats))
                     .route("/scans/{id}", web::get().to(api::scans::get_scan))

@@ -67,7 +67,8 @@ pub async fn init_database(database_url: &str) -> Result<SqlitePool> {
 
     // Parse the database URL
     let mut connect_options = SqliteConnectOptions::from_str(database_url)?
-        .create_if_missing(true);
+        .create_if_missing(true)
+        .shared_cache(true);
 
     // Check if database encryption is required (for production deployments)
     let require_encryption = std::env::var("REQUIRE_DB_ENCRYPTION")

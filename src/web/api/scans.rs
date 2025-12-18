@@ -699,10 +699,15 @@ pub async fn get_scans(
     pool: web::Data<SqlitePool>,
     claims: web::ReqData<auth::Claims>,
 ) -> Result<HttpResponse> {
+    log::info!("get_scans called for user: {}", claims.sub);
     let scans = db::get_user_scans(&pool, &claims.sub)
         .await
-        .map_err(|_| actix_web::error::ErrorInternalServerError("Failed to fetch scans"))?;
+        .map_err(|e| {
+            log::error!("Failed to fetch scans: {:?}", e);
+            actix_web::error::ErrorInternalServerError("Failed to fetch scans")
+        })?;
 
+    log::info!("Returning {} scans", scans.len());
     Ok(HttpResponse::Ok().json(scans))
 }
 
@@ -730,10 +735,15 @@ pub async fn get_scan(
     claims: web::ReqData<auth::Claims>,
     scan_id: web::Path<String>,
 ) -> Result<HttpResponse> {
+    log::info!("get_scan called for scan_id: {}, user: {}", scan_id.as_str(), claims.sub);
     let scan = db::get_scan_by_id(&pool, &scan_id)
         .await
-        .map_err(|_| actix_web::error::ErrorInternalServerError("Failed to fetch scan"))?;
+        .map_err(|e| {
+            log::error!("Failed to fetch scan {}: {:?}", scan_id.as_str(), e);
+            actix_web::error::ErrorInternalServerError("Failed to fetch scan")
+        })?;
 
+    log::info!("get_scan result: {:?}", scan.as_ref().map(|s| &s.id));
     match scan {
         Some(scan) => {
             // Verify ownership
