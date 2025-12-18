@@ -284,7 +284,7 @@ async fn enumerate_mongodb(
     {
         Ok(Ok(client)) => {
             // Check if we can access without authentication
-            if let Ok(db_names) = client.list_database_names(None, None).await {
+            if let Ok(db_names) = client.list_database_names().await {
                 if !db_names.is_empty() {
                     findings.push(
                         Finding::with_confidence(
@@ -315,7 +315,7 @@ async fn enumerate_mongodb(
                         // For aggressive scans, list collections
                         if matches!(depth, EnumDepth::Aggressive) {
                             let db = client.database(&db_name);
-                            if let Ok(collections) = db.list_collection_names(None).await {
+                            if let Ok(collections) = db.list_collection_names().await {
                                 for coll in collections {
                                     findings.push(
                                         Finding::new(FindingType::TableList, format!("{}.{}", db_name, coll))

@@ -305,14 +305,14 @@ fn validate_scan_name(name: &str) -> Result<(), String> {
         ("bearer_auth" = [])
     ),
     request_body(
-        content = openapi::CreateScanRequestSchema,
+        content = crate::web::openapi::CreateScanRequestSchema,
         description = "Scan configuration"
     ),
     responses(
-        (status = 200, description = "Scan created and started", body = openapi::ScanResultSchema),
-        (status = 400, description = "Invalid scan parameters", body = openapi::ErrorResponse),
-        (status = 401, description = "Unauthorized", body = openapi::ErrorResponse),
-        (status = 500, description = "Internal server error", body = openapi::ErrorResponse)
+        (status = 200, description = "Scan created and started", body = crate::web::openapi::ScanResultSchema),
+        (status = 400, description = "Invalid scan parameters", body = crate::web::openapi::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = crate::web::openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::web::openapi::ErrorResponse)
     )
 )]
 pub async fn create_scan(
@@ -564,9 +564,9 @@ pub async fn create_scan(
         ("bearer_auth" = [])
     ),
     responses(
-        (status = 200, description = "List of scans", body = Vec<openapi::ScanResultSchema>),
-        (status = 401, description = "Unauthorized", body = openapi::ErrorResponse),
-        (status = 500, description = "Internal server error", body = openapi::ErrorResponse)
+        (status = 200, description = "List of scans", body = Vec<crate::web::openapi::ScanResultSchema>),
+        (status = 401, description = "Unauthorized", body = crate::web::openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::web::openapi::ErrorResponse)
     )
 )]
 pub async fn get_scans(
@@ -592,11 +592,11 @@ pub async fn get_scans(
         ("id" = String, Path, description = "Scan ID")
     ),
     responses(
-        (status = 200, description = "Scan details", body = openapi::ScanResultSchema),
-        (status = 401, description = "Unauthorized", body = openapi::ErrorResponse),
-        (status = 403, description = "Access denied", body = openapi::ErrorResponse),
-        (status = 404, description = "Scan not found", body = openapi::ErrorResponse),
-        (status = 500, description = "Internal server error", body = openapi::ErrorResponse)
+        (status = 200, description = "Scan details", body = crate::web::openapi::ScanResultSchema),
+        (status = 401, description = "Unauthorized", body = crate::web::openapi::ErrorResponse),
+        (status = 403, description = "Access denied", body = crate::web::openapi::ErrorResponse),
+        (status = 404, description = "Scan not found", body = crate::web::openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::web::openapi::ErrorResponse)
     )
 )]
 pub async fn get_scan(
@@ -637,10 +637,10 @@ pub async fn get_scan(
     ),
     responses(
         (status = 200, description = "Scan results"),
-        (status = 401, description = "Unauthorized", body = openapi::ErrorResponse),
-        (status = 403, description = "Access denied", body = openapi::ErrorResponse),
-        (status = 404, description = "Scan not found", body = openapi::ErrorResponse),
-        (status = 500, description = "Internal server error", body = openapi::ErrorResponse)
+        (status = 401, description = "Unauthorized", body = crate::web::openapi::ErrorResponse),
+        (status = 403, description = "Access denied", body = crate::web::openapi::ErrorResponse),
+        (status = 404, description = "Scan not found", body = crate::web::openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::web::openapi::ErrorResponse)
     )
 )]
 pub async fn get_scan_results(
@@ -690,10 +690,10 @@ pub async fn get_scan_results(
         ("id" = String, Path, description = "Scan ID")
     ),
     responses(
-        (status = 200, description = "Scan deleted successfully", body = openapi::SuccessResponse),
-        (status = 401, description = "Unauthorized", body = openapi::ErrorResponse),
-        (status = 404, description = "Scan not found or access denied", body = openapi::ErrorResponse),
-        (status = 500, description = "Internal server error", body = openapi::ErrorResponse)
+        (status = 200, description = "Scan deleted successfully", body = crate::web::openapi::SuccessResponse),
+        (status = 401, description = "Unauthorized", body = crate::web::openapi::ErrorResponse),
+        (status = 404, description = "Scan not found or access denied", body = crate::web::openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::web::openapi::ErrorResponse)
     )
 )]
 pub async fn delete_scan(
@@ -1144,14 +1144,14 @@ pub async fn bulk_export_scans(
         ("bearer_auth" = [])
     ),
     request_body(
-        content = openapi::BulkDeleteRequestSchema,
+        content = crate::web::openapi::BulkDeleteRequestSchema,
         description = "List of scan IDs to delete"
     ),
     responses(
         (status = 200, description = "Scans deleted"),
-        (status = 400, description = "Invalid request", body = openapi::ErrorResponse),
-        (status = 401, description = "Unauthorized", body = openapi::ErrorResponse),
-        (status = 500, description = "Internal server error", body = openapi::ErrorResponse)
+        (status = 400, description = "Invalid request", body = crate::web::openapi::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = crate::web::openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::web::openapi::ErrorResponse)
     )
 )]
 pub async fn bulk_delete_scans(

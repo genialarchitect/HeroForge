@@ -5,6 +5,7 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 use crate::compliance::manual_assessment::{
     AssessmentCampaign, AssessmentCriterion, AssessmentEvidence, CampaignStatus,
@@ -24,24 +25,30 @@ pub struct RubricListQuery {
 }
 
 /// Request to create a new rubric
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateRubricRequest {
     pub framework_id: String,
     pub control_id: String,
     pub name: String,
     pub description: Option<String>,
+    #[schema(value_type = Vec<Object>)]
     pub assessment_criteria: Vec<AssessmentCriterion>,
+    #[schema(value_type = Option<Object>)]
     pub rating_scale: Option<RatingScale>,
+    #[schema(value_type = Vec<Object>)]
     pub evidence_requirements: Vec<EvidenceRequirement>,
 }
 
 /// Request to update a rubric
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateRubricRequest {
     pub name: Option<String>,
     pub description: Option<String>,
+    #[schema(value_type = Option<Vec<Object>>)]
     pub assessment_criteria: Option<Vec<AssessmentCriterion>>,
+    #[schema(value_type = Option<Object>)]
     pub rating_scale: Option<RatingScale>,
+    #[schema(value_type = Option<Vec<Object>>)]
     pub evidence_requirements: Option<Vec<EvidenceRequirement>>,
 }
 
@@ -66,15 +73,17 @@ pub struct AssessmentListQuery {
 }
 
 /// Request to create a new assessment
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateAssessmentRequest {
     pub rubric_id: String,
     pub framework_id: String,
     pub control_id: String,
     pub assessment_period_start: DateTime<Utc>,
     pub assessment_period_end: DateTime<Utc>,
+    #[schema(value_type = String)]
     pub overall_rating: OverallRating,
     pub rating_score: f32,
+    #[schema(value_type = Vec<Object>)]
     pub criteria_responses: Vec<CriterionResponse>,
     pub evidence_summary: Option<String>,
     pub findings: Option<String>,
@@ -82,10 +91,12 @@ pub struct CreateAssessmentRequest {
 }
 
 /// Request to update an assessment
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateAssessmentRequest {
+    #[schema(value_type = Option<String>)]
     pub overall_rating: Option<OverallRating>,
     pub rating_score: Option<f32>,
+    #[schema(value_type = Option<Vec<Object>>)]
     pub criteria_responses: Option<Vec<CriterionResponse>>,
     pub evidence_summary: Option<String>,
     pub findings: Option<String>,
@@ -93,7 +104,7 @@ pub struct UpdateAssessmentRequest {
 }
 
 /// Request to reject an assessment
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct RejectAssessmentRequest {
     pub notes: String,
 }
@@ -110,8 +121,9 @@ pub struct AssessmentListResponse {
 // ============================================================================
 
 /// Request to add evidence to an assessment
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct AddEvidenceRequest {
+    #[schema(value_type = String)]
     pub evidence_type: EvidenceType,
     pub title: String,
     pub description: Option<String>,
@@ -120,7 +132,7 @@ pub struct AddEvidenceRequest {
 }
 
 /// Request to upload an evidence file (base64 encoded)
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct UploadEvidenceFileRequest {
     pub title: String,
     pub description: Option<String>,
@@ -148,7 +160,7 @@ pub struct CampaignListQuery {
 }
 
 /// Request to create a new campaign
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateCampaignRequest {
     pub name: String,
     pub description: Option<String>,
@@ -157,12 +169,13 @@ pub struct CreateCampaignRequest {
 }
 
 /// Request to update a campaign
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateCampaignRequest {
     pub name: Option<String>,
     pub description: Option<String>,
     pub frameworks: Option<Vec<String>>,
     pub due_date: Option<DateTime<Utc>>,
+    #[schema(value_type = Option<String>)]
     pub status: Option<CampaignStatus>,
 }
 
