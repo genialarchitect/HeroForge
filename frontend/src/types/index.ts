@@ -2107,6 +2107,54 @@ export interface ExecutiveDashboard {
 }
 
 // ============================================================================
+// Vulnerability Trends Types
+// ============================================================================
+
+export interface DailyVulnerabilityCount {
+  date: string;
+  total: number;
+  new: number;
+  resolved: number;
+  open: number;
+}
+
+export interface RemediationRatePoint {
+  date: string;
+  total_found: number;
+  total_resolved: number;
+  remediation_rate: number;
+  mttr_days: number;
+}
+
+export interface RecurringVulnerability {
+  vulnerability_id: string;
+  title: string;
+  severity: string;
+  count: number;
+  affected_hosts: number;
+  avg_resolution_days: number | null;
+}
+
+export interface VulnerabilityTrendsSummary {
+  total_found: number;
+  total_resolved: number;
+  current_open: number;
+  avg_mttr_days: number;
+  remediation_rate: number;
+  trend_direction: 'improving' | 'stable' | 'declining';
+  critical_open: number;
+  high_open: number;
+}
+
+export interface VulnerabilityTrendsData {
+  daily_counts: DailyVulnerabilityCount[];
+  severity_trends: VulnerabilityTimeSeriesDataPoint[];
+  remediation_rates: RemediationRatePoint[];
+  top_recurring: RecurringVulnerability[];
+  summary: VulnerabilityTrendsSummary;
+}
+
+// ============================================================================
 // Threat Intelligence Types
 // ============================================================================
 

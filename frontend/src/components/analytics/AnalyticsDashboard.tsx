@@ -20,6 +20,8 @@ import {
   AlertTriangle,
   TrendingUp,
   Calendar,
+  BarChart3,
+  Bug,
 } from 'lucide-react';
 import { analyticsAPI } from '../../services/api';
 import type {
@@ -30,8 +32,10 @@ import type {
 } from '../../types';
 import Card from '../ui/Card';
 import LoadingSpinner from '../ui/LoadingSpinner';
+import VulnerabilityTrends from './VulnerabilityTrends';
 
 type DateRange = 7 | 30 | 90;
+type AnalyticsTab = 'overview' | 'vulnerability-trends';
 
 interface StatCardProps {
   title: string;
@@ -85,6 +89,7 @@ const StatCard: React.FC<StatCardProps> = ({
 };
 
 const AnalyticsDashboard: React.FC = () => {
+  const [activeTab, setActiveTab] = useState<AnalyticsTab>('overview');
   const [dateRange, setDateRange] = useState<DateRange>(30);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -99,8 +104,10 @@ const AnalyticsDashboard: React.FC = () => {
   const [frequencyData, setFrequencyData] = useState<TimeSeriesDataPoint[]>([]);
 
   useEffect(() => {
-    loadAnalyticsData();
-  }, [dateRange]);
+    if (activeTab === 'overview') {
+      loadAnalyticsData();
+    }
+  }, [dateRange, activeTab]);
 
   const loadAnalyticsData = async () => {
     setLoading(true);
@@ -135,40 +142,96 @@ const AnalyticsDashboard: React.FC = () => {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
-  if (loading) {
+  // Tab Navigation Component
+  const TabNavigation = () => (
+    <div className="flex gap-2 border-b border-slate-700 pb-2 mb-6">
+      <button
+        onClick={() => setActiveTab('overview')}
+        className={`flex items-center gap-2 px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+          activeTab === 'overview'
+            ? 'bg-slate-800 text-cyan-400 border-b-2 border-cyan-400'
+            : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+        }`}
+      >
+        <BarChart3 className="h-4 w-4" />
+        Overview
+      </button>
+      <button
+        onClick={() => setActiveTab('vulnerability-trends')}
+        className={`flex items-center gap-2 px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+          activeTab === 'vulnerability-trends'
+            ? 'bg-slate-800 text-cyan-400 border-b-2 border-cyan-400'
+            : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+        }`}
+      >
+        <Bug className="h-4 w-4" />
+        Vulnerability Trends
+      </button>
+    </div>
+  );
+
+  // If viewing vulnerability trends, show that component
+  if (activeTab === 'vulnerability-trends') {
     return (
-      <div className="flex items-center justify-center h-96">
-        <LoadingSpinner size="lg" />
+      <div className="space-y-6">
+        <TabNavigation />
+        <VulnerabilityTrends />
       </div>
     );
   }
 
+  // Overview tab loading state
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <TabNavigation />
+        <div className="flex items-center justify-center h-96">
+          <LoadingSpinner size="lg" />
+        </div>
+      </div>
+    );
+  }
+
+  // Overview tab error state
   if (error) {
     return (
-      <Card className="p-6">
-        <div className="text-center">
-          <AlertTriangle className="h-12 w-12 text-yellow-400 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-white mb-2">
-            Failed to Load Analytics
-          </h3>
-          <p className="text-slate-400 mb-4">{error}</p>
-          <button
-            onClick={loadAnalyticsData}
-            className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/80 transition-colors"
-          >
-            Retry
-          </button>
-        </div>
-      </Card>
+      <div className="space-y-6">
+        <TabNavigation />
+        <Card className="p-6">
+          <div className="text-center">
+            <AlertTriangle className="h-12 w-12 text-yellow-400 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-white mb-2">
+              Failed to Load Analytics
+            </h3>
+            <p className="text-slate-400 mb-4">{error}</p>
+            <button
+              onClick={loadAnalyticsData}
+              className="px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-500 transition-colors"
+            >
+              Retry
+            </button>
+          </div>
+        </Card>
+      </div>
     );
   }
 
   if (!summary) {
-    return null;
+    return (
+      <div className="space-y-6">
+        <TabNavigation />
+        <div className="flex items-center justify-center h-96 text-slate-400">
+          No data available
+        </div>
+      </div>
+    );
   }
 
   return (
     <div className="space-y-6">
+      {/* Tab Navigation */}
+      <TabNavigation />
+
       {/* Header with Date Range Selector */}
       <div className="flex items-center justify-between">
         <div>

@@ -448,15 +448,15 @@ Moderate complexity, strong value proposition.
 | Feature | Effort | Status | Description |
 |---------|--------|--------|-------------|
 | ~~Slack/Teams Notifications~~ | 2-3 days | **Done** | Real-time alerts for critical findings |
-| Scan Comparison Dashboard | 3-4 days | Planned | Visual diff between scan runs (comparison.rs exists) |
+| ~~Scan Comparison Dashboard~~ | 3-4 days | **Done** | Visual diff between scan runs |
 | Automated Report Scheduling | 3 days | Planned | Schedule and email PDF reports |
 | ~~SLA Tracking & Alerts~~ | 3-4 days | **Done** | Track remediation against defined SLAs |
 | Custom Webhooks (outbound) | 2-3 days | Planned | Send events to external systems |
 | Secret Detection Scanner | 4-5 days | Planned | Detect exposed API keys, passwords |
-| Vulnerability Trends/Charts | 3 days | Planned | Historical vulnerability analytics |
+| ~~Vulnerability Trends/Charts~~ | 3 days | **Done** | Historical vulnerability analytics |
 | ServiceNow Integration | 4-5 days | Planned | Create incidents/changes from vulns |
-| MFA Setup UI | 2-3 days | Planned | TOTP setup wizard (backend exists) |
-| API Rate Limit Dashboard | 2 days | Planned | Visualize rate limiting stats |
+| ~~MFA Setup UI~~ | 2-3 days | **Done** | TOTP setup wizard with QR codes |
+| ~~API Rate Limit Dashboard~~ | 2 days | **Done** | Visualize rate limiting stats |
 | Scan Profiles/Presets | 2-3 days | Planned | Enhanced template management |
 | Host/Port Exclusions | 2 days | Planned | Global and per-scan exclusion lists |
 | ~~Methodology Tracking~~ | 3 days | **Done** | Pentest phases, checklists, progress tracking |
@@ -526,7 +526,11 @@ Track active work here:
 | Vulnerability Notes/Comments | 1 | 2025-12-20 |
 | Finding Templates | 1 | 2025-12-20 |
 | Slack/Teams Notifications | 2 | 2025-12-20 |
+| Scan Comparison Dashboard | 2 | 2025-12-20 |
 | SLA Tracking & Alerts | 2 | 2025-12-20 |
+| Vulnerability Trends/Charts | 2 | 2025-12-20 |
+| MFA Setup UI | 2 | 2025-12-20 |
+| API Rate Limit Dashboard | 2 | 2025-12-20 |
 | Methodology Tracking | 2 | 2025-12-20 |
 | Time Tracking | 2 | 2025-12-20 |
 | Credential Audit | 3 | 2025-12-20 |

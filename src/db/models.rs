@@ -658,7 +658,7 @@ pub struct ServiceCount {
 }
 
 /// Vulnerability trend over time with severity breakdown
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VulnerabilityTrend {
     pub date: String, // YYYY-MM-DD
     pub critical: i64,

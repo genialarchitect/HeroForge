@@ -376,6 +376,18 @@ pub use analytics::{
     get_risk_trends,
     get_methodology_coverage,
     get_executive_dashboard,
+    // Vulnerability trends analytics
+    get_vulnerability_trends,
+    get_severity_distribution_over_time,
+    get_remediation_rate,
+    get_top_recurring_vulns,
+    get_vulnerability_trends_dashboard,
+    // Vulnerability trends types
+    DailyVulnerabilityCount,
+    RemediationRatePoint,
+    RecurringVulnerability,
+    VulnerabilityTrendsData,
+    VulnerabilityTrendsSummary,
 };
 
 // ============================================================================

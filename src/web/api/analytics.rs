@@ -336,3 +336,179 @@ pub async fn get_executive_dashboard(
 
     Ok(HttpResponse::Ok().json(data))
 }
+
+// ============================================================================
+// Vulnerability Trends Analytics Endpoints
+// ============================================================================
+
+#[derive(Debug, Deserialize)]
+pub struct VulnerabilityTrendsQuery {
+    #[serde(default = "default_days")]
+    days: i64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TopVulnerabilitiesQuery {
+    #[serde(default = "default_limit")]
+    limit: i64,
+}
+
+/// GET /api/analytics/vulnerability-trends?days=30
+/// Get daily vulnerability counts over time (new, resolved, open)
+#[utoipa::path(
+    get,
+    path = "/api/analytics/vulnerability-trends",
+    params(
+        ("days" = Option<i64>, Query, description = "Number of days to analyze (default: 30)")
+    ),
+    responses(
+        (status = 200, description = "Daily vulnerability counts"),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("bearer_auth" = [])
+    ),
+    tag = "Vulnerability Trends"
+)]
+pub async fn get_vulnerability_trends_endpoint(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    query: web::Query<VulnerabilityTrendsQuery>,
+) -> Result<HttpResponse> {
+    let data = db::get_vulnerability_trends(&pool, &claims.sub, query.days)
+        .await
+        .map_err(|e| {
+            log::error!("Failed to get vulnerability trends: {}", e);
+            actix_web::error::ErrorInternalServerError("Failed to fetch vulnerability trends")
+        })?;
+
+    Ok(HttpResponse::Ok().json(data))
+}
+
+/// GET /api/analytics/severity-trends?days=30
+/// Get severity distribution over time (critical, high, medium, low per day)
+#[utoipa::path(
+    get,
+    path = "/api/analytics/severity-trends",
+    params(
+        ("days" = Option<i64>, Query, description = "Number of days to analyze (default: 30)")
+    ),
+    responses(
+        (status = 200, description = "Severity distribution over time"),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("bearer_auth" = [])
+    ),
+    tag = "Vulnerability Trends"
+)]
+pub async fn get_severity_trends_endpoint(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    query: web::Query<VulnerabilityTrendsQuery>,
+) -> Result<HttpResponse> {
+    let data = db::get_severity_distribution_over_time(&pool, &claims.sub, query.days)
+        .await
+        .map_err(|e| {
+            log::error!("Failed to get severity trends: {}", e);
+            actix_web::error::ErrorInternalServerError("Failed to fetch severity trends")
+        })?;
+
+    Ok(HttpResponse::Ok().json(data))
+}
+
+/// GET /api/analytics/remediation-rate?days=30
+/// Get remediation rate over time (percentage fixed, MTTR)
+#[utoipa::path(
+    get,
+    path = "/api/analytics/remediation-rate",
+    params(
+        ("days" = Option<i64>, Query, description = "Number of days to analyze (default: 30)")
+    ),
+    responses(
+        (status = 200, description = "Remediation rate over time"),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("bearer_auth" = [])
+    ),
+    tag = "Vulnerability Trends"
+)]
+pub async fn get_remediation_rate_endpoint(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    query: web::Query<VulnerabilityTrendsQuery>,
+) -> Result<HttpResponse> {
+    let data = db::get_remediation_rate(&pool, &claims.sub, query.days)
+        .await
+        .map_err(|e| {
+            log::error!("Failed to get remediation rate: {}", e);
+            actix_web::error::ErrorInternalServerError("Failed to fetch remediation rate")
+        })?;
+
+    Ok(HttpResponse::Ok().json(data))
+}
+
+/// GET /api/analytics/top-vulnerabilities?limit=10
+/// Get top recurring vulnerability types
+#[utoipa::path(
+    get,
+    path = "/api/analytics/top-vulnerabilities",
+    params(
+        ("limit" = Option<i64>, Query, description = "Maximum number of results (default: 10)")
+    ),
+    responses(
+        (status = 200, description = "Top recurring vulnerabilities"),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("bearer_auth" = [])
+    ),
+    tag = "Vulnerability Trends"
+)]
+pub async fn get_top_vulnerabilities_endpoint(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    query: web::Query<TopVulnerabilitiesQuery>,
+) -> Result<HttpResponse> {
+    let data = db::get_top_recurring_vulns(&pool, &claims.sub, query.limit)
+        .await
+        .map_err(|e| {
+            log::error!("Failed to get top vulnerabilities: {}", e);
+            actix_web::error::ErrorInternalServerError("Failed to fetch top vulnerabilities")
+        })?;
+
+    Ok(HttpResponse::Ok().json(data))
+}
+
+/// GET /api/analytics/vulnerability-trends-dashboard?days=30
+/// Get combined vulnerability trends dashboard data
+#[utoipa::path(
+    get,
+    path = "/api/analytics/vulnerability-trends-dashboard",
+    params(
+        ("days" = Option<i64>, Query, description = "Number of days to analyze (default: 30)")
+    ),
+    responses(
+        (status = 200, description = "Combined vulnerability trends dashboard data"),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("bearer_auth" = [])
+    ),
+    tag = "Vulnerability Trends"
+)]
+pub async fn get_vulnerability_trends_dashboard(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    query: web::Query<VulnerabilityTrendsQuery>,
+) -> Result<HttpResponse> {
+    let data = db::get_vulnerability_trends_dashboard(&pool, &claims.sub, query.days)
+        .await
+        .map_err(|e| {
+            log::error!("Failed to get vulnerability trends dashboard: {}", e);
+            actix_web::error::ErrorInternalServerError("Failed to fetch vulnerability trends dashboard")
+        })?;
+
+    Ok(HttpResponse::Ok().json(data))
+}

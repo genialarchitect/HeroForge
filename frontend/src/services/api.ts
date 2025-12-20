@@ -166,6 +166,11 @@ import type {
   ScanExclusion,
   CreateExclusionRequest,
   UpdateExclusionRequest,
+  // Vulnerability Trends types
+  DailyVulnerabilityCount,
+  RemediationRatePoint,
+  RecurringVulnerability,
+  VulnerabilityTrendsData,
 } from '../types';
 
 const api = axios.create({
@@ -423,6 +428,22 @@ export const analyticsAPI = {
 
   getFrequency: (days: number = 30) =>
     api.get<TimeSeriesDataPoint[]>(`/analytics/frequency?days=${days}`),
+
+  // Vulnerability Trends Analytics
+  getVulnerabilityTrends: (days: number = 30) =>
+    api.get<DailyVulnerabilityCount[]>(`/analytics/vulnerability-trends?days=${days}`),
+
+  getSeverityTrends: (days: number = 30) =>
+    api.get<VulnerabilityTimeSeriesDataPoint[]>(`/analytics/severity-trends?days=${days}`),
+
+  getRemediationRate: (days: number = 30) =>
+    api.get<RemediationRatePoint[]>(`/analytics/remediation-rate?days=${days}`),
+
+  getTopVulnerabilities: (limit: number = 10) =>
+    api.get<RecurringVulnerability[]>(`/analytics/top-vulnerabilities?limit=${limit}`),
+
+  getVulnerabilityTrendsDashboard: (days: number = 30) =>
+    api.get<VulnerabilityTrendsData>(`/analytics/vulnerability-trends-dashboard?days=${days}`),
 };
 
 export const vulnerabilityAPI = {

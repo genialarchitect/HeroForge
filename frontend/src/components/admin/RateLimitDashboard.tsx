@@ -91,20 +91,30 @@ const RateLimitDashboard: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header with refresh button */}
+      {/* Header with refresh button and live indicator */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <ShieldAlert className="h-5 w-5 text-primary" />
           <h3 className="text-lg font-semibold text-white">Rate Limit Dashboard</h3>
+          <span className="flex items-center gap-1.5 px-2 py-0.5 text-xs font-medium text-green-400 bg-green-500/10 border border-green-500/30 rounded-full">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+            </span>
+            Live
+          </span>
         </div>
-        <button
-          onClick={() => refetch()}
-          className="flex items-center gap-2 px-3 py-1.5 text-sm text-slate-400 hover:text-white
-                     bg-dark-card border border-dark-border rounded-lg transition-colors"
-        >
-          <RefreshCw className="h-4 w-4" />
-          Refresh
-        </button>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-slate-500">Auto-refresh: 30s</span>
+          <button
+            onClick={() => refetch()}
+            className="flex items-center gap-2 px-3 py-1.5 text-sm text-slate-400 hover:text-white
+                       bg-dark-card border border-dark-border rounded-lg transition-colors hover:border-primary/50"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Refresh
+          </button>
+        </div>
       </div>
 
       {/* Summary Stats */}

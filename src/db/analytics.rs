@@ -916,3 +916,460 @@ pub async fn get_executive_dashboard(
         methodology_coverage,
     })
 }
+
+// ============================================================================
+// Vulnerability Trends Analytics Functions
+// ============================================================================
+
+/// Daily vulnerability count with total
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct DailyVulnerabilityCount {
+    pub date: String,
+    pub total: i64,
+    pub new: i64,
+    pub resolved: i64,
+    pub open: i64,
+}
+
+/// Get daily vulnerability counts over time
+pub async fn get_vulnerability_trends(
+    pool: &SqlitePool,
+    user_id: &str,
+    days: i64,
+) -> Result<Vec<DailyVulnerabilityCount>> {
+    use chrono::Duration;
+    use std::collections::HashMap;
+
+    let now = Utc::now();
+    let cutoff_date = now - Duration::days(days);
+
+    // Get all vulnerability tracking records in the date range
+    // Join with scan_results to filter by user_id
+    let vulns = sqlx::query_as::<_, (String, String, Option<String>)>(
+        r#"
+        SELECT
+            DATE(vt.created_at) as created_date,
+            vt.status,
+            DATE(vt.resolved_at) as resolved_date
+        FROM vulnerability_tracking vt
+        JOIN scan_results sr ON vt.scan_id = sr.id
+        WHERE sr.user_id = ?1 AND vt.created_at >= ?2
+        ORDER BY vt.created_at ASC
+        "#
+    )
+    .bind(user_id)
+    .bind(cutoff_date)
+    .fetch_all(pool)
+    .await?;
+
+    // Track cumulative state per day
+    let mut daily_new: HashMap<String, i64> = HashMap::new();
+    let mut daily_resolved: HashMap<String, i64> = HashMap::new();
+
+    for (created_date, status, resolved_date) in vulns {
+        *daily_new.entry(created_date).or_insert(0) += 1;
+
+        if status == "resolved" || status == "false_positive" {
+            if let Some(res_date) = resolved_date {
+                *daily_resolved.entry(res_date).or_insert(0) += 1;
+            }
+        }
+    }
+
+    // Build date range and calculate cumulative values
+    let mut result = Vec::new();
+    let mut cumulative_open = 0i64;
+    let mut current_date = now - Duration::days(days);
+
+    while current_date <= now {
+        let date_str = current_date.format("%Y-%m-%d").to_string();
+        let new_today = *daily_new.get(&date_str).unwrap_or(&0);
+        let resolved_today = *daily_resolved.get(&date_str).unwrap_or(&0);
+
+        cumulative_open += new_today - resolved_today;
+
+        // Only include days that had activity or every 7th day for continuity
+        let day_number = (now - current_date).num_days();
+        if new_today > 0 || resolved_today > 0 || day_number % 7 == 0 {
+            result.push(DailyVulnerabilityCount {
+                date: date_str,
+                total: cumulative_open + resolved_today,
+                new: new_today,
+                resolved: resolved_today,
+                open: cumulative_open.max(0),
+            });
+        }
+
+        current_date = current_date + Duration::days(1);
+    }
+
+    Ok(result)
+}
+
+/// Get severity distribution over time
+pub async fn get_severity_distribution_over_time(
+    pool: &SqlitePool,
+    user_id: &str,
+    days: i64,
+) -> Result<Vec<models::VulnerabilityTrend>> {
+    use chrono::Duration;
+    use std::collections::HashMap;
+
+    let now = Utc::now();
+    let cutoff_date = now - Duration::days(days);
+
+    // Get vulnerabilities with status to track only open ones per day
+    // Join with scan_results to filter by user_id
+    let vulns = sqlx::query_as::<_, (String, String, String, Option<String>)>(
+        r#"
+        SELECT
+            DATE(vt.created_at) as created_date,
+            vt.severity,
+            vt.status,
+            DATE(vt.resolved_at) as resolved_date
+        FROM vulnerability_tracking vt
+        JOIN scan_results sr ON vt.scan_id = sr.id
+        WHERE sr.user_id = ?1 AND vt.created_at >= ?2
+        ORDER BY vt.created_at ASC
+        "#
+    )
+    .bind(user_id)
+    .bind(cutoff_date)
+    .fetch_all(pool)
+    .await?;
+
+    // Track net changes per day per severity
+    // Structure: date -> (critical_delta, high_delta, medium_delta, low_delta)
+    let mut daily_deltas: HashMap<String, (i64, i64, i64, i64)> = HashMap::new();
+
+    for (created_date, severity, status, resolved_date) in vulns {
+        // Add vulnerability on creation date
+        let entry = daily_deltas.entry(created_date).or_insert((0, 0, 0, 0));
+        match severity.as_str() {
+            "critical" => entry.0 += 1,
+            "high" => entry.1 += 1,
+            "medium" => entry.2 += 1,
+            "low" | "info" => entry.3 += 1,
+            _ => {}
+        }
+
+        // Subtract on resolution date
+        if status == "resolved" || status == "false_positive" {
+            if let Some(res_date) = resolved_date {
+                let entry = daily_deltas.entry(res_date).or_insert((0, 0, 0, 0));
+                match severity.as_str() {
+                    "critical" => entry.0 -= 1,
+                    "high" => entry.1 -= 1,
+                    "medium" => entry.2 -= 1,
+                    "low" | "info" => entry.3 -= 1,
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    // Build cumulative time series
+    let mut result = Vec::new();
+    let mut cumulative = (0i64, 0i64, 0i64, 0i64);
+    let mut current_date = now - Duration::days(days);
+
+    while current_date <= now {
+        let date_str = current_date.format("%Y-%m-%d").to_string();
+
+        if let Some(delta) = daily_deltas.get(&date_str) {
+            cumulative.0 += delta.0;
+            cumulative.1 += delta.1;
+            cumulative.2 += delta.2;
+            cumulative.3 += delta.3;
+        }
+
+        // Include every 7th day for continuity, or any day with data
+        let day_number = (now - current_date).num_days();
+        if daily_deltas.contains_key(&date_str) || day_number % 7 == 0 {
+            result.push(models::VulnerabilityTrend {
+                date: date_str,
+                critical: cumulative.0.max(0),
+                high: cumulative.1.max(0),
+                medium: cumulative.2.max(0),
+                low: cumulative.3.max(0),
+            });
+        }
+
+        current_date = current_date + Duration::days(1);
+    }
+
+    Ok(result)
+}
+
+/// Remediation rate over time (percentage of fixed vulnerabilities)
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct RemediationRatePoint {
+    pub date: String,
+    pub total_found: i64,
+    pub total_resolved: i64,
+    pub remediation_rate: f64,
+    pub mttr_days: f64, // Mean Time To Remediate
+}
+
+/// Get remediation rate over time
+pub async fn get_remediation_rate(
+    pool: &SqlitePool,
+    user_id: &str,
+    days: i64,
+) -> Result<Vec<RemediationRatePoint>> {
+    use chrono::Duration;
+
+    let now = Utc::now();
+    let cutoff_date = now - Duration::days(days);
+
+    // Get weekly aggregated data
+    // Join with scan_results to filter by user_id
+    let weekly_data = sqlx::query_as::<_, (String, i64, i64, Option<f64>)>(
+        r#"
+        SELECT
+            strftime('%Y-W%W', vt.created_at) as week,
+            COUNT(*) as total_found,
+            SUM(CASE WHEN vt.status IN ('resolved', 'false_positive') THEN 1 ELSE 0 END) as total_resolved,
+            AVG(CASE
+                WHEN vt.status = 'resolved' AND vt.resolved_at IS NOT NULL
+                THEN JULIANDAY(vt.resolved_at) - JULIANDAY(vt.created_at)
+                ELSE NULL
+            END) as avg_mttr
+        FROM vulnerability_tracking vt
+        JOIN scan_results sr ON vt.scan_id = sr.id
+        WHERE sr.user_id = ?1 AND vt.created_at >= ?2
+        GROUP BY week
+        ORDER BY week ASC
+        "#
+    )
+    .bind(user_id)
+    .bind(cutoff_date)
+    .fetch_all(pool)
+    .await?;
+
+    let result: Vec<RemediationRatePoint> = weekly_data
+        .into_iter()
+        .map(|(week, total_found, total_resolved, avg_mttr)| {
+            let remediation_rate = if total_found > 0 {
+                (total_resolved as f64 / total_found as f64) * 100.0
+            } else {
+                0.0
+            };
+
+            RemediationRatePoint {
+                date: week,
+                total_found,
+                total_resolved,
+                remediation_rate,
+                mttr_days: avg_mttr.unwrap_or(0.0),
+            }
+        })
+        .collect();
+
+    Ok(result)
+}
+
+/// Top recurring vulnerability type
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct RecurringVulnerability {
+    pub vulnerability_id: String,
+    pub title: String,
+    pub severity: String,
+    pub count: i64,
+    pub affected_hosts: i64,
+    pub avg_resolution_days: Option<f64>,
+}
+
+/// Get top recurring vulnerabilities
+pub async fn get_top_recurring_vulns(
+    pool: &SqlitePool,
+    user_id: &str,
+    limit: i64,
+) -> Result<Vec<RecurringVulnerability>> {
+    // Join with scan_results to filter by user_id
+    let vulns = sqlx::query_as::<_, (String, String, i64, i64, Option<f64>)>(
+        r#"
+        SELECT
+            vt.vulnerability_id,
+            vt.severity,
+            COUNT(*) as occurrence_count,
+            COUNT(DISTINCT vt.host_ip) as affected_hosts,
+            AVG(CASE
+                WHEN vt.status = 'resolved' AND vt.resolved_at IS NOT NULL
+                THEN JULIANDAY(vt.resolved_at) - JULIANDAY(vt.created_at)
+                ELSE NULL
+            END) as avg_resolution_days
+        FROM vulnerability_tracking vt
+        JOIN scan_results sr ON vt.scan_id = sr.id
+        WHERE sr.user_id = ?1
+        GROUP BY vt.vulnerability_id, vt.severity
+        ORDER BY occurrence_count DESC
+        LIMIT ?2
+        "#
+    )
+    .bind(user_id)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+
+    let result: Vec<RecurringVulnerability> = vulns
+        .into_iter()
+        .map(|(vulnerability_id, severity, count, affected_hosts, avg_resolution_days)| {
+            // Extract a readable title from vulnerability_id
+            let title = vulnerability_id
+                .replace("_", " ")
+                .replace("-", " ")
+                .split_whitespace()
+                .map(|word| {
+                    let mut chars = word.chars();
+                    match chars.next() {
+                        None => String::new(),
+                        Some(f) => f.to_uppercase().collect::<String>() + chars.as_str(),
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+
+            RecurringVulnerability {
+                vulnerability_id,
+                title,
+                severity,
+                count,
+                affected_hosts,
+                avg_resolution_days,
+            }
+        })
+        .collect();
+
+    Ok(result)
+}
+
+/// Combined vulnerability trends data
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct VulnerabilityTrendsData {
+    pub daily_counts: Vec<DailyVulnerabilityCount>,
+    pub severity_trends: Vec<models::VulnerabilityTrend>,
+    pub remediation_rates: Vec<RemediationRatePoint>,
+    pub top_recurring: Vec<RecurringVulnerability>,
+    pub summary: VulnerabilityTrendsSummary,
+}
+
+/// Summary statistics for vulnerability trends
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct VulnerabilityTrendsSummary {
+    pub total_found: i64,
+    pub total_resolved: i64,
+    pub current_open: i64,
+    pub avg_mttr_days: f64,
+    pub remediation_rate: f64,
+    pub trend_direction: String, // "improving", "stable", "declining"
+    pub critical_open: i64,
+    pub high_open: i64,
+}
+
+/// Get combined vulnerability trends dashboard data
+pub async fn get_vulnerability_trends_dashboard(
+    pool: &SqlitePool,
+    user_id: &str,
+    days: i64,
+) -> Result<VulnerabilityTrendsData> {
+    use chrono::Duration;
+
+    let now = Utc::now();
+    let cutoff_date = now - Duration::days(days);
+
+    // Get summary statistics
+    // Join with scan_results to filter by user_id
+    let summary_stats = sqlx::query_as::<_, (i64, i64, i64, i64, i64, Option<f64>)>(
+        r#"
+        SELECT
+            COUNT(*) as total_found,
+            SUM(CASE WHEN vt.status IN ('resolved', 'false_positive') THEN 1 ELSE 0 END) as total_resolved,
+            SUM(CASE WHEN vt.status NOT IN ('resolved', 'false_positive', 'accepted_risk') THEN 1 ELSE 0 END) as current_open,
+            SUM(CASE WHEN vt.severity = 'critical' AND vt.status NOT IN ('resolved', 'false_positive', 'accepted_risk') THEN 1 ELSE 0 END) as critical_open,
+            SUM(CASE WHEN vt.severity = 'high' AND vt.status NOT IN ('resolved', 'false_positive', 'accepted_risk') THEN 1 ELSE 0 END) as high_open,
+            AVG(CASE
+                WHEN vt.status = 'resolved' AND vt.resolved_at IS NOT NULL
+                THEN JULIANDAY(vt.resolved_at) - JULIANDAY(vt.created_at)
+                ELSE NULL
+            END) as avg_mttr
+        FROM vulnerability_tracking vt
+        JOIN scan_results sr ON vt.scan_id = sr.id
+        WHERE sr.user_id = ?1 AND vt.created_at >= ?2
+        "#
+    )
+    .bind(user_id)
+    .bind(cutoff_date)
+    .fetch_one(pool)
+    .await?;
+
+    let (total_found, total_resolved, current_open, critical_open, high_open, avg_mttr) = summary_stats;
+
+    let remediation_rate = if total_found > 0 {
+        (total_resolved as f64 / total_found as f64) * 100.0
+    } else {
+        0.0
+    };
+
+    // Determine trend direction based on recent vs earlier data
+    let midpoint = now - Duration::days(days / 2);
+    let recent_open: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*) FROM vulnerability_tracking vt
+        JOIN scan_results sr ON vt.scan_id = sr.id
+        WHERE sr.user_id = ?1 AND vt.created_at >= ?2
+          AND vt.status NOT IN ('resolved', 'false_positive', 'accepted_risk')
+        "#
+    )
+    .bind(user_id)
+    .bind(midpoint)
+    .fetch_one(pool)
+    .await?;
+
+    let earlier_open: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*) FROM vulnerability_tracking vt
+        JOIN scan_results sr ON vt.scan_id = sr.id
+        WHERE sr.user_id = ?1 AND vt.created_at >= ?2 AND vt.created_at < ?3
+          AND vt.status NOT IN ('resolved', 'false_positive', 'accepted_risk')
+        "#
+    )
+    .bind(user_id)
+    .bind(cutoff_date)
+    .bind(midpoint)
+    .fetch_one(pool)
+    .await?;
+
+    let trend_direction = if recent_open < earlier_open {
+        "improving".to_string()
+    } else if recent_open > earlier_open + (earlier_open / 4) {
+        "declining".to_string()
+    } else {
+        "stable".to_string()
+    };
+
+    let summary = VulnerabilityTrendsSummary {
+        total_found,
+        total_resolved,
+        current_open,
+        avg_mttr_days: avg_mttr.unwrap_or(0.0),
+        remediation_rate,
+        trend_direction,
+        critical_open,
+        high_open,
+    };
+
+    // Get individual trend data
+    let daily_counts = get_vulnerability_trends(pool, user_id, days).await?;
+    let severity_trends = get_severity_distribution_over_time(pool, user_id, days).await?;
+    let remediation_rates = get_remediation_rate(pool, user_id, days).await?;
+    let top_recurring = get_top_recurring_vulns(pool, user_id, 10).await?;
+
+    Ok(VulnerabilityTrendsData {
+        daily_counts,
+        severity_trends,
+        remediation_rates,
+        top_recurring,
+        summary,
+    })
+}

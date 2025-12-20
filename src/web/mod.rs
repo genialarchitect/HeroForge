@@ -116,6 +116,7 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
             // Public authentication routes with strict rate limiting (5 req/min per IP)
             .service(
                 web::scope("/api/auth")
+                    .wrap(rate_limit::RateLimitStatsMiddleware::auth())
                     .wrap(rate_limit::auth_rate_limiter())
                     .route("/register", web::post().to(api::auth::register))
                     .route("/login", web::post().to(api::auth::login))
@@ -129,6 +130,7 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
             // Customer Portal routes (separate auth from main app) - at /api/portal/*
             .service(
                 web::scope("/api/portal")
+                    .wrap(rate_limit::RateLimitStatsMiddleware::api())
                     .wrap(rate_limit::api_rate_limiter())
                     // Public portal auth endpoints
                     .route("/auth/login", web::post().to(api::portal::auth::login))
@@ -160,6 +162,7 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
             // Protected routes with moderate rate limiting (100 req/min per IP)
             .service(
                 web::scope("/api")
+                    .wrap(rate_limit::RateLimitStatsMiddleware::api())
                     .wrap(rate_limit::api_rate_limiter())
                     .wrap(auth::JwtMiddleware)
                     // User account endpoints (protected, require authentication)
@@ -263,6 +266,12 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .route("/analytics/risk-trends", web::get().to(api::analytics::get_risk_trends))
                     .route("/analytics/methodology-coverage", web::get().to(api::analytics::get_methodology_coverage))
                     .route("/analytics/executive-dashboard", web::get().to(api::analytics::get_executive_dashboard))
+                    // Vulnerability Trends Analytics endpoints
+                    .route("/analytics/vulnerability-trends", web::get().to(api::analytics::get_vulnerability_trends_endpoint))
+                    .route("/analytics/severity-trends", web::get().to(api::analytics::get_severity_trends_endpoint))
+                    .route("/analytics/remediation-rate", web::get().to(api::analytics::get_remediation_rate_endpoint))
+                    .route("/analytics/top-vulnerabilities", web::get().to(api::analytics::get_top_vulnerabilities_endpoint))
+                    .route("/analytics/vulnerability-trends-dashboard", web::get().to(api::analytics::get_vulnerability_trends_dashboard))
                     // Asset Inventory endpoints
                     .route("/assets", web::get().to(api::assets::get_assets))
                     .route("/assets/by-tags", web::get().to(api::assets::get_assets_by_tags))
