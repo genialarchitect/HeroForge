@@ -431,14 +431,15 @@ Low complexity, high immediate value.
 |---------|--------|--------|-------------|
 | Asset Tagging & Groups | 1 day | Planned | Organize assets by environment, criticality, owner |
 | Vulnerability Assignments | 1 day | Planned | Assign vulns to team members with due dates |
-| Audit Trail Enhancement | 1 day | Planned | Enhanced logging of all user actions |
+| ~~Audit Trail Enhancement~~ | 1 day | **Done** | Enhanced logging of all user actions |
 | SSL/TLS Grading | 1-2 days | Planned | Detailed certificate health scores (like SSL Labs) |
-| Dark/Light Theme Toggle | 1 day | Planned | User-selectable UI theme |
-| Export Scan to Markdown | 0.5 day | Planned | Markdown format for scan reports |
+| ~~Dark/Light Theme Toggle~~ | 1 day | **Done** | User-selectable UI theme |
+| ~~Export Scan to Markdown~~ | 0.5 day | **Done** | Markdown format for scan reports |
 | Bulk Vulnerability Actions | 1 day | Planned | Mass update/assign/close vulnerabilities |
 | Scan Tags/Labels | 1 day | Planned | Categorize and filter scans |
 | Duplicate Scan | 0.5 day | Planned | Clone existing scan configuration |
 | Vulnerability Notes/Comments | 1 day | Planned | Add notes and discussion to findings |
+| ~~Finding Templates~~ | 1 day | **Done** | Reusable vulnerability finding definitions |
 
 ### Tier 2: Medium Features (3-5 days each)
 
@@ -446,10 +447,10 @@ Moderate complexity, strong value proposition.
 
 | Feature | Effort | Status | Description |
 |---------|--------|--------|-------------|
-| Slack/Teams Notifications | 2-3 days | Planned | Real-time alerts for critical findings |
+| ~~Slack/Teams Notifications~~ | 2-3 days | **Done** | Real-time alerts for critical findings |
 | Scan Comparison Dashboard | 3-4 days | Planned | Visual diff between scan runs (comparison.rs exists) |
 | Automated Report Scheduling | 3 days | Planned | Schedule and email PDF reports |
-| SLA Tracking & Alerts | 3-4 days | Planned | Track remediation against defined SLAs |
+| ~~SLA Tracking & Alerts~~ | 3-4 days | **Done** | Track remediation against defined SLAs |
 | Custom Webhooks (outbound) | 2-3 days | Planned | Send events to external systems |
 | Secret Detection Scanner | 4-5 days | Planned | Detect exposed API keys, passwords |
 | Vulnerability Trends/Charts | 3 days | Planned | Historical vulnerability analytics |
@@ -458,6 +459,8 @@ Moderate complexity, strong value proposition.
 | API Rate Limit Dashboard | 2 days | Planned | Visualize rate limiting stats |
 | Scan Profiles/Presets | 2-3 days | Planned | Enhanced template management |
 | Host/Port Exclusions | 2 days | Planned | Global and per-scan exclusion lists |
+| ~~Methodology Tracking~~ | 3 days | **Done** | Pentest phases, checklists, progress tracking |
+| ~~Time Tracking~~ | 2 days | **Done** | Track time spent on engagements |
 
 ### Tier 3: Major Features (1-2 weeks each)
 
@@ -465,16 +468,22 @@ High complexity, significant new capabilities.
 
 | Feature | Effort | Status | Description |
 |---------|--------|--------|-------------|
-| Credential-Based Scanning | 1-2 weeks | Planned | Authenticated scans (SSH, WinRM, DB) |
+| ~~Credential Audit~~ | 1-2 weeks | **Done** | Password policy checking, breach detection |
 | Container/K8s Scanning | 2 weeks | Planned | Docker and Kubernetes security |
 | CI/CD Integration | 1 week | Planned | GitHub Actions, Jenkins plugins |
 | Custom Remediation Workflows | 1-2 weeks | Planned | Configurable approval chains |
 | Terraform/IaC Scanning | 2 weeks | Planned | Infrastructure-as-Code security |
-| Cloud Security Posture | 2-3 weeks | Planned | AWS/Azure/GCP configuration audit |
+| ~~Cloud Security Posture~~ | 2-3 weeks | **Done** | AWS/Azure/GCP configuration audit |
 | Agent-Based Scanning | 2-3 weeks | Planned | Lightweight agents for internal networks |
 | AI Vulnerability Prioritization | 1-2 weeks | Planned | ML-based risk scoring |
-| Multi-Tenancy | 2-3 weeks | Planned | Isolated customer environments |
+| ~~Multi-Tenancy / Customer Portal~~ | 2-3 weeks | **Done** | Isolated customer environments with portal |
 | SAML/SSO Authentication | 1-2 weeks | Planned | Enterprise identity provider support |
+| ~~Threat Intelligence~~ | 2 weeks | **Done** | CVE feeds, exploit DB, Shodan integration |
+| ~~API Security Scanning~~ | 2 weeks | **Done** | Endpoint discovery, auth testing, injection |
+| ~~Attack Path Analysis~~ | 2 weeks | **Done** | Graph-based attack path visualization |
+| ~~Active Directory Assessment~~ | 2 weeks | **Done** | LDAP enumeration, Kerberoasting detection |
+| ~~CRM System~~ | 2-3 weeks | **Done** | Customer management, engagements, contracts |
+| ~~VPN Integration~~ | 1 week | **Done** | Route scans through OpenVPN/WireGuard |
 
 ### Tier 4: Platform Expansions (1+ months)
 
@@ -503,5 +512,22 @@ Track active work here:
 
 ### Completed Features
 
-Move completed items here with completion date:
-- (none yet)
+| Feature | Tier | Completed |
+|---------|------|-----------|
+| Dark/Light Theme Toggle | 1 | 2025-12-20 |
+| Audit Trail Enhancement | 1 | 2025-12-20 |
+| Export Scan to Markdown | 1 | 2025-12-20 |
+| Finding Templates | 1 | 2025-12-20 |
+| Slack/Teams Notifications | 2 | 2025-12-20 |
+| SLA Tracking & Alerts | 2 | 2025-12-20 |
+| Methodology Tracking | 2 | 2025-12-20 |
+| Time Tracking | 2 | 2025-12-20 |
+| Credential Audit | 3 | 2025-12-20 |
+| Cloud Security Posture (AWS/Azure/GCP) | 3 | 2025-12-20 |
+| Multi-Tenancy / Customer Portal | 3 | 2025-12-20 |
+| Threat Intelligence | 3 | 2025-12-20 |
+| API Security Scanning | 3 | 2025-12-20 |
+| Attack Path Analysis | 3 | 2025-12-20 |
+| Active Directory Assessment | 3 | 2025-12-20 |
+| CRM System | 3 | 2025-12-20 |
+| VPN Integration | 3 | 2025-12-20 |
