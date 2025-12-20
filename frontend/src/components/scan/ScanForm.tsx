@@ -6,10 +6,10 @@ import Input from '../ui/Input';
 import Checkbox from '../ui/Checkbox';
 import Card from '../ui/Card';
 import TagInput from './TagInput';
-import { scanAPI, targetGroupAPI, templateAPI, vpnAPI, crmAPI, scanTagAPI } from '../../services/api';
+import { scanAPI, targetGroupAPI, templateAPI, vpnAPI, crmAPI, scanTagAPI, exclusionsAPI } from '../../services/api';
 import { useScanStore } from '../../store/scanStore';
-import { Target, Cpu, Search, Radio, Wifi, FolderOpen, Save, Zap, Radar, Globe, EyeOff, Shield, Building2, ClipboardList } from 'lucide-react';
-import { EnumDepth, EnumService, ScanType, TargetGroup, ScanPreset, VpnConfig, Customer, Engagement, ScanTag } from '../../types';
+import { Target, Cpu, Search, Radio, Wifi, FolderOpen, Save, Zap, Radar, Globe, EyeOff, Shield, Building2, ClipboardList, Ban } from 'lucide-react';
+import { EnumDepth, EnumService, ScanType, TargetGroup, ScanPreset, VpnConfig, Customer, Engagement, ScanTag, ScanExclusion } from '../../types';
 
 const SCAN_TYPES: { id: ScanType; label: string; description: string }[] = [
   { id: 'tcp_connect', label: 'TCP Connect', description: 'Standard TCP scan (most reliable)' },
@@ -72,6 +72,10 @@ const ScanForm: React.FC = () => {
   // Tags
   const [allTags, setAllTags] = useState<ScanTag[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+  // Exclusions
+  const [exclusions, setExclusions] = useState<ScanExclusion[]>([]);
+  const [selectedExclusionIds, setSelectedExclusionIds] = useState<string[]>([]);
+  const [skipGlobalExclusions, setSkipGlobalExclusions] = useState(false);
 
   const { addScan } = useScanStore();
 
@@ -83,6 +87,7 @@ const ScanForm: React.FC = () => {
     loadVpnConfigs();
     loadCustomers();
     loadTags();
+    loadExclusions();
   }, []);
 
   // Handle URL parameter for pre-selecting customer (e.g., from customer detail page)
@@ -153,6 +158,15 @@ const ScanForm: React.FC = () => {
       setAllTags(response.data);
     } catch (error) {
       console.error('Failed to load tags:', error);
+    }
+  };
+
+  const loadExclusions = async () => {
+    try {
+      const response = await exclusionsAPI.getAll();
+      setExclusions(response.data);
+    } catch (error) {
+      console.error('Failed to load exclusions:', error);
     }
   };
 
@@ -303,6 +317,8 @@ const ScanForm: React.FC = () => {
         customer_id: selectedCustomerId || undefined,
         engagement_id: selectedEngagementId || undefined,
         tag_ids: selectedTagIds.length > 0 ? selectedTagIds : undefined,
+        exclusion_ids: selectedExclusionIds.length > 0 ? selectedExclusionIds : undefined,
+        skip_global_exclusions: skipGlobalExclusions || undefined,
       });
 
       addScan(response.data);
@@ -485,6 +501,80 @@ const ScanForm: React.FC = () => {
             Link this scan to a customer and engagement for tracking and reporting.
           </p>
         </div>
+
+        {/* Exclusions */}
+        {exclusions.length > 0 && (
+          <div className="space-y-3 pb-4 border-b border-dark-border">
+            <div className="flex items-center space-x-2">
+              <Ban className="h-5 w-5 text-orange-400" />
+              <p className="text-sm font-medium text-slate-300">Exclusions (Optional)</p>
+            </div>
+
+            {/* Global exclusions notice */}
+            {exclusions.filter(e => e.is_global).length > 0 && (
+              <div className="flex items-center justify-between p-3 bg-green-500/10 border border-green-500/20 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <Globe className="h-4 w-4 text-green-400" />
+                  <span className="text-sm text-green-400">
+                    {exclusions.filter(e => e.is_global).length} global exclusion(s) will be applied
+                  </span>
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={skipGlobalExclusions}
+                    onChange={(e) => setSkipGlobalExclusions(e.target.checked)}
+                    className="w-4 h-4 rounded bg-dark-bg border-dark-border text-orange-500 focus:ring-orange-500 focus:ring-offset-dark-bg"
+                  />
+                  <span className="text-xs text-slate-400">Skip global exclusions</span>
+                </label>
+              </div>
+            )}
+
+            {/* Per-scan exclusions selection */}
+            {exclusions.filter(e => !e.is_global).length > 0 && (
+              <div>
+                <label className="block text-sm font-medium text-slate-400 mb-2">
+                  Additional exclusions for this scan
+                </label>
+                <div className="space-y-2 max-h-40 overflow-y-auto">
+                  {exclusions.filter(e => !e.is_global).map((exc) => (
+                    <label
+                      key={exc.id}
+                      className="flex items-center gap-3 p-2 bg-dark-surface rounded-lg cursor-pointer hover:bg-dark-border/30 transition-colors"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedExclusionIds.includes(exc.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedExclusionIds([...selectedExclusionIds, exc.id]);
+                          } else {
+                            setSelectedExclusionIds(selectedExclusionIds.filter(id => id !== exc.id));
+                          }
+                        }}
+                        className="w-4 h-4 rounded bg-dark-bg border-dark-border text-primary focus:ring-primary focus:ring-offset-dark-bg"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-white">{exc.name}</span>
+                          <span className="text-xs px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-400">
+                            {exc.exclusion_type.replace('_', ' ')}
+                          </span>
+                        </div>
+                        <code className="text-xs text-slate-400 font-mono">{exc.value}</code>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <p className="text-xs text-slate-500">
+              Exclusions prevent scanning specific hosts or ports. Configure them in Settings.
+            </p>
+          </div>
+        )}
 
         <div>
           <div className="flex items-center justify-between mb-1">

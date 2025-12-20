@@ -136,6 +136,9 @@ pub struct ScanConfig {
     /// Optional VPN configuration ID to connect through before scanning
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub vpn_config_id: Option<String>,
+    /// Exclusion rules to apply during scanning (hosts/ports to skip)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub exclusions: Vec<crate::db::exclusions::ExclusionRule>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -178,6 +181,7 @@ impl Default for ScanConfig {
             syn_timeout: None,
             udp_timeout: None,
             vpn_config_id: None,
+            exclusions: Vec::new(),
         }
     }
 }

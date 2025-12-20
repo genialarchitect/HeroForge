@@ -25,6 +25,7 @@ pub mod auth;
 pub mod cloud;
 pub mod credential_audit;
 pub mod crm;
+pub mod exclusions;
 pub mod finding_templates;
 pub mod manual_assessments;
 pub mod methodology;
@@ -416,4 +417,25 @@ pub use methodology::{
     get_checklist_item,
     recalculate_checklist_progress,
     ChecklistItemWithTemplate,
+};
+
+// ============================================================================
+// Re-exports from exclusions module
+// ============================================================================
+
+pub use exclusions::{
+    create_exclusion,
+    get_user_exclusions,
+    get_global_exclusions,
+    get_exclusion_by_id,
+    update_exclusion,
+    delete_exclusion,
+    get_exclusions_by_ids,
+    should_exclude_target,
+    should_exclude_port,
+    ScanExclusion,
+    CreateExclusionRequest,
+    UpdateExclusionRequest,
+    ExclusionType,
+    ExclusionRule,
 };

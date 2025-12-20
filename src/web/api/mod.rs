@@ -13,6 +13,7 @@ pub mod compliance;
 pub mod crm;
 pub mod dashboard;
 pub mod dns;
+pub mod exclusions;
 pub mod finding_templates;
 pub mod jira;
 pub mod manual_compliance;

@@ -107,6 +107,12 @@ pub struct CreateScanRequest {
     /// Optional tag IDs to attach to this scan
     #[serde(default)]
     pub tag_ids: Vec<String>,
+    /// Optional exclusion IDs to apply to this scan (in addition to global exclusions)
+    #[serde(default)]
+    pub exclusion_ids: Vec<String>,
+    /// If true, skip applying global exclusions (only use per-scan exclusions)
+    #[serde(default)]
+    pub skip_global_exclusions: bool,
 }
 
 fn default_udp_retries() -> u8 {

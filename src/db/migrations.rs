@@ -82,6 +82,8 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     // Asset Groups tables
     create_asset_groups_table(pool).await?;
     create_asset_group_members_table(pool).await?;
+    // Scan Exclusions tables
+    create_scan_exclusions_table(pool).await?;
     Ok(())
 }
 
@@ -3378,6 +3380,48 @@ async fn create_asset_group_members_table(pool: &SqlitePool) -> Result<()> {
         .await?;
 
     log::info!("Created asset_group_members table");
+    Ok(())
+}
+
+// ============================================================================
+// Scan Exclusions Migration Functions
+// ============================================================================
+
+/// Create scan_exclusions table for host/port exclusion rules
+async fn create_scan_exclusions_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS scan_exclusions (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            exclusion_type TEXT NOT NULL,
+            value TEXT NOT NULL,
+            is_global INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for efficient lookups
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_scan_exclusions_user_id ON scan_exclusions(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_scan_exclusions_is_global ON scan_exclusions(user_id, is_global)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_scan_exclusions_type ON scan_exclusions(exclusion_type)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created scan_exclusions table");
     Ok(())
 }
 

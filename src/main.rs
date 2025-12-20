@@ -356,6 +356,7 @@ fn build_scan_config(
         udp_timeout: None,
         // CLI doesn't support VPN (only web API does)
         vpn_config_id: None,
+        exclusions: Vec::new(),
     }
 }
 

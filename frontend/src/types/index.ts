@@ -137,6 +137,9 @@ export interface CreateScanRequest {
   engagement_id?: string;
   // Tags
   tag_ids?: string[];
+  // Exclusions
+  exclusion_ids?: string[];
+  skip_global_exclusions?: boolean;
 }
 
 // Tag suggestion for predefined tags
@@ -2423,5 +2426,94 @@ export interface AssetDetailFull {
   history: AssetHistoryWithScan[];
   asset_tags: AssetTag[];
   asset_groups: AssetGroup[];
+}
+
+// ============================================================================
+// Rate Limit Dashboard Types
+// ============================================================================
+
+export type RateLimitCategory = 'auth' | 'api' | 'scan';
+
+export interface RateLimitConfig {
+  category: RateLimitCategory;
+  name: string;
+  requests_per_period: number;
+  period: string;
+  burst_size: number;
+  description: string;
+}
+
+export interface RateLimitEvent {
+  id: string;
+  ip: string;
+  category: RateLimitCategory;
+  endpoint: string;
+  timestamp: string;
+  user_agent: string | null;
+}
+
+export interface IpStats {
+  ip: string;
+  total_requests: number;
+  blocked_requests: number;
+  last_seen: string;
+  requests_by_category: Record<string, number>;
+}
+
+export interface RateLimitSummary {
+  total_requests_24h: number;
+  blocked_requests_24h: number;
+  block_rate_percent: number;
+  unique_ips_24h: number;
+  requests_by_category: Record<string, number>;
+  blocked_by_category: Record<string, number>;
+}
+
+export interface RequestTimePoint {
+  timestamp: string;
+  total_requests: number;
+  blocked_requests: number;
+}
+
+export interface RateLimitDashboardData {
+  configs: RateLimitConfig[];
+  summary: RateLimitSummary;
+  recent_events: RateLimitEvent[];
+  top_ips: IpStats[];
+  requests_over_time: RequestTimePoint[];
+}
+
+// ============================================================================
+// Scan Exclusions Types
+// ============================================================================
+
+export type ExclusionType = 'host' | 'cidr' | 'hostname' | 'port' | 'port_range';
+
+export interface ScanExclusion {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string | null;
+  exclusion_type: ExclusionType;
+  value: string;
+  is_global: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateExclusionRequest {
+  name: string;
+  description?: string;
+  exclusion_type: ExclusionType;
+  value: string;
+  is_global: boolean;
+}
+
+export interface UpdateExclusionRequest {
+  name?: string;
+  description?: string;
+  exclusion_type?: ExclusionType;
+  value?: string;
+  is_global?: boolean;
 }
 

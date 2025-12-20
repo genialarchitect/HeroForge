@@ -163,8 +163,10 @@ async fn scan_target_syn_ports_v4(
     // Get local IP for packet construction
     let local_ip = get_local_ip(target_ip)?;
 
-    // Determine ports to scan
-    let ports: Vec<u16> = (config.port_range.0..=config.port_range.1).collect();
+    // Determine ports to scan, filtering out excluded ports
+    let ports: Vec<u16> = (config.port_range.0..=config.port_range.1)
+        .filter(|&port| !crate::db::exclusions::should_exclude_port(port, &config.exclusions))
+        .collect();
 
     info!(
         "Starting TCP SYN scan of {} ({} ports)",
@@ -288,8 +290,10 @@ async fn scan_target_syn_ports_v6(
     // Get local IPv6 address for packet construction
     let local_ip = get_local_ip_v6(target_ip)?;
 
-    // Determine ports to scan
-    let ports: Vec<u16> = (config.port_range.0..=config.port_range.1).collect();
+    // Determine ports to scan, filtering out excluded ports
+    let ports: Vec<u16> = (config.port_range.0..=config.port_range.1)
+        .filter(|&port| !crate::db::exclusions::should_exclude_port(port, &config.exclusions))
+        .collect();
 
     info!(
         "Starting TCP SYN scan of {} ({} ports) [IPv6]",

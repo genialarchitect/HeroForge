@@ -4,9 +4,10 @@ import UserManagement from '../components/admin/UserManagement';
 import ScanManagement from '../components/admin/ScanManagement';
 import AuditLogs from '../components/admin/AuditLogs';
 import SystemSettings from '../components/admin/SystemSettings';
-import { Shield, Users, Activity, Settings, FileText } from 'lucide-react';
+import RateLimitDashboard from '../components/admin/RateLimitDashboard';
+import { Shield, Users, Activity, Settings, FileText, ShieldAlert } from 'lucide-react';
 
-type TabValue = 'users' | 'scans' | 'audit' | 'settings';
+type TabValue = 'users' | 'scans' | 'audit' | 'settings' | 'rate-limits';
 
 const AdminPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabValue>('users');
@@ -15,6 +16,7 @@ const AdminPage: React.FC = () => {
     { value: 'users' as TabValue, label: 'Users', icon: Users },
     { value: 'scans' as TabValue, label: 'Scans', icon: Activity },
     { value: 'audit' as TabValue, label: 'Audit Logs', icon: FileText },
+    { value: 'rate-limits' as TabValue, label: 'Rate Limits', icon: ShieldAlert },
     { value: 'settings' as TabValue, label: 'Settings', icon: Settings },
   ];
 
@@ -58,6 +60,7 @@ const AdminPage: React.FC = () => {
           {activeTab === 'users' && <UserManagement />}
           {activeTab === 'scans' && <ScanManagement />}
           {activeTab === 'audit' && <AuditLogs />}
+          {activeTab === 'rate-limits' && <RateLimitDashboard />}
           {activeTab === 'settings' && <SystemSettings />}
         </div>
       </div>

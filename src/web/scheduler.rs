@@ -399,6 +399,7 @@ fn build_scan_config(config: &models::ScheduledScanConfig) -> Result<ScanConfig>
         udp_timeout: None,
         // Scheduled scans don't support VPN (use regular scan API with vpn_config_id)
         vpn_config_id: None,
+        exclusions: Vec::new(),
     })
 }
 

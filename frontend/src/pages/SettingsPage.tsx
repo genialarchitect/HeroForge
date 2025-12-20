@@ -8,14 +8,15 @@ import NotificationSettings from '../components/settings/NotificationSettings';
 import ScanComparison from '../components/compare/ScanComparison';
 import ScanTemplates from '../components/settings/ScanTemplates';
 import FindingTemplates from '../components/settings/FindingTemplates';
+import ExclusionsSettings from '../components/settings/ExclusionsSettings';
 import MfaSettings from '../components/settings/MfaSettings';
 import ApiKeys from '../components/settings/ApiKeys';
 import JiraSettings from '../components/settings/JiraSettings';
 import SiemSettings from '../components/settings/SiemSettings';
 import VpnSettings from '../components/settings/VpnSettings';
-import { Target, Clock, Bell, Settings, GitCompare, FileText, User, Shield, Lock, Key, ExternalLink, Database, Wifi, BookOpen } from 'lucide-react';
+import { Target, Clock, Bell, Settings, GitCompare, FileText, User, Shield, Lock, Key, ExternalLink, Database, Wifi, BookOpen, Ban } from 'lucide-react';
 
-type TabId = 'profile' | 'security' | 'api-keys' | 'administration' | 'target-groups' | 'scheduled-scans' | 'templates' | 'finding-templates' | 'vpn' | 'notifications' | 'jira-integration' | 'siem-integration' | 'compare-scans';
+type TabId = 'profile' | 'security' | 'api-keys' | 'administration' | 'target-groups' | 'exclusions' | 'scheduled-scans' | 'templates' | 'finding-templates' | 'vpn' | 'notifications' | 'jira-integration' | 'siem-integration' | 'compare-scans';
 
 interface Tab {
   id: TabId;
@@ -75,6 +76,12 @@ const SettingsPage: React.FC = () => {
           label: 'Target Groups',
           icon: <Target className="h-4 w-4" />,
           component: <TargetGroups />,
+        },
+        {
+          id: 'exclusions',
+          label: 'Exclusions',
+          icon: <Ban className="h-4 w-4" />,
+          component: <ExclusionsSettings />,
         },
         {
           id: 'scheduled-scans',

@@ -150,14 +150,22 @@ pub async fn scan_target_udp_ports(
 ) -> Result<Vec<PortInfo>> {
     let ip = target.ip;
 
-    // Determine ports to scan
+    // Determine ports to scan, filtering out excluded ports
     let ports: Vec<u16> = if let Some((start, end)) = config.udp_port_range {
-        (start..=end).collect()
+        (start..=end)
+            .filter(|&port| !crate::db::exclusions::should_exclude_port(port, &config.exclusions))
+            .collect()
     } else if config.port_range == (1, 1000) {
         // Use default UDP ports if using default TCP range
-        DEFAULT_UDP_PORTS.to_vec()
+        DEFAULT_UDP_PORTS
+            .iter()
+            .copied()
+            .filter(|&port| !crate::db::exclusions::should_exclude_port(port, &config.exclusions))
+            .collect()
     } else {
-        (config.port_range.0..=config.port_range.1).collect()
+        (config.port_range.0..=config.port_range.1)
+            .filter(|&port| !crate::db::exclusions::should_exclude_port(port, &config.exclusions))
+            .collect()
     };
 
     info!(

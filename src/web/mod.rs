@@ -5,6 +5,7 @@ pub mod broadcast;
 pub mod error;
 pub mod openapi;
 pub mod rate_limit;
+pub mod rate_limit_stats;
 pub mod scheduler;
 pub mod websocket;
 
@@ -390,7 +391,9 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     // AD Assessment endpoints
                     .configure(api::ad_assessment::configure)
                     // Credential Audit endpoints
-                    .configure(api::credential_audit::configure),
+                    .configure(api::credential_audit::configure)
+                    // Scan Exclusions endpoints
+                    .configure(api::exclusions::configure),
             )
             // Swagger UI for API documentation
             .service(

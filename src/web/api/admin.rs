@@ -5,6 +5,7 @@ use chrono::Utc;
 
 use crate::db::{self, models};
 use crate::web::auth;
+use crate::web::rate_limit_stats;
 
 // ============================================================================
 // Helper Functions
@@ -728,6 +729,29 @@ pub async fn update_setting(
 }
 
 // ============================================================================
+// Rate Limit Dashboard
+// ============================================================================
+
+/// Get rate limit dashboard data
+pub async fn get_rate_limit_dashboard(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+) -> Result<HttpResponse> {
+    // Check permission - require view_audit_logs or manage_settings
+    let has_audit_perm = db::has_permission(&pool, &claims.sub, "view_audit_logs").await.unwrap_or(false);
+    let has_settings_perm = db::has_permission(&pool, &claims.sub, "manage_settings").await.unwrap_or(false);
+
+    if !has_audit_perm && !has_settings_perm {
+        return Ok(HttpResponse::Forbidden().json(serde_json::json!({
+            "error": "Insufficient permissions"
+        })));
+    }
+
+    let dashboard_data = rate_limit_stats::get_dashboard_data();
+    Ok(HttpResponse::Ok().json(dashboard_data))
+}
+
+// ============================================================================
 // Configuration
 // ============================================================================
 
@@ -759,5 +783,8 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             // System settings
             .route("/settings", web::get().to(list_settings))
             .route("/settings/{key}", web::patch().to(update_setting))
+
+            // Rate limit dashboard
+            .route("/rate-limits", web::get().to(get_rate_limit_dashboard))
     );
 }

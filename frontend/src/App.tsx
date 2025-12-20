@@ -22,6 +22,7 @@ const MethodologyPage = lazy(() => import('./pages/MethodologyPage'));
 const ExecutiveDashboardPage = lazy(() => import('./pages/ExecutiveDashboardPage'));
 const ApiSecurityPage = lazy(() => import('./pages/ApiSecurityPage'));
 const AttackPathsPage = lazy(() => import('./pages/AttackPathsPage'));
+const ScanComparisonPage = lazy(() => import('./pages/ScanComparisonPage'));
 
 // CRM pages
 const CrmDashboard = lazy(() => import('./pages/crm/CrmDashboard'));
@@ -240,6 +241,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <AttackPathsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/compare"
+            element={
+              <ProtectedRoute>
+                <ScanComparisonPage />
               </ProtectedRoute>
             }
           />

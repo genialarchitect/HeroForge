@@ -129,8 +129,10 @@ pub fn is_vpn_encryption_configured() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
+    #[serial]
     fn test_credentials_roundtrip() {
         // Set up test key
         std::env::set_var("VPN_ENCRYPTION_KEY", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
@@ -144,6 +146,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_encryption_produces_different_ciphertext() {
         std::env::set_var("VPN_ENCRYPTION_KEY", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
 
@@ -156,6 +159,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_invalid_key_length() {
         std::env::set_var("VPN_ENCRYPTION_KEY", "tooshort");
 

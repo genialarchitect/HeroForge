@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
+import { QRCodeSVG } from 'qrcode.react';
 import { mfaAPI, authAPI } from '../../services/api';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
@@ -204,7 +205,12 @@ const MfaSettings: React.FC = () => {
                   </p>
                   {qrCodeUrl && (
                     <div className="bg-white p-4 rounded-lg mb-4">
-                      <img src={qrCodeUrl} alt="MFA QR Code" className="w-64 h-64" />
+                      <QRCodeSVG
+                        value={qrCodeUrl}
+                        size={256}
+                        level="M"
+                        marginSize={2}
+                      />
                     </div>
                   )}
                   <div className="mt-4 w-full max-w-md">

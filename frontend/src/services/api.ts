@@ -160,6 +160,10 @@ import type {
   AssetDetailFull,
   // SSL Report types
   SslReportSummary,
+  // Scan Exclusions types
+  ScanExclusion,
+  CreateExclusionRequest,
+  UpdateExclusionRequest,
 } from '../types';
 
 const api = axios.create({
@@ -256,6 +260,8 @@ export const scanTagAPI = {
     api.delete<{ message: string }>(`/scans/${scanId}/tags/${tagId}`),
 };
 
+import type { RateLimitDashboardData } from '../types';
+
 export const adminAPI = {
   // User management
   getUsers: () => api.get<User[]>('/admin/users'),
@@ -308,6 +314,9 @@ export const adminAPI = {
   getSettings: () => api.get<SystemSetting[]>('/admin/settings'),
   updateSetting: (key: string, value: string) =>
     api.patch(`/admin/settings/${key}`, { value }),
+
+  // Rate limit dashboard
+  getRateLimitDashboard: () => api.get<RateLimitDashboardData>('/admin/rate-limits'),
 };
 
 export const reportAPI = {
@@ -1336,6 +1345,30 @@ export const assetGroupsAPI = {
   // Get assets filtered by group
   getAssetsByGroup: (params: { group_id: string; status?: string }) =>
     api.get<Asset[]>('/asset-groups/assets', { params }),
+};
+
+// Scan Exclusions API
+export const exclusionsAPI = {
+  // Get all exclusions for current user
+  getAll: () => api.get<ScanExclusion[]>('/exclusions'),
+
+  // Get global exclusions only
+  getGlobal: () => api.get<ScanExclusion[]>('/exclusions/global'),
+
+  // Get a specific exclusion
+  get: (id: string) => api.get<ScanExclusion>(`/exclusions/${id}`),
+
+  // Create a new exclusion
+  create: (data: CreateExclusionRequest) =>
+    api.post<ScanExclusion>('/exclusions', data),
+
+  // Update an exclusion
+  update: (id: string, data: UpdateExclusionRequest) =>
+    api.put<ScanExclusion>(`/exclusions/${id}`, data),
+
+  // Delete an exclusion
+  delete: (id: string) =>
+    api.delete<{ message: string }>(`/exclusions/${id}`),
 };
 
 export default api;

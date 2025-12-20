@@ -387,6 +387,49 @@ pub async fn create_scan(
         }
     }
 
+    // Load exclusions for this scan
+    let mut exclusion_rules: Vec<crate::db::exclusions::ExclusionRule> = Vec::new();
+
+    // Load global exclusions unless explicitly skipped
+    if !scan_request.skip_global_exclusions {
+        match db::get_global_exclusions(&pool, &claims.sub).await {
+            Ok(global_exclusions) => {
+                for exc in &global_exclusions {
+                    exclusion_rules.push(exc.into());
+                }
+                if !global_exclusions.is_empty() {
+                    log::info!(
+                        "Loaded {} global exclusion(s) for scan",
+                        global_exclusions.len()
+                    );
+                }
+            }
+            Err(e) => {
+                log::warn!("Failed to load global exclusions: {}", e);
+                // Continue without global exclusions
+            }
+        }
+    }
+
+    // Load per-scan exclusions if specified
+    if !scan_request.exclusion_ids.is_empty() {
+        match db::get_exclusions_by_ids(&pool, &claims.sub, &scan_request.exclusion_ids).await {
+            Ok(scan_exclusions) => {
+                for exc in &scan_exclusions {
+                    exclusion_rules.push(exc.into());
+                }
+                log::info!(
+                    "Loaded {} per-scan exclusion(s)",
+                    scan_exclusions.len()
+                );
+            }
+            Err(e) => {
+                log::warn!("Failed to load per-scan exclusions: {}", e);
+                // Continue without per-scan exclusions
+            }
+        }
+    }
+
     // Start scan in background - clone only what's needed for the spawned task
     let scan_id = scan.id.clone();
     let scan_name = scan.name.clone();
@@ -446,6 +489,7 @@ pub async fn create_scan(
         syn_timeout: None,
         udp_timeout: None,
         vpn_config_id: vpn_config_id.clone(), // Clone for config, original used in spawned task
+        exclusions: exclusion_rules,
     };
 
     tokio::spawn(async move {

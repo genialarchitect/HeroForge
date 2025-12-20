@@ -85,6 +85,20 @@ pub async fn run_scan(
     let start = Instant::now();
     info!("Starting comprehensive network scan...");
 
+    // Log exclusion rules if any
+    if !config.exclusions.is_empty() {
+        info!(
+            "Applying {} exclusion rule(s) to scan",
+            config.exclusions.len()
+        );
+        for rule in &config.exclusions {
+            debug!(
+                "Exclusion: {:?} = {}",
+                rule.exclusion_type, rule.value
+            );
+        }
+    }
+
     // Helper function to send progress messages
     let send_progress = |tx: &Option<Sender<ScanProgressMessage>>, msg: ScanProgressMessage| {
         if let Some(sender) = tx {
@@ -93,7 +107,7 @@ pub async fn run_scan(
     };
 
     // Step 1: Discover live hosts (or skip if --skip-discovery is set)
-    let live_hosts = if config.skip_host_discovery {
+    let discovered_hosts = if config.skip_host_discovery {
         info!("Phase 1: Skipping Host Discovery (--skip-discovery)");
         send_progress(
             &progress_tx,
@@ -125,11 +139,45 @@ pub async fn run_scan(
         hosts
     };
 
+    // Apply host exclusions
+    let discovered_count = discovered_hosts.len();
+    let live_hosts: Vec<ScanTarget> = discovered_hosts
+        .into_iter()
+        .filter(|host| {
+            let ip_str = host.ip.to_string();
+            let should_exclude = crate::db::exclusions::should_exclude_target(&ip_str, &config.exclusions);
+
+            // Also check hostname if present
+            let hostname_excluded = host.hostname.as_ref().map_or(false, |h| {
+                crate::db::exclusions::should_exclude_target(h, &config.exclusions)
+            });
+
+            if should_exclude || hostname_excluded {
+                info!(
+                    "Excluding host {} (hostname: {:?}) due to exclusion rule",
+                    ip_str,
+                    host.hostname
+                );
+                false
+            } else {
+                true
+            }
+        })
+        .collect();
+
+    if discovered_count != live_hosts.len() {
+        info!(
+            "Excluded {} host(s) based on exclusion rules ({} remaining)",
+            discovered_count - live_hosts.len(),
+            live_hosts.len()
+        );
+    }
+
     if live_hosts.is_empty() {
         return Ok(Vec::new());
     }
 
-    // Notify about discovered hosts
+    // Notify about discovered hosts (only non-excluded ones)
     for host in &live_hosts {
         send_progress(
             &progress_tx,

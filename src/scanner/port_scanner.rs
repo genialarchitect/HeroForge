@@ -82,7 +82,19 @@ async fn scan_tcp_connect(
     target: &ScanTarget,
     config: &ScanConfig,
 ) -> Result<Vec<PortInfo>, anyhow::Error> {
-    let ports: Vec<u16> = (config.port_range.0..=config.port_range.1).collect();
+    // Filter out excluded ports
+    let ports: Vec<u16> = (config.port_range.0..=config.port_range.1)
+        .filter(|&port| !crate::db::exclusions::should_exclude_port(port, &config.exclusions))
+        .collect();
+
+    if ports.len() != (config.port_range.1 - config.port_range.0 + 1) as usize {
+        debug!(
+            "Excluded {} port(s) based on exclusion rules ({} remaining)",
+            (config.port_range.1 - config.port_range.0 + 1) as usize - ports.len(),
+            ports.len()
+        );
+    }
+
     let semaphore = Arc::new(Semaphore::new(config.threads));
     let mut tasks = Vec::new();
 
