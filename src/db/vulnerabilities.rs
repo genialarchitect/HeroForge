@@ -448,6 +448,8 @@ pub async fn bulk_update_vulnerability_status(
     vulnerability_ids: &[String],
     status: Option<&str>,
     assignee_id: Option<&str>,
+    due_date: Option<chrono::DateTime<Utc>>,
+    priority: Option<&str>,
     user_id: &str,
 ) -> Result<usize> {
     if vulnerability_ids.is_empty() {
@@ -461,36 +463,99 @@ pub async fn bulk_update_vulnerability_status(
     let mut updated_count = 0;
 
     for vuln_id in vulnerability_ids {
-        // Build query based on what fields are being updated
-        let query_str = if let Some(s) = status {
-            if s == "resolved" {
-                "UPDATE vulnerability_tracking SET updated_at = ?1, status = ?2, resolved_at = ?3, resolved_by = ?4 WHERE id = ?5"
-            } else {
-                "UPDATE vulnerability_tracking SET updated_at = ?1, status = ?2 WHERE id = ?3"
-            }
-        } else if assignee_id.is_some() {
-            "UPDATE vulnerability_tracking SET updated_at = ?1, assignee_id = ?2 WHERE id = ?3"
-        } else {
-            "UPDATE vulnerability_tracking SET updated_at = ?1 WHERE id = ?2"
-        };
+        // Build dynamic update query
+        let mut set_parts = vec!["updated_at = ?1".to_string()];
+        let mut param_count = 2;
 
-        let mut q = sqlx::query(query_str).bind(now);
+        if status.is_some() {
+            set_parts.push(format!("status = ?{}", param_count));
+            param_count += 1;
+        }
+        if assignee_id.is_some() {
+            set_parts.push(format!("assignee_id = ?{}", param_count));
+            param_count += 1;
+        }
+        if due_date.is_some() {
+            set_parts.push(format!("due_date = ?{}", param_count));
+            param_count += 1;
+        }
+        if priority.is_some() {
+            set_parts.push(format!("priority = ?{}", param_count));
+            param_count += 1;
+        }
+
+        // Handle resolved status special case
+        let is_resolving = status.map(|s| s == "resolved").unwrap_or(false);
+        if is_resolving {
+            set_parts.push(format!("resolved_at = ?{}", param_count));
+            param_count += 1;
+            set_parts.push(format!("resolved_by = ?{}", param_count));
+            param_count += 1;
+        }
+
+        let query_str = format!(
+            "UPDATE vulnerability_tracking SET {} WHERE id = ?{}",
+            set_parts.join(", "),
+            param_count
+        );
+
+        let mut q = sqlx::query(&query_str).bind(now);
 
         if let Some(s) = status {
             q = q.bind(s);
-            if s == "resolved" {
-                q = q.bind(now).bind(user_id).bind(vuln_id);
-            } else {
-                q = q.bind(vuln_id);
-            }
-        } else if let Some(assignee) = assignee_id {
-            q = q.bind(assignee).bind(vuln_id);
-        } else {
-            q = q.bind(vuln_id);
         }
+        if let Some(assignee) = assignee_id {
+            q = q.bind(assignee);
+        }
+        if let Some(dd) = &due_date {
+            q = q.bind(dd);
+        }
+        if let Some(p) = priority {
+            q = q.bind(p);
+        }
+        if is_resolving {
+            q = q.bind(now).bind(user_id);
+        }
+        q = q.bind(vuln_id);
 
         let result = q.execute(&mut *tx).await?;
-        updated_count += result.rows_affected() as usize;
+        if result.rows_affected() > 0 {
+            updated_count += 1;
+
+            // Create timeline events for each update
+            if let Some(s) = status {
+                let event_id = Uuid::new_v4().to_string();
+                sqlx::query(
+                    r#"
+                    INSERT INTO remediation_timeline (id, vulnerability_tracking_id, user_id, event_type, new_value, comment, created_at)
+                    VALUES (?1, ?2, ?3, 'status_change', ?4, 'Bulk status update', ?5)
+                    "#,
+                )
+                .bind(&event_id)
+                .bind(vuln_id)
+                .bind(user_id)
+                .bind(s)
+                .bind(now)
+                .execute(&mut *tx)
+                .await?;
+            }
+            if let Some(assignee) = assignee_id {
+                let event_id = Uuid::new_v4().to_string();
+                sqlx::query(
+                    r#"
+                    INSERT INTO remediation_timeline (id, vulnerability_tracking_id, user_id, event_type, new_value, comment, created_at)
+                    VALUES (?1, ?2, ?3, 'assignment', ?4, 'Bulk assignment', ?5)
+                    "#,
+                )
+                .bind(&event_id)
+                .bind(vuln_id)
+                .bind(user_id)
+                .bind(assignee)
+                .bind(now)
+                .execute(&mut *tx)
+                .await?;
+            }
+        }
     }
 
     tx.commit().await?;
@@ -687,4 +752,270 @@ pub async fn get_vulnerability_statistics(
     };
 
     Ok(stats)
+}
+
+// ============================================================================
+// Retest Workflow Functions
+// ============================================================================
+
+/// Request a retest for a vulnerability
+pub async fn request_vulnerability_retest(
+    pool: &SqlitePool,
+    vuln_id: &str,
+    user_id: &str,
+    notes: Option<&str>,
+) -> Result<models::VulnerabilityTracking> {
+    let now = Utc::now();
+
+    // Update the vulnerability with retest request info
+    sqlx::query(
+        r#"
+        UPDATE vulnerability_tracking
+        SET updated_at = ?1,
+            retest_requested_at = ?2,
+            retest_requested_by = ?3,
+            retest_completed_at = NULL,
+            retest_result = NULL,
+            retest_scan_id = NULL
+        WHERE id = ?4
+        "#,
+    )
+    .bind(now)
+    .bind(now)
+    .bind(user_id)
+    .bind(vuln_id)
+    .execute(pool)
+    .await?;
+
+    // Create timeline event
+    let event_id = Uuid::new_v4().to_string();
+    sqlx::query(
+        r#"
+        INSERT INTO remediation_timeline (id, vulnerability_tracking_id, user_id, event_type, new_value, comment, created_at)
+        VALUES (?1, ?2, ?3, 'retest_requested', 'pending', ?4, ?5)
+        "#,
+    )
+    .bind(&event_id)
+    .bind(vuln_id)
+    .bind(user_id)
+    .bind(notes.unwrap_or("Retest requested"))
+    .bind(now)
+    .execute(pool)
+    .await?;
+
+    // Return updated vulnerability
+    let updated = sqlx::query_as::<_, models::VulnerabilityTracking>(
+        "SELECT * FROM vulnerability_tracking WHERE id = ?1",
+    )
+    .bind(vuln_id)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(updated)
+}
+
+/// Bulk request retests for multiple vulnerabilities
+pub async fn bulk_request_retests(
+    pool: &SqlitePool,
+    vulnerability_ids: &[String],
+    user_id: &str,
+    notes: Option<&str>,
+) -> Result<usize> {
+    if vulnerability_ids.is_empty() {
+        return Ok(0);
+    }
+
+    let now = Utc::now();
+    let mut tx = pool.begin().await?;
+    let mut updated_count = 0;
+
+    for vuln_id in vulnerability_ids {
+        // Update the vulnerability with retest request info
+        let result = sqlx::query(
+            r#"
+            UPDATE vulnerability_tracking
+            SET updated_at = ?1,
+                retest_requested_at = ?2,
+                retest_requested_by = ?3,
+                retest_completed_at = NULL,
+                retest_result = NULL,
+                retest_scan_id = NULL
+            WHERE id = ?4
+            "#,
+        )
+        .bind(now)
+        .bind(now)
+        .bind(user_id)
+        .bind(vuln_id)
+        .execute(&mut *tx)
+        .await?;
+
+        if result.rows_affected() > 0 {
+            // Create timeline event
+            let event_id = Uuid::new_v4().to_string();
+            sqlx::query(
+                r#"
+                INSERT INTO remediation_timeline (id, vulnerability_tracking_id, user_id, event_type, new_value, comment, created_at)
+                VALUES (?1, ?2, ?3, 'retest_requested', 'pending', ?4, ?5)
+                "#,
+            )
+            .bind(&event_id)
+            .bind(vuln_id)
+            .bind(user_id)
+            .bind(notes.unwrap_or("Bulk retest requested"))
+            .bind(now)
+            .execute(&mut *tx)
+            .await?;
+
+            updated_count += 1;
+        }
+    }
+
+    tx.commit().await?;
+    Ok(updated_count)
+}
+
+/// Complete a retest with a result
+pub async fn complete_vulnerability_retest(
+    pool: &SqlitePool,
+    vuln_id: &str,
+    result: &str,
+    scan_id: Option<&str>,
+    user_id: &str,
+    notes: Option<&str>,
+) -> Result<models::VulnerabilityTracking> {
+    // Validate result
+    let valid_results = ["still_vulnerable", "remediated", "partially_remediated"];
+    if !valid_results.contains(&result) {
+        return Err(anyhow::anyhow!(
+            "Invalid retest result '{}'. Must be one of: {}",
+            result,
+            valid_results.join(", ")
+        ));
+    }
+
+    let now = Utc::now();
+
+    // Update the vulnerability with retest completion
+    sqlx::query(
+        r#"
+        UPDATE vulnerability_tracking
+        SET updated_at = ?1,
+            retest_completed_at = ?2,
+            retest_result = ?3,
+            retest_scan_id = ?4
+        WHERE id = ?5
+        "#,
+    )
+    .bind(now)
+    .bind(now)
+    .bind(result)
+    .bind(scan_id)
+    .bind(vuln_id)
+    .execute(pool)
+    .await?;
+
+    // If remediated, also update the status
+    if result == "remediated" {
+        sqlx::query(
+            "UPDATE vulnerability_tracking SET status = 'resolved', resolved_at = ?1, resolved_by = ?2 WHERE id = ?3",
+        )
+        .bind(now)
+        .bind(user_id)
+        .bind(vuln_id)
+        .execute(pool)
+        .await?;
+    }
+
+    // Create timeline event
+    let event_id = Uuid::new_v4().to_string();
+    sqlx::query(
+        r#"
+        INSERT INTO remediation_timeline (id, vulnerability_tracking_id, user_id, event_type, old_value, new_value, comment, created_at)
+        VALUES (?1, ?2, ?3, 'retest_completed', 'pending', ?4, ?5, ?6)
+        "#,
+    )
+    .bind(&event_id)
+    .bind(vuln_id)
+    .bind(user_id)
+    .bind(result)
+    .bind(notes.unwrap_or(&format!("Retest completed: {}", result)))
+    .bind(now)
+    .execute(pool)
+    .await?;
+
+    // Return updated vulnerability
+    let updated = sqlx::query_as::<_, models::VulnerabilityTracking>(
+        "SELECT * FROM vulnerability_tracking WHERE id = ?1",
+    )
+    .bind(vuln_id)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(updated)
+}
+
+/// Get vulnerabilities pending retest (requested but not completed)
+pub async fn get_vulnerabilities_pending_retest(
+    pool: &SqlitePool,
+    scan_id: Option<&str>,
+) -> Result<Vec<models::VulnerabilityTracking>> {
+    let vulnerabilities = if let Some(sid) = scan_id {
+        sqlx::query_as::<_, models::VulnerabilityTracking>(
+            r#"
+            SELECT * FROM vulnerability_tracking
+            WHERE scan_id = ?1
+              AND retest_requested_at IS NOT NULL
+              AND retest_completed_at IS NULL
+            ORDER BY retest_requested_at DESC
+            "#,
+        )
+        .bind(sid)
+        .fetch_all(pool)
+        .await?
+    } else {
+        sqlx::query_as::<_, models::VulnerabilityTracking>(
+            r#"
+            SELECT * FROM vulnerability_tracking
+            WHERE retest_requested_at IS NOT NULL
+              AND retest_completed_at IS NULL
+            ORDER BY retest_requested_at DESC
+            "#,
+        )
+        .fetch_all(pool)
+        .await?
+    };
+
+    Ok(vulnerabilities)
+}
+
+/// Get retest history for a vulnerability from timeline
+pub async fn get_retest_history(
+    pool: &SqlitePool,
+    vuln_id: &str,
+) -> Result<Vec<models::RemediationTimelineEventWithUser>> {
+    let history = sqlx::query_as::<_, models::RemediationTimelineEventWithUser>(
+        r#"
+        SELECT
+            rt.id,
+            rt.vulnerability_tracking_id,
+            rt.user_id,
+            u.username,
+            rt.event_type,
+            rt.old_value,
+            rt.new_value,
+            rt.comment,
+            rt.created_at
+        FROM remediation_timeline rt
+        JOIN users u ON rt.user_id = u.id
+        WHERE rt.vulnerability_tracking_id = ?1
+          AND rt.event_type IN ('retest_requested', 'retest_completed')
+        ORDER BY rt.created_at DESC
+        "#,
+    )
+    .bind(vuln_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(history)
 }

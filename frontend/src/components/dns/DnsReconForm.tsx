@@ -47,8 +47,9 @@ const DnsReconForm: React.FC<DnsReconFormProps> = ({ onSuccess }) => {
       if (onSuccess) {
         onSuccess(response.data);
       }
-    } catch (error: any) {
-      const errorMessage = error.response?.data?.error || 'Failed to perform DNS reconnaissance';
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      const errorMessage = axiosError.response?.data?.error || 'Failed to perform DNS reconnaissance';
       toast.error(errorMessage);
     } finally {
       setLoading(false);
@@ -107,7 +108,7 @@ const DnsReconForm: React.FC<DnsReconFormProps> = ({ onSuccess }) => {
             <Checkbox
               id="includeSubdomains"
               checked={includeSubdomains}
-              onChange={(e) => setIncludeSubdomains(e.target.checked)}
+              onChange={(checked) => setIncludeSubdomains(checked)}
               disabled={loading}
               label="Enumerate subdomains"
             />

@@ -51,6 +51,16 @@ where
         // Clone service at the beginning to avoid lifetime issues
         let service = self.service.clone();
 
+        // Skip auth for WebSocket routes - they handle their own auth via query parameters
+        let path = req.path();
+        if path.contains("/ws/") {
+            let fut = service.call(req);
+            return Box::pin(async move {
+                let res = fut.await?;
+                Ok(res)
+            });
+        }
+
         // Check for Authorization header (JWT)
         let auth_header = req.headers().get("Authorization");
         if let Some(auth_value) = auth_header {

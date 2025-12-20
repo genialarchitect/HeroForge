@@ -42,7 +42,7 @@ const WebAppResults: React.FC<WebAppResultsProps> = ({ scanId }) => {
           // Poll again after 2 seconds
           setTimeout(fetchResults, 2000);
         }
-      } catch (error: any) {
+      } catch (error: unknown) {
         toast.error('Failed to fetch scan results');
         setLoading(false);
       }

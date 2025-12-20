@@ -6,3 +6,4 @@ export { default as ScanActivityWidget } from './ScanActivityWidget';
 export { default as TopRiskyHostsWidget } from './TopRiskyHostsWidget';
 export { default as CriticalVulnsWidget } from './CriticalVulnsWidget';
 export { default as UpcomingScansWidget } from './UpcomingScansWidget';
+export { default as ThreatIntelWidget } from './ThreatIntelWidget';

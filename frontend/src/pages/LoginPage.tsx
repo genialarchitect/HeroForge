@@ -15,24 +15,24 @@ const LoginPage: React.FC = () => {
   }, [isAuthenticated, navigate]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-dark-bg via-slate-900 to-slate-800 p-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-100 via-slate-50 to-white dark:from-dark-bg dark:via-slate-900 dark:to-slate-800 p-4">
       <div className="w-full max-w-md">
         {/* Logo and Title */}
         <div className="text-center mb-8 animate-fadeIn">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-primary rounded-lg mb-4">
             <Shield className="h-10 w-10 text-white" />
           </div>
-          <h1 className="text-4xl font-bold text-white mb-2">
+          <h1 className="text-4xl font-bold text-slate-900 dark:text-white mb-2">
             HeroForge
           </h1>
-          <p className="text-slate-400 text-lg">
+          <p className="text-slate-500 dark:text-slate-400 text-lg">
             Network Triage & Reconnaissance
           </p>
         </div>
 
         {/* Login Card */}
-        <div className="bg-dark-surface border border-dark-border rounded-lg shadow-2xl p-8 animate-fadeIn">
-          <h2 className="text-2xl font-semibold text-white mb-6 text-center">
+        <div className="bg-light-surface dark:bg-dark-surface border border-light-border dark:border-dark-border rounded-lg shadow-2xl p-8 animate-fadeIn">
+          <h2 className="text-2xl font-semibold text-slate-900 dark:text-white mb-6 text-center">
             Sign In
           </h2>
           <LoginForm />

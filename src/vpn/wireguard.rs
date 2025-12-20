@@ -185,52 +185,6 @@ impl WireGuardConnection {
         Ok(())
     }
 
-    /// Check if the WireGuard interface is active
-    pub async fn is_alive(&self) -> bool {
-        let output = Command::new("wg")
-            .arg("show")
-            .arg(&self.interface_name)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .output()
-            .await;
-
-        matches!(output, Ok(o) if o.status.success())
-    }
-
-    /// Get interface statistics
-    pub async fn get_stats(&self) -> Result<WireGuardStats> {
-        let output = Command::new("wg")
-            .arg("show")
-            .arg(&self.interface_name)
-            .arg("transfer")
-            .output()
-            .await?;
-
-        if !output.status.success() {
-            return Err(anyhow::anyhow!("Failed to get WireGuard stats"));
-        }
-
-        let output_str = String::from_utf8_lossy(&output.stdout);
-
-        // Parse transfer stats
-        // Format: "peer_public_key\treceived\ttransmitted"
-        let mut received = 0u64;
-        let mut transmitted = 0u64;
-
-        for line in output_str.lines() {
-            let parts: Vec<&str> = line.split('\t').collect();
-            if parts.len() >= 3 {
-                received += parts[1].parse::<u64>().unwrap_or(0);
-                transmitted += parts[2].parse::<u64>().unwrap_or(0);
-            }
-        }
-
-        Ok(WireGuardStats {
-            bytes_received: received,
-            bytes_transmitted: transmitted,
-        })
-    }
 }
 
 impl Drop for WireGuardConnection {
@@ -248,13 +202,6 @@ impl Drop for WireGuardConnection {
         let config_path = format!("/etc/wireguard/{}.conf", interface);
         let _ = std::fs::remove_file(&config_path);
     }
-}
-
-/// WireGuard interface statistics
-#[derive(Debug, Clone)]
-pub struct WireGuardStats {
-    pub bytes_received: u64,
-    pub bytes_transmitted: u64,
 }
 
 /// Generate a unique WireGuard interface name for a user

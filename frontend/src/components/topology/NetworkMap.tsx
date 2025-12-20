@@ -62,6 +62,15 @@ interface GraphNode extends TopologyNode {
   size?: number;
 }
 
+// Link type for force graph (source/target can be string or resolved node)
+interface GraphLink {
+  source: string | GraphNode;
+  target: string | GraphNode;
+  relationship_type: 'gateway' | 'same_subnet' | 'shared_service';
+  strength: number;
+  color?: string;
+}
+
 const NetworkMap: React.FC<NetworkMapProps> = ({ scanId }) => {
   const [topology, setTopology] = useState<TopologyData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -404,27 +413,31 @@ const NetworkMap: React.FC<NetworkMapProps> = ({ scanId }) => {
         <ForceGraph2D
           ref={graphRef}
           graphData={graphData}
-          nodeLabel={(node: any) => `${node.hostname || node.ip}\n${node.os || ''}\nRisk: ${node.risk_score.toFixed(1)}`}
-          nodeColor={(node: any) => node.color}
-          nodeVal={(node: any) => node.size}
-          linkColor={(link: any) => link.color}
-          linkWidth={(link: any) => link.strength * 2}
-          linkDirectionalParticles={(link: any) => link.relationship_type === 'gateway' ? 2 : 0}
+          nodeLabel={(node) => {
+            const graphNode = node as GraphNode;
+            return `${graphNode.hostname || graphNode.ip}\n${graphNode.os || ''}\nRisk: ${graphNode.risk_score.toFixed(1)}`;
+          }}
+          nodeColor={(node) => (node as GraphNode).color || '#22c55e'}
+          nodeVal={(node) => (node as GraphNode).size || 5}
+          linkColor={(link) => (link as GraphLink).color || '#64748b'}
+          linkWidth={(link) => ((link as GraphLink).strength || 1) * 2}
+          linkDirectionalParticles={(link) => (link as GraphLink).relationship_type === 'gateway' ? 2 : 0}
           linkDirectionalParticleSpeed={0.005}
           onNodeClick={handleNodeClick}
-          nodeCanvasObject={(node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
-            const label = node.hostname || node.ip;
+          nodeCanvasObject={(node, ctx: CanvasRenderingContext2D, globalScale: number) => {
+            const graphNode = node as GraphNode;
+            const label = graphNode.hostname || graphNode.ip;
             const fontSize = 12 / globalScale;
             ctx.font = `${fontSize}px Sans-Serif`;
 
             // Draw node circle
             ctx.beginPath();
-            ctx.arc(node.x, node.y, node.size, 0, 2 * Math.PI, false);
-            ctx.fillStyle = node.color;
+            ctx.arc(graphNode.x || 0, graphNode.y || 0, graphNode.size || 5, 0, 2 * Math.PI, false);
+            ctx.fillStyle = graphNode.color || '#22c55e';
             ctx.fill();
 
             // Draw border for gateways
-            if (node.is_gateway) {
+            if (graphNode.is_gateway) {
               ctx.strokeStyle = '#3b82f6';
               ctx.lineWidth = 2 / globalScale;
               ctx.stroke();
@@ -435,7 +448,7 @@ const NetworkMap: React.FC<NetworkMapProps> = ({ scanId }) => {
               ctx.textAlign = 'center';
               ctx.textBaseline = 'middle';
               ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-              ctx.fillText(label, node.x, node.y + node.size + fontSize + 2);
+              ctx.fillText(label, graphNode.x || 0, (graphNode.y || 0) + (graphNode.size || 5) + fontSize + 2);
             }
           }}
           enableNodeDrag={true}

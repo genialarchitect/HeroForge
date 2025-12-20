@@ -7,36 +7,77 @@
     @apply box-border;
   }
 
+  /* Light mode (default when no .dark class) */
+  :root {
+    color-scheme: light;
+  }
+
+  /* Dark mode */
+  :root.dark {
+    color-scheme: dark;
+  }
+
   body {
-    @apply m-0 p-0 bg-dark-bg text-slate-100 font-sans antialiased;
+    @apply m-0 p-0 font-sans antialiased;
+    @apply bg-light-bg text-slate-900;
+    @apply dark:bg-dark-bg dark:text-slate-100;
+    @apply transition-colors duration-200;
   }
 
   code {
     @apply font-mono;
   }
+
+  /* Input and form element base styles */
+  input, textarea, select {
+    @apply bg-light-surface text-slate-900 border-light-border;
+    @apply dark:bg-dark-surface dark:text-slate-100 dark:border-dark-border;
+  }
+
+  /* Placeholder text */
+  ::placeholder {
+    @apply text-slate-400 dark:text-slate-500;
+  }
 }
 
 @layer components {
-  /* Custom scrollbar for dark theme */
+  /* Custom scrollbar - adapts to theme */
   ::-webkit-scrollbar {
     @apply w-2 h-2;
   }
 
   ::-webkit-scrollbar-track {
-    @apply bg-dark-bg;
+    @apply bg-light-bg dark:bg-dark-bg;
   }
 
   ::-webkit-scrollbar-thumb {
-    @apply bg-dark-border rounded-full;
+    @apply bg-slate-300 dark:bg-dark-border rounded-full;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-dark-hover;
+    @apply bg-slate-400 dark:bg-dark-hover;
   }
 
-  /* Focus styles */
+  /* Focus styles - adapts to theme */
   .focus-ring {
-    @apply focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-dark-bg;
+    @apply focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2;
+    @apply focus:ring-offset-light-bg dark:focus:ring-offset-dark-bg;
+  }
+
+  /* Card component base styles */
+  .card {
+    @apply bg-light-surface dark:bg-dark-surface;
+    @apply border border-light-border dark:border-dark-border;
+    @apply rounded-lg shadow-sm;
+  }
+
+  /* Panel/surface styles */
+  .surface {
+    @apply bg-light-surface dark:bg-dark-surface;
+  }
+
+  .surface-hover {
+    @apply hover:bg-light-hover dark:hover:bg-dark-hover;
   }
 }
 
@@ -164,14 +205,14 @@
   }
 
   .custom-scrollbar::-webkit-scrollbar-track {
-    @apply bg-dark-surface rounded-full;
+    @apply bg-light-surface dark:bg-dark-surface rounded-full;
   }
 
   .custom-scrollbar::-webkit-scrollbar-thumb {
-    @apply bg-slate-600 rounded-full;
+    @apply bg-slate-300 dark:bg-slate-600 rounded-full;
   }
 
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    @apply bg-slate-500;
+    @apply bg-slate-400 dark:bg-slate-500;
   }
 }

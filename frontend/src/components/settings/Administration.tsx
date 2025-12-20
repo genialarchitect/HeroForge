@@ -50,8 +50,9 @@ const Administration: React.FC = () => {
       const response = await adminAPI.getUsers();
       setUsers(response.data);
       setHasAdminAccess(true);
-    } catch (error: any) {
-      if (error.response?.status === 403) {
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { status?: number; data?: { error?: string } } };
+      if (axiosError.response?.status === 403) {
         setHasAdminAccess(false);
       } else {
         toast.error('Failed to load users');
@@ -65,9 +66,9 @@ const Administration: React.FC = () => {
   const loadAuditLogs = async () => {
     setLoadingLogs(true);
     try {
-      const response = await adminAPI.getAuditLogs(50);
-      setAuditLogs(response.data);
-    } catch (error: any) {
+      const response = await adminAPI.getAuditLogs({ limit: 50, offset: 0 });
+      setAuditLogs(response.data.logs);
+    } catch (error: unknown) {
       toast.error('Failed to load audit logs');
       console.error(error);
     } finally {
@@ -90,8 +91,9 @@ const Administration: React.FC = () => {
       await adminAPI.updateUser(user.id, { is_active: !user.is_active });
       toast.success(`User ${user.is_active ? 'deactivated' : 'activated'}`);
       loadUsers();
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to update user');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || 'Failed to update user');
     }
   };
 
@@ -104,8 +106,9 @@ const Administration: React.FC = () => {
       toast.success(`User "${deleteConfirm.username}" deleted successfully`);
       loadUsers();
       setDeleteConfirm(null);
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to delete user');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || 'Failed to delete user');
     } finally {
       setIsDeleting(false);
     }
@@ -116,8 +119,9 @@ const Administration: React.FC = () => {
       await adminAPI.assignRole(userId, roleId);
       toast.success('Role assigned');
       loadUsers();
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to assign role');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || 'Failed to assign role');
     }
   };
 
@@ -126,8 +130,9 @@ const Administration: React.FC = () => {
       await adminAPI.removeRole(userId, roleId);
       toast.success('Role removed');
       loadUsers();
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to remove role');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || 'Failed to remove role');
     }
   };
 
@@ -136,8 +141,9 @@ const Administration: React.FC = () => {
       await adminAPI.unlockUser(user.id);
       toast.success(`Account "${user.username}" unlocked`);
       loadUsers();
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to unlock account');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || 'Failed to unlock account');
     }
   };
 

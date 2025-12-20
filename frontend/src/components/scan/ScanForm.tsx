@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import Checkbox from '../ui/Checkbox';
 import Card from '../ui/Card';
-import { scanAPI, targetGroupAPI, templateAPI, vpnAPI } from '../../services/api';
+import { scanAPI, targetGroupAPI, templateAPI, vpnAPI, crmAPI } from '../../services/api';
 import { useScanStore } from '../../store/scanStore';
-import { Target, Hash, Cpu, Search, Radio, Wifi, FolderOpen, Save, Zap, Radar, Globe, EyeOff, Shield } from 'lucide-react';
-import { EnumDepth, EnumService, ScanType, TargetGroup, ScanPreset, VpnConfig } from '../../types';
+import { Target, Cpu, Search, Radio, Wifi, FolderOpen, Save, Zap, Radar, Globe, EyeOff, Shield, Building2, ClipboardList } from 'lucide-react';
+import { EnumDepth, EnumService, ScanType, TargetGroup, ScanPreset, VpnConfig, Customer, Engagement } from '../../types';
 
 const SCAN_TYPES: { id: ScanType; label: string; description: string }[] = [
   { id: 'tcp_connect', label: 'TCP Connect', description: 'Standard TCP scan (most reliable)' },
@@ -37,8 +38,8 @@ const ENUM_SERVICES: { id: EnumService; label: string; category: string }[] = [
 ];
 
 const ScanForm: React.FC = () => {
+  const [searchParams] = useSearchParams();
   const [name, setName] = useState('');
-  const [customer, setCustomer] = useState('');
   const [target, setTarget] = useState('');
   const [portStart, setPortStart] = useState(1);
   const [portEnd, setPortEnd] = useState(1000);
@@ -62,6 +63,11 @@ const ScanForm: React.FC = () => {
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
   const [vpnConfigs, setVpnConfigs] = useState<VpnConfig[]>([]);
   const [selectedVpn, setSelectedVpn] = useState<string>('');
+  // CRM Integration
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
+  const [engagements, setEngagements] = useState<Engagement[]>([]);
+  const [selectedEngagementId, setSelectedEngagementId] = useState<string>('');
 
   const { addScan } = useScanStore();
 
@@ -71,7 +77,29 @@ const ScanForm: React.FC = () => {
     loadTargetGroups();
     loadPresets();
     loadVpnConfigs();
+    loadCustomers();
   }, []);
+
+  // Handle URL parameter for pre-selecting customer (e.g., from customer detail page)
+  useEffect(() => {
+    const customerParam = searchParams.get('customer');
+    if (customerParam && customers.length > 0) {
+      const customer = customers.find(c => c.id === customerParam);
+      if (customer) {
+        setSelectedCustomerId(customerParam);
+      }
+    }
+  }, [searchParams, customers]);
+
+  // Load engagements when customer changes
+  useEffect(() => {
+    if (selectedCustomerId) {
+      loadEngagements(selectedCustomerId);
+    } else {
+      setEngagements([]);
+      setSelectedEngagementId('');
+    }
+  }, [selectedCustomerId]);
 
   const loadTargetGroups = async () => {
     try {
@@ -102,6 +130,29 @@ const ScanForm: React.FC = () => {
       }
     } catch (error) {
       console.error('Failed to load VPN configs:', error);
+    }
+  };
+
+  const loadCustomers = async () => {
+    try {
+      const response = await crmAPI.customers.getAll('active');
+      setCustomers(response.data);
+    } catch (error) {
+      console.error('Failed to load customers:', error);
+    }
+  };
+
+  const loadEngagements = async (customerId: string) => {
+    try {
+      const response = await crmAPI.engagements.getByCustomer(customerId);
+      // Filter to only show active engagements (planning or in_progress)
+      const activeEngagements = response.data.filter(
+        (e: Engagement) => e.status === 'planning' || e.status === 'in_progress'
+      );
+      setEngagements(activeEngagements);
+    } catch (error) {
+      console.error('Failed to load engagements:', error);
+      setEngagements([]);
     }
   };
 
@@ -235,6 +286,8 @@ const ScanForm: React.FC = () => {
         enum_depth: enableEnumeration ? enumDepth : undefined,
         enum_services: enableEnumeration && selectedServices.length > 0 ? selectedServices : undefined,
         vpn_config_id: selectedVpn || undefined,
+        customer_id: selectedCustomerId || undefined,
+        engagement_id: selectedEngagementId || undefined,
       });
 
       addScan(response.data);
@@ -262,7 +315,7 @@ const ScanForm: React.FC = () => {
             },
           });
           toast.success('Template saved!');
-        } catch (templateError: any) {
+        } catch (templateError: unknown) {
           console.error('Failed to save template:', templateError);
           toast.warning('Scan started but template save failed');
         }
@@ -271,7 +324,6 @@ const ScanForm: React.FC = () => {
       // Reset form
       setName('');
       setTarget('');
-      setCustomer('');
       setPortStart(1);
       setPortEnd(1000);
       setThreads(100);
@@ -285,8 +337,11 @@ const ScanForm: React.FC = () => {
       setSaveAsTemplate(false);
       setTemplateName('');
       setTemplateDescription('');
-    } catch (error: any) {
-      const message = error.response?.data?.error || 'Failed to start scan';
+      setSelectedCustomerId('');
+      setSelectedEngagementId('');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      const message = axiosError.response?.data?.error || 'Failed to start scan';
       toast.error(message);
     } finally {
       setLoading(false);
@@ -350,14 +405,62 @@ const ScanForm: React.FC = () => {
           required
         />
 
-        <Input
-          label="Customer Tag (Optional)"
-          type="text"
-          placeholder="ACME Corp"
-          value={customer}
-          onChange={(e) => setCustomer(e.target.value)}
-          icon={<Hash className="h-5 w-5" />}
-        />
+        {/* CRM Integration */}
+        <div className="space-y-3 pb-4 border-b border-dark-border">
+          <div className="flex items-center space-x-2">
+            <Building2 className="h-5 w-5 text-indigo-400" />
+            <p className="text-sm font-medium text-slate-300">Customer Association (Optional)</p>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-400 mb-2">
+                Customer
+              </label>
+              <select
+                value={selectedCustomerId}
+                onChange={(e) => {
+                  setSelectedCustomerId(e.target.value);
+                  setSelectedEngagementId('');
+                }}
+                className="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              >
+                <option value="">No customer</option>
+                {customers.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-400 mb-2">
+                Engagement
+              </label>
+              <select
+                value={selectedEngagementId}
+                onChange={(e) => setSelectedEngagementId(e.target.value)}
+                disabled={!selectedCustomerId || engagements.length === 0}
+                className="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <option value="">
+                  {!selectedCustomerId
+                    ? 'Select customer first'
+                    : engagements.length === 0
+                      ? 'No active engagements'
+                      : 'No engagement'}
+                </option>
+                {engagements.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.name} ({e.engagement_type.replace('_', ' ')})
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <p className="text-xs text-slate-500">
+            Link this scan to a customer and engagement for tracking and reporting.
+          </p>
+        </div>
 
         <div>
           <div className="flex items-center justify-between mb-1">

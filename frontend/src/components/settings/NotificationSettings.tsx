@@ -40,9 +40,10 @@ const NotificationSettings: React.FC = () => {
         slack_webhook_url: response.data.slack_webhook_url || '',
         teams_webhook_url: response.data.teams_webhook_url || '',
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       // 404 means no settings yet - use defaults
-      if (error.response?.status !== 404) {
+      const axiosError = error as { response?: { status?: number } };
+      if (axiosError.response?.status !== 404) {
         toast.error('Failed to load notification settings');
         console.error(error);
       }
@@ -74,8 +75,9 @@ const NotificationSettings: React.FC = () => {
       const response = await notificationAPI.updateSettings(formData);
       setSettings(response.data);
       toast.success('Notification settings saved');
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to save settings');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || 'Failed to save settings');
     } finally {
       setSaving(false);
     }
@@ -96,8 +98,9 @@ const NotificationSettings: React.FC = () => {
 
       const response = await notificationAPI.testSlack();
       toast.success(response.data.message);
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to send test message');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || 'Failed to send test message');
     } finally {
       setTestingSlack(false);
     }
@@ -118,8 +121,9 @@ const NotificationSettings: React.FC = () => {
 
       const response = await notificationAPI.testTeams();
       toast.success(response.data.message);
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to send test message');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || 'Failed to send test message');
     } finally {
       setTestingTeams(false);
     }
@@ -145,8 +149,9 @@ const NotificationSettings: React.FC = () => {
 
       const response = await notificationAPI.testEmail();
       toast.success(response.data.message);
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to send test email');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || 'Failed to send test email');
     } finally {
       setTestingEmail(false);
     }

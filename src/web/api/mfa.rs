@@ -67,12 +67,16 @@ pub async fn setup_mfa(
     let secret_str = secret.to_encoded().to_string();
 
     // Create TOTP instance for QR code generation
+    let secret_bytes = secret.to_bytes().map_err(|e| {
+        log::error!("Failed to convert TOTP secret to bytes: {}", e);
+        actix_web::error::ErrorInternalServerError("Failed to generate TOTP secret")
+    })?;
     let totp = TOTP::new(
         Algorithm::SHA1,
         6, // 6 digit code
         1, // 1 step skew
         30, // 30 second period
-        secret.to_bytes().unwrap(),
+        secret_bytes,
         Some("HeroForge".to_string()),
         user.email.clone(),
     ).map_err(|e| {

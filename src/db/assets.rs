@@ -465,3 +465,388 @@ pub async fn get_asset_history(
 
     Ok(history)
 }
+
+// ============================================================================
+// Asset Tags Functions
+// ============================================================================
+
+/// Create a new asset tag
+pub async fn create_asset_tag(
+    pool: &SqlitePool,
+    user_id: &str,
+    request: &models::CreateAssetTagRequest,
+) -> Result<models::AssetTag> {
+    let now = Utc::now();
+    let id = Uuid::new_v4().to_string();
+
+    let tag = sqlx::query_as::<_, models::AssetTag>(
+        r#"
+        INSERT INTO asset_tags (id, user_id, name, color, category, description, created_at, updated_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+        RETURNING *
+        "#,
+    )
+    .bind(&id)
+    .bind(user_id)
+    .bind(&request.name)
+    .bind(&request.color)
+    .bind(&request.category)
+    .bind(&request.description)
+    .bind(now)
+    .bind(now)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(tag)
+}
+
+/// Get all asset tags for a user
+pub async fn get_user_asset_tags(
+    pool: &SqlitePool,
+    user_id: &str,
+) -> Result<Vec<models::AssetTag>> {
+    let tags = sqlx::query_as::<_, models::AssetTag>(
+        "SELECT * FROM asset_tags WHERE user_id = ?1 ORDER BY category, name",
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(tags)
+}
+
+/// Get all asset tags with usage counts
+pub async fn get_user_asset_tags_with_counts(
+    pool: &SqlitePool,
+    user_id: &str,
+) -> Result<Vec<models::AssetTagWithCount>> {
+    let tags_raw: Vec<(String, String, String, String, String, Option<String>, DateTime<Utc>, DateTime<Utc>, i64)> = sqlx::query_as(
+        r#"
+        SELECT
+            at.id,
+            at.user_id,
+            at.name,
+            at.color,
+            at.category,
+            at.description,
+            at.created_at,
+            at.updated_at,
+            COUNT(atm.asset_id) as asset_count
+        FROM asset_tags at
+        LEFT JOIN asset_tag_mappings atm ON at.id = atm.tag_id
+        WHERE at.user_id = ?1
+        GROUP BY at.id
+        ORDER BY at.category, at.name
+        "#,
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?;
+
+    let tags_with_counts = tags_raw
+        .into_iter()
+        .map(|(id, user_id, name, color, category, description, created_at, updated_at, asset_count)| {
+            models::AssetTagWithCount {
+                tag: models::AssetTag {
+                    id,
+                    user_id,
+                    name,
+                    color,
+                    category,
+                    description,
+                    created_at,
+                    updated_at,
+                },
+                asset_count,
+            }
+        })
+        .collect();
+
+    Ok(tags_with_counts)
+}
+
+/// Get asset tag by ID
+pub async fn get_asset_tag_by_id(
+    pool: &SqlitePool,
+    tag_id: &str,
+    user_id: &str,
+) -> Result<Option<models::AssetTag>> {
+    let tag = sqlx::query_as::<_, models::AssetTag>(
+        "SELECT * FROM asset_tags WHERE id = ?1 AND user_id = ?2",
+    )
+    .bind(tag_id)
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(tag)
+}
+
+/// Update an asset tag
+pub async fn update_asset_tag(
+    pool: &SqlitePool,
+    tag_id: &str,
+    user_id: &str,
+    request: &models::UpdateAssetTagRequest,
+) -> Result<models::AssetTag> {
+    let now = Utc::now();
+
+    if let Some(name) = &request.name {
+        sqlx::query("UPDATE asset_tags SET name = ?1, updated_at = ?2 WHERE id = ?3 AND user_id = ?4")
+            .bind(name)
+            .bind(now)
+            .bind(tag_id)
+            .bind(user_id)
+            .execute(pool)
+            .await?;
+    }
+
+    if let Some(color) = &request.color {
+        sqlx::query("UPDATE asset_tags SET color = ?1, updated_at = ?2 WHERE id = ?3 AND user_id = ?4")
+            .bind(color)
+            .bind(now)
+            .bind(tag_id)
+            .bind(user_id)
+            .execute(pool)
+            .await?;
+    }
+
+    if let Some(category) = &request.category {
+        sqlx::query("UPDATE asset_tags SET category = ?1, updated_at = ?2 WHERE id = ?3 AND user_id = ?4")
+            .bind(category)
+            .bind(now)
+            .bind(tag_id)
+            .bind(user_id)
+            .execute(pool)
+            .await?;
+    }
+
+    if let Some(description) = &request.description {
+        sqlx::query("UPDATE asset_tags SET description = ?1, updated_at = ?2 WHERE id = ?3 AND user_id = ?4")
+            .bind(description)
+            .bind(now)
+            .bind(tag_id)
+            .bind(user_id)
+            .execute(pool)
+            .await?;
+    }
+
+    let tag = sqlx::query_as::<_, models::AssetTag>(
+        "SELECT * FROM asset_tags WHERE id = ?1 AND user_id = ?2",
+    )
+    .bind(tag_id)
+    .bind(user_id)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(tag)
+}
+
+/// Delete an asset tag
+pub async fn delete_asset_tag(
+    pool: &SqlitePool,
+    tag_id: &str,
+    user_id: &str,
+) -> Result<bool> {
+    let result = sqlx::query("DELETE FROM asset_tags WHERE id = ?1 AND user_id = ?2")
+        .bind(tag_id)
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+
+    Ok(result.rows_affected() > 0)
+}
+
+/// Add tags to an asset
+pub async fn add_tags_to_asset(
+    pool: &SqlitePool,
+    asset_id: &str,
+    tag_ids: &[String],
+    user_id: &str,
+) -> Result<()> {
+    let now = Utc::now();
+
+    // First verify the asset belongs to the user
+    let asset = get_asset_by_id(pool, asset_id, user_id).await?;
+    if asset.is_none() {
+        return Err(anyhow::anyhow!("Asset not found"));
+    }
+
+    for tag_id in tag_ids {
+        // Verify tag belongs to user
+        let tag = get_asset_tag_by_id(pool, tag_id, user_id).await?;
+        if tag.is_none() {
+            continue; // Skip tags that don't exist or don't belong to user
+        }
+
+        // Insert mapping (ignore if already exists)
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO asset_tag_mappings (asset_id, tag_id, created_at)
+            VALUES (?1, ?2, ?3)
+            "#,
+        )
+        .bind(asset_id)
+        .bind(tag_id)
+        .bind(now)
+        .execute(pool)
+        .await?;
+    }
+
+    Ok(())
+}
+
+/// Remove a tag from an asset
+pub async fn remove_tag_from_asset(
+    pool: &SqlitePool,
+    asset_id: &str,
+    tag_id: &str,
+    user_id: &str,
+) -> Result<bool> {
+    // First verify the asset belongs to the user
+    let asset = get_asset_by_id(pool, asset_id, user_id).await?;
+    if asset.is_none() {
+        return Ok(false);
+    }
+
+    let result = sqlx::query("DELETE FROM asset_tag_mappings WHERE asset_id = ?1 AND tag_id = ?2")
+        .bind(asset_id)
+        .bind(tag_id)
+        .execute(pool)
+        .await?;
+
+    Ok(result.rows_affected() > 0)
+}
+
+/// Get all tags for an asset
+pub async fn get_asset_tags(
+    pool: &SqlitePool,
+    asset_id: &str,
+) -> Result<Vec<models::AssetTag>> {
+    let tags = sqlx::query_as::<_, models::AssetTag>(
+        r#"
+        SELECT at.*
+        FROM asset_tags at
+        INNER JOIN asset_tag_mappings atm ON at.id = atm.tag_id
+        WHERE atm.asset_id = ?1
+        ORDER BY at.category, at.name
+        "#,
+    )
+    .bind(asset_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(tags)
+}
+
+/// Get asset detail with tags
+pub async fn get_asset_detail_with_tags(
+    pool: &SqlitePool,
+    asset_id: &str,
+    user_id: &str,
+) -> Result<Option<models::AssetDetailWithTags>> {
+    let asset = get_asset_by_id(pool, asset_id, user_id).await?;
+
+    if let Some(asset) = asset {
+        // Get ports
+        let ports = sqlx::query_as::<_, models::AssetPort>(
+            "SELECT * FROM asset_ports WHERE asset_id = ?1 ORDER BY port ASC",
+        )
+        .bind(asset_id)
+        .fetch_all(pool)
+        .await?;
+
+        // Get history with scan names
+        let history_raw: Vec<(String, String, String, String, DateTime<Utc>)> = sqlx::query_as(
+            r#"
+            SELECT
+                ah.id,
+                ah.scan_id,
+                sr.name as scan_name,
+                ah.changes,
+                ah.recorded_at
+            FROM asset_history ah
+            JOIN scan_results sr ON ah.scan_id = sr.id
+            WHERE ah.asset_id = ?1
+            ORDER BY ah.recorded_at DESC
+            LIMIT 50
+            "#,
+        )
+        .bind(asset_id)
+        .fetch_all(pool)
+        .await?;
+
+        let history: Vec<models::AssetHistoryWithScan> = history_raw
+            .into_iter()
+            .map(|(id, scan_id, scan_name, changes_str, recorded_at)| {
+                let changes = serde_json::from_str::<serde_json::Value>(&changes_str)
+                    .unwrap_or(serde_json::json!({}));
+                models::AssetHistoryWithScan {
+                    id,
+                    scan_id,
+                    scan_name,
+                    changes,
+                    recorded_at,
+                }
+            })
+            .collect();
+
+        // Get tags
+        let asset_tags = get_asset_tags(pool, asset_id).await?;
+
+        Ok(Some(models::AssetDetailWithTags {
+            asset,
+            ports,
+            history,
+            asset_tags,
+        }))
+    } else {
+        Ok(None)
+    }
+}
+
+/// Get assets filtered by tag IDs
+pub async fn get_assets_by_tags(
+    pool: &SqlitePool,
+    user_id: &str,
+    tag_ids: &[String],
+    status: Option<&str>,
+) -> Result<Vec<models::Asset>> {
+    if tag_ids.is_empty() {
+        return get_user_assets(pool, user_id, status, None, None).await;
+    }
+
+    // Build query with tag filtering
+    let placeholders: Vec<String> = (0..tag_ids.len()).map(|i| format!("?{}", i + 3)).collect();
+    let placeholders_str = placeholders.join(", ");
+
+    let mut query = format!(
+        r#"
+        SELECT DISTINCT a.*
+        FROM assets a
+        INNER JOIN asset_tag_mappings atm ON a.id = atm.asset_id
+        WHERE a.user_id = ?1 AND atm.tag_id IN ({})
+        "#,
+        placeholders_str
+    );
+
+    if status.is_some() {
+        query.push_str(" AND a.status = ?2");
+    }
+
+    query.push_str(" ORDER BY a.last_seen DESC");
+
+    let mut q = sqlx::query_as::<_, models::Asset>(&query);
+    q = q.bind(user_id);
+
+    if let Some(s) = status {
+        q = q.bind(s);
+    }
+
+    for tag_id in tag_ids {
+        q = q.bind(tag_id);
+    }
+
+    let assets = q.fetch_all(pool).await?;
+    Ok(assets)
+}

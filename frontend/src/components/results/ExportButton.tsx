@@ -1,20 +1,23 @@
 import React, { useState } from 'react';
-import { Download, FileJson, FileText, Code } from 'lucide-react';
+import { Download, FileJson, FileText, Code, FileType } from 'lucide-react';
 import { HostInfo } from '../../types';
 import Button from '../ui/Button';
 import { toast } from 'react-toastify';
 import { format } from 'date-fns';
+import axios from 'axios';
 
 interface ExportButtonProps {
   hosts: HostInfo[];
   scanName?: string;
+  scanId?: string;
   disabled?: boolean;
 }
 
-type ExportFormat = 'json' | 'csv' | 'html';
+type ExportFormat = 'json' | 'csv' | 'html' | 'markdown';
 
-const ExportButton: React.FC<ExportButtonProps> = ({ hosts, scanName = 'scan', disabled = false }) => {
+const ExportButton: React.FC<ExportButtonProps> = ({ hosts, scanName = 'scan', scanId, disabled = false }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
   const exportAsJSON = () => {
     const data = {
@@ -263,6 +266,51 @@ const ExportButton: React.FC<ExportButtonProps> = ({ hosts, scanName = 'scan', d
     toast.success('Exported as HTML report');
   };
 
+  const exportAsMarkdown = async () => {
+    if (!scanId) {
+      toast.error('Scan ID required for Markdown export');
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`/api/scans/${scanId}/export/markdown`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        responseType: 'blob',
+      });
+
+      // Get filename from Content-Disposition header or use default
+      const contentDisposition = response.headers['content-disposition'];
+      let filename = `${scanName}_${format(new Date(), 'yyyy-MM-dd_HHmmss')}.md`;
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="?([^";\n]+)"?/);
+        if (filenameMatch) {
+          filename = filenameMatch[1];
+        }
+      }
+
+      // Create download link
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      toast.success('Exported as Markdown');
+    } catch (error) {
+      console.error('Markdown export failed:', error);
+      toast.error('Failed to export as Markdown');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const downloadFile = (content: string, filename: string, mimeType: string) => {
     const blob = new Blob([content], { type: mimeType });
     const url = URL.createObjectURL(blob);
@@ -292,6 +340,9 @@ const ExportButton: React.FC<ExportButtonProps> = ({ hosts, scanName = 'scan', d
         break;
       case 'html':
         exportAsHTML();
+        break;
+      case 'markdown':
+        exportAsMarkdown();
         break;
     }
   };
@@ -345,6 +396,18 @@ const ExportButton: React.FC<ExportButtonProps> = ({ hosts, scanName = 'scan', d
                 <div className="text-left">
                   <div className="font-medium">HTML</div>
                   <div className="text-xs text-slate-500">Printable report</div>
+                </div>
+              </button>
+
+              <button
+                onClick={() => handleExport('markdown')}
+                disabled={!scanId || isExporting}
+                className="w-full flex items-center gap-3 px-3 py-2 text-sm text-slate-300 hover:bg-dark-hover rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <FileType className="h-4 w-4 text-cyan-400" />
+                <div className="text-left">
+                  <div className="font-medium">Markdown</div>
+                  <div className="text-xs text-slate-500">GitHub-flavored MD</div>
                 </div>
               </button>
             </div>

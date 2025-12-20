@@ -169,7 +169,7 @@ async fn execute_scheduled_scan(
         scheduled_scan.name,
         chrono::Utc::now().format("%Y-%m-%d %H:%M")
     );
-    let scan = db::create_scan(pool, &scheduled_scan.user_id, &scan_name, &config.targets).await?;
+    let scan = db::create_scan(pool, &scheduled_scan.user_id, &scan_name, &config.targets, None, None).await?;
     let scan_id = scan.id.clone();
 
     // Build the scan configuration

@@ -42,8 +42,9 @@ const ScanManagement: React.FC = () => {
       await adminAPI.deleteScan(scanId);
       toast.success('Scan deleted successfully');
       loadScans();
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to delete scan');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || 'Failed to delete scan');
     }
   };
 

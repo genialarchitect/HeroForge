@@ -163,7 +163,7 @@ pub async fn create_scan_from_template(
         })?;
 
     // Create scan record in database
-    let scan = db::create_scan(&pool, &claims.sub, &scan_request.name, &scan_request.targets)
+    let scan = db::create_scan(&pool, &claims.sub, &scan_request.name, &scan_request.targets, None, None)
         .await
         .map_err(|e| {
             log::error!("Failed to create scan from template: {}", e);

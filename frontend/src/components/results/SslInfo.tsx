@@ -1,6 +1,7 @@
 import React from 'react';
 import { SslInfo as SslInfoType } from '../../types';
 import Badge from '../ui/Badge';
+import { SslGradeBadge } from './SslGradeBadge';
 import { Shield, AlertTriangle, CheckCircle, XCircle, Lock, Clock, Server } from 'lucide-react';
 
 interface SslInfoProps {
@@ -40,23 +41,32 @@ const SslInfoComponent: React.FC<SslInfoProps> = ({ sslInfo, port }) => {
 
   return (
     <div className="mt-3 space-y-3 border-t border-dark-border pt-3">
+      {/* SSL Grade Badge - Show if grade is available */}
+      {sslInfo.ssl_grade && (
+        <SslGradeBadge grade={sslInfo.ssl_grade} showDetails={true} />
+      )}
+
       <div className="flex items-center gap-2">
         <Lock className="h-4 w-4 text-primary" />
         <span className="text-sm font-semibold text-white">SSL/TLS Certificate</span>
-        {status === 'critical' && (
-          <Badge variant="severity" type="critical">
-            Critical Issues
-          </Badge>
-        )}
-        {status === 'warning' && (
-          <Badge variant="severity" type="high">
-            Security Issues
-          </Badge>
-        )}
-        {status === 'good' && (
-          <Badge variant="severity" type="low">
-            Secure
-          </Badge>
+        {!sslInfo.ssl_grade && (
+          <>
+            {status === 'critical' && (
+              <Badge variant="severity" type="critical">
+                Critical Issues
+              </Badge>
+            )}
+            {status === 'warning' && (
+              <Badge variant="severity" type="high">
+                Security Issues
+              </Badge>
+            )}
+            {status === 'good' && (
+              <Badge variant="severity" type="low">
+                Secure
+              </Badge>
+            )}
+          </>
         )}
       </div>
 

@@ -53,8 +53,9 @@ const Profile: React.FC = () => {
       const response = await authAPI.updateProfile({ email: email.trim() });
       setUser(response.data);
       toast.success('Profile updated successfully');
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to update profile');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || 'Failed to update profile');
     } finally {
       setSaving(false);
     }
@@ -89,8 +90,9 @@ const Profile: React.FC = () => {
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to change password');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || 'Failed to change password');
     } finally {
       setChangingPassword(false);
     }

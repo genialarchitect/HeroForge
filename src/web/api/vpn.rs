@@ -197,6 +197,7 @@ pub async fn upload_vpn_config(
         target_id: Some(config.id.clone()),
         details: Some(format!("Created VPN config: {} ({})", req.name, vpn_type)),
         ip_address: None,
+        user_agent: None,
         created_at: Utc::now(),
     };
     let _ = db::create_audit_log(pool.get_ref(), &audit_log).await;
@@ -415,6 +416,7 @@ pub async fn delete_vpn_config(
         target_id: Some(config_id.clone()),
         details: Some(format!("Deleted VPN config: {}", config.name)),
         ip_address: None,
+        user_agent: None,
         created_at: Utc::now(),
     };
     let _ = db::create_audit_log(pool.get_ref(), &audit_log).await;
@@ -606,6 +608,7 @@ pub async fn connect_vpn(
                     info.assigned_ip.as_deref().unwrap_or("unknown")
                 )),
                 ip_address: None,
+                user_agent: None,
                 created_at: Utc::now(),
             };
             let _ = db::create_audit_log(pool.get_ref(), &audit_log).await;
@@ -652,6 +655,7 @@ pub async fn disconnect_vpn(
                     target_id: Some(info.id.clone()),
                     details: Some(format!("Disconnected from VPN: {}", info.config_name)),
                     ip_address: None,
+                    user_agent: None,
                     created_at: Utc::now(),
                 };
                 let _ = db::create_audit_log(pool.get_ref(), &audit_log).await;

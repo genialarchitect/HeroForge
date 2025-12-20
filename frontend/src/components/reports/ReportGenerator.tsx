@@ -118,8 +118,9 @@ const ReportGenerator: React.FC<ReportGeneratorProps> = ({
       toast.success('Report generation started');
       onReportCreated?.();
       onClose();
-    } catch (error: any) {
-      const message = error.response?.data?.error || 'Failed to create report';
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      const message = axiosError.response?.data?.error || 'Failed to create report';
       toast.error(message);
     } finally {
       setGenerating(false);

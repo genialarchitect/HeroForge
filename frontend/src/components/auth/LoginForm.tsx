@@ -43,8 +43,9 @@ const LoginForm: React.FC = () => {
         toast.success('Login successful!');
         navigate('/dashboard');
       }
-    } catch (error: any) {
-      const message = error.response?.data?.error || 'Login failed. Please check your credentials.';
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      const message = axiosError.response?.data?.error || 'Login failed. Please check your credentials.';
       toast.error(message);
     } finally {
       setLoading(false);
@@ -70,8 +71,9 @@ const LoginForm: React.FC = () => {
       setLogin(user, token);
       toast.success('Login successful!');
       navigate('/dashboard');
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Invalid authentication code');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || 'Invalid authentication code');
     } finally {
       setLoading(false);
     }
@@ -91,8 +93,8 @@ const LoginForm: React.FC = () => {
           <div className="inline-flex items-center justify-center w-12 h-12 bg-primary/20 rounded-lg mb-3">
             <Shield className="h-6 w-6 text-primary" />
           </div>
-          <h3 className="text-lg font-semibold text-white mb-1">Two-Factor Authentication</h3>
-          <p className="text-sm text-slate-400">
+          <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-1">Two-Factor Authentication</h3>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
             {useRecoveryCode
               ? 'Enter one of your recovery codes'
               : 'Enter the 6-digit code from your authenticator app'}

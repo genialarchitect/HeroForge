@@ -77,8 +77,9 @@ const CompliancePage: React.FC = () => {
       setResults(response.data);
       setShowResults(true);
       toast.success('Compliance analysis completed');
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Analysis failed');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || 'Analysis failed');
       console.error(error);
     } finally {
       setAnalyzing(false);

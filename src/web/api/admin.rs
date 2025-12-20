@@ -153,6 +153,7 @@ pub async fn update_user(
                 target_id: Some(user.id.clone()),
                 details: Some(serde_json::to_string(&updates.into_inner()).unwrap_or_default()),
                 ip_address: get_client_ip(&req),
+                user_agent: req.headers().get("User-Agent").and_then(|h| h.to_str().ok()).map(|s| s.to_string()),
                 created_at: Utc::now(),
             };
             let _ = db::create_audit_log(&pool, &log).await;
@@ -199,6 +200,7 @@ pub async fn delete_user(
                 target_id: Some(user_id.to_string()),
                 details: None,
                 ip_address: get_client_ip(&req),
+                user_agent: req.headers().get("User-Agent").and_then(|h| h.to_str().ok()).map(|s| s.to_string()),
                 created_at: Utc::now(),
             };
             let _ = db::create_audit_log(&pool, &log).await;
@@ -241,6 +243,7 @@ pub async fn assign_role(
                 target_id: Some(user_id.to_string()),
                 details: Some(serde_json::to_string(&role_data.into_inner()).unwrap_or_default()),
                 ip_address: get_client_ip(&req),
+                user_agent: req.headers().get("User-Agent").and_then(|h| h.to_str().ok()).map(|s| s.to_string()),
                 created_at: Utc::now(),
             };
             let _ = db::create_audit_log(&pool, &log).await;
@@ -291,6 +294,7 @@ pub async fn remove_role(
                 target_id: Some(user_id),
                 details: Some(role_id),
                 ip_address: get_client_ip(&req),
+                user_agent: req.headers().get("User-Agent").and_then(|h| h.to_str().ok()).map(|s| s.to_string()),
                 created_at: Utc::now(),
             };
             let _ = db::create_audit_log(&pool, &log).await;
@@ -357,6 +361,7 @@ pub async fn unlock_user(
                 target_id: Some(user_id.to_string()),
                 details: Some(format!("Unlocked account for user: {}", user.username)),
                 ip_address: get_client_ip(&req),
+                user_agent: req.headers().get("User-Agent").and_then(|h| h.to_str().ok()).map(|s| s.to_string()),
                 created_at: Utc::now(),
             };
             let _ = db::create_audit_log(&pool, &log).await;
@@ -446,6 +451,7 @@ pub async fn delete_scan(
                 target_id: Some(scan_id.to_string()),
                 details: None,
                 ip_address: get_client_ip(&req),
+                user_agent: req.headers().get("User-Agent").and_then(|h| h.to_str().ok()).map(|s| s.to_string()),
                 created_at: Utc::now(),
             };
             let _ = db::create_audit_log(&pool, &log).await;
@@ -467,10 +473,23 @@ pub async fn delete_scan(
 // Audit Log Endpoints
 // ============================================================================
 
+/// Query parameters for audit log filtering
+#[derive(Debug, serde::Deserialize)]
+pub struct AuditLogQuery {
+    pub user_id: Option<String>,
+    pub action: Option<String>,
+    pub target_type: Option<String>,
+    pub start_date: Option<String>,
+    pub end_date: Option<String>,
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+}
+
+/// Get filtered and paginated audit logs with user information
 pub async fn get_audit_logs(
     pool: web::Data<SqlitePool>,
     claims: web::ReqData<auth::Claims>,
-    query: web::Query<serde_json::Value>,
+    query: web::Query<AuditLogQuery>,
 ) -> Result<HttpResponse> {
     // Check permission
     if !db::has_permission(&pool, &claims.sub, "view_audit_logs").await.unwrap_or(false) {
@@ -479,13 +498,159 @@ pub async fn get_audit_logs(
         })));
     }
 
-    let limit = query.get("limit").and_then(|v| v.as_i64()).unwrap_or(100);
-    let offset = query.get("offset").and_then(|v| v.as_i64()).unwrap_or(0);
+    // Parse date strings to DateTime
+    let start_date = query.start_date.as_ref().and_then(|s| {
+        chrono::DateTime::parse_from_rfc3339(s)
+            .ok()
+            .map(|dt| dt.with_timezone(&chrono::Utc))
+    });
 
-    match db::get_audit_logs(&pool, limit, offset).await {
-        Ok(logs) => Ok(HttpResponse::Ok().json(logs)),
+    let end_date = query.end_date.as_ref().and_then(|s| {
+        chrono::DateTime::parse_from_rfc3339(s)
+            .ok()
+            .map(|dt| dt.with_timezone(&chrono::Utc))
+    });
+
+    let filter = models::AuditLogFilter {
+        user_id: query.user_id.clone(),
+        action: query.action.clone(),
+        target_type: query.target_type.clone(),
+        start_date,
+        end_date,
+        limit: query.limit,
+        offset: query.offset,
+    };
+
+    match db::get_audit_logs_filtered(&pool, &filter).await {
+        Ok(response) => Ok(HttpResponse::Ok().json(response)),
         Err(e) => {
             log::error!("Database error in get_audit_logs: {}", e);
+            Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "An internal error occurred. Please try again later."
+            })))
+        },
+    }
+}
+
+/// Get distinct action types for filtering dropdown
+pub async fn get_audit_action_types(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+) -> Result<HttpResponse> {
+    // Check permission
+    if !db::has_permission(&pool, &claims.sub, "view_audit_logs").await.unwrap_or(false) {
+        return Ok(HttpResponse::Forbidden().json(serde_json::json!({
+            "error": "Insufficient permissions"
+        })));
+    }
+
+    match db::get_audit_action_types(&pool).await {
+        Ok(actions) => Ok(HttpResponse::Ok().json(serde_json::json!({
+            "actions": actions
+        }))),
+        Err(e) => {
+            log::error!("Database error in get_audit_action_types: {}", e);
+            Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "An internal error occurred. Please try again later."
+            })))
+        },
+    }
+}
+
+/// Get users who have audit log entries for filtering dropdown
+pub async fn get_audit_users(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+) -> Result<HttpResponse> {
+    // Check permission
+    if !db::has_permission(&pool, &claims.sub, "view_audit_logs").await.unwrap_or(false) {
+        return Ok(HttpResponse::Forbidden().json(serde_json::json!({
+            "error": "Insufficient permissions"
+        })));
+    }
+
+    match db::get_audit_users(&pool).await {
+        Ok(users) => Ok(HttpResponse::Ok().json(serde_json::json!({
+            "users": users
+        }))),
+        Err(e) => {
+            log::error!("Database error in get_audit_users: {}", e);
+            Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "An internal error occurred. Please try again later."
+            })))
+        },
+    }
+}
+
+/// Export audit logs as CSV
+pub async fn export_audit_logs(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    query: web::Query<AuditLogQuery>,
+) -> Result<HttpResponse> {
+    // Check permission
+    if !db::has_permission(&pool, &claims.sub, "view_audit_logs").await.unwrap_or(false) {
+        return Ok(HttpResponse::Forbidden().json(serde_json::json!({
+            "error": "Insufficient permissions"
+        })));
+    }
+
+    // Parse date strings to DateTime
+    let start_date = query.start_date.as_ref().and_then(|s| {
+        chrono::DateTime::parse_from_rfc3339(s)
+            .ok()
+            .map(|dt| dt.with_timezone(&chrono::Utc))
+    });
+
+    let end_date = query.end_date.as_ref().and_then(|s| {
+        chrono::DateTime::parse_from_rfc3339(s)
+            .ok()
+            .map(|dt| dt.with_timezone(&chrono::Utc))
+    });
+
+    // Get all matching logs (no pagination for export)
+    let filter = models::AuditLogFilter {
+        user_id: query.user_id.clone(),
+        action: query.action.clone(),
+        target_type: query.target_type.clone(),
+        start_date,
+        end_date,
+        limit: Some(10000), // Cap at 10000 records for export
+        offset: Some(0),
+    };
+
+    match db::get_audit_logs_filtered(&pool, &filter).await {
+        Ok(response) => {
+            // Build CSV content
+            let mut csv = String::from("Timestamp,User,Action,Resource Type,Resource ID,IP Address,User Agent,Details\n");
+
+            for log in response.logs {
+                let details = log.details
+                    .map(|d| d.replace('"', "'").replace('\n', " "))
+                    .unwrap_or_default();
+
+                csv.push_str(&format!(
+                    "\"{}\",\"{}\",\"{}\",\"{}\",\"{}\",\"{}\",\"{}\",\"{}\"\n",
+                    log.created_at.to_rfc3339(),
+                    log.username,
+                    log.action,
+                    log.target_type.unwrap_or_default(),
+                    log.target_id.unwrap_or_default(),
+                    log.ip_address.unwrap_or_default(),
+                    log.user_agent.unwrap_or_default().replace('"', "'"),
+                    details,
+                ));
+            }
+
+            let filename = format!("audit_logs_{}.csv", chrono::Utc::now().format("%Y%m%d_%H%M%S"));
+
+            Ok(HttpResponse::Ok()
+                .content_type("text/csv")
+                .insert_header(("Content-Disposition", format!("attachment; filename=\"{}\"", filename)))
+                .body(csv))
+        }
+        Err(e) => {
+            log::error!("Database error in export_audit_logs: {}", e);
             Ok(HttpResponse::InternalServerError().json(serde_json::json!({
                 "error": "An internal error occurred. Please try again later."
             })))
@@ -544,6 +709,7 @@ pub async fn update_setting(
                 target_id: Some(key.to_string()),
                 details: Some(serde_json::to_string(&update_data.into_inner()).unwrap_or_default()),
                 ip_address: get_client_ip(&req),
+                user_agent: req.headers().get("User-Agent").and_then(|h| h.to_str().ok()).map(|s| s.to_string()),
                 created_at: Utc::now(),
             };
             let _ = db::create_audit_log(&pool, &log).await;
@@ -586,6 +752,9 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
 
             // Audit logs
             .route("/audit-logs", web::get().to(get_audit_logs))
+            .route("/audit-logs/export", web::get().to(export_audit_logs))
+            .route("/audit-logs/action-types", web::get().to(get_audit_action_types))
+            .route("/audit-logs/users", web::get().to(get_audit_users))
 
             // System settings
             .route("/settings", web::get().to(list_settings))

@@ -1,9 +1,9 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { toast } from 'react-toastify';
 import { useScanStore } from '../../store/scanStore';
-import { scanAPI, siemAPI } from '../../services/api';
+import { scanAPI, siemAPI, scanTagAPI } from '../../services/api';
 import { calculateHostRiskScore, getRiskLevel } from '../../utils/riskScoring';
-import { toSeverityBadgeType } from '../../types';
+import { toSeverityBadgeType, ScanTag } from '../../types';
 import Card from '../ui/Card';
 import Badge from '../ui/Badge';
 import LoadingSpinner from '../ui/LoadingSpinner';
@@ -15,7 +15,7 @@ import Input from '../ui/Input';
 import { ReportGenerator, ReportList } from '../reports';
 import { ComplianceAnalysis } from '../compliance';
 import NetworkMap from '../topology/NetworkMap';
-import { Server, Shield, AlertTriangle, Search, SlidersHorizontal, FileText, ClipboardCheck, List, Network, Database } from 'lucide-react';
+import { Server, Shield, AlertTriangle, Search, SlidersHorizontal, FileText, ClipboardCheck, List, Network, Database, Tag, Plus, X, Copy } from 'lucide-react';
 
 type SortOption = 'ip' | 'risk' | 'vulns' | 'ports';
 type FilterOption = 'all' | 'with-vulns' | 'critical' | 'high';
@@ -34,6 +34,11 @@ const ResultsViewer: React.FC = () => {
   const [reportListKey, setReportListKey] = useState(0);
   const [activeTab, setActiveTab] = useState<ViewTab>('results');
   const [exportingToSiem, setExportingToSiem] = useState(false);
+  // Tag management state
+  const [scanTags, setScanTags] = useState<ScanTag[]>([]);
+  const [allTags, setAllTags] = useState<ScanTag[]>([]);
+  const [showTagDropdown, setShowTagDropdown] = useState(false);
+  const [duplicating, setDuplicating] = useState(false);
 
   const scanResults = activeScan ? results.get(activeScan.id) || [] : [];
 
@@ -41,7 +46,70 @@ const ResultsViewer: React.FC = () => {
     if (activeScan && activeScan.status === 'completed' && scanResults.length === 0) {
       loadResults();
     }
+    if (activeScan) {
+      loadScanTags();
+      loadAllTags();
+    }
   }, [activeScan]);
+
+  const loadScanTags = async () => {
+    if (!activeScan) return;
+    try {
+      const response = await scanTagAPI.getTagsForScan(activeScan.id);
+      setScanTags(response.data);
+    } catch (error) {
+      console.error('Failed to load scan tags:', error);
+    }
+  };
+
+  const loadAllTags = async () => {
+    try {
+      const response = await scanTagAPI.getAll();
+      setAllTags(response.data);
+    } catch (error) {
+      console.error('Failed to load all tags:', error);
+    }
+  };
+
+  const handleAddTag = async (tagId: string) => {
+    if (!activeScan) return;
+    try {
+      const response = await scanTagAPI.addTagsToScan(activeScan.id, { tag_ids: [tagId] });
+      setScanTags(response.data);
+      setShowTagDropdown(false);
+      toast.success('Tag added');
+    } catch (error) {
+      toast.error('Failed to add tag');
+    }
+  };
+
+  const handleRemoveTag = async (tagId: string) => {
+    if (!activeScan) return;
+    try {
+      await scanTagAPI.removeTagFromScan(activeScan.id, tagId);
+      setScanTags(scanTags.filter((t) => t.id !== tagId));
+      toast.success('Tag removed');
+    } catch (error) {
+      toast.error('Failed to remove tag');
+    }
+  };
+
+  const handleDuplicateScan = async () => {
+    if (!activeScan) return;
+    setDuplicating(true);
+    try {
+      const response = await scanAPI.duplicate(activeScan.id);
+      toast.success(`Scan duplicated as "${response.data.name}"`);
+      // Optionally refresh the scan list
+      useScanStore.getState().setActiveScan(response.data);
+    } catch (error) {
+      toast.error('Failed to duplicate scan');
+    } finally {
+      setDuplicating(false);
+    }
+  };
+
+  const availableTags = allTags.filter((t) => !scanTags.some((st) => st.id === t.id));
 
   const loadResults = async () => {
     if (!activeScan) return;
@@ -75,11 +143,12 @@ const ResultsViewer: React.FC = () => {
           toast.error(`SIEM export error: ${error}`);
         });
       }
-    } catch (error: any) {
-      if (error.response?.status === 404) {
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { status?: number; data?: { error?: string } } };
+      if (axiosError.response?.status === 404) {
         toast.error('No SIEM integrations configured. Go to Settings > SIEM Integration to set up.');
       } else {
-        toast.error(error.response?.data?.error || 'Failed to export to SIEM');
+        toast.error(axiosError.response?.data?.error || 'Failed to export to SIEM');
       }
     } finally {
       setExportingToSiem(false);
@@ -184,6 +253,71 @@ const ResultsViewer: React.FC = () => {
     <div className="space-y-4">
       {/* Stats Overview */}
       <Card>
+        <div className="flex justify-between items-start mb-4">
+          <h3 className="text-lg font-semibold text-white">{activeScan?.name}</h3>
+          <button
+            onClick={handleDuplicateScan}
+            disabled={duplicating}
+            className="flex items-center gap-1 px-3 py-1.5 text-sm border border-dark-border rounded hover:border-primary hover:text-primary transition-colors disabled:opacity-50"
+            title="Duplicate this scan"
+          >
+            {duplicating ? <LoadingSpinner className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+            Duplicate
+          </button>
+        </div>
+
+        {/* Tag Management */}
+        <div className="flex items-center gap-2 mb-4 flex-wrap">
+          <Tag className="h-4 w-4 text-slate-400" />
+          {scanTags.map((tag) => (
+            <span
+              key={tag.id}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded text-sm"
+              style={{ backgroundColor: tag.color + '20', color: tag.color }}
+            >
+              {tag.name}
+              <button
+                onClick={() => handleRemoveTag(tag.id)}
+                className="hover:opacity-70"
+                title="Remove tag"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+          <div className="relative">
+            <button
+              onClick={() => setShowTagDropdown(!showTagDropdown)}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded text-sm border border-dashed border-dark-border text-slate-400 hover:border-primary hover:text-primary"
+            >
+              <Plus className="h-3 w-3" />
+              Add Tag
+            </button>
+            {showTagDropdown && availableTags.length > 0 && (
+              <div className="absolute top-full left-0 mt-1 z-10 bg-dark-surface border border-dark-border rounded-lg shadow-lg min-w-[150px] max-h-[200px] overflow-y-auto">
+                {availableTags.map((tag) => (
+                  <button
+                    key={tag.id}
+                    onClick={() => handleAddTag(tag.id)}
+                    className="w-full text-left px-3 py-2 hover:bg-dark-hover flex items-center gap-2"
+                  >
+                    <span
+                      className="w-3 h-3 rounded-full"
+                      style={{ backgroundColor: tag.color }}
+                    />
+                    <span className="text-sm text-slate-300">{tag.name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {showTagDropdown && availableTags.length === 0 && (
+              <div className="absolute top-full left-0 mt-1 z-10 bg-dark-surface border border-dark-border rounded-lg shadow-lg p-3">
+                <span className="text-sm text-slate-500">No more tags available</span>
+              </div>
+            )}
+          </div>
+        </div>
+
         <div className="grid grid-cols-3 gap-4 text-center">
           <div>
             <Server className="h-8 w-8 mx-auto mb-2 text-primary" />
@@ -254,6 +388,7 @@ const ResultsViewer: React.FC = () => {
             <ExportButton
               hosts={filteredAndSortedHosts}
               scanName={activeScan?.name}
+              scanId={activeScan?.id}
               disabled={filteredAndSortedHosts.length === 0}
             />
             <button

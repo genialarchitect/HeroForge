@@ -1,5 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 export default {
+  darkMode: 'class',
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
@@ -13,6 +14,13 @@ export default {
           surface: '#1e293b', // slate-800
           border: '#334155',  // slate-700
           hover: '#475569',   // slate-600
+        },
+        // Light theme colors
+        light: {
+          bg: '#f8fafc',      // slate-50
+          surface: '#ffffff', // white
+          border: '#e2e8f0',  // slate-200
+          hover: '#f1f5f9',   // slate-100
         },
         // Primary blue
         primary: {

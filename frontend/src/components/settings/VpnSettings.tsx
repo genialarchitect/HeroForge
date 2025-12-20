@@ -62,7 +62,7 @@ const VpnSettings: React.FC = () => {
       ]);
       setConfigs(configsRes.data);
       setStatus(statusRes.data);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to load VPN data:', error);
       toast.error('Failed to load VPN settings');
     } finally {
@@ -126,9 +126,10 @@ const VpnSettings: React.FC = () => {
             fileInputRef.current.value = '';
           }
           await loadData();
-        } catch (error: any) {
+        } catch (error: unknown) {
+          const axiosError = error as { response?: { data?: { error?: string } } };
           console.error('Failed to upload VPN config:', error);
-          toast.error(error.response?.data?.error || 'Failed to upload VPN config');
+          toast.error(axiosError.response?.data?.error || 'Failed to upload VPN config');
         }
       };
       reader.readAsDataURL(selectedFile);
@@ -146,9 +147,10 @@ const VpnSettings: React.FC = () => {
       await vpnAPI.deleteConfig(id);
       toast.success('VPN config deleted');
       await loadData();
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
       console.error('Failed to delete VPN config:', error);
-      toast.error(error.response?.data?.error || 'Failed to delete VPN config');
+      toast.error(axiosError.response?.data?.error || 'Failed to delete VPN config');
     }
   };
 
@@ -161,9 +163,10 @@ const VpnSettings: React.FC = () => {
       } else {
         toast.error(result.data.message || 'Connection test failed');
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
       console.error('Failed to test VPN config:', error);
-      toast.error(error.response?.data?.error || 'Connection test failed');
+      toast.error(axiosError.response?.data?.error || 'Connection test failed');
     } finally {
       setTesting(null);
     }
@@ -175,9 +178,10 @@ const VpnSettings: React.FC = () => {
       await vpnAPI.connect({ config_id: id, connection_mode: 'persistent' });
       toast.success('VPN connected');
       await loadData();
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
       console.error('Failed to connect VPN:', error);
-      toast.error(error.response?.data?.error || 'Failed to connect');
+      toast.error(axiosError.response?.data?.error || 'Failed to connect');
     } finally {
       setConnecting(false);
     }
@@ -189,9 +193,10 @@ const VpnSettings: React.FC = () => {
       await vpnAPI.disconnect();
       toast.success('VPN disconnected');
       await loadData();
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
       console.error('Failed to disconnect VPN:', error);
-      toast.error(error.response?.data?.error || 'Failed to disconnect');
+      toast.error(axiosError.response?.data?.error || 'Failed to disconnect');
     } finally {
       setDisconnecting(false);
     }
@@ -202,9 +207,10 @@ const VpnSettings: React.FC = () => {
       await vpnAPI.updateConfig(id, { is_default: true });
       toast.success('Default VPN config updated');
       await loadData();
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
       console.error('Failed to set default:', error);
-      toast.error(error.response?.data?.error || 'Failed to set default');
+      toast.error(axiosError.response?.data?.error || 'Failed to set default');
     }
   };
 
@@ -219,9 +225,10 @@ const VpnSettings: React.FC = () => {
       toast.success('VPN config updated');
       setEditingId(null);
       await loadData();
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
       console.error('Failed to update config:', error);
-      toast.error(error.response?.data?.error || 'Failed to update');
+      toast.error(axiosError.response?.data?.error || 'Failed to update');
     }
   };
 

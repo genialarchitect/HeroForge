@@ -36,18 +36,18 @@ const Input: React.FC<InputProps> = ({
         <div className="flex items-center gap-1.5 mb-1">
           <label
             htmlFor={inputId}
-            className="block text-sm font-medium text-slate-300"
+            className="block text-sm font-medium text-slate-700 dark:text-slate-300"
           >
             {label}
             {props.required && (
-              <span className="text-red-400 ml-0.5" aria-hidden="true">*</span>
+              <span className="text-red-500 dark:text-red-400 ml-0.5" aria-hidden="true">*</span>
             )}
           </label>
           {helpText && (
             <Tooltip content={helpText} position="top">
               <button
                 type="button"
-                className="text-slate-500 hover:text-slate-300 transition-colors"
+                className="text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
                 aria-label={`Help for ${label}`}
               >
                 <HelpCircle className="h-3.5 w-3.5" />
@@ -64,7 +64,7 @@ const Input: React.FC<InputProps> = ({
       <div className="relative">
         {icon && (
           <div
-            className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 pointer-events-none"
+            className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 dark:text-slate-400 pointer-events-none"
             aria-hidden="true"
           >
             {icon}
@@ -73,10 +73,15 @@ const Input: React.FC<InputProps> = ({
         <input
           id={inputId}
           className={`
-            w-full px-3 py-2 bg-dark-surface border rounded-lg text-slate-100
-            placeholder-slate-500 transition-colors focus-ring
+            w-full px-3 py-2 rounded-lg transition-colors focus-ring
+            bg-light-surface dark:bg-dark-surface
+            text-slate-900 dark:text-slate-100
+            placeholder-slate-400 dark:placeholder-slate-500
             ${icon ? 'pl-10' : ''}
-            ${error ? 'border-red-500' : 'border-dark-border hover:border-dark-hover focus:border-primary'}
+            ${error
+              ? 'border border-red-500'
+              : 'border border-light-border dark:border-dark-border hover:border-slate-400 dark:hover:border-dark-hover focus:border-primary'
+            }
             ${className}
           `}
           aria-invalid={error ? 'true' : undefined}

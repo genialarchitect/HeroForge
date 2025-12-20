@@ -486,6 +486,136 @@ This is an automated notification from HeroForge Security Scanner.
     }
 }
 
+/// Send a password reset email to a portal user
+/// This is a standalone function that doesn't require an EmailNotifier instance
+pub async fn send_portal_password_reset_email(
+    recipient_email: &str,
+    reset_url: &str,
+    expires_in_minutes: u32,
+) -> Result<()> {
+    let config = EmailConfig::from_env()?;
+
+    let subject = "HeroForge Portal - Password Reset Request";
+
+    let html_body = format!(
+        r#"<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .header {{ background-color: #4F46E5; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }}
+        .content {{ background-color: #f9fafb; padding: 20px; }}
+        .info {{ background-color: white; padding: 15px; margin: 10px 0; border-left: 4px solid #4F46E5; border-radius: 4px; }}
+        .button {{ display: inline-block; background-color: #4F46E5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; margin: 10px 0; }}
+        .button:hover {{ background-color: #4338CA; }}
+        .warning {{ background-color: #fef3c7; border: 1px solid #f59e0b; padding: 15px; margin: 15px 0; border-radius: 4px; color: #92400e; }}
+        .footer {{ text-align: center; padding: 20px; color: #6b7280; font-size: 12px; border-radius: 0 0 8px 8px; }}
+        .link {{ word-break: break-all; color: #4F46E5; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Password Reset Request</h1>
+        </div>
+        <div class="content">
+            <p>Hello,</p>
+            <p>We received a request to reset your HeroForge Portal password. Click the button below to create a new password:</p>
+
+            <div style="text-align: center; margin: 20px 0;">
+                <a href="{}" class="button" style="color: white;">Reset Your Password</a>
+            </div>
+
+            <div class="info">
+                <p><strong>Or copy and paste this link into your browser:</strong></p>
+                <p class="link">{}</p>
+            </div>
+
+            <div class="warning">
+                <p><strong>This link will expire in {} minutes.</strong></p>
+                <p>If you didn't request a password reset, you can safely ignore this email. Your password will remain unchanged.</p>
+            </div>
+
+            <p>For security reasons, this password reset link can only be used once.</p>
+        </div>
+        <div class="footer">
+            <p>This is an automated message from HeroForge Security Scanner.</p>
+            <p>If you have any questions, please contact your security team.</p>
+        </div>
+    </div>
+</body>
+</html>"#,
+        reset_url, reset_url, expires_in_minutes
+    );
+
+    let text_body = format!(
+        r#"Password Reset Request
+
+Hello,
+
+We received a request to reset your HeroForge Portal password.
+
+To reset your password, copy and paste the following link into your browser:
+
+{}
+
+This link will expire in {} minutes.
+
+If you didn't request a password reset, you can safely ignore this email. Your password will remain unchanged.
+
+For security reasons, this password reset link can only be used once.
+
+---
+This is an automated message from HeroForge Security Scanner.
+"#,
+        reset_url, expires_in_minutes
+    );
+
+    let email = Message::builder()
+        .from(
+            format!("{} <{}>", config.from_name, config.from_address)
+                .parse()
+                .context("Failed to parse from address")?,
+        )
+        .to(recipient_email
+            .parse()
+            .context("Failed to parse recipient address")?)
+        .subject(subject)
+        .multipart(
+            MultiPart::alternative()
+                .singlepart(
+                    SinglePart::builder()
+                        .header(header::ContentType::TEXT_PLAIN)
+                        .body(text_body),
+                )
+                .singlepart(
+                    SinglePart::builder()
+                        .header(header::ContentType::TEXT_HTML)
+                        .body(html_body),
+                ),
+        )
+        .context("Failed to build email message")?;
+
+    let creds = Credentials::new(config.smtp_user, config.smtp_password);
+
+    let mailer = SmtpTransport::relay(&config.smtp_host)
+        .context("Failed to create SMTP transport")?
+        .credentials(creds)
+        .port(config.smtp_port)
+        .build();
+
+    // Send email in a blocking task since lettre is synchronous
+    let result = tokio::task::spawn_blocking(move || mailer.send(&email))
+        .await
+        .context("Failed to execute email send task")?;
+
+    result.context("Failed to send password reset email")?;
+
+    log::info!("Password reset email sent to {}", recipient_email);
+    Ok(())
+}
+
 impl Notifier for EmailNotifier {
     async fn send_notification(&self, event: &NotificationEvent) -> Result<()> {
         let (subject, text_body, html_body) = match event {

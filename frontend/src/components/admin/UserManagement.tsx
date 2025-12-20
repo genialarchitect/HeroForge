@@ -41,8 +41,9 @@ const UserManagement: React.FC = () => {
       await adminAPI.deleteUser(userId);
       toast.success('User deleted successfully');
       loadUsers();
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to delete user');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || 'Failed to delete user');
     }
   };
 
@@ -51,8 +52,9 @@ const UserManagement: React.FC = () => {
       await adminAPI.updateUser(user.id, { is_active: !user.is_active });
       toast.success(`User ${user.is_active ? 'deactivated' : 'activated'} successfully`);
       loadUsers();
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to update user');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || 'Failed to update user');
     }
   };
 
@@ -62,8 +64,9 @@ const UserManagement: React.FC = () => {
       toast.success('Role assigned successfully');
       loadUsers();
       setShowRoleModal(false);
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to assign role');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || 'Failed to assign role');
     }
   };
 
@@ -72,8 +75,9 @@ const UserManagement: React.FC = () => {
       await adminAPI.removeRole(userId, roleId);
       toast.success('Role removed successfully');
       loadUsers();
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to remove role');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || 'Failed to remove role');
     }
   };
 

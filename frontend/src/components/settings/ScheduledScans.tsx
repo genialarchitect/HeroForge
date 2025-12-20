@@ -183,8 +183,9 @@ const ScheduledScans: React.FC = () => {
       }
       resetForm();
       loadData();
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to save scheduled scan');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || 'Failed to save scheduled scan');
     }
   };
 
@@ -193,8 +194,9 @@ const ScheduledScans: React.FC = () => {
       await scheduledScanAPI.update(scan.id, { is_active: !scan.is_active });
       toast.success(`Scheduled scan ${scan.is_active ? 'paused' : 'activated'}`);
       loadData();
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to update');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || 'Failed to update');
     }
   };
 
@@ -207,8 +209,9 @@ const ScheduledScans: React.FC = () => {
       toast.success(`Scheduled scan "${deleteConfirm.name}" deleted`);
       loadData();
       setDeleteConfirm(null);
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to delete');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || 'Failed to delete');
     } finally {
       setIsDeleting(false);
     }

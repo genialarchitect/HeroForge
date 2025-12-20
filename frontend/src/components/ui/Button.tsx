@@ -2,7 +2,7 @@ import React from 'react';
 import { Loader2 } from 'lucide-react';
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
+  variant?: 'primary' | 'secondary' | 'danger' | 'ghost' | 'outline';
   size?: 'sm' | 'md' | 'lg';
   loading?: boolean;
   loadingText?: string;
@@ -24,9 +24,10 @@ const Button: React.FC<ButtonProps> = ({
 
   const variantStyles = {
     primary: 'bg-primary text-white hover:bg-primary-dark active:bg-blue-700',
-    secondary: 'bg-dark-surface text-slate-100 hover:bg-dark-hover border border-dark-border',
+    secondary: 'bg-light-surface dark:bg-dark-surface text-slate-700 dark:text-slate-100 hover:bg-light-hover dark:hover:bg-dark-hover border border-light-border dark:border-dark-border',
     danger: 'bg-red-600 text-white hover:bg-red-700 active:bg-red-800',
-    ghost: 'text-slate-300 hover:bg-dark-surface hover:text-slate-100',
+    ghost: 'text-slate-600 dark:text-slate-300 hover:bg-light-hover dark:hover:bg-dark-surface hover:text-slate-900 dark:hover:text-slate-100',
+    outline: 'bg-transparent text-slate-600 dark:text-slate-300 border border-light-border dark:border-dark-border hover:bg-light-hover dark:hover:bg-dark-surface hover:text-slate-900 dark:hover:text-slate-100',
   };
 
   const sizeStyles = {

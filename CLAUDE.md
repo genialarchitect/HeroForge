@@ -147,11 +147,13 @@ src/
 ├── email/               # SMTP notifications (scan complete, critical vulns)
 ├── reports/             # Report generation (JSON, HTML, PDF, CSV) with risk scoring
 ├── output/              # CLI output formatting (terminal, json, csv)
-├── db/                  # SQLite via sqlx (models.rs, migrations.rs, analytics.rs, assets.rs)
+├── db/                  # SQLite via sqlx (models.rs, migrations.rs, analytics.rs, assets.rs, crm.rs)
 └── web/                 # Actix-web server
     ├── auth/            # JWT auth (jwt.rs, middleware.rs)
     ├── api/             # REST endpoints (see API section below)
+    │   └── portal/      # Customer portal API (separate auth)
     ├── websocket/       # Real-time scan progress with aggregation
+    ├── error.rs         # Unified API error types (ApiErrorKind, ResponseError impl)
     ├── rate_limit.rs    # Request rate limiting
     └── scheduler.rs     # Background job scheduler
 ```
@@ -172,13 +174,20 @@ src/
 | `/manual-assessments` | Manual compliance rubric assessments |
 | `/manual-assessments/:id` | Assessment detail/edit view |
 | `/remediation` | Vulnerability remediation workflow board |
+| `/portal/login` | Customer portal login |
+| `/portal/dashboard` | Customer portal dashboard |
+| `/portal/engagements` | Customer engagement list |
+| `/portal/vulnerabilities` | Customer vulnerability view |
+| `/portal/reports` | Customer report downloads |
 
 ### REST API
 
 Full API documentation available via Swagger UI at `/api/docs` (requires running server).
 
 **Key endpoint categories:**
-- `/api/auth/*` - Authentication, MFA, GDPR (register, login, MFA setup, data export)
+- `/api/auth/*` - Public auth endpoints (register, login, logout, refresh, MFA verify)
+- `/api/user/*` - Protected user endpoints (me, profile, password, MFA management, GDPR)
+- `/api/portal/*` - Customer portal (separate auth system for external customers)
 - `/api/scans/*` - Scan CRUD, results, export, compare, bulk operations
 - `/api/reports/*` - Report generation (JSON, HTML, PDF, CSV)
 - `/api/templates/*` - Scan template management
@@ -230,7 +239,7 @@ Default rubrics are seeded for 45+ non-automated controls across PCI-DSS, SOC2, 
 
 **Database:** Async SQLite via `sqlx::SqlitePool`, auto-migrations on startup
 
-**Auth Flow:** Register/login → bcrypt hash → JWT token → `JwtMiddleware` validates Bearer tokens
+**Auth Flow:** Register/login → bcrypt hash → JWT token → `JwtMiddleware` validates Bearer tokens. Customer portal uses separate `PortalAuthMiddleware` with its own JWT issuer.
 
 **Error Handling:** Use `anyhow::Error` (not `Box<dyn std::error::Error>`) for `Send` compatibility in async spawned tasks
 
@@ -368,7 +377,7 @@ Rate limit responses return HTTP 429 with `Retry-After` header.
 
 **Database:** Dev: `./heroforge.db` | Prod: `/root/Development/HeroForge/heroforge.db` (mounted in container)
 
-**WebSocket Auth:** `/api/ws/scans/{id}` requires JWT as query parameter.
+**WebSocket Auth:** `/api/ws/scans/{id}` requires JWT as query parameter (`?token=...`). The JwtMiddleware skips `/ws/` paths; WebSocket handler performs its own token verification.
 
 **Wordlists:** Built-in at `scanner/enumeration/wordlists.rs`, custom via `--enum-wordlist` flag.
 
@@ -402,3 +411,97 @@ cd /root && docker compose restart traefik     # Force refresh
 
 ### Enumeration Not Working
 Requires `--enum` flag and successful service detection. For SMB, ensure `smbclient` and `enum4linux` are installed. Use `-v` for debug logs.
+
+### WebSocket Connection Fails
+If scans show "connection failed" or "failed to connect to web socket":
+1. Check browser console for WebSocket errors
+2. Verify JWT token is valid and not expired
+3. Ensure middleware skips `/ws/` paths (check `src/web/auth/middleware.rs`)
+4. Check Traefik logs for WebSocket upgrade issues: `docker logs root-traefik-1 | grep -i websocket`
+
+## Feature Roadmap
+
+Planned features organized by implementation complexity and priority.
+
+### Tier 1: Quick Wins (1-2 days each)
+
+Low complexity, high immediate value.
+
+| Feature | Effort | Status | Description |
+|---------|--------|--------|-------------|
+| Asset Tagging & Groups | 1 day | Planned | Organize assets by environment, criticality, owner |
+| Vulnerability Assignments | 1 day | Planned | Assign vulns to team members with due dates |
+| Audit Trail Enhancement | 1 day | Planned | Enhanced logging of all user actions |
+| SSL/TLS Grading | 1-2 days | Planned | Detailed certificate health scores (like SSL Labs) |
+| Dark/Light Theme Toggle | 1 day | Planned | User-selectable UI theme |
+| Export Scan to Markdown | 0.5 day | Planned | Markdown format for scan reports |
+| Bulk Vulnerability Actions | 1 day | Planned | Mass update/assign/close vulnerabilities |
+| Scan Tags/Labels | 1 day | Planned | Categorize and filter scans |
+| Duplicate Scan | 0.5 day | Planned | Clone existing scan configuration |
+| Vulnerability Notes/Comments | 1 day | Planned | Add notes and discussion to findings |
+
+### Tier 2: Medium Features (3-5 days each)
+
+Moderate complexity, strong value proposition.
+
+| Feature | Effort | Status | Description |
+|---------|--------|--------|-------------|
+| Slack/Teams Notifications | 2-3 days | Planned | Real-time alerts for critical findings |
+| Scan Comparison Dashboard | 3-4 days | Planned | Visual diff between scan runs (comparison.rs exists) |
+| Automated Report Scheduling | 3 days | Planned | Schedule and email PDF reports |
+| SLA Tracking & Alerts | 3-4 days | Planned | Track remediation against defined SLAs |
+| Custom Webhooks (outbound) | 2-3 days | Planned | Send events to external systems |
+| Secret Detection Scanner | 4-5 days | Planned | Detect exposed API keys, passwords |
+| Vulnerability Trends/Charts | 3 days | Planned | Historical vulnerability analytics |
+| ServiceNow Integration | 4-5 days | Planned | Create incidents/changes from vulns |
+| MFA Setup UI | 2-3 days | Planned | TOTP setup wizard (backend exists) |
+| API Rate Limit Dashboard | 2 days | Planned | Visualize rate limiting stats |
+| Scan Profiles/Presets | 2-3 days | Planned | Enhanced template management |
+| Host/Port Exclusions | 2 days | Planned | Global and per-scan exclusion lists |
+
+### Tier 3: Major Features (1-2 weeks each)
+
+High complexity, significant new capabilities.
+
+| Feature | Effort | Status | Description |
+|---------|--------|--------|-------------|
+| Credential-Based Scanning | 1-2 weeks | Planned | Authenticated scans (SSH, WinRM, DB) |
+| Container/K8s Scanning | 2 weeks | Planned | Docker and Kubernetes security |
+| CI/CD Integration | 1 week | Planned | GitHub Actions, Jenkins plugins |
+| Custom Remediation Workflows | 1-2 weeks | Planned | Configurable approval chains |
+| Terraform/IaC Scanning | 2 weeks | Planned | Infrastructure-as-Code security |
+| Cloud Security Posture | 2-3 weeks | Planned | AWS/Azure/GCP configuration audit |
+| Agent-Based Scanning | 2-3 weeks | Planned | Lightweight agents for internal networks |
+| AI Vulnerability Prioritization | 1-2 weeks | Planned | ML-based risk scoring |
+| Multi-Tenancy | 2-3 weeks | Planned | Isolated customer environments |
+| SAML/SSO Authentication | 1-2 weeks | Planned | Enterprise identity provider support |
+
+### Tier 4: Platform Expansions (1+ months)
+
+Strategic initiatives that transform the product.
+
+| Feature | Effort | Status | Description |
+|---------|--------|--------|-------------|
+| Mobile App | 4-6 weeks | Planned | React Native companion app |
+| Distributed Scanning Agents | 4-6 weeks | Planned | Mesh of scanning agents |
+| Plugin Marketplace | 6-8 weeks | Planned | Extensible plugin architecture |
+| Compliance Automation | 4-6 weeks | Planned | Full SOC2/ISO27001 evidence collection |
+| Breach & Attack Simulation | 6-8 weeks | Planned | Safe exploit simulation framework |
+| Full SIEM Capabilities | 8-12 weeks | Planned | Log ingestion and correlation engine |
+
+### Implementation Notes
+
+When implementing features:
+1. **Tier 1 items** - Can be done independently, good for quick iterations
+2. **Tier 2 items** - May have dependencies on existing modules
+3. **Tier 3+ items** - Require planning phase, consider using `EnterPlanMode`
+
+### Current Sprint
+
+Track active work here:
+- [ ] No items currently in progress
+
+### Completed Features
+
+Move completed items here with completion date:
+- (none yet)

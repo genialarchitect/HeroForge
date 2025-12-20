@@ -6,7 +6,9 @@ import type {
   CreateScanRequest,
   ScanResult,
   HostInfo,
-  AuditLog,
+  AuditLogResponse,
+  AuditLogFilter,
+  AuditUser,
   SystemSetting,
   Report,
   ReportTemplate,
@@ -46,6 +48,9 @@ import type {
   VerifyVulnerabilityRequest,
   RemediationTimelineEvent,
   VulnerabilityStats,
+  RequestRetestRequest,
+  BulkRetestRequest,
+  CompleteRetestRequest,
   ComplianceFramework,
   ComplianceControlList,
   ComplianceAnalyzeRequest,
@@ -75,6 +80,71 @@ import type {
   UpdateVpnConfigRequest,
   VpnConnectRequest,
   VpnTestResult,
+  Customer,
+  Contact,
+  Engagement,
+  EngagementMilestone,
+  Contract,
+  SlaDefinition,
+  TimeEntry,
+  Communication,
+  CrmDashboardStats,
+  CustomerSummary,
+  CreateCustomerRequest,
+  UpdateCustomerRequest,
+  CreateContactRequest,
+  UpdateContactRequest,
+  CreateEngagementRequest,
+  UpdateEngagementRequest,
+  CreateMilestoneRequest,
+  UpdateMilestoneRequest,
+  CreateContractRequest,
+  UpdateContractRequest,
+  CreateSlaRequest,
+  CreateTimeEntryRequest,
+  CreateCommunicationRequest,
+  CrmPortalUser,
+  CreatePortalUserRequest,
+  UpdatePortalUserRequest,
+  ResetPortalUserPasswordRequest,
+  FindingTemplate,
+  CreateFindingTemplateRequest,
+  UpdateFindingTemplateRequest,
+  CloneTemplateRequest,
+  TemplateCategory,
+  MethodologyTemplate,
+  MethodologyTemplateWithItems,
+  MethodologyChecklist,
+  ChecklistSummary,
+  ChecklistWithItems,
+  ChecklistProgress,
+  ChecklistItem,
+  CreateChecklistRequest,
+  UpdateChecklistRequest,
+  UpdateChecklistItemRequest,
+  // Executive Analytics types
+  CustomerSecurityTrends,
+  ExecutiveSummary,
+  RemediationVelocity,
+  RiskTrendPoint,
+  MethodologyExecutiveCoverage,
+  ExecutiveDashboard,
+  // Scan Tags types
+  ScanTag,
+  CreateScanTagRequest,
+  AddTagsToScanRequest,
+  ScanWithTags,
+  DuplicateScanRequest,
+  // Asset Tags types
+  AssetTag,
+  AssetTagWithCount,
+  CreateAssetTagRequest,
+  UpdateAssetTagRequest,
+  AddAssetTagsRequest,
+  Asset,
+  AssetDetailWithTags,
+  // SSL Report types
+  SslReportSummary,
 } from '../types';
 
 const api = axios.create({
@@ -91,33 +161,36 @@ api.interceptors.request.use((config) => {
 });
 
 export const authAPI = {
+  // Public auth routes (at /api/auth)
   register: (data: LoginRequest & { email: string }) =>
     api.post<LoginResponse>('/auth/register', data),
   login: (data: LoginRequest) => api.post<MfaLoginResponse>('/auth/login', data),
-  me: () => api.get<User>('/auth/me'),
+  // Protected user routes (at /api/user)
+  me: () => api.get<User>('/user/me'),
   updateProfile: (data: UpdateProfileRequest) =>
-    api.put<User>('/auth/profile', data),
+    api.put<User>('/user/profile', data),
   changePassword: (data: ChangePasswordRequest) =>
-    api.put<{ message: string }>('/auth/password', data),
+    api.put<{ message: string }>('/user/password', data),
 };
 
 export const mfaAPI = {
+  // Protected MFA management routes (at /api/user)
   // Setup MFA - returns secret, QR code URL, and recovery codes
-  setup: () => api.post<MfaSetupResponse>('/auth/mfa/setup'),
+  setup: () => api.post<MfaSetupResponse>('/user/mfa/setup'),
 
   // Verify setup with TOTP code
   verifySetup: (data: MfaVerifySetupRequest) =>
-    api.post<{ message: string }>('/auth/mfa/verify-setup', data),
+    api.post<{ message: string }>('/user/mfa/verify-setup', data),
 
   // Disable MFA (requires password + TOTP or recovery code)
   disable: (data: MfaDisableRequest) =>
-    api.delete<{ message: string }>('/auth/mfa', { data }),
+    api.delete<{ message: string }>('/user/mfa', { data }),
 
   // Regenerate recovery codes (requires password + TOTP)
   regenerateRecoveryCodes: (data: MfaRegenerateRecoveryCodesRequest) =>
-    api.post<MfaRegenerateRecoveryCodesResponse>('/auth/mfa/recovery-codes', data),
+    api.post<MfaRegenerateRecoveryCodesResponse>('/user/mfa/recovery-codes', data),
 
-  // Verify MFA during login (with mfa_token from initial login)
+  // Public MFA verification during login (at /api/auth)
   verify: (data: MfaVerifyRequest) =>
     api.post<LoginResponse>('/auth/mfa/verify', data),
 };
@@ -144,6 +217,27 @@ export const scanAPI = {
       },
       { responseType: 'blob' }
     ),
+  // Duplicate scan
+  duplicate: (id: string, data?: DuplicateScanRequest) =>
+    api.post<ScanResult>(`/scans/${id}/duplicate`, data || {}),
+  // Get scans with tags
+  getAllWithTags: () => api.get<ScanWithTags[]>('/scans/with-tags'),
+  // Get SSL/TLS report for a scan
+  getSslReport: (id: string) => api.get<SslReportSummary>(`/scans/${id}/ssl-report`),
+};
+
+export const scanTagAPI = {
+  // Tag management
+  getAll: () => api.get<ScanTag[]>('/scans/tags'),
+  create: (data: CreateScanTagRequest) => api.post<ScanTag>('/scans/tags', data),
+  delete: (id: string) => api.delete<{ message: string }>(`/scans/tags/${id}`),
+
+  // Tag-scan associations
+  getTagsForScan: (scanId: string) => api.get<ScanTag[]>(`/scans/${scanId}/tags`),
+  addTagsToScan: (scanId: string, data: AddTagsToScanRequest) =>
+    api.post<ScanTag[]>(`/scans/${scanId}/tags`, data),
+  removeTagFromScan: (scanId: string, tagId: string) =>
+    api.delete<{ message: string }>(`/scans/${scanId}/tags/${tagId}`),
 };
 
 export const adminAPI = {
@@ -168,8 +262,31 @@ export const adminAPI = {
   deleteScan: (id: string) => api.delete(`/admin/scans/${id}`),
 
   // Audit logs
-  getAuditLogs: (limit = 100, offset = 0) =>
-    api.get<AuditLog[]>(`/admin/audit-logs?limit=${limit}&offset=${offset}`),
+  getAuditLogs: (filter: AuditLogFilter = {}) => {
+    const params = new URLSearchParams();
+    if (filter.user_id) params.append('user_id', filter.user_id);
+    if (filter.action) params.append('action', filter.action);
+    if (filter.target_type) params.append('target_type', filter.target_type);
+    if (filter.start_date) params.append('start_date', filter.start_date);
+    if (filter.end_date) params.append('end_date', filter.end_date);
+    if (filter.limit !== undefined) params.append('limit', filter.limit.toString());
+    if (filter.offset !== undefined) params.append('offset', filter.offset.toString());
+    return api.get<AuditLogResponse>(`/admin/audit-logs?${params.toString()}`);
+  },
+  getAuditActionTypes: () => api.get<{ actions: string[] }>('/admin/audit-logs/action-types'),
+  getAuditUsers: () => api.get<{ users: AuditUser[] }>('/admin/audit-logs/users'),
+  exportAuditLogs: async (filter: AuditLogFilter = {}) => {
+    const params = new URLSearchParams();
+    if (filter.user_id) params.append('user_id', filter.user_id);
+    if (filter.action) params.append('action', filter.action);
+    if (filter.target_type) params.append('target_type', filter.target_type);
+    if (filter.start_date) params.append('start_date', filter.start_date);
+    if (filter.end_date) params.append('end_date', filter.end_date);
+    const response = await api.get(`/admin/audit-logs/export?${params.toString()}`, {
+      responseType: 'blob',
+    });
+    return response;
+  },
 
   // System settings
   getSettings: () => api.get<SystemSetting[]>('/admin/settings'),
@@ -316,6 +433,24 @@ export const vulnerabilityAPI = {
 
   bulkAssign: (data: BulkAssignVulnerabilitiesRequest) =>
     api.post<{ updated: number }>('/vulnerabilities/bulk-assign', data),
+
+  // Retest workflow methods
+  requestRetest: (id: string, data: RequestRetestRequest = {}) =>
+    api.post<VulnerabilityTracking>(`/vulnerabilities/${id}/request-retest`, data),
+
+  bulkRequestRetest: (data: BulkRetestRequest) =>
+    api.post<{ requested: number }>('/vulnerabilities/bulk-retest', data),
+
+  completeRetest: (id: string, data: CompleteRetestRequest) =>
+    api.post<VulnerabilityTracking>(`/vulnerabilities/${id}/complete-retest`, data),
+
+  getPendingRetests: (scan_id?: string) => {
+    const queryParams = scan_id ? `?scan_id=${scan_id}` : '';
+    return api.get<VulnerabilityTracking[]>(`/vulnerabilities/pending-retest${queryParams}`);
+  },
+
+  getRetestHistory: (id: string) =>
+    api.get<RemediationTimelineEvent[]>(`/vulnerabilities/${id}/retest-history`),
 };
 
 export const complianceAPI = {
@@ -617,6 +752,467 @@ export const vpnAPI = {
 
   // Disconnect from VPN
   disconnect: () => api.post<{ message: string }>('/vpn/disconnect'),
+};
+
+// ============================================================================
+// CRM API
+// ============================================================================
+
+export const crmAPI = {
+  // Dashboard
+  getDashboard: () => api.get<CrmDashboardStats>('/crm/dashboard'),
+
+  // Customers
+  customers: {
+    getAll: (status?: string) => {
+      const params = status ? `?status=${status}` : '';
+      return api.get<Customer[]>(`/crm/customers${params}`);
+    },
+    getById: (id: string) => api.get<Customer>(`/crm/customers/${id}`),
+    getSummary: (id: string) => api.get<CustomerSummary>(`/crm/customers/${id}/summary`),
+    create: (data: CreateCustomerRequest) => api.post<Customer>('/crm/customers', data),
+    update: (id: string, data: UpdateCustomerRequest) => api.put<Customer>(`/crm/customers/${id}`, data),
+    delete: (id: string) => api.delete(`/crm/customers/${id}`),
+  },
+
+  // Contacts
+  contacts: {
+    getByCustomer: (customerId: string) => api.get<Contact[]>(`/crm/customers/${customerId}/contacts`),
+    getById: (id: string) => api.get<Contact>(`/crm/contacts/${id}`),
+    create: (customerId: string, data: CreateContactRequest) =>
+      api.post<Contact>(`/crm/customers/${customerId}/contacts`, data),
+    update: (id: string, data: UpdateContactRequest) => api.put<Contact>(`/crm/contacts/${id}`, data),
+    delete: (id: string) => api.delete(`/crm/contacts/${id}`),
+  },
+
+  // Engagements
+  engagements: {
+    getAll: (status?: string) => {
+      const params = status ? `?status=${status}` : '';
+      return api.get<Engagement[]>(`/crm/engagements${params}`);
+    },
+    getByCustomer: (customerId: string, status?: string) => {
+      const params = status ? `?status=${status}` : '';
+      return api.get<Engagement[]>(`/crm/customers/${customerId}/engagements${params}`);
+    },
+    getById: (id: string) => api.get<Engagement>(`/crm/engagements/${id}`),
+    create: (customerId: string, data: CreateEngagementRequest) =>
+      api.post<Engagement>(`/crm/customers/${customerId}/engagements`, data),
+    update: (id: string, data: UpdateEngagementRequest) =>
+      api.put<Engagement>(`/crm/engagements/${id}`, data),
+    delete: (id: string) => api.delete(`/crm/engagements/${id}`),
+  },
+
+  // Milestones
+  milestones: {
+    getByEngagement: (engagementId: string) =>
+      api.get<EngagementMilestone[]>(`/crm/engagements/${engagementId}/milestones`),
+    create: (engagementId: string, data: CreateMilestoneRequest) =>
+      api.post<EngagementMilestone>(`/crm/engagements/${engagementId}/milestones`, data),
+    update: (id: string, data: UpdateMilestoneRequest) =>
+      api.put<EngagementMilestone>(`/crm/milestones/${id}`, data),
+    delete: (id: string) => api.delete(`/crm/milestones/${id}`),
+  },
+
+  // Contracts
+  contracts: {
+    getAll: (status?: string) => {
+      const params = status ? `?status=${status}` : '';
+      return api.get<Contract[]>(`/crm/contracts${params}`);
+    },
+    getByCustomer: (customerId: string) =>
+      api.get<Contract[]>(`/crm/customers/${customerId}/contracts`),
+    getById: (id: string) => api.get<Contract>(`/crm/contracts/${id}`),
+    create: (customerId: string, data: CreateContractRequest) =>
+      api.post<Contract>(`/crm/customers/${customerId}/contracts`, data),
+    update: (id: string, data: UpdateContractRequest) => api.put<Contract>(`/crm/contracts/${id}`, data),
+    delete: (id: string) => api.delete(`/crm/contracts/${id}`),
+  },
+
+  // SLA
+  sla: {
+    getTemplates: () => api.get<SlaDefinition[]>('/crm/sla-templates'),
+    createTemplate: (data: CreateSlaRequest) => api.post<SlaDefinition>('/crm/sla-templates', data),
+    getByCustomer: (customerId: string) =>
+      api.get<SlaDefinition | null>(`/crm/customers/${customerId}/sla`),
+    setForCustomer: (customerId: string, data: CreateSlaRequest) =>
+      api.post<SlaDefinition>(`/crm/customers/${customerId}/sla`, data),
+    delete: (id: string) => api.delete(`/crm/sla/${id}`),
+  },
+
+  // Time Tracking
+  timeEntries: {
+    getAll: (startDate?: string, endDate?: string) => {
+      const params = new URLSearchParams();
+      if (startDate) params.append('start_date', startDate);
+      if (endDate) params.append('end_date', endDate);
+      const queryString = params.toString();
+      return api.get<TimeEntry[]>(`/crm/time${queryString ? `?${queryString}` : ''}`);
+    },
+    getByEngagement: (engagementId: string) =>
+      api.get<TimeEntry[]>(`/crm/engagements/${engagementId}/time`),
+    create: (engagementId: string, data: CreateTimeEntryRequest) =>
+      api.post<TimeEntry>(`/crm/engagements/${engagementId}/time`, data),
+    delete: (id: string) => api.delete(`/crm/time/${id}`),
+  },
+
+  // Communications
+  communications: {
+    getByCustomer: (customerId: string, limit?: number) => {
+      const params = limit ? `?limit=${limit}` : '';
+      return api.get<Communication[]>(`/crm/customers/${customerId}/communications${params}`);
+    },
+    create: (customerId: string, data: CreateCommunicationRequest) =>
+      api.post<Communication>(`/crm/customers/${customerId}/communications`, data),
+    delete: (id: string) => api.delete(`/crm/communications/${id}`),
+  },
+
+  // Portal Users (CRM admin management)
+  portalUsers: {
+    getByCustomer: (customerId: string) =>
+      api.get<CrmPortalUser[]>(`/crm/customers/${customerId}/portal-users`),
+    getById: (customerId: string, userId: string) =>
+      api.get<CrmPortalUser>(`/crm/customers/${customerId}/portal-users/${userId}`),
+    create: (customerId: string, data: CreatePortalUserRequest) =>
+      api.post<CrmPortalUser>(`/crm/customers/${customerId}/portal-users`, data),
+    update: (customerId: string, userId: string, data: UpdatePortalUserRequest) =>
+      api.put<CrmPortalUser>(`/crm/customers/${customerId}/portal-users/${userId}`, data),
+    delete: (customerId: string, userId: string) =>
+      api.delete(`/crm/customers/${customerId}/portal-users/${userId}`),
+    activate: (customerId: string, userId: string) =>
+      api.post<{ message: string }>(`/crm/customers/${customerId}/portal-users/${userId}/activate`),
+    deactivate: (customerId: string, userId: string) =>
+      api.post<{ message: string }>(`/crm/customers/${customerId}/portal-users/${userId}/deactivate`),
+    resetPassword: (customerId: string, userId: string, data: ResetPortalUserPasswordRequest) =>
+      api.post<{ message: string }>(`/crm/customers/${customerId}/portal-users/${userId}/reset-password`, data),
+  },
+};
+
+// ============================================================================
+// Finding Templates API
+// ============================================================================
+
+export interface ListFindingTemplatesParams {
+  category?: string;
+  severity?: string;
+  search?: string;
+  include_system?: boolean;
+}
+
+export const findingTemplatesAPI = {
+  // List all finding templates with optional filters
+  list: (params?: ListFindingTemplatesParams) => {
+    const queryParams = new URLSearchParams();
+    if (params?.category) queryParams.append('category', params.category);
+    if (params?.severity) queryParams.append('severity', params.severity);
+    if (params?.search) queryParams.append('search', params.search);
+    if (params?.include_system !== undefined) {
+      queryParams.append('include_system', params.include_system.toString());
+    }
+    const query = queryParams.toString();
+    return api.get<FindingTemplate[]>(`/finding-templates${query ? `?${query}` : ''}`);
+  },
+
+  // Get a single template by ID
+  getById: (id: string) => api.get<FindingTemplate>(`/finding-templates/${id}`),
+
+  // Create a new template
+  create: (data: CreateFindingTemplateRequest) =>
+    api.post<FindingTemplate>('/finding-templates', data),
+
+  // Update an existing template
+  update: (id: string, data: UpdateFindingTemplateRequest) =>
+    api.put<FindingTemplate>(`/finding-templates/${id}`, data),
+
+  // Delete a template
+  delete: (id: string) => api.delete(`/finding-templates/${id}`),
+
+  // Clone a template
+  clone: (id: string, data?: CloneTemplateRequest) =>
+    api.post<FindingTemplate>(`/finding-templates/${id}/clone`, data || {}),
+
+  // Get categories with counts
+  getCategories: () => api.get<TemplateCategory[]>('/finding-templates/categories'),
+};
+
+// Methodology Checklists API
+export const methodologyAPI = {
+  // List all methodology templates (PTES, OWASP WSTG, etc.)
+  listTemplates: () => api.get<MethodologyTemplate[]>('/methodology/templates'),
+
+  // Get a single template with all its items
+  getTemplate: (id: string) =>
+    api.get<MethodologyTemplateWithItems>(`/methodology/templates/${id}`),
+
+  // List all user's checklists
+  listChecklists: () => api.get<ChecklistSummary[]>('/methodology/checklists'),
+
+  // Create a new checklist from a template
+  createChecklist: (data: CreateChecklistRequest) =>
+    api.post<MethodologyChecklist>('/methodology/checklists', data),
+
+  // Get a checklist with all items
+  getChecklist: (id: string) =>
+    api.get<ChecklistWithItems>(`/methodology/checklists/${id}`),
+
+  // Update checklist metadata
+  updateChecklist: (id: string, data: UpdateChecklistRequest) =>
+    api.put<MethodologyChecklist>(`/methodology/checklists/${id}`, data),
+
+  // Delete a checklist
+  deleteChecklist: (id: string) => api.delete(`/methodology/checklists/${id}`),
+
+  // Get checklist progress
+  getProgress: (checklistId: string) =>
+    api.get<ChecklistProgress>(`/methodology/checklists/${checklistId}/progress`),
+
+  // Get a single checklist item
+  getItem: (checklistId: string, itemId: string) =>
+    api.get<ChecklistItem>(
+      `/methodology/checklists/${checklistId}/items/${itemId}`
+    ),
+
+  // Update a checklist item
+  updateItem: (
+    checklistId: string,
+    itemId: string,
+    data: UpdateChecklistItemRequest
+  ) =>
+    api.put<ChecklistItem>(
+      `/methodology/checklists/${checklistId}/items/${itemId}`,
+      data
+    ),
+};
+
+// ============================================================================
+// Executive Analytics API
+// ============================================================================
+
+export const executiveAnalyticsAPI = {
+  // Get security trends for a specific customer
+  getCustomerTrends: (customerId: string, months = 6) =>
+    api.get<CustomerSecurityTrends>(
+      `/analytics/customer/${customerId}/trends`,
+      { params: { months } }
+    ),
+
+  // Get executive summary for a specific customer
+  getCustomerSummary: (customerId: string) =>
+    api.get<ExecutiveSummary>(`/analytics/customer/${customerId}/summary`),
+
+  // Get remediation velocity metrics
+  getRemediationVelocity: (days = 90) =>
+    api.get<RemediationVelocity>('/analytics/remediation-velocity', {
+      params: { days },
+    }),
+
+  // Get risk trends
+  getRiskTrends: (months = 6) =>
+    api.get<RiskTrendPoint[]>('/analytics/risk-trends', {
+      params: { months },
+    }),
+
+  // Get methodology coverage statistics
+  getMethodologyCoverage: () =>
+    api.get<MethodologyExecutiveCoverage>('/analytics/methodology-coverage'),
+
+  // Get combined executive dashboard data
+  getExecutiveDashboard: (customerId?: string, months = 6) =>
+    api.get<ExecutiveDashboard>('/analytics/executive-dashboard', {
+      params: { customer_id: customerId, months },
+    }),
+};
+
+// ============================================================================
+// Threat Intelligence API
+// ============================================================================
+
+import type {
+  ThreatAlert,
+  IpThreatIntel,
+  EnrichedCve,
+  ThreatIntelApiStatus,
+  EnrichmentResult,
+  EnrichScanRequest,
+} from '../types';
+
+export const threatIntelAPI = {
+  // Get API status and quota info
+  getStatus: () => api.get<ThreatIntelApiStatus>('/threat-intel/status'),
+
+  // Look up threat intel for an IP address
+  lookupIp: (ip: string) => api.get<IpThreatIntel>(`/threat-intel/lookup/${ip}`),
+
+  // Get enriched CVE data with exploit info
+  lookupCve: (cveId: string) => api.get<EnrichedCve>(`/threat-intel/cve/${cveId}`),
+
+  // Get recent threat alerts
+  getAlerts: (params?: { limit?: number; scan_id?: string; severity?: string }) =>
+    api.get<{ alerts: ThreatAlert[]; total: number }>('/threat-intel/alerts', { params }),
+
+  // Acknowledge an alert
+  acknowledgeAlert: (alertId: string) =>
+    api.post(`/threat-intel/alerts/${alertId}/acknowledge`),
+
+  // Enrich a scan with threat intelligence
+  enrichScan: (scanId: string, options?: EnrichScanRequest) =>
+    api.post<EnrichmentResult>(`/threat-intel/enrich/${scanId}`, options || {}),
+
+  // Get enrichment results for a scan
+  getEnrichment: (scanId: string) =>
+    api.get<EnrichmentResult>(`/threat-intel/scan/${scanId}/enrichment`),
+};
+
+// ============================================================================
+// Attack Path Analysis API
+// ============================================================================
+
+import type {
+  AnalyzeAttackPathsRequest,
+  AnalyzeAttackPathsResponse,
+  GetAttackPathsResponse,
+  AttackPath,
+} from '../types';
+
+export const attackPathsAPI = {
+  // Analyze a scan for attack paths
+  analyze: (scanId: string, options?: AnalyzeAttackPathsRequest) =>
+    api.post<AnalyzeAttackPathsResponse>(
+      `/attack-paths/analyze/${scanId}`,
+      options || {}
+    ),
+
+  // Get all attack paths for a scan
+  getByScan: (scanId: string) =>
+    api.get<GetAttackPathsResponse>(`/attack-paths/${scanId}`),
+
+  // Get critical attack paths only
+  getCritical: (scanId: string) =>
+    api.get<GetAttackPathsResponse>(`/attack-paths/${scanId}/critical`),
+
+  // Get a single attack path with full details
+  getPath: (pathId: string) =>
+    api.get<AttackPath>(`/attack-paths/path/${pathId}`),
+};
+
+// ============================================================================
+// API Security Scanning API
+// ============================================================================
+
+export interface StartApiScanRequest {
+  name: string;
+  target_url: string;
+  spec_type?: string;
+  spec_content?: string;
+  auth_config?: {
+    auth_type: string;
+    credentials: Record<string, string>;
+  };
+  scan_options?: {
+    test_auth_bypass?: boolean;
+    test_injection?: boolean;
+    test_rate_limit?: boolean;
+    test_cors?: boolean;
+    test_bola?: boolean;
+    test_bfla?: boolean;
+    discover_endpoints?: boolean;
+  };
+  customer_id?: string;
+  engagement_id?: string;
+}
+
+export interface DiscoverEndpointsRequest {
+  target_url: string;
+  spec_type?: string;
+  spec_content?: string;
+}
+
+export const apiSecurityAPI = {
+  // Start a new API security scan
+  startScan: (data: StartApiScanRequest) =>
+    api.post('/api-security/scans', data),
+
+  // List all API scans for the current user
+  listScans: () => api.get('/api-security/scans'),
+
+  // Get scan details by ID
+  getScan: (scanId: string) => api.get(`/api-security/scans/${scanId}`),
+
+  // Delete a scan
+  deleteScan: (scanId: string) => api.delete(`/api-security/scans/${scanId}`),
+
+  // Get findings for a scan
+  getFindings: (scanId: string) =>
+    api.get(`/api-security/scans/${scanId}/findings`),
+
+  // Get discovered endpoints for a scan
+  getEndpoints: (scanId: string) =>
+    api.get(`/api-security/scans/${scanId}/endpoints`),
+
+  // Discover API endpoints from a URL or spec
+  discoverEndpoints: (data: DiscoverEndpointsRequest) =>
+    api.post('/api-security/discover', data),
+
+  // Get API security statistics
+  getStats: () => api.get('/api-security/stats'),
+};
+
+// ============================================================================
+// Asset Tags API
+// ============================================================================
+
+export const assetTagsAPI = {
+  // Get all asset tags with usage counts
+  getTags: () =>
+    api.get<AssetTagWithCount[]>('/assets/tags'),
+
+  // Create a new asset tag
+  createTag: (data: CreateAssetTagRequest) =>
+    api.post<AssetTag>('/assets/tags', data),
+
+  // Get a specific tag by ID
+  getTag: (tagId: string) =>
+    api.get<AssetTag>(`/assets/tags/${tagId}`),
+
+  // Update an existing tag
+  updateTag: (tagId: string, data: UpdateAssetTagRequest) =>
+    api.put<AssetTag>(`/assets/tags/${tagId}`, data),
+
+  // Delete a tag
+  deleteTag: (tagId: string) =>
+    api.delete(`/assets/tags/${tagId}`),
+
+  // Get all assets (with optional filters)
+  getAssets: (params?: { status?: string; tag_ids?: string }) =>
+    api.get<Asset[]>('/assets', { params }),
+
+  // Get assets filtered by tags
+  getAssetsByTags: (params?: { status?: string; tag_ids?: string }) =>
+    api.get<Asset[]>('/assets/by-tags', { params }),
+
+  // Get a specific asset with tags
+  getAsset: (assetId: string) =>
+    api.get<AssetDetailWithTags>(`/assets/${assetId}`),
+
+  // Add tags to an asset
+  addTagsToAsset: (assetId: string, data: AddAssetTagsRequest) =>
+    api.post<AssetDetailWithTags>(`/assets/${assetId}/tags`, data),
+
+  // Remove a tag from an asset
+  removeTagFromAsset: (assetId: string, tagId: string) =>
+    api.delete<AssetDetailWithTags>(`/assets/${assetId}/tags/${tagId}`),
+
+  // Update asset
+  updateAsset: (assetId: string, data: { status?: string; tags?: string[]; notes?: string }) =>
+    api.patch<Asset>(`/assets/${assetId}`, data),
+
+  // Delete asset
+  deleteAsset: (assetId: string) =>
+    api.delete(`/assets/${assetId}`),
+
+  // Get asset history
+  getAssetHistory: (assetId: string) =>
+    api.get(`/assets/${assetId}/history`),
 };
 
 export default api;

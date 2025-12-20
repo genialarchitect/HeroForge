@@ -51,7 +51,7 @@ const EvidenceGallery: React.FC<EvidenceGalleryProps> = ({
       await assessmentEvidenceAPI.delete(deleteConfirm.id);
       onDelete(deleteConfirm.id);
       setDeleteConfirm(null);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to delete evidence:', err);
     } finally {
       setIsDeleting(false);
@@ -71,7 +71,7 @@ const EvidenceGallery: React.FC<EvidenceGalleryProps> = ({
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to download evidence:', err);
     } finally {
       setIsDownloading(null);

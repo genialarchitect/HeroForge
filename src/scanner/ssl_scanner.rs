@@ -2,17 +2,106 @@
 //!
 //! This module performs SSL/TLS certificate validation and security checks,
 //! including certificate expiration, weak ciphers, protocol versions, and HSTS.
+//! Also provides SSL/TLS grading similar to SSL Labs (A+ to F).
 
 use crate::types::SslInfo;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use log::{debug, warn};
 use rustls::pki_types::ServerName;
+use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::sync::Arc;
 use std::time::Duration;
 use x509_parser::prelude::*;
+
+/// SSL/TLS grade from A+ to F, similar to SSL Labs grading
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, utoipa::ToSchema)]
+pub enum SslGradeLevel {
+    #[serde(rename = "A+")]
+    APlus,
+    A,
+    #[serde(rename = "A-")]
+    AMinus,
+    #[serde(rename = "B+")]
+    BPlus,
+    B,
+    #[serde(rename = "B-")]
+    BMinus,
+    C,
+    D,
+    F,
+    /// Grade could not be determined (e.g., connection failure)
+    Unknown,
+}
+
+impl std::fmt::Display for SslGradeLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SslGradeLevel::APlus => write!(f, "A+"),
+            SslGradeLevel::A => write!(f, "A"),
+            SslGradeLevel::AMinus => write!(f, "A-"),
+            SslGradeLevel::BPlus => write!(f, "B+"),
+            SslGradeLevel::B => write!(f, "B"),
+            SslGradeLevel::BMinus => write!(f, "B-"),
+            SslGradeLevel::C => write!(f, "C"),
+            SslGradeLevel::D => write!(f, "D"),
+            SslGradeLevel::F => write!(f, "F"),
+            SslGradeLevel::Unknown => write!(f, "Unknown"),
+        }
+    }
+}
+
+/// Detailed SSL/TLS grade information with scoring breakdown
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct SslGrade {
+    /// Overall grade (A+ to F)
+    pub grade: SslGradeLevel,
+    /// Overall numeric score (0-100)
+    pub overall_score: u8,
+    /// Protocol score (0-100) - TLS 1.3 = 100, TLS 1.2 = 85, TLS 1.1 = 40, TLS 1.0 = 20, SSL = 0
+    pub protocol_score: u8,
+    /// Cipher score (0-100) - Modern AEAD = 100, weak ciphers reduce score
+    pub cipher_score: u8,
+    /// Certificate score (0-100) - Valid chain, strong key, not expiring soon
+    pub certificate_score: u8,
+    /// Key exchange score (0-100) - Based on key strength
+    pub key_exchange_score: u8,
+    /// Known vulnerabilities found (Heartbleed, POODLE, BEAST, etc.)
+    pub vulnerabilities_found: Vec<SslVulnerability>,
+    /// Recommendations for improving the grade
+    pub recommendations: Vec<String>,
+    /// Whether the grade was capped due to critical issues
+    pub grade_capped: bool,
+    /// Reason for grade capping if applicable
+    pub cap_reason: Option<String>,
+}
+
+/// Known SSL/TLS vulnerabilities
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct SslVulnerability {
+    /// Vulnerability identifier (e.g., "POODLE", "HEARTBLEED")
+    pub id: String,
+    /// Human-readable name
+    pub name: String,
+    /// Severity level
+    pub severity: SslVulnerabilitySeverity,
+    /// Description of the vulnerability
+    pub description: String,
+    /// CVE ID if applicable
+    pub cve: Option<String>,
+}
+
+/// Severity levels for SSL/TLS vulnerabilities
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
+pub enum SslVulnerabilitySeverity {
+    Critical,
+    High,
+    Medium,
+    Low,
+    Informational,
+}
 
 /// Scan SSL/TLS certificate and security settings for a host:port
 pub async fn scan_ssl(host: &str, port: u16, timeout: Duration) -> Result<SslInfo> {
@@ -24,7 +113,8 @@ pub async fn scan_ssl(host: &str, port: u16, timeout: Duration) -> Result<SslInf
     // Check for HSTS header via HTTP
     let (hsts_enabled, hsts_max_age) = check_hsts(host, port, timeout).await;
 
-    Ok(SslInfo {
+    // Build the base SslInfo without grade first
+    let mut ssl_info = SslInfo {
         cert_valid: cert_info.cert_valid,
         cert_expired: cert_info.cert_expired,
         days_until_expiry: cert_info.days_until_expiry,
@@ -41,7 +131,14 @@ pub async fn scan_ssl(host: &str, port: u16, timeout: Duration) -> Result<SslInf
         hsts_enabled,
         hsts_max_age,
         chain_issues: cert_info.chain_issues,
-    })
+        ssl_grade: None,
+    };
+
+    // Calculate the SSL grade
+    let grade = calculate_ssl_grade(&ssl_info);
+    ssl_info.ssl_grade = Some(grade);
+
+    Ok(ssl_info)
 }
 
 #[derive(Debug)]
@@ -1104,6 +1201,476 @@ async fn check_hsts(host: &str, port: u16, timeout: Duration) -> (bool, Option<u
     (false, None)
 }
 
+/// Calculate SSL/TLS grade based on the SslInfo
+/// This provides a comprehensive security grade similar to SSL Labs
+pub fn calculate_ssl_grade(ssl_info: &SslInfo) -> SslGrade {
+    let mut vulnerabilities = Vec::new();
+    let mut recommendations = Vec::new();
+    let mut grade_capped = false;
+    let mut cap_reason: Option<String> = None;
+
+    // === Calculate Protocol Score (0-100) ===
+    let protocol_score = calculate_protocol_score(&ssl_info.protocols, &ssl_info.weak_protocols);
+
+    // Check for protocol-related vulnerabilities
+    if ssl_info.protocols.iter().any(|p| p == "SSL 2.0") {
+        vulnerabilities.push(SslVulnerability {
+            id: "SSL2".to_string(),
+            name: "SSL 2.0 Supported".to_string(),
+            severity: SslVulnerabilitySeverity::Critical,
+            description: "SSL 2.0 is severely insecure and should be disabled immediately. It has numerous vulnerabilities including weak cipher suites and protocol design flaws.".to_string(),
+            cve: None,
+        });
+        grade_capped = true;
+        cap_reason = Some("SSL 2.0 is supported - grade capped at F".to_string());
+        recommendations.push("Disable SSL 2.0 immediately".to_string());
+    }
+
+    if ssl_info.protocols.iter().any(|p| p == "SSL 3.0") {
+        vulnerabilities.push(SslVulnerability {
+            id: "POODLE".to_string(),
+            name: "POODLE (SSL 3.0)".to_string(),
+            severity: SslVulnerabilitySeverity::High,
+            description: "SSL 3.0 is vulnerable to POODLE (Padding Oracle On Downgraded Legacy Encryption) attack.".to_string(),
+            cve: Some("CVE-2014-3566".to_string()),
+        });
+        if !grade_capped {
+            grade_capped = true;
+            cap_reason = Some("SSL 3.0 is supported (POODLE vulnerable) - grade capped at C".to_string());
+        }
+        recommendations.push("Disable SSL 3.0 to prevent POODLE attack".to_string());
+    }
+
+    if ssl_info.protocols.iter().any(|p| p == "TLS 1.0") {
+        vulnerabilities.push(SslVulnerability {
+            id: "TLS10".to_string(),
+            name: "TLS 1.0 Deprecated".to_string(),
+            severity: SslVulnerabilitySeverity::Medium,
+            description: "TLS 1.0 is deprecated and vulnerable to BEAST and other attacks.".to_string(),
+            cve: Some("CVE-2011-3389".to_string()),
+        });
+        recommendations.push("Disable TLS 1.0 - use TLS 1.2 or TLS 1.3".to_string());
+    }
+
+    if ssl_info.protocols.iter().any(|p| p == "TLS 1.1") {
+        vulnerabilities.push(SslVulnerability {
+            id: "TLS11".to_string(),
+            name: "TLS 1.1 Deprecated".to_string(),
+            severity: SslVulnerabilitySeverity::Low,
+            description: "TLS 1.1 is deprecated as of 2021 and should not be used.".to_string(),
+            cve: None,
+        });
+        recommendations.push("Disable TLS 1.1 - use TLS 1.2 or TLS 1.3".to_string());
+    }
+
+    if !ssl_info.protocols.iter().any(|p| p == "TLS 1.3") {
+        recommendations.push("Enable TLS 1.3 for best security and performance".to_string());
+    }
+
+    // === Calculate Cipher Score (0-100) ===
+    let cipher_score = calculate_cipher_score(&ssl_info.cipher_suites, &ssl_info.weak_ciphers);
+
+    // Check for cipher-related vulnerabilities
+    if ssl_info.weak_ciphers.iter().any(|c| c.to_uppercase().contains("RC4")) {
+        vulnerabilities.push(SslVulnerability {
+            id: "RC4".to_string(),
+            name: "RC4 Cipher Supported".to_string(),
+            severity: SslVulnerabilitySeverity::High,
+            description: "RC4 is a broken cipher with practical attacks. It should be completely disabled.".to_string(),
+            cve: Some("CVE-2015-2808".to_string()),
+        });
+        recommendations.push("Disable all RC4 cipher suites".to_string());
+    }
+
+    if ssl_info.weak_ciphers.iter().any(|c| c.to_uppercase().contains("DES") && !c.to_uppercase().contains("3DES")) {
+        vulnerabilities.push(SslVulnerability {
+            id: "DES".to_string(),
+            name: "DES Cipher Supported".to_string(),
+            severity: SslVulnerabilitySeverity::Critical,
+            description: "DES is a 56-bit cipher that can be brute-forced. It should be completely disabled.".to_string(),
+            cve: None,
+        });
+        recommendations.push("Disable all DES cipher suites".to_string());
+    }
+
+    if ssl_info.weak_ciphers.iter().any(|c| c.to_uppercase().contains("3DES")) {
+        vulnerabilities.push(SslVulnerability {
+            id: "SWEET32".to_string(),
+            name: "3DES/SWEET32".to_string(),
+            severity: SslVulnerabilitySeverity::Medium,
+            description: "3DES is vulnerable to the SWEET32 birthday attack due to its 64-bit block size.".to_string(),
+            cve: Some("CVE-2016-2183".to_string()),
+        });
+        recommendations.push("Disable 3DES cipher suites to prevent SWEET32 attack".to_string());
+    }
+
+    if ssl_info.weak_ciphers.iter().any(|c| c.to_uppercase().contains("EXPORT")) {
+        vulnerabilities.push(SslVulnerability {
+            id: "EXPORT".to_string(),
+            name: "Export Ciphers Supported".to_string(),
+            severity: SslVulnerabilitySeverity::Critical,
+            description: "Export ciphers use weakened cryptography (512-bit RSA, 40-bit encryption) and are trivially broken.".to_string(),
+            cve: Some("CVE-2015-0204".to_string()),
+        });
+        if !grade_capped {
+            grade_capped = true;
+            cap_reason = Some("Export ciphers supported - grade capped at F".to_string());
+        }
+        recommendations.push("Disable all EXPORT cipher suites immediately".to_string());
+    }
+
+    if ssl_info.weak_ciphers.iter().any(|c| c.to_uppercase().contains("NULL")) {
+        vulnerabilities.push(SslVulnerability {
+            id: "NULL_CIPHER".to_string(),
+            name: "NULL Cipher Supported".to_string(),
+            severity: SslVulnerabilitySeverity::Critical,
+            description: "NULL ciphers provide no encryption - data is transmitted in plaintext.".to_string(),
+            cve: None,
+        });
+        if !grade_capped {
+            grade_capped = true;
+            cap_reason = Some("NULL cipher supported - grade capped at F".to_string());
+        }
+        recommendations.push("Disable NULL cipher suites immediately".to_string());
+    }
+
+    // === Calculate Certificate Score (0-100) ===
+    let certificate_score = calculate_certificate_score(ssl_info);
+
+    // Check for certificate-related issues
+    if ssl_info.cert_expired {
+        vulnerabilities.push(SslVulnerability {
+            id: "CERT_EXPIRED".to_string(),
+            name: "Certificate Expired".to_string(),
+            severity: SslVulnerabilitySeverity::Critical,
+            description: "The SSL/TLS certificate has expired. This will cause browser warnings and connection failures.".to_string(),
+            cve: None,
+        });
+        if !grade_capped {
+            grade_capped = true;
+            cap_reason = Some("Certificate expired - grade capped at F".to_string());
+        }
+        recommendations.push("Renew the SSL/TLS certificate immediately".to_string());
+    }
+
+    if ssl_info.self_signed {
+        vulnerabilities.push(SslVulnerability {
+            id: "SELF_SIGNED".to_string(),
+            name: "Self-Signed Certificate".to_string(),
+            severity: SslVulnerabilitySeverity::High,
+            description: "Self-signed certificates are not trusted by browsers and cannot verify server identity.".to_string(),
+            cve: None,
+        });
+        if !grade_capped {
+            grade_capped = true;
+            cap_reason = Some("Self-signed certificate - grade capped at T (not trusted)".to_string());
+        }
+        recommendations.push("Use a certificate from a trusted Certificate Authority".to_string());
+    }
+
+    if ssl_info.hostname_mismatch {
+        vulnerabilities.push(SslVulnerability {
+            id: "HOSTNAME_MISMATCH".to_string(),
+            name: "Certificate Hostname Mismatch".to_string(),
+            severity: SslVulnerabilitySeverity::Critical,
+            description: "The certificate does not match the hostname, which could indicate a MITM attack or misconfiguration.".to_string(),
+            cve: None,
+        });
+        if !grade_capped {
+            grade_capped = true;
+            cap_reason = Some("Hostname mismatch - grade capped at F".to_string());
+        }
+        recommendations.push("Ensure certificate Subject Alternative Names (SANs) include the hostname".to_string());
+    }
+
+    if let Some(days) = ssl_info.days_until_expiry {
+        if days > 0 && days < 30 {
+            recommendations.push(format!("Certificate expires in {} days - renew soon", days));
+        }
+    }
+
+    // Check for chain issues
+    for issue in &ssl_info.chain_issues {
+        if issue.contains("Incomplete") {
+            vulnerabilities.push(SslVulnerability {
+                id: "INCOMPLETE_CHAIN".to_string(),
+                name: "Incomplete Certificate Chain".to_string(),
+                severity: SslVulnerabilitySeverity::Medium,
+                description: "The certificate chain is incomplete. Some clients may not be able to verify the certificate.".to_string(),
+                cve: None,
+            });
+            recommendations.push("Include all intermediate certificates in the chain".to_string());
+        }
+    }
+
+    // === Calculate Key Exchange Score (0-100) ===
+    let key_exchange_score = calculate_key_exchange_score(&ssl_info.cipher_suites);
+
+    // Check for key exchange vulnerabilities
+    if ssl_info.cipher_suites.iter().any(|c| {
+        let upper = c.to_uppercase();
+        upper.contains("_RSA_") && !upper.contains("ECDHE") && !upper.contains("DHE")
+    }) {
+        vulnerabilities.push(SslVulnerability {
+            id: "NO_PFS".to_string(),
+            name: "No Perfect Forward Secrecy".to_string(),
+            severity: SslVulnerabilitySeverity::Medium,
+            description: "Some cipher suites do not provide Perfect Forward Secrecy. Past communications could be decrypted if the private key is compromised.".to_string(),
+            cve: None,
+        });
+        recommendations.push("Prefer ECDHE or DHE key exchange for Perfect Forward Secrecy".to_string());
+    }
+
+    // === HSTS Check ===
+    if !ssl_info.hsts_enabled {
+        vulnerabilities.push(SslVulnerability {
+            id: "NO_HSTS".to_string(),
+            name: "HSTS Not Enabled".to_string(),
+            severity: SslVulnerabilitySeverity::Informational,
+            description: "HTTP Strict Transport Security is not enabled. This leaves users vulnerable to SSL stripping attacks.".to_string(),
+            cve: None,
+        });
+        recommendations.push("Enable HSTS with a max-age of at least 31536000 (1 year)".to_string());
+    } else if let Some(max_age) = ssl_info.hsts_max_age {
+        if max_age < 31536000 {
+            recommendations.push(format!("HSTS max-age is {} seconds - consider increasing to at least 31536000 (1 year)", max_age));
+        }
+    }
+
+    // === Calculate Overall Score ===
+    // Weighted average: Protocol 30%, Cipher 30%, Certificate 30%, Key Exchange 10%
+    let overall_score = (
+        (protocol_score as u32 * 30) +
+        (cipher_score as u32 * 30) +
+        (certificate_score as u32 * 30) +
+        (key_exchange_score as u32 * 10)
+    ) / 100;
+    let overall_score = overall_score.min(100) as u8;
+
+    // === Determine Grade ===
+    let grade = if grade_capped {
+        match cap_reason.as_deref() {
+            Some(r) if r.contains("capped at F") => SslGradeLevel::F,
+            Some(r) if r.contains("capped at C") => SslGradeLevel::C,
+            Some(r) if r.contains("not trusted") => SslGradeLevel::B, // Self-signed but otherwise good
+            _ => SslGradeLevel::F,
+        }
+    } else {
+        score_to_grade(overall_score, ssl_info.hsts_enabled, &vulnerabilities)
+    };
+
+    SslGrade {
+        grade,
+        overall_score,
+        protocol_score,
+        cipher_score,
+        certificate_score,
+        key_exchange_score,
+        vulnerabilities_found: vulnerabilities,
+        recommendations,
+        grade_capped,
+        cap_reason,
+    }
+}
+
+/// Calculate protocol score based on supported TLS/SSL versions
+fn calculate_protocol_score(protocols: &[String], weak_protocols: &[String]) -> u8 {
+    if protocols.is_empty() {
+        return 0;
+    }
+
+    let has_tls13 = protocols.iter().any(|p| p == "TLS 1.3");
+    let has_tls12 = protocols.iter().any(|p| p == "TLS 1.2");
+    let has_tls11 = protocols.iter().any(|p| p == "TLS 1.1");
+    let has_tls10 = protocols.iter().any(|p| p == "TLS 1.0");
+    let has_ssl30 = protocols.iter().any(|p| p == "SSL 3.0");
+    let has_ssl20 = protocols.iter().any(|p| p == "SSL 2.0");
+
+    // Base score from best protocol
+    let mut score: u8 = if has_tls13 {
+        100
+    } else if has_tls12 {
+        85
+    } else if has_tls11 {
+        40
+    } else if has_tls10 {
+        20
+    } else {
+        0
+    };
+
+    // Deductions for weak protocols
+    if has_ssl20 {
+        score = score.saturating_sub(50);
+    }
+    if has_ssl30 {
+        score = score.saturating_sub(30);
+    }
+    if has_tls10 && has_tls12 {
+        score = score.saturating_sub(10);
+    }
+    if has_tls11 && has_tls12 {
+        score = score.saturating_sub(5);
+    }
+
+    // Additional deduction if there are any weak protocols
+    if !weak_protocols.is_empty() {
+        score = score.saturating_sub((weak_protocols.len() * 5) as u8);
+    }
+
+    score.min(100)
+}
+
+/// Calculate cipher score based on cipher suite quality
+fn calculate_cipher_score(cipher_suites: &[String], weak_ciphers: &[String]) -> u8 {
+    if cipher_suites.is_empty() {
+        return 0;
+    }
+
+    let mut score: u8 = 100;
+
+    // Check for modern AEAD ciphers (GCM, ChaCha20-Poly1305)
+    let has_aead = cipher_suites.iter().any(|c| {
+        let upper = c.to_uppercase();
+        upper.contains("GCM") || upper.contains("CHACHA20") || upper.contains("POLY1305")
+    });
+
+    if !has_aead {
+        score = score.saturating_sub(20);
+    }
+
+    // Deductions for weak ciphers
+    for cipher in weak_ciphers {
+        let upper = cipher.to_uppercase();
+        if upper.contains("NULL") {
+            score = score.saturating_sub(50);
+        } else if upper.contains("EXPORT") {
+            score = score.saturating_sub(40);
+        } else if upper.contains("RC4") {
+            score = score.saturating_sub(30);
+        } else if upper.contains("DES") && !upper.contains("3DES") {
+            score = score.saturating_sub(30);
+        } else if upper.contains("3DES") {
+            score = score.saturating_sub(15);
+        } else if upper.contains("MD5") {
+            score = score.saturating_sub(10);
+        } else {
+            score = score.saturating_sub(5);
+        }
+    }
+
+    score.max(0).min(100)
+}
+
+/// Calculate certificate score based on validity and trust
+fn calculate_certificate_score(ssl_info: &SslInfo) -> u8 {
+    let mut score: u8 = 100;
+
+    // Critical deductions
+    if ssl_info.cert_expired {
+        return 0;
+    }
+
+    if ssl_info.hostname_mismatch {
+        score = score.saturating_sub(50);
+    }
+
+    if ssl_info.self_signed {
+        score = score.saturating_sub(30);
+    }
+
+    // Certificate chain issues
+    for _issue in &ssl_info.chain_issues {
+        score = score.saturating_sub(10);
+    }
+
+    // Expiry warnings
+    if let Some(days) = ssl_info.days_until_expiry {
+        if days < 0 {
+            return 0; // Expired
+        } else if days < 7 {
+            score = score.saturating_sub(30);
+        } else if days < 30 {
+            score = score.saturating_sub(15);
+        } else if days < 90 {
+            score = score.saturating_sub(5);
+        }
+    }
+
+    // Validity check
+    if !ssl_info.cert_valid {
+        score = score.saturating_sub(40);
+    }
+
+    score.max(0).min(100)
+}
+
+/// Calculate key exchange score based on cipher suite key exchange methods
+fn calculate_key_exchange_score(cipher_suites: &[String]) -> u8 {
+    if cipher_suites.is_empty() {
+        return 50; // Neutral if we don't know
+    }
+
+    let has_ecdhe = cipher_suites.iter().any(|c| c.to_uppercase().contains("ECDHE"));
+    let has_dhe = cipher_suites.iter().any(|c| c.to_uppercase().contains("DHE") && !c.to_uppercase().contains("ECDHE"));
+    let has_rsa_static = cipher_suites.iter().any(|c| {
+        let upper = c.to_uppercase();
+        upper.contains("_RSA_") && !upper.contains("ECDHE") && !upper.contains("DHE")
+    });
+    let has_anon = cipher_suites.iter().any(|c| {
+        let upper = c.to_uppercase();
+        upper.contains("_ANON_") || upper.contains("ADH") || upper.contains("AECDH")
+    });
+
+    // Score based on best available
+    let mut score: u8 = if has_ecdhe {
+        100
+    } else if has_dhe {
+        90
+    } else if has_rsa_static {
+        60
+    } else {
+        40
+    };
+
+    // Anonymous key exchange is very bad
+    if has_anon {
+        score = score.saturating_sub(50);
+    }
+
+    score.min(100)
+}
+
+/// Convert numeric score to letter grade
+fn score_to_grade(score: u8, hsts_enabled: bool, vulnerabilities: &[SslVulnerability]) -> SslGradeLevel {
+    // Check for grade-capping vulnerabilities
+    let has_critical = vulnerabilities.iter().any(|v| v.severity == SslVulnerabilitySeverity::Critical);
+    let has_high = vulnerabilities.iter().any(|v| v.severity == SslVulnerabilitySeverity::High);
+
+    if has_critical {
+        return SslGradeLevel::F;
+    }
+
+    let grade = match score {
+        95..=100 if !has_high && hsts_enabled => SslGradeLevel::APlus,
+        90..=100 if !has_high => SslGradeLevel::A,
+        85..=89 => SslGradeLevel::AMinus,
+        80..=84 => SslGradeLevel::BPlus,
+        70..=79 => SslGradeLevel::B,
+        60..=69 => SslGradeLevel::BMinus,
+        50..=59 => SslGradeLevel::C,
+        30..=49 => SslGradeLevel::D,
+        _ => SslGradeLevel::F,
+    };
+
+    // Cap grade if there are high-severity vulnerabilities
+    if has_high && matches!(grade, SslGradeLevel::APlus | SslGradeLevel::A | SslGradeLevel::AMinus) {
+        return SslGradeLevel::B;
+    }
+
+    grade
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1224,5 +1791,151 @@ mod tests {
         assert_eq!(TlsVersion::Ssl30.name(), "SSL 3.0");
         assert_eq!(TlsVersion::Tls10.name(), "TLS 1.0");
         assert_eq!(TlsVersion::Tls11.name(), "TLS 1.1");
+    }
+
+    // SSL Grading Tests
+
+    fn create_perfect_ssl_info() -> SslInfo {
+        SslInfo {
+            cert_valid: true,
+            cert_expired: false,
+            days_until_expiry: Some(365),
+            self_signed: false,
+            hostname_mismatch: false,
+            issuer: "Let's Encrypt Authority".to_string(),
+            subject: "example.com".to_string(),
+            valid_from: "2024-01-01T00:00:00Z".to_string(),
+            valid_until: "2025-01-01T00:00:00Z".to_string(),
+            protocols: vec!["TLS 1.3".to_string(), "TLS 1.2".to_string()],
+            cipher_suites: vec![
+                "TLS_AES_256_GCM_SHA384".to_string(),
+                "TLS_CHACHA20_POLY1305_SHA256".to_string(),
+                "ECDHE_RSA_AES_256_GCM_SHA384".to_string(),
+            ],
+            weak_ciphers: vec![],
+            weak_protocols: vec![],
+            hsts_enabled: true,
+            hsts_max_age: Some(31536000),
+            chain_issues: vec![],
+            ssl_grade: None, // Will be computed by calculate_ssl_grade
+        }
+    }
+
+    #[test]
+    fn test_calculate_ssl_grade_perfect_score() {
+        let ssl_info = create_perfect_ssl_info();
+        let grade = calculate_ssl_grade(&ssl_info);
+
+        assert_eq!(grade.grade, SslGradeLevel::APlus);
+        assert!(grade.overall_score >= 90);
+        assert!(grade.protocol_score >= 90);
+        assert!(grade.cipher_score >= 90);
+        assert!(grade.certificate_score >= 90);
+        assert!(!grade.grade_capped);
+        assert!(grade.vulnerabilities_found.is_empty());
+    }
+
+    #[test]
+    fn test_calculate_ssl_grade_with_weak_protocols() {
+        let mut ssl_info = create_perfect_ssl_info();
+        ssl_info.protocols.push("TLS 1.0".to_string());
+        ssl_info.weak_protocols.push("TLS 1.0".to_string());
+
+        let grade = calculate_ssl_grade(&ssl_info);
+
+        assert!(grade.protocol_score < 100);
+        assert!(grade.vulnerabilities_found.iter().any(|v| v.id == "TLS10"));
+    }
+
+    #[test]
+    fn test_calculate_ssl_grade_expired_cert() {
+        let mut ssl_info = create_perfect_ssl_info();
+        ssl_info.cert_expired = true;
+        ssl_info.days_until_expiry = Some(-10);
+
+        let grade = calculate_ssl_grade(&ssl_info);
+
+        assert_eq!(grade.grade, SslGradeLevel::F);
+        assert!(grade.grade_capped);
+        assert!(grade.vulnerabilities_found.iter().any(|v| v.id == "CERT_EXPIRED"));
+    }
+
+    #[test]
+    fn test_calculate_ssl_grade_self_signed() {
+        let mut ssl_info = create_perfect_ssl_info();
+        ssl_info.self_signed = true;
+
+        let grade = calculate_ssl_grade(&ssl_info);
+
+        assert!(grade.grade_capped);
+        assert!(grade.vulnerabilities_found.iter().any(|v| v.id == "SELF_SIGNED"));
+    }
+
+    #[test]
+    fn test_calculate_ssl_grade_no_hsts() {
+        let mut ssl_info = create_perfect_ssl_info();
+        ssl_info.hsts_enabled = false;
+        ssl_info.hsts_max_age = None;
+
+        let grade = calculate_ssl_grade(&ssl_info);
+
+        // Without HSTS, cannot achieve A+
+        assert_ne!(grade.grade, SslGradeLevel::APlus);
+        assert!(grade.vulnerabilities_found.iter().any(|v| v.id == "NO_HSTS"));
+    }
+
+    #[test]
+    fn test_calculate_ssl_grade_weak_ciphers() {
+        let mut ssl_info = create_perfect_ssl_info();
+        ssl_info.weak_ciphers.push("TLS_RSA_WITH_RC4_128_SHA".to_string());
+
+        let grade = calculate_ssl_grade(&ssl_info);
+
+        assert!(grade.cipher_score < 100);
+        assert!(grade.vulnerabilities_found.iter().any(|v| v.id == "RC4"));
+    }
+
+    #[test]
+    fn test_calculate_ssl_grade_ssl30() {
+        let mut ssl_info = create_perfect_ssl_info();
+        ssl_info.protocols.push("SSL 3.0".to_string());
+        ssl_info.weak_protocols.push("SSL 3.0".to_string());
+
+        let grade = calculate_ssl_grade(&ssl_info);
+
+        assert!(grade.grade_capped);
+        assert!(grade.vulnerabilities_found.iter().any(|v| v.id == "POODLE"));
+    }
+
+    #[test]
+    fn test_protocol_score_tls13_only() {
+        let protocols = vec!["TLS 1.3".to_string()];
+        let score = calculate_protocol_score(&protocols, &[]);
+        assert_eq!(score, 100);
+    }
+
+    #[test]
+    fn test_protocol_score_tls12_only() {
+        let protocols = vec!["TLS 1.2".to_string()];
+        let score = calculate_protocol_score(&protocols, &[]);
+        assert_eq!(score, 85);
+    }
+
+    #[test]
+    fn test_cipher_score_modern_aead() {
+        let ciphers = vec![
+            "TLS_AES_256_GCM_SHA384".to_string(),
+            "TLS_CHACHA20_POLY1305_SHA256".to_string(),
+        ];
+        let score = calculate_cipher_score(&ciphers, &[]);
+        assert_eq!(score, 100);
+    }
+
+    #[test]
+    fn test_ssl_grade_level_display() {
+        assert_eq!(format!("{}", SslGradeLevel::APlus), "A+");
+        assert_eq!(format!("{}", SslGradeLevel::A), "A");
+        assert_eq!(format!("{}", SslGradeLevel::AMinus), "A-");
+        assert_eq!(format!("{}", SslGradeLevel::F), "F");
     }
 }

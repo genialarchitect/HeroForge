@@ -89,7 +89,7 @@ impl OpenVpnConnection {
         let stderr = child.stderr.take();
 
         // Store process handle
-        let pid = child.id();
+        let _pid = child.id();
         *self.process.lock().await = Some(child);
 
         // Monitor output for connection status
@@ -331,20 +331,6 @@ impl OpenVpnConnection {
     /// Get the process ID of the running OpenVPN daemon
     pub async fn get_pid(&self) -> Option<u32> {
         self.process.lock().await.as_ref()?.id()
-    }
-
-    /// Check if the connection is still alive
-    pub async fn is_alive(&self) -> bool {
-        let mut process = self.process.lock().await;
-        if let Some(ref mut child) = *process {
-            // Check if process has exited
-            match child.try_wait() {
-                Ok(None) => true, // Still running
-                _ => false,       // Exited or error
-            }
-        } else {
-            false
-        }
     }
 }
 

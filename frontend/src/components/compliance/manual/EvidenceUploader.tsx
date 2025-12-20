@@ -218,8 +218,9 @@ const EvidenceUploader: React.FC<EvidenceUploaderProps> = ({
       setSelectedFile(null);
       setSuccess('File uploaded successfully');
       clearMessages();
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to upload file');
+    } catch (err: unknown) {
+      const axiosError = err as { response?: { data?: { error?: string } } };
+      setError(axiosError.response?.data?.error || 'Failed to upload file');
       clearMessages();
     } finally {
       setIsUploading(false);
@@ -261,8 +262,9 @@ const EvidenceUploader: React.FC<EvidenceUploaderProps> = ({
       setLinkDescription('');
       setSuccess('Link added successfully');
       clearMessages();
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to add link');
+    } catch (err: unknown) {
+      const axiosError = err as { response?: { data?: { error?: string } } };
+      setError(axiosError.response?.data?.error || 'Failed to add link');
       clearMessages();
     } finally {
       setIsUploading(false);
@@ -300,8 +302,9 @@ const EvidenceUploader: React.FC<EvidenceUploaderProps> = ({
       setScreenshotTitle('');
       setSuccess('Screenshot uploaded successfully');
       clearMessages();
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to upload screenshot');
+    } catch (err: unknown) {
+      const axiosError = err as { response?: { data?: { error?: string } } };
+      setError(axiosError.response?.data?.error || 'Failed to upload screenshot');
       clearMessages();
     } finally {
       setIsUploading(false);
@@ -332,8 +335,9 @@ const EvidenceUploader: React.FC<EvidenceUploaderProps> = ({
       setNoteContent('');
       setSuccess('Note added successfully');
       clearMessages();
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to add note');
+    } catch (err: unknown) {
+      const axiosError = err as { response?: { data?: { error?: string } } };
+      setError(axiosError.response?.data?.error || 'Failed to add note');
       clearMessages();
     } finally {
       setIsUploading(false);

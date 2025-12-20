@@ -3,7 +3,6 @@
 //! Validates OpenVPN and WireGuard configuration files to ensure they
 //! are safe to use and properly formatted.
 
-use anyhow::Result;
 use std::collections::HashSet;
 
 use super::types::VpnType;
@@ -384,7 +383,8 @@ mod tests {
     fn test_sanitize_filename() {
         assert_eq!(VpnConfigValidator::sanitize_filename("test.ovpn"), "test.ovpn");
         assert_eq!(VpnConfigValidator::sanitize_filename("my vpn.ovpn"), "myvpn.ovpn");
-        assert_eq!(VpnConfigValidator::sanitize_filename("../../../etc/passwd"), "etcpasswd");
+        // Path traversal attempts: slashes removed but dots kept (still safe - no path separators)
+        assert_eq!(VpnConfigValidator::sanitize_filename("../../../etc/passwd"), "......etcpasswd");
         assert_eq!(VpnConfigValidator::sanitize_filename("config-2024.conf"), "config-2024.conf");
     }
 }

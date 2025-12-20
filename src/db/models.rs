@@ -29,6 +29,9 @@ pub struct ScanResult {
     pub started_at: Option<DateTime<Utc>>,
     pub completed_at: Option<DateTime<Utc>>,
     pub error_message: Option<String>,
+    // CRM integration fields
+    pub customer_id: Option<String>,
+    pub engagement_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -52,7 +55,7 @@ pub struct LoginResponse {
     pub user: UserInfo,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct UserInfo {
     pub id: String,
     pub username: String,
@@ -97,6 +100,10 @@ pub struct CreateScanRequest {
     pub target_group_id: Option<String>,
     /// Optional VPN configuration ID to connect through for this scan
     pub vpn_config_id: Option<String>,
+    /// Optional CRM customer ID to associate with this scan
+    pub customer_id: Option<String>,
+    /// Optional CRM engagement ID to associate with this scan
+    pub engagement_id: Option<String>,
 }
 
 fn default_udp_retries() -> u8 {
@@ -145,6 +152,43 @@ pub struct AuditLog {
     pub target_id: Option<String>,
     pub details: Option<String>,
     pub ip_address: Option<String>,
+    pub user_agent: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Query parameters for filtering audit logs
+#[derive(Debug, Serialize, Deserialize, Default)]
+pub struct AuditLogFilter {
+    pub user_id: Option<String>,
+    pub action: Option<String>,
+    pub target_type: Option<String>,
+    pub start_date: Option<DateTime<Utc>>,
+    pub end_date: Option<DateTime<Utc>>,
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+}
+
+/// Response structure for paginated audit logs
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AuditLogResponse {
+    pub logs: Vec<AuditLogWithUser>,
+    pub total: i64,
+    pub limit: i64,
+    pub offset: i64,
+}
+
+/// Audit log with user information for display
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct AuditLogWithUser {
+    pub id: String,
+    pub user_id: String,
+    pub username: String,
+    pub action: String,
+    pub target_type: Option<String>,
+    pub target_id: Option<String>,
+    pub details: Option<String>,
+    pub ip_address: Option<String>,
+    pub user_agent: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -155,6 +199,45 @@ pub struct SystemSetting {
     pub description: Option<String>,
     pub updated_by: Option<String>,
     pub updated_at: DateTime<Utc>,
+}
+
+// Scan Tags Models
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct ScanTag {
+    pub id: String,
+    pub name: String,
+    pub color: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct CreateScanTagRequest {
+    pub name: String,
+    #[serde(default = "default_tag_color")]
+    pub color: String,
+}
+
+fn default_tag_color() -> String {
+    "#06b6d4".to_string() // cyan-500
+}
+
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct AddTagsToScanRequest {
+    pub tag_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScanWithTags {
+    #[serde(flatten)]
+    pub scan: ScanResult,
+    pub tags: Vec<ScanTag>,
+}
+
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct DuplicateScanRequest {
+    /// Optional new name for the duplicated scan. If not provided, uses original name with " (Copy)" suffix.
+    pub name: Option<String>,
 }
 
 // Admin DTOs for API
@@ -576,6 +659,122 @@ pub struct VulnerabilityTrend {
 }
 
 // ============================================================================
+// Executive Analytics Models
+// ============================================================================
+
+/// Customer security trends over time
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct CustomerSecurityTrends {
+    pub customer_id: String,
+    pub customer_name: String,
+    pub months: Vec<MonthlySecuritySnapshot>,
+    pub improvement_percent: f64,
+    pub current_risk_score: f64,
+}
+
+/// Monthly security snapshot for trend analysis
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct MonthlySecuritySnapshot {
+    pub month: String,  // "2024-01"
+    pub total_vulnerabilities: i64,
+    pub critical: i64,
+    pub high: i64,
+    pub medium: i64,
+    pub low: i64,
+    pub resolved: i64,
+    pub risk_score: f64,
+}
+
+/// Executive summary for a customer
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct ExecutiveSummary {
+    pub customer_id: String,
+    pub customer_name: String,
+    pub total_engagements: i64,
+    pub active_engagements: i64,
+    pub total_scans: i64,
+    pub total_vulnerabilities: i64,
+    pub open_vulnerabilities: i64,
+    pub critical_open: i64,
+    pub high_open: i64,
+    pub avg_remediation_days: f64,
+    pub compliance_score: Option<f64>,
+    pub last_scan_date: Option<String>,
+    pub risk_rating: String,  // Critical, High, Medium, Low
+    pub trend_direction: String,  // Improving, Stable, Declining
+}
+
+/// Remediation velocity metrics
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct RemediationVelocity {
+    pub avg_days_to_remediate: f64,
+    pub avg_days_critical: f64,
+    pub avg_days_high: f64,
+    pub avg_days_medium: f64,
+    pub avg_days_low: f64,
+    pub remediation_rate: f64,  // % resolved vs total
+    pub velocity_trend: Vec<VelocityPoint>,
+}
+
+/// Weekly velocity data point
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct VelocityPoint {
+    pub week: String,
+    pub resolved_count: i64,
+    pub avg_days: f64,
+}
+
+/// Risk trend data point
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct RiskTrendPoint {
+    pub date: String,
+    pub risk_score: f64,
+    pub vulnerability_count: i64,
+    pub weighted_severity: f64,
+}
+
+/// Compliance trend data point
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct ComplianceTrendPoint {
+    pub date: String,
+    pub framework: String,
+    pub compliance_score: f64,
+    pub controls_passed: i64,
+    pub controls_failed: i64,
+    pub controls_total: i64,
+}
+
+/// Methodology testing coverage statistics
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct MethodologyCoverage {
+    pub total_checklists: i64,
+    pub completed_checklists: i64,
+    pub total_items_tested: i64,
+    pub passed_items: i64,
+    pub failed_items: i64,
+    pub coverage_by_framework: Vec<FrameworkCoverage>,
+}
+
+/// Coverage statistics per framework
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct FrameworkCoverage {
+    pub framework_name: String,
+    pub total_items: i64,
+    pub tested_items: i64,
+    pub coverage_percent: f64,
+}
+
+/// Combined executive dashboard data
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct ExecutiveDashboard {
+    pub summary: Option<ExecutiveSummary>,
+    pub security_trends: Option<CustomerSecurityTrends>,
+    pub remediation_velocity: Option<RemediationVelocity>,
+    pub risk_trends: Vec<RiskTrendPoint>,
+    pub methodology_coverage: Option<MethodologyCoverage>,
+}
+
+// ============================================================================
 // Vulnerability Management Models
 // ============================================================================
 
@@ -641,6 +840,12 @@ pub struct VulnerabilityTracking {
     // JIRA integration fields
     pub jira_ticket_id: Option<String>,
     pub jira_ticket_key: Option<String>,
+    // Retest workflow fields
+    pub retest_requested_at: Option<DateTime<Utc>>,
+    pub retest_completed_at: Option<DateTime<Utc>>,
+    pub retest_result: Option<String>,
+    pub retest_scan_id: Option<String>,
+    pub retest_requested_by: Option<String>,
 }
 
 /// Vulnerability comment
@@ -679,6 +884,8 @@ pub struct BulkUpdateVulnerabilitiesRequest {
     pub vulnerability_ids: Vec<String>,
     pub status: Option<String>,
     pub assignee_id: Option<String>,
+    pub due_date: Option<DateTime<Utc>>,
+    pub priority: Option<String>,
 }
 
 /// Vulnerability statistics
@@ -758,6 +965,97 @@ pub struct BulkAssignVulnerabilitiesRequest {
     pub assignee_id: String,
 }
 
+/// Request to request a retest for a vulnerability
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct RequestRetestRequest {
+    pub notes: Option<String>,
+}
+
+/// Request to bulk request retests
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct BulkRetestRequest {
+    pub vulnerability_ids: Vec<String>,
+    pub notes: Option<String>,
+}
+
+/// Request to complete a retest
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct CompleteRetestRequest {
+    pub result: String, // "still_vulnerable", "remediated", "partially_remediated"
+    pub scan_id: Option<String>,
+    pub notes: Option<String>,
+}
+
+/// Retest history entry
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RetestHistoryEntry {
+    pub id: String,
+    pub vulnerability_id: String,
+    pub requested_at: DateTime<Utc>,
+    pub requested_by: Option<String>,
+    pub completed_at: Option<DateTime<Utc>>,
+    pub result: Option<String>,
+    pub scan_id: Option<String>,
+    pub notes: Option<String>,
+}
+
+// ============================================================================
+// Finding Templates Models
+// ============================================================================
+
+/// Pre-written vulnerability finding template
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow, utoipa::ToSchema)]
+pub struct FindingTemplate {
+    pub id: String,
+    pub user_id: Option<String>,
+    pub category: String,
+    pub title: String,
+    pub severity: String,
+    pub description: String,
+    pub impact: Option<String>,
+    pub remediation: Option<String>,
+    pub references: Option<String>,  // JSON array
+    pub cwe_ids: Option<String>,     // JSON array
+    pub cvss_vector: Option<String>,
+    pub cvss_score: Option<f64>,
+    pub tags: Option<String>,        // JSON array
+    pub is_system: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Request to create a new finding template
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct CreateFindingTemplateRequest {
+    pub category: String,
+    pub title: String,
+    pub severity: String,
+    pub description: String,
+    pub impact: Option<String>,
+    pub remediation: Option<String>,
+    pub references: Option<Vec<String>>,
+    pub cwe_ids: Option<Vec<i32>>,
+    pub cvss_vector: Option<String>,
+    pub cvss_score: Option<f64>,
+    pub tags: Option<Vec<String>>,
+}
+
+/// Request to update a finding template
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct UpdateFindingTemplateRequest {
+    pub category: Option<String>,
+    pub title: Option<String>,
+    pub severity: Option<String>,
+    pub description: Option<String>,
+    pub impact: Option<String>,
+    pub remediation: Option<String>,
+    pub references: Option<Vec<String>>,
+    pub cwe_ids: Option<Vec<i32>>,
+    pub cvss_vector: Option<String>,
+    pub cvss_score: Option<f64>,
+    pub tags: Option<Vec<String>>,
+}
+
 // ============================================================================
 // Asset Inventory Models
 // ============================================================================
@@ -828,6 +1126,123 @@ pub struct AssetHistoryWithScan {
     pub scan_name: String,
     pub changes: serde_json::Value,
     pub recorded_at: DateTime<Utc>,
+}
+
+// ============================================================================
+// Asset Tags Models
+// ============================================================================
+
+/// Tag category types for asset classification
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum AssetTagCategory {
+    Environment,
+    Criticality,
+    Owner,
+    Department,
+    Location,
+    Compliance,
+    Custom,
+}
+
+impl std::fmt::Display for AssetTagCategory {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AssetTagCategory::Environment => write!(f, "environment"),
+            AssetTagCategory::Criticality => write!(f, "criticality"),
+            AssetTagCategory::Owner => write!(f, "owner"),
+            AssetTagCategory::Department => write!(f, "department"),
+            AssetTagCategory::Location => write!(f, "location"),
+            AssetTagCategory::Compliance => write!(f, "compliance"),
+            AssetTagCategory::Custom => write!(f, "custom"),
+        }
+    }
+}
+
+impl std::str::FromStr for AssetTagCategory {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "environment" => Ok(AssetTagCategory::Environment),
+            "criticality" => Ok(AssetTagCategory::Criticality),
+            "owner" => Ok(AssetTagCategory::Owner),
+            "department" => Ok(AssetTagCategory::Department),
+            "location" => Ok(AssetTagCategory::Location),
+            "compliance" => Ok(AssetTagCategory::Compliance),
+            "custom" => Ok(AssetTagCategory::Custom),
+            _ => Err(format!("Unknown tag category: {}", s)),
+        }
+    }
+}
+
+/// Asset tag for categorizing and organizing assets
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct AssetTag {
+    pub id: String,
+    pub user_id: String,
+    pub name: String,
+    pub color: String,         // Hex color code (e.g., "#22c55e")
+    pub category: String,      // AssetTagCategory as string
+    pub description: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Mapping between assets and tags (many-to-many)
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct AssetTagMapping {
+    pub asset_id: String,
+    pub tag_id: String,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Request to create a new asset tag
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateAssetTagRequest {
+    pub name: String,
+    pub color: String,
+    pub category: String,
+    pub description: Option<String>,
+}
+
+/// Request to update an asset tag
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateAssetTagRequest {
+    pub name: Option<String>,
+    pub color: Option<String>,
+    pub category: Option<String>,
+    pub description: Option<String>,
+}
+
+/// Request to add tags to an asset
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AddAssetTagsRequest {
+    pub tag_ids: Vec<String>,
+}
+
+/// Asset tag with usage count for listing
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AssetTagWithCount {
+    pub tag: AssetTag,
+    pub asset_count: i64,
+}
+
+/// Asset with its tags for API responses
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AssetWithTags {
+    #[serde(flatten)]
+    pub asset: Asset,
+    pub asset_tags: Vec<AssetTag>,
+}
+
+/// Asset detail with port details and tags for API responses
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AssetDetailWithTags {
+    pub asset: Asset,
+    pub ports: Vec<AssetPort>,
+    pub history: Vec<AssetHistoryWithScan>,
+    pub asset_tags: Vec<AssetTag>,
 }
 
 // ============================================================================
@@ -966,4 +1381,163 @@ pub struct UpdateSiemSettingsRequest {
     pub enabled: Option<bool>,
     pub export_on_scan_complete: Option<bool>,
     pub export_on_critical_vuln: Option<bool>,
+}
+
+// ============================================================================
+// Methodology Checklists Models
+// ============================================================================
+
+/// Methodology template (system framework like PTES, OWASP WSTG)
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow, utoipa::ToSchema)]
+pub struct MethodologyTemplate {
+    pub id: String,
+    pub name: String,
+    pub version: Option<String>,
+    pub description: Option<String>,
+    pub categories: Option<String>,  // JSON array
+    pub item_count: i32,
+    pub is_system: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Individual item within a methodology template
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow, utoipa::ToSchema)]
+pub struct MethodologyTemplateItem {
+    pub id: String,
+    pub template_id: String,
+    pub category: String,
+    pub item_id: Option<String>,  // e.g., WSTG-INFO-01
+    pub title: String,
+    pub description: Option<String>,
+    pub guidance: Option<String>,
+    pub expected_evidence: Option<String>,
+    pub tools: Option<String>,      // JSON array
+    pub references: Option<String>, // JSON array
+    pub sort_order: i32,
+}
+
+/// User's methodology checklist instance
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow, utoipa::ToSchema)]
+pub struct MethodologyChecklist {
+    pub id: String,
+    pub template_id: String,
+    pub user_id: String,
+    pub scan_id: Option<String>,
+    pub engagement_id: Option<String>,
+    pub name: String,
+    pub description: Option<String>,
+    pub progress_percent: f64,
+    pub status: String,  // in_progress, completed, archived
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub completed_at: Option<DateTime<Utc>>,
+}
+
+/// Individual checklist item with user's progress
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow, utoipa::ToSchema)]
+pub struct ChecklistItem {
+    pub id: String,
+    pub checklist_id: String,
+    pub template_item_id: String,
+    pub status: String,  // not_started, in_progress, pass, fail, na
+    pub notes: Option<String>,
+    pub evidence: Option<String>,
+    pub findings: Option<String>,  // JSON array of finding IDs
+    pub tested_at: Option<DateTime<Utc>>,
+    pub tester_id: Option<String>,
+}
+
+/// Request to create a new checklist from a template
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct CreateChecklistRequest {
+    pub template_id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub scan_id: Option<String>,
+    pub engagement_id: Option<String>,
+}
+
+/// Request to update checklist metadata
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct UpdateChecklistRequest {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub status: Option<String>,
+}
+
+/// Request to update a checklist item
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct UpdateChecklistItemRequest {
+    pub status: Option<String>,
+    pub notes: Option<String>,
+    pub evidence: Option<String>,
+    pub findings: Option<Vec<String>>,
+}
+
+/// Progress summary for a checklist
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct ChecklistProgress {
+    pub total_items: i32,
+    pub completed_items: i32,
+    pub passed: i32,
+    pub failed: i32,
+    pub not_applicable: i32,
+    pub in_progress: i32,
+    pub not_started: i32,
+    pub progress_percent: f64,
+    pub by_category: Vec<CategoryProgress>,
+}
+
+/// Progress for a single category
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow, utoipa::ToSchema)]
+pub struct CategoryProgress {
+    pub category: String,
+    pub total: i32,
+    pub completed: i32,
+}
+
+impl CategoryProgress {
+    pub fn progress_percent(&self) -> f64 {
+        if self.total > 0 {
+            (self.completed as f64 / self.total as f64) * 100.0
+        } else {
+            0.0
+        }
+    }
+}
+
+/// Checklist with template name for list views
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow, utoipa::ToSchema)]
+pub struct ChecklistSummary {
+    pub id: String,
+    pub template_id: String,
+    pub template_name: String,
+    pub user_id: String,
+    pub scan_id: Option<String>,
+    pub engagement_id: Option<String>,
+    pub name: String,
+    pub description: Option<String>,
+    pub progress_percent: f64,
+    pub status: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub completed_at: Option<DateTime<Utc>>,
+    pub total_items: i32,
+}
+
+/// Template with all its items
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct MethodologyTemplateWithItems {
+    pub template: MethodologyTemplate,
+    pub items: Vec<MethodologyTemplateItem>,
+}
+
+/// Checklist with all items and template info
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct ChecklistWithItems {
+    pub checklist: MethodologyChecklist,
+    pub template_name: String,
+    pub template_version: Option<String>,
+    pub items: Vec<super::methodology::ChecklistItemWithTemplate>,
 }

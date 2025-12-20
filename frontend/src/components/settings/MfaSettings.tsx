@@ -56,8 +56,9 @@ const MfaSettings: React.FC = () => {
       setQrCodeUrl(response.data.qr_code_url);
       setRecoveryCodes(response.data.recovery_codes);
       setSetupStep('scan-qr');
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to initialize MFA setup');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || 'Failed to initialize MFA setup');
     }
   };
 
@@ -74,8 +75,9 @@ const MfaSettings: React.FC = () => {
       toast.success('MFA enabled successfully!');
       setSetupStep('show-recovery');
       setMfaEnabled(true);
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Invalid verification code');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || 'Invalid verification code');
     } finally {
       setVerifying(false);
     }
@@ -107,8 +109,9 @@ const MfaSettings: React.FC = () => {
       setShowDisableForm(false);
       setDisablePassword('');
       setDisableCode('');
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to disable MFA');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || 'Failed to disable MFA');
     } finally {
       setDisabling(false);
     }
@@ -133,8 +136,9 @@ const MfaSettings: React.FC = () => {
       setRegeneratePassword('');
       setRegenerateCode('');
       setSetupStep('show-recovery');
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to regenerate recovery codes');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || 'Failed to regenerate recovery codes');
     } finally {
       setRegenerating(false);
     }

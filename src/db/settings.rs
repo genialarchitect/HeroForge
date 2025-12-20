@@ -15,8 +15,8 @@ use super::BCRYPT_COST;
 pub async fn create_audit_log(pool: &SqlitePool, log: &models::AuditLog) -> Result<()> {
     sqlx::query(
         r#"
-        INSERT INTO audit_logs (id, user_id, action, target_type, target_id, details, ip_address, created_at)
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+        INSERT INTO audit_logs (id, user_id, action, target_type, target_id, details, ip_address, user_agent, created_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
         "#,
     )
     .bind(&log.id)
@@ -26,6 +26,7 @@ pub async fn create_audit_log(pool: &SqlitePool, log: &models::AuditLog) -> Resu
     .bind(&log.target_id)
     .bind(&log.details)
     .bind(&log.ip_address)
+    .bind(&log.user_agent)
     .bind(&log.created_at)
     .execute(pool)
     .await?;
@@ -39,7 +40,7 @@ pub async fn get_audit_logs(
     offset: i64,
 ) -> Result<Vec<models::AuditLog>> {
     let logs = sqlx::query_as::<_, models::AuditLog>(
-        "SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT ?1 OFFSET ?2",
+        "SELECT id, user_id, action, target_type, target_id, details, ip_address, user_agent, created_at FROM audit_logs ORDER BY created_at DESC LIMIT ?1 OFFSET ?2",
     )
     .bind(limit)
     .bind(offset)
@@ -47,6 +48,144 @@ pub async fn get_audit_logs(
     .await?;
 
     Ok(logs)
+}
+
+/// Get filtered audit logs with pagination and user information
+pub async fn get_audit_logs_filtered(
+    pool: &SqlitePool,
+    filter: &models::AuditLogFilter,
+) -> Result<models::AuditLogResponse> {
+    let limit = filter.limit.unwrap_or(100);
+    let offset = filter.offset.unwrap_or(0);
+
+    // Build dynamic query for filtering
+    let mut conditions = Vec::new();
+    let mut params: Vec<String> = Vec::new();
+
+    if let Some(ref user_id) = filter.user_id {
+        conditions.push(format!("a.user_id = ?{}", params.len() + 1));
+        params.push(user_id.clone());
+    }
+
+    if let Some(ref action) = filter.action {
+        // Support prefix matching for action categories (e.g., "user" matches "user.create", "user.delete")
+        conditions.push(format!("a.action LIKE ?{}", params.len() + 1));
+        params.push(format!("{}%", action));
+    }
+
+    if let Some(ref target_type) = filter.target_type {
+        conditions.push(format!("a.target_type = ?{}", params.len() + 1));
+        params.push(target_type.clone());
+    }
+
+    if let Some(ref start_date) = filter.start_date {
+        conditions.push(format!("a.created_at >= ?{}", params.len() + 1));
+        params.push(start_date.to_rfc3339());
+    }
+
+    if let Some(ref end_date) = filter.end_date {
+        conditions.push(format!("a.created_at <= ?{}", params.len() + 1));
+        params.push(end_date.to_rfc3339());
+    }
+
+    let where_clause = if conditions.is_empty() {
+        String::new()
+    } else {
+        format!("WHERE {}", conditions.join(" AND "))
+    };
+
+    // Get total count
+    let count_query = format!(
+        "SELECT COUNT(*) FROM audit_logs a {}",
+        where_clause
+    );
+
+    // Execute count query dynamically
+    let total: i64 = {
+        let mut q = sqlx::query_scalar::<_, i64>(&count_query);
+        for param in &params {
+            q = q.bind(param);
+        }
+        q.fetch_one(pool).await?
+    };
+
+    // Get logs with user information
+    let logs_query = format!(
+        r#"
+        SELECT
+            a.id,
+            a.user_id,
+            COALESCE(u.username, 'Unknown') as username,
+            a.action,
+            a.target_type,
+            a.target_id,
+            a.details,
+            a.ip_address,
+            a.user_agent,
+            a.created_at
+        FROM audit_logs a
+        LEFT JOIN users u ON a.user_id = u.id
+        {}
+        ORDER BY a.created_at DESC
+        LIMIT ?{} OFFSET ?{}
+        "#,
+        where_clause,
+        params.len() + 1,
+        params.len() + 2
+    );
+
+    // Execute logs query dynamically
+    let logs: Vec<models::AuditLogWithUser> = {
+        let mut q = sqlx::query_as::<_, models::AuditLogWithUser>(&logs_query);
+        for param in &params {
+            q = q.bind(param);
+        }
+        q = q.bind(limit).bind(offset);
+        q.fetch_all(pool).await?
+    };
+
+    Ok(models::AuditLogResponse {
+        logs,
+        total,
+        limit,
+        offset,
+    })
+}
+
+/// Get distinct action types for filtering UI
+pub async fn get_audit_action_types(pool: &SqlitePool) -> Result<Vec<String>> {
+    // Extract action category (e.g., "user" from "user.create")
+    let actions: Vec<(String,)> = sqlx::query_as(
+        r#"
+        SELECT DISTINCT
+            CASE
+                WHEN INSTR(action, '.') > 0 THEN SUBSTR(action, 1, INSTR(action, '.') - 1)
+                ELSE action
+            END as action_category
+        FROM audit_logs
+        ORDER BY action_category
+        "#
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(actions.into_iter().map(|(a,)| a).collect())
+}
+
+/// Get all users who have audit log entries (for filtering)
+pub async fn get_audit_users(pool: &SqlitePool) -> Result<Vec<models::UserInfo>> {
+    let users = sqlx::query_as::<_, models::UserInfo>(
+        r#"
+        SELECT DISTINCT u.id, u.username, u.email
+        FROM audit_logs a
+        INNER JOIN users u ON a.user_id = u.id
+        ORDER BY u.username
+        "#
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(users)
 }
 
 // ============================================================================

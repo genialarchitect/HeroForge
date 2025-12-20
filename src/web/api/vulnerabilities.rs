@@ -3,7 +3,8 @@ use sqlx::SqlitePool;
 use serde::Deserialize;
 
 use crate::db::models::{
-    AddVulnerabilityCommentRequest, BulkAssignVulnerabilitiesRequest, BulkUpdateVulnerabilitiesRequest,
+    AddVulnerabilityCommentRequest, BulkAssignVulnerabilitiesRequest, BulkRetestRequest,
+    BulkUpdateVulnerabilitiesRequest, CompleteRetestRequest, RequestRetestRequest,
     UpdateVulnerabilityRequest, VerifyVulnerabilityRequest,
 };
 use crate::web::auth;
@@ -221,6 +222,8 @@ pub async fn bulk_update_vulnerabilities(
         &req.vulnerability_ids,
         req.status.as_deref(),
         req.assignee_id.as_deref(),
+        req.due_date,
+        req.priority.as_deref(),
         &claims.sub,
     )
     .await
@@ -506,6 +509,219 @@ pub async fn bulk_assign(
             log::error!("Failed to bulk assign vulnerabilities: {}", e);
             HttpResponse::InternalServerError().json(serde_json::json!({
                 "error": "Failed to bulk assign"
+            }))
+        }
+    }
+}
+
+// ============================================================================
+// Retest Workflow Endpoints
+// ============================================================================
+
+/// Request a retest for a vulnerability
+#[utoipa::path(
+    post,
+    path = "/api/vulnerabilities/{id}/request-retest",
+    tag = "Vulnerabilities",
+    security(
+        ("bearer_auth" = [])
+    ),
+    params(
+        ("id" = String, Path, description = "Vulnerability tracking ID")
+    ),
+    request_body(
+        content = inline(crate::db::models::RequestRetestRequest),
+        description = "Optional notes for the retest request"
+    ),
+    responses(
+        (status = 200, description = "Retest requested", body = crate::web::openapi::VulnerabilityTrackingSchema),
+        (status = 401, description = "Unauthorized", body = crate::web::openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::web::openapi::ErrorResponse)
+    )
+)]
+pub async fn request_retest(
+    pool: web::Data<SqlitePool>,
+    vuln_id: web::Path<String>,
+    request: web::Json<RequestRetestRequest>,
+    claims: web::ReqData<auth::Claims>,
+) -> HttpResponse {
+    match crate::db::request_vulnerability_retest(
+        pool.get_ref(),
+        &vuln_id,
+        &claims.sub,
+        request.notes.as_deref(),
+    )
+    .await
+    {
+        Ok(updated) => HttpResponse::Ok().json(updated),
+        Err(e) => {
+            log::error!("Failed to request retest: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to request retest"
+            }))
+        }
+    }
+}
+
+/// Bulk request retests for multiple vulnerabilities
+#[utoipa::path(
+    post,
+    path = "/api/vulnerabilities/bulk-retest",
+    tag = "Vulnerabilities",
+    security(
+        ("bearer_auth" = [])
+    ),
+    request_body(
+        content = inline(crate::db::models::BulkRetestRequest),
+        description = "Vulnerability IDs to request retests for"
+    ),
+    responses(
+        (status = 200, description = "Retests requested"),
+        (status = 401, description = "Unauthorized", body = crate::web::openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::web::openapi::ErrorResponse)
+    )
+)]
+pub async fn bulk_request_retest(
+    pool: web::Data<SqlitePool>,
+    request: web::Json<BulkRetestRequest>,
+    claims: web::ReqData<auth::Claims>,
+) -> HttpResponse {
+    match crate::db::bulk_request_retests(
+        pool.get_ref(),
+        &request.vulnerability_ids,
+        &claims.sub,
+        request.notes.as_deref(),
+    )
+    .await
+    {
+        Ok(count) => HttpResponse::Ok().json(serde_json::json!({
+            "requested": count
+        })),
+        Err(e) => {
+            log::error!("Failed to bulk request retests: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to request retests"
+            }))
+        }
+    }
+}
+
+/// Complete a retest with results
+#[utoipa::path(
+    post,
+    path = "/api/vulnerabilities/{id}/complete-retest",
+    tag = "Vulnerabilities",
+    security(
+        ("bearer_auth" = [])
+    ),
+    params(
+        ("id" = String, Path, description = "Vulnerability tracking ID")
+    ),
+    request_body(
+        content = inline(crate::db::models::CompleteRetestRequest),
+        description = "Retest completion data"
+    ),
+    responses(
+        (status = 200, description = "Retest completed", body = crate::web::openapi::VulnerabilityTrackingSchema),
+        (status = 400, description = "Invalid retest result", body = crate::web::openapi::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = crate::web::openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::web::openapi::ErrorResponse)
+    )
+)]
+pub async fn complete_retest(
+    pool: web::Data<SqlitePool>,
+    vuln_id: web::Path<String>,
+    request: web::Json<CompleteRetestRequest>,
+    claims: web::ReqData<auth::Claims>,
+) -> HttpResponse {
+    match crate::db::complete_vulnerability_retest(
+        pool.get_ref(),
+        &vuln_id,
+        &request.result,
+        request.scan_id.as_deref(),
+        &claims.sub,
+        request.notes.as_deref(),
+    )
+    .await
+    {
+        Ok(updated) => HttpResponse::Ok().json(updated),
+        Err(e) => {
+            let error_msg = e.to_string();
+            if error_msg.contains("Invalid retest result") {
+                HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": error_msg
+                }))
+            } else {
+                log::error!("Failed to complete retest: {}", e);
+                HttpResponse::InternalServerError().json(serde_json::json!({
+                    "error": "Failed to complete retest"
+                }))
+            }
+        }
+    }
+}
+
+/// Get vulnerabilities pending retest
+#[utoipa::path(
+    get,
+    path = "/api/vulnerabilities/pending-retest",
+    tag = "Vulnerabilities",
+    security(
+        ("bearer_auth" = [])
+    ),
+    params(
+        ("scan_id" = Option<String>, Query, description = "Optional scan ID filter")
+    ),
+    responses(
+        (status = 200, description = "Vulnerabilities pending retest", body = Vec<crate::web::openapi::VulnerabilityTrackingSchema>),
+        (status = 401, description = "Unauthorized", body = crate::web::openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::web::openapi::ErrorResponse)
+    )
+)]
+pub async fn get_pending_retests(
+    pool: web::Data<SqlitePool>,
+    query: web::Query<VulnerabilityStatsQuery>,
+    _claims: web::ReqData<auth::Claims>,
+) -> HttpResponse {
+    match crate::db::get_vulnerabilities_pending_retest(pool.get_ref(), query.scan_id.as_deref()).await {
+        Ok(vulnerabilities) => HttpResponse::Ok().json(vulnerabilities),
+        Err(e) => {
+            log::error!("Failed to get pending retests: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to retrieve pending retests"
+            }))
+        }
+    }
+}
+
+/// Get retest history for a vulnerability
+#[utoipa::path(
+    get,
+    path = "/api/vulnerabilities/{id}/retest-history",
+    tag = "Vulnerabilities",
+    security(
+        ("bearer_auth" = [])
+    ),
+    params(
+        ("id" = String, Path, description = "Vulnerability tracking ID")
+    ),
+    responses(
+        (status = 200, description = "Retest history"),
+        (status = 401, description = "Unauthorized", body = crate::web::openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::web::openapi::ErrorResponse)
+    )
+)]
+pub async fn get_retest_history(
+    pool: web::Data<SqlitePool>,
+    vuln_id: web::Path<String>,
+    _claims: web::ReqData<auth::Claims>,
+) -> HttpResponse {
+    match crate::db::get_retest_history(pool.get_ref(), &vuln_id).await {
+        Ok(history) => HttpResponse::Ok().json(history),
+        Err(e) => {
+            log::error!("Failed to get retest history: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to retrieve retest history"
             }))
         }
     }

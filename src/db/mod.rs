@@ -16,15 +16,24 @@
 #![allow(unused_imports)]
 
 // Submodules
+pub mod ad_assessment;
 pub mod analytics;
+pub mod api_security;
 pub mod assets;
+pub mod attack_paths;
 pub mod auth;
+pub mod cloud;
+pub mod credential_audit;
+pub mod crm;
+pub mod finding_templates;
 pub mod manual_assessments;
+pub mod methodology;
 pub mod migrations;
 pub mod models;
 pub mod models_dashboard;
 pub mod scans;
 pub mod settings;
+pub mod threat_intel;
 pub mod users;
 pub mod vulnerabilities;
 pub mod vpn;
@@ -148,6 +157,8 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
             started_at TEXT,
             completed_at TEXT,
             error_message TEXT,
+            customer_id TEXT,
+            engagement_id TEXT,
             FOREIGN KEY (user_id) REFERENCES users(id)
         )
         "#,
@@ -254,6 +265,26 @@ pub use vulnerabilities::{
     bulk_assign_vulnerabilities,
     validate_status_transition,
     get_vulnerability_statistics,
+    // Retest workflow functions
+    request_vulnerability_retest,
+    bulk_request_retests,
+    complete_vulnerability_retest,
+    get_vulnerabilities_pending_retest,
+    get_retest_history,
+};
+
+// ============================================================================
+// Re-exports from finding_templates module
+// ============================================================================
+
+pub use finding_templates::{
+    list_finding_templates,
+    get_finding_template,
+    create_finding_template,
+    update_finding_template,
+    delete_finding_template,
+    clone_finding_template,
+    get_template_categories,
 };
 
 // ============================================================================
@@ -292,6 +323,9 @@ pub use auth::{
 pub use settings::{
     create_audit_log,
     get_audit_logs,
+    get_audit_logs_filtered,
+    get_audit_action_types,
+    get_audit_users,
     get_all_settings,
     get_setting,
     update_setting,
@@ -320,6 +354,13 @@ pub use analytics::{
     get_vulnerabilities_over_time,
     get_top_services,
     get_scan_frequency,
+    // Executive analytics
+    get_customer_security_trends,
+    get_customer_executive_summary,
+    get_remediation_velocity,
+    get_risk_trends,
+    get_methodology_coverage,
+    get_executive_dashboard,
 };
 
 // ============================================================================
@@ -341,4 +382,25 @@ pub use vpn::{
     get_active_vpn_connection,
     get_vpn_connection_history,
     cleanup_stale_connections,
+};
+
+// ============================================================================
+// Re-exports from methodology module
+// ============================================================================
+
+pub use methodology::{
+    list_methodology_templates,
+    get_methodology_template,
+    get_methodology_template_with_items,
+    create_checklist,
+    get_user_checklists,
+    get_checklist,
+    get_checklist_with_items,
+    update_checklist,
+    delete_checklist,
+    update_checklist_item,
+    get_checklist_progress,
+    get_checklist_item,
+    recalculate_checklist_progress,
+    ChecklistItemWithTemplate,
 };

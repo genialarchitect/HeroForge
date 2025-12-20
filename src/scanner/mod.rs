@@ -1,5 +1,10 @@
 use anyhow::Result;
+pub mod ad_assessment;
+pub mod api_security;
+pub mod attack_paths;
+pub mod cloud;
 pub mod comparison;
+pub mod credential_audit;
 pub mod dns_recon;
 pub mod enumeration;
 pub mod host_discovery;
@@ -150,6 +155,8 @@ pub async fn run_scan(
 
     for (idx, target) in live_hosts.into_iter().enumerate() {
         let scan_start = Instant::now();
+        // Cache IP string for reuse in progress messages
+        let target_ip_str = target.ip.to_string();
 
         // Scan ports
         let ports = port_scanner::scan_target_ports(&target, config).await?;
@@ -159,7 +166,7 @@ pub async fn run_scan(
             send_progress(
                 &progress_tx,
                 ScanProgressMessage::PortFound {
-                    ip: target.ip.to_string(),
+                    ip: target_ip_str.clone(),
                     port: port.port,
                     protocol: format!("{:?}", port.protocol),
                     state: format!("{:?}", port.state),
@@ -168,17 +175,17 @@ pub async fn run_scan(
         }
 
         let mut host_info = HostInfo {
-            target: target.clone(),
+            target, // Move target instead of cloning (ownership transferred from iterator)
             is_alive: true,
             os_guess: None,
-            ports: ports.clone(),
+            ports, // Move ports instead of cloning (no longer needed separately)
             vulnerabilities: Vec::new(),
             scan_duration: scan_start.elapsed(),
         };
 
         // Step 3: Service detection
-        if config.enable_service_detection && !ports.is_empty() {
-            info!("Phase 3: Service Detection for {}", target.ip);
+        if config.enable_service_detection && !host_info.ports.is_empty() {
+            info!("Phase 3: Service Detection for {}", target_ip_str);
             send_progress(
                 &progress_tx,
                 ScanProgressMessage::PhaseStarted {
@@ -195,7 +202,7 @@ pub async fn run_scan(
                     send_progress(
                         &progress_tx,
                         ScanProgressMessage::ServiceDetected {
-                            ip: target.ip.to_string(),
+                            ip: target_ip_str.clone(),
                             port: port.port,
                             service_name: service.name.clone(),
                             version: service.version.clone(),
@@ -205,9 +212,9 @@ pub async fn run_scan(
             }
         }
 
-        // Step 3.5: Enumeration (NEW)
-        if config.enable_enumeration && config.enable_service_detection && !ports.is_empty() {
-            info!("Phase 3.5: Service Enumeration for {}", target.ip);
+        // Step 3.5: Enumeration
+        if config.enable_enumeration && config.enable_service_detection && !host_info.ports.is_empty() {
+            info!("Phase 3.5: Service Enumeration for {}", target_ip_str);
             send_progress(
                 &progress_tx,
                 ScanProgressMessage::PhaseStarted {
@@ -220,8 +227,8 @@ pub async fn run_scan(
         }
 
         // Step 4: OS fingerprinting
-        if config.enable_os_detection && !ports.is_empty() {
-            info!("Phase 4: OS Fingerprinting for {}", target.ip);
+        if config.enable_os_detection && !host_info.ports.is_empty() {
+            info!("Phase 4: OS Fingerprinting for {}", target_ip_str);
             send_progress(
                 &progress_tx,
                 ScanProgressMessage::PhaseStarted {
@@ -230,53 +237,12 @@ pub async fn run_scan(
                 },
             );
 
-            host_info.os_guess = os_fingerprint::fingerprint_os(&target, &ports, config).await?;
+            host_info.os_guess = os_fingerprint::fingerprint_os(&host_info.target, &host_info.ports, config).await?;
         }
 
         // Step 5: Vulnerability scanning
-        if config.enable_vuln_scan && !ports.is_empty() {
-            info!("Phase 5: Vulnerability Scanning for {}", target.ip);
-            send_progress(
-                &progress_tx,
-                ScanProgressMessage::PhaseStarted {
-                    phase: "vuln_scan".to_string(),
-                    progress: 85.0 + (idx as f32 / total_hosts as f32) * 14.0,
-                },
-            );
-
-            // Notify about detected services
-            for port in &host_info.ports {
-                if let Some(service) = &port.service {
-                    send_progress(
-                        &progress_tx,
-                        ScanProgressMessage::ServiceDetected {
-                            ip: target.ip.to_string(),
-                            port: port.port,
-                            service_name: service.name.clone(),
-                            version: service.version.clone(),
-                        },
-                    );
-                }
-            }
-        }
-
-        // Step 4: OS fingerprinting
-        if config.enable_os_detection && !ports.is_empty() {
-            info!("Phase 4: OS Fingerprinting for {}", target.ip);
-            send_progress(
-                &progress_tx,
-                ScanProgressMessage::PhaseStarted {
-                    phase: "os_fingerprint".to_string(),
-                    progress: 70.0 + (idx as f32 / total_hosts as f32) * 15.0,
-                },
-            );
-
-            host_info.os_guess = os_fingerprint::fingerprint_os(&target, &ports, config).await?;
-        }
-
-        // Step 5: Vulnerability scanning
-        if config.enable_vuln_scan && !ports.is_empty() {
-            info!("Phase 5: Vulnerability Scanning for {}", target.ip);
+        if config.enable_vuln_scan && !host_info.ports.is_empty() {
+            info!("Phase 5: Vulnerability Scanning for {}", target_ip_str);
             send_progress(
                 &progress_tx,
                 ScanProgressMessage::PhaseStarted {
@@ -293,7 +259,7 @@ pub async fn run_scan(
                 send_progress(
                     &progress_tx,
                     ScanProgressMessage::VulnerabilityFound {
-                        ip: target.ip.to_string(),
+                        ip: target_ip_str.clone(),
                         cve_id: vuln.cve_id.clone(),
                         severity: format!("{:?}", vuln.severity),
                         title: vuln.title.clone(),

@@ -657,8 +657,9 @@ const AssessmentDetailPage: React.FC = () => {
       const response = await manualAssessmentAPI.submit(assessment.id);
       setAssessment(response.data);
       toast.success('Assessment submitted for review');
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to submit assessment');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || 'Failed to submit assessment');
     } finally {
       setIsSubmitting(false);
     }
@@ -672,8 +673,9 @@ const AssessmentDetailPage: React.FC = () => {
       const response = await manualAssessmentAPI.approve(assessment.id);
       setAssessment(response.data);
       toast.success('Assessment approved');
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to approve assessment');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || 'Failed to approve assessment');
     } finally {
       setIsSubmitting(false);
     }
@@ -688,8 +690,9 @@ const AssessmentDetailPage: React.FC = () => {
       setAssessment(response.data);
       setShowRejectModal(false);
       toast.success('Assessment rejected');
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to reject assessment');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || 'Failed to reject assessment');
     } finally {
       setIsSubmitting(false);
     }

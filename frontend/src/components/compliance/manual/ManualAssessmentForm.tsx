@@ -615,8 +615,9 @@ const ManualAssessmentForm: React.FC<ManualAssessmentFormProps> = ({
           : 'Assessment created successfully'
       );
       onSubmit(result);
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to save assessment');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || 'Failed to save assessment');
     } finally {
       setIsSaving(false);
     }

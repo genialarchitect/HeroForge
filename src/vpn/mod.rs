@@ -10,7 +10,5 @@ pub mod openvpn;
 pub mod wireguard;
 pub mod manager;
 
-pub use types::{VpnType, ConnectionMode, VpnStatus, VpnConnectionInfo};
-pub use credentials::{VpnCredentials, encrypt_vpn_credentials, decrypt_vpn_credentials};
-pub use config::{VpnConfigValidator, ConfigValidationResult};
+pub use types::{VpnType, ConnectionMode};
 pub use manager::VpnManager;

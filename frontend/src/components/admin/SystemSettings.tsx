@@ -42,8 +42,9 @@ const SystemSettings: React.FC = () => {
       await adminAPI.updateSetting(key, editedValues[key]);
       toast.success(`Setting "${key}" updated successfully`);
       loadSettings();
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to update setting');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || 'Failed to update setting');
     } finally {
       setSaving({ ...saving, [key]: false });
     }

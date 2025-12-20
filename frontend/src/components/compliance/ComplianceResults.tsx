@@ -74,8 +74,9 @@ const ComplianceResults: React.FC<ComplianceResultsProps> = ({ results, scanId }
       window.URL.revokeObjectURL(url);
 
       toast.success(`${reportFormat.toUpperCase()} report generated and downloaded successfully`);
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to generate report');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || 'Failed to generate report');
     } finally {
       setGeneratingReport(false);
     }

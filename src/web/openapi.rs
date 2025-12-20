@@ -165,6 +165,10 @@ pub struct CreateScanRequestSchema {
     pub udp_retries: Option<u8>,
     /// VPN configuration ID to connect through for this scan
     pub vpn_config_id: Option<String>,
+    /// CRM customer ID to associate with this scan
+    pub customer_id: Option<String>,
+    /// CRM engagement ID to associate with this scan
+    pub engagement_id: Option<String>,
 }
 
 /// Scan result
@@ -419,6 +423,9 @@ impl Modify for SecurityAddon {
         (name = "Scheduled Scans", description = "Scheduled scan management"),
         (name = "Analytics", description = "Dashboard analytics and statistics"),
         (name = "Assets", description = "Asset inventory management"),
+        (name = "Finding Templates", description = "Finding templates for vulnerability descriptions"),
+        (name = "Methodology", description = "Methodology checklists for PTES, OWASP WSTG testing"),
+        (name = "Executive Analytics", description = "Executive dashboard, security trends, and remediation metrics"),
         (name = "Admin", description = "Administrative operations (admin role required)")
     ),
     paths(
@@ -453,6 +460,38 @@ impl Modify for SecurityAddon {
         crate::web::api::vulnerabilities::get_vulnerability_timeline,
         crate::web::api::vulnerabilities::mark_for_verification,
         crate::web::api::vulnerabilities::bulk_assign,
+        // Retest workflow endpoints
+        crate::web::api::vulnerabilities::request_retest,
+        crate::web::api::vulnerabilities::bulk_request_retest,
+        crate::web::api::vulnerabilities::complete_retest,
+        crate::web::api::vulnerabilities::get_pending_retests,
+        crate::web::api::vulnerabilities::get_retest_history,
+        // Finding templates endpoints
+        crate::web::api::finding_templates::list_templates,
+        crate::web::api::finding_templates::get_template,
+        crate::web::api::finding_templates::create_template,
+        crate::web::api::finding_templates::update_template,
+        crate::web::api::finding_templates::delete_template,
+        crate::web::api::finding_templates::clone_template,
+        crate::web::api::finding_templates::get_categories,
+        // Methodology checklists endpoints
+        crate::web::api::methodology::list_templates,
+        crate::web::api::methodology::get_template,
+        crate::web::api::methodology::list_checklists,
+        crate::web::api::methodology::create_checklist,
+        crate::web::api::methodology::get_checklist,
+        crate::web::api::methodology::update_checklist,
+        crate::web::api::methodology::delete_checklist,
+        crate::web::api::methodology::get_progress,
+        crate::web::api::methodology::get_item,
+        crate::web::api::methodology::update_item,
+        // Executive Analytics endpoints
+        crate::web::api::analytics::get_customer_trends,
+        crate::web::api::analytics::get_customer_summary,
+        crate::web::api::analytics::get_remediation_velocity,
+        crate::web::api::analytics::get_risk_trends,
+        crate::web::api::analytics::get_methodology_coverage,
+        crate::web::api::analytics::get_executive_dashboard,
     ),
     components(
         schemas(
@@ -474,6 +513,36 @@ impl Modify for SecurityAddon {
             BulkDeleteRequestSchema,
             BulkUpdateVulnerabilitiesRequestSchema,
             AddCommentRequestSchema,
+            // Finding template schemas
+            crate::db::models::FindingTemplate,
+            crate::db::models::CreateFindingTemplateRequest,
+            crate::db::models::UpdateFindingTemplateRequest,
+            crate::web::api::finding_templates::CloneTemplateRequest,
+            crate::web::api::finding_templates::CategoryCount,
+            // Methodology checklist schemas
+            crate::db::models::MethodologyTemplate,
+            crate::db::models::MethodologyTemplateItem,
+            crate::db::models::MethodologyTemplateWithItems,
+            crate::db::models::MethodologyChecklist,
+            crate::db::models::ChecklistItem,
+            crate::db::models::ChecklistSummary,
+            crate::db::models::ChecklistWithItems,
+            crate::db::models::ChecklistProgress,
+            crate::db::models::CategoryProgress,
+            crate::db::models::CreateChecklistRequest,
+            crate::db::models::UpdateChecklistRequest,
+            crate::db::models::UpdateChecklistItemRequest,
+            // Executive analytics schemas
+            crate::db::models::CustomerSecurityTrends,
+            crate::db::models::MonthlySecuritySnapshot,
+            crate::db::models::ExecutiveSummary,
+            crate::db::models::RemediationVelocity,
+            crate::db::models::VelocityPoint,
+            crate::db::models::RiskTrendPoint,
+            crate::db::models::ComplianceTrendPoint,
+            crate::db::models::MethodologyCoverage,
+            crate::db::models::FrameworkCoverage,
+            crate::db::models::ExecutiveDashboard,
         )
     ),
     modifiers(&SecurityAddon)

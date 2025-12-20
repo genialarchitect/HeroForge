@@ -144,7 +144,7 @@ const DnsToolsPage: React.FC = () => {
                             {new Date(scan.scan_timestamp).toLocaleDateString()}
                           </div>
                           {scan.zone_transfer_vulnerable && (
-                            <Badge variant="danger" className="mt-1">
+                            <Badge type="failed" className="mt-1">
                               Zone Transfer Vulnerable
                             </Badge>
                           )}
@@ -231,10 +231,10 @@ const DnsToolsPage: React.FC = () => {
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="flex items-center gap-2">
                               {scan.dnssec_enabled && (
-                                <Badge variant="success">DNSSEC</Badge>
+                                <Badge type="completed">DNSSEC</Badge>
                               )}
                               {scan.zone_transfer_vulnerable && (
-                                <Badge variant="danger">AXFR Vuln</Badge>
+                                <Badge type="failed">AXFR Vuln</Badge>
                               )}
                             </div>
                           </td>

@@ -75,8 +75,9 @@ const ComplianceAnalysis: React.FC<ComplianceAnalysisProps> = ({
       });
       setResults(response.data);
       toast.success('Compliance analysis completed');
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Analysis failed');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || 'Analysis failed');
     } finally {
       setAnalyzing(false);
     }
@@ -144,8 +145,9 @@ const ComplianceAnalysis: React.FC<ComplianceAnalysisProps> = ({
       window.URL.revokeObjectURL(url);
 
       toast.success(`${reportFormat.toUpperCase()} report generated and downloaded successfully`);
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to generate report');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || 'Failed to generate report');
     } finally {
       setGeneratingReport(false);
     }

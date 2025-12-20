@@ -59,8 +59,9 @@ const JiraSettings: React.FC = () => {
       const response = await jiraAPI.getSettings();
       setSettings(response.data);
       setConfigured(true);
-    } catch (error: any) {
-      if (error.response?.status === 404) {
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { status?: number } };
+      if (axiosError.response?.status === 404) {
         setConfigured(false);
       } else {
         console.error('Failed to load JIRA settings:', error);
@@ -81,9 +82,10 @@ const JiraSettings: React.FC = () => {
       await jiraAPI.updateSettings(settings);
       toast.success('JIRA settings saved successfully');
       setConfigured(true);
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
       console.error('Failed to save JIRA settings:', error);
-      toast.error(error.response?.data?.error || 'Failed to save JIRA settings');
+      toast.error(axiosError.response?.data?.error || 'Failed to save JIRA settings');
     } finally {
       setSaving(false);
     }
@@ -99,9 +101,10 @@ const JiraSettings: React.FC = () => {
     try {
       await jiraAPI.testConnection();
       toast.success('JIRA connection successful!');
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
       console.error('JIRA connection failed:', error);
-      toast.error(error.response?.data?.error || 'JIRA connection failed');
+      toast.error(axiosError.response?.data?.error || 'JIRA connection failed');
     } finally {
       setTesting(false);
     }
@@ -118,9 +121,10 @@ const JiraSettings: React.FC = () => {
       const response = await jiraAPI.listProjects();
       setProjects(response.data);
       toast.success(`Loaded ${response.data.length} projects`);
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
       console.error('Failed to load projects:', error);
-      toast.error(error.response?.data?.error || 'Failed to load projects');
+      toast.error(axiosError.response?.data?.error || 'Failed to load projects');
     } finally {
       setLoadingProjects(false);
     }
@@ -137,9 +141,10 @@ const JiraSettings: React.FC = () => {
       const response = await jiraAPI.listIssueTypes();
       setIssueTypes(response.data);
       toast.success(`Loaded ${response.data.length} issue types`);
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
       console.error('Failed to load issue types:', error);
-      toast.error(error.response?.data?.error || 'Failed to load issue types');
+      toast.error(axiosError.response?.data?.error || 'Failed to load issue types');
     } finally {
       setLoadingProjects(false);
     }

@@ -175,12 +175,12 @@ const DashboardPage: React.FC = () => {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-3xl font-bold text-white mb-2">Network Triage Dashboard</h2>
-            <p className="text-slate-400">Create scans, monitor progress, and analyze results in real-time</p>
+            <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">Network Triage Dashboard</h2>
+            <p className="text-slate-500 dark:text-slate-400">Create scans, monitor progress, and analyze results in real-time</p>
           </div>
           <button
             onClick={() => setShowShortcuts(true)}
-            className="flex items-center gap-2 px-3 py-2 text-sm text-slate-400 hover:text-white transition-colors border border-dark-border hover:border-primary rounded-lg"
+            className="flex items-center gap-2 px-3 py-2 text-sm text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors border border-light-border dark:border-dark-border hover:border-primary rounded-lg"
           >
             <Keyboard className="h-4 w-4" />
             Shortcuts
@@ -188,13 +188,13 @@ const DashboardPage: React.FC = () => {
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-2 border-b border-dark-border pb-2">
+        <div className="flex gap-2 border-b border-light-border dark:border-dark-border pb-2">
           <button
             onClick={() => setActiveTab('overview')}
             className={`flex items-center gap-2 px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
               activeTab === 'overview'
-                ? 'bg-dark-surface text-primary border-b-2 border-primary'
-                : 'text-slate-400 hover:text-white hover:bg-dark-hover'
+                ? 'bg-light-surface dark:bg-dark-surface text-primary border-b-2 border-primary'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-light-hover dark:hover:bg-dark-hover'
             }`}
           >
             <Grid className="h-4 w-4" />
@@ -204,8 +204,8 @@ const DashboardPage: React.FC = () => {
             onClick={() => setActiveTab('scans')}
             className={`flex items-center gap-2 px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
               activeTab === 'scans'
-                ? 'bg-dark-surface text-primary border-b-2 border-primary'
-                : 'text-slate-400 hover:text-white hover:bg-dark-hover'
+                ? 'bg-light-surface dark:bg-dark-surface text-primary border-b-2 border-primary'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-light-hover dark:hover:bg-dark-hover'
             }`}
           >
             <LayoutDashboard className="h-4 w-4" />
@@ -215,8 +215,8 @@ const DashboardPage: React.FC = () => {
             onClick={() => setActiveTab('analytics')}
             className={`flex items-center gap-2 px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
               activeTab === 'analytics'
-                ? 'bg-dark-surface text-primary border-b-2 border-primary'
-                : 'text-slate-400 hover:text-white hover:bg-dark-hover'
+                ? 'bg-light-surface dark:bg-dark-surface text-primary border-b-2 border-primary'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-light-hover dark:hover:bg-dark-hover'
             }`}
           >
             <BarChart3 className="h-4 w-4" />
@@ -293,15 +293,15 @@ const DashboardPage: React.FC = () => {
               className="fixed inset-0 bg-black/50 z-40 animate-fadeIn"
               onClick={() => setShowShortcuts(false)}
             />
-            <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-dark-surface border border-dark-border rounded-lg shadow-2xl p-6 w-full max-w-md animate-fadeIn">
+            <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-light-surface dark:bg-dark-surface border border-light-border dark:border-dark-border rounded-lg shadow-2xl p-6 w-full max-w-md animate-fadeIn">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-xl font-semibold text-white flex items-center gap-2">
+                <h3 className="text-xl font-semibold text-slate-900 dark:text-white flex items-center gap-2">
                   <Keyboard className="h-5 w-5 text-primary" />
                   Keyboard Shortcuts
                 </h3>
                 <button
                   onClick={() => setShowShortcuts(false)}
-                  className="text-slate-400 hover:text-white transition-colors"
+                  className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
                 >
                   <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -313,10 +313,10 @@ const DashboardPage: React.FC = () => {
                 {shortcuts.map((shortcut, index) => (
                   <div
                     key={index}
-                    className="flex items-center justify-between py-2 px-3 bg-dark-bg rounded border border-dark-border"
+                    className="flex items-center justify-between py-2 px-3 bg-light-bg dark:bg-dark-bg rounded border border-light-border dark:border-dark-border"
                   >
-                    <span className="text-sm text-slate-300">{shortcut.description}</span>
-                    <kbd className="px-2 py-1 bg-dark-surface border border-dark-border rounded text-xs font-mono text-primary">
+                    <span className="text-sm text-slate-700 dark:text-slate-300">{shortcut.description}</span>
+                    <kbd className="px-2 py-1 bg-light-surface dark:bg-dark-surface border border-light-border dark:border-dark-border rounded text-xs font-mono text-primary">
                       {formatShortcut(shortcut)}
                     </kbd>
                   </div>
@@ -324,7 +324,7 @@ const DashboardPage: React.FC = () => {
               </div>
 
               <p className="text-xs text-slate-500 mt-4 text-center">
-                Press <kbd className="px-1 py-0.5 bg-dark-surface border border-dark-border rounded text-xs font-mono">Esc</kbd> to close
+                Press <kbd className="px-1 py-0.5 bg-light-surface dark:bg-dark-surface border border-light-border dark:border-dark-border rounded text-xs font-mono">Esc</kbd> to close
               </p>
             </div>
           </>

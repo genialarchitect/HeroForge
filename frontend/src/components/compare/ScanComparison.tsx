@@ -65,8 +65,9 @@ const ScanComparison: React.FC = () => {
       const response = await compareAPI.compare(scanId1, scanId2);
       setComparison(response.data);
       toast.success('Comparison completed');
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to compare scans');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || 'Failed to compare scans');
       console.error(error);
     } finally {
       setComparing(false);

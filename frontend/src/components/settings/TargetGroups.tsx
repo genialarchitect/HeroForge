@@ -105,8 +105,9 @@ const TargetGroups: React.FC = () => {
       }
       resetForm();
       loadGroups();
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to save target group');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || 'Failed to save target group');
     }
   };
 
@@ -119,8 +120,9 @@ const TargetGroups: React.FC = () => {
       toast.success(`Target group "${deleteConfirm.name}" deleted`);
       loadGroups();
       setDeleteConfirm(null);
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to delete');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || 'Failed to delete');
     } finally {
       setIsDeleting(false);
     }

@@ -69,6 +69,8 @@ mod tests {
                 started_at TEXT,
                 completed_at TEXT,
                 error_message TEXT,
+                customer_id TEXT,
+                engagement_id TEXT,
                 FOREIGN KEY (user_id) REFERENCES users(id)
             )
             "#,

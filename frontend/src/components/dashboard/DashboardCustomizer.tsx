@@ -11,7 +11,52 @@ import {
   TopRiskyHostsWidget,
   CriticalVulnsWidget,
   UpcomingScansWidget,
+  ThreatIntelWidget,
 } from './widgets';
+
+// Widget-specific configuration types
+interface RecentScansWidgetConfig {
+  limit?: number;
+}
+
+interface VulnerabilitySummaryWidgetConfig {
+  showChart?: boolean;
+}
+
+interface ComplianceScoresWidgetConfig {
+  frameworks?: string[];
+}
+
+interface ScanActivityWidgetConfig {
+  period?: 'week' | 'month' | 'year';
+}
+
+interface TopRiskyHostsWidgetConfig {
+  limit?: number;
+}
+
+interface CriticalVulnsWidgetConfig {
+  limit?: number;
+}
+
+interface UpcomingScansWidgetConfig {
+  limit?: number;
+}
+
+interface ThreatIntelWidgetConfig {
+  limit?: number;
+}
+
+type WidgetConfigOptions =
+  | RecentScansWidgetConfig
+  | VulnerabilitySummaryWidgetConfig
+  | ComplianceScoresWidgetConfig
+  | ScanActivityWidgetConfig
+  | TopRiskyHostsWidgetConfig
+  | CriticalVulnsWidgetConfig
+  | UpcomingScansWidgetConfig
+  | ThreatIntelWidgetConfig
+  | Record<string, never>; // Empty config
 
 interface WidgetConfig {
   id: string;
@@ -20,7 +65,7 @@ interface WidgetConfig {
   y: number;
   w: number;
   h: number;
-  config?: any;
+  config?: WidgetConfigOptions;
 }
 
 interface DashboardCustomizerProps {
@@ -36,6 +81,7 @@ const WIDGET_TYPES = [
   { type: 'top_risky_hosts', label: 'Top Risky Hosts', minW: 4, minH: 3 },
   { type: 'critical_vulns', label: 'Critical Vulnerabilities', minW: 4, minH: 2 },
   { type: 'upcoming_scheduled_scans', label: 'Upcoming Scans', minW: 4, minH: 2 },
+  { type: 'threat_intel', label: 'Threat Intelligence', minW: 4, minH: 3 },
 ];
 
 const DashboardCustomizer: React.FC<DashboardCustomizerProps> = ({
@@ -90,7 +136,15 @@ const DashboardCustomizer: React.FC<DashboardCustomizerProps> = ({
     }
   };
 
-  const handleLayoutChange = (layout: any[]) => {
+  interface LayoutItem {
+    i: string;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+  }
+
+  const handleLayoutChange = (layout: LayoutItem[]) => {
     if (!isEditMode) return;
 
     const updatedWidgets = widgets.map((widget) => {
@@ -158,6 +212,8 @@ const DashboardCustomizer: React.FC<DashboardCustomizerProps> = ({
         return <CriticalVulnsWidget {...commonProps} />;
       case 'upcoming_scheduled_scans':
         return <UpcomingScansWidget {...commonProps} />;
+      case 'threat_intel':
+        return <ThreatIntelWidget {...commonProps} />;
       default:
         return null;
     }

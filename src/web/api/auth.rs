@@ -716,6 +716,7 @@ pub async fn delete_account(
         target_id: Some(claims.sub.clone()),
         details: Some(format!("User {} ({}) deleted their account", user.username, user.email)),
         ip_address: None,
+        user_agent: None,
         created_at: chrono::Utc::now(),
     };
 

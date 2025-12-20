@@ -25,9 +25,9 @@ const RemediationPage: React.FC = () => {
   const loadScans = async () => {
     try {
       setLoading(true);
-      const response = await scanAPI.list();
+      const response = await scanAPI.getAll();
       // Filter to only completed scans
-      const completedScans = response.data.filter((s) => s.status === 'completed');
+      const completedScans = response.data.filter((s: { status: string }) => s.status === 'completed');
       setScans(completedScans);
       if (completedScans.length > 0 && !selectedScanId) {
         setSelectedScanId(completedScans[0].id);

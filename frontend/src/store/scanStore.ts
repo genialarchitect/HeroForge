@@ -1,9 +1,56 @@
 import { create } from 'zustand';
-import { ScanResult, HostInfo } from '../types';
+import { ScanResult, Vulnerability, HostInfo } from '../types';
+
+// Data types for live updates during scanning
+interface HostDiscoveredData {
+  ip: string;
+  hostname?: string;
+}
+
+interface PortDiscoveredData {
+  ip: string;
+  port: number;
+  protocol: string;
+  state: string;
+  service?: string;
+}
+
+interface ServiceDetectedData {
+  ip: string;
+  port: number;
+  service: string;
+  version?: string;
+}
+
+interface VulnerabilityFoundData {
+  ip: string;
+  vulnerability: Vulnerability;
+}
+
+interface ProgressUpdateData {
+  phase: string;
+  progress: number;
+  current_host?: string;
+}
+
+interface ScanCompleteData {
+  total_hosts: number;
+  total_ports: number;
+  total_vulnerabilities: number;
+}
+
+interface ErrorData {
+  message: string;
+  host?: string;
+}
+
+// Live update data - flexible type to handle various WebSocket message formats
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type LiveUpdateData = Record<string, any>;
 
 interface LiveUpdate {
   type: string;
-  data: any;
+  data: LiveUpdateData;
   timestamp: string;
 }
 

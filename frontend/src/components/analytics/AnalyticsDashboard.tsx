@@ -121,9 +121,10 @@ const AnalyticsDashboard: React.FC = () => {
       setVulnData(vulnRes.data);
       setServicesData(servicesRes.data);
       setFrequencyData(frequencyRes.data);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const axiosError = err as { response?: { data?: { message?: string } } };
       console.error('Failed to load analytics:', err);
-      setError(err.response?.data?.message || 'Failed to load analytics data');
+      setError(axiosError.response?.data?.message || 'Failed to load analytics data');
     } finally {
       setLoading(false);
     }

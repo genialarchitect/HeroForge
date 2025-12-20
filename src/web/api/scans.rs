@@ -233,8 +233,16 @@ fn is_valid_hostname(hostname: &str) -> bool {
         }
 
         // Each label must start and end with alphanumeric
-        if !label.chars().next().unwrap().is_alphanumeric()
-            || !label.chars().last().unwrap().is_alphanumeric() {
+        // Note: We already verified label is non-empty above, but use match for safety
+        let first_char = match label.chars().next() {
+            Some(c) => c,
+            None => return false,
+        };
+        let last_char = match label.chars().last() {
+            Some(c) => c,
+            None => return false,
+        };
+        if !first_char.is_alphanumeric() || !last_char.is_alphanumeric() {
             return false;
         }
 
@@ -365,15 +373,18 @@ pub async fn create_scan(
         &claims.sub,
         &scan_request.name,
         &scan_request.targets,
+        scan_request.customer_id.as_deref(),
+        scan_request.engagement_id.as_deref(),
     )
     .await
     .map_err(|_| actix_web::error::ErrorInternalServerError("Failed to create scan"))?;
 
-    // Start scan in background
+    // Start scan in background - clone only what's needed for the spawned task
     let scan_id = scan.id.clone();
     let scan_name = scan.name.clone();
     let pool_clone = pool.get_ref().clone();
     let user_id = claims.sub.clone();
+    let targets = scan_request.targets.clone(); // Clone once, use in config
 
     // Parse enumeration depth from string
     let enum_depth = scan_request
@@ -401,8 +412,11 @@ pub async fn create_scan(
         .map(|s| parse_scan_type(s))
         .unwrap_or(crate::types::ScanType::TCPConnect);
 
+    // Extract vpn_config_id before creating config (avoid double clone)
+    let vpn_config_id = scan_request.vpn_config_id.clone();
+
     let config = ScanConfig {
-        targets: scan_request.targets.clone(),
+        targets, // Use pre-cloned targets
         port_range: scan_request.port_range,
         threads: scan_request.threads,
         timeout: std::time::Duration::from_secs(3),
@@ -423,11 +437,8 @@ pub async fn create_scan(
         dns_timeout: None,
         syn_timeout: None,
         udp_timeout: None,
-        vpn_config_id: scan_request.vpn_config_id.clone(),
+        vpn_config_id: vpn_config_id.clone(), // Clone for config, original used in spawned task
     };
-
-    // Clone vpn_config_id for the spawned task
-    let vpn_config_id = config.vpn_config_id.clone();
 
     tokio::spawn(async move {
         // Create broadcast channel for this scan
@@ -449,7 +460,9 @@ pub async fn create_scan(
         if let Some(vpn_id) = &vpn_config_id {
             // Get VPN config for connection
             if let Ok(Some(vpn_config)) = crate::db::vpn::get_vpn_config_by_id(&pool_clone, vpn_id).await {
-                vpn_config_name = Some(vpn_config.name.clone());
+                // Clone name once and reuse via vpn_config_name
+                let config_name = vpn_config.name.clone();
+                vpn_config_name = Some(config_name.clone());
 
                 // Parse VPN type from config
                 let vpn_type = match vpn_config.vpn_type.parse::<VpnType>() {
@@ -457,7 +470,7 @@ pub async fn create_scan(
                     Err(e) => {
                         log::error!("Invalid VPN type for config {}: {}", vpn_id, e);
                         let _ = tx.send(ScanProgressMessage::VpnError {
-                            config_name: vpn_config.name.clone(),
+                            config_name,
                             message: format!("Invalid VPN type: {}", e),
                         });
                         let _ = db::update_scan_status(
@@ -474,10 +487,12 @@ pub async fn create_scan(
                     }
                 };
 
-                // Send VPN connecting message
-                let _ = tx.send(ScanProgressMessage::VpnConnecting {
-                    config_name: vpn_config.name.clone(),
-                });
+                // Send VPN connecting message (use vpn_config_name which is already cloned)
+                if let Some(ref name) = vpn_config_name {
+                    let _ = tx.send(ScanProgressMessage::VpnConnecting {
+                        config_name: name.clone(),
+                    });
+                }
 
                 // Connect to VPN
                 let config_file_path = std::path::Path::new(&vpn_config.config_file_path);
@@ -485,7 +500,7 @@ pub async fn create_scan(
                     .connect(
                         &user_id,
                         vpn_id,
-                        &vpn_config.name,
+                        vpn_config_name.as_deref().unwrap_or_default(),
                         vpn_type,
                         config_file_path,
                         vpn_config.encrypted_credentials.as_deref(),
@@ -496,26 +511,30 @@ pub async fn create_scan(
                 {
                     Ok(conn_info) => {
                         vpn_connection_id = Some(conn_info.id.clone());
-                        let _ = tx.send(ScanProgressMessage::VpnConnected {
-                            config_name: vpn_config.name.clone(),
-                            assigned_ip: conn_info.assigned_ip.clone(),
-                        });
-                        log::info!(
-                            "VPN connected for scan {}: {} (IP: {:?})",
-                            scan_id,
-                            vpn_config.name,
-                            conn_info.assigned_ip
-                        );
+                        if let Some(ref name) = vpn_config_name {
+                            let _ = tx.send(ScanProgressMessage::VpnConnected {
+                                config_name: name.clone(),
+                                assigned_ip: conn_info.assigned_ip.clone(),
+                            });
+                            log::info!(
+                                "VPN connected for scan {}: {} (IP: {:?})",
+                                scan_id,
+                                name,
+                                conn_info.assigned_ip
+                            );
+                        }
 
                         // Update last_used_at for the VPN config
                         let _ = crate::db::vpn::update_vpn_config_last_used(&pool_clone, vpn_id).await;
                     }
                     Err(e) => {
                         log::error!("Failed to connect VPN for scan {}: {}", scan_id, e);
-                        let _ = tx.send(ScanProgressMessage::VpnError {
-                            config_name: vpn_config.name.clone(),
-                            message: e.to_string(),
-                        });
+                        if let Some(ref name) = vpn_config_name {
+                            let _ = tx.send(ScanProgressMessage::VpnError {
+                                config_name: name.clone(),
+                                message: e.to_string(),
+                            });
+                        }
                         let _ = tx.send(ScanProgressMessage::Error {
                             message: format!("VPN connection failed: {}", e),
                         });
@@ -603,10 +622,11 @@ pub async fn create_scan(
                 .await;
 
                 // Send notifications asynchronously (don't block on completion)
+                // Use Arc to avoid expensive deep clone of results
                 let pool_for_notifications = pool_clone.clone();
                 let user_id_for_notifications = user_id.clone();
-                let scan_name_for_notifications = scan_name.clone();
-                let results_for_notifications = results.clone();
+                let scan_name_for_notifications = scan_name; // Move, no longer needed after this
+                let results_for_notifications = std::sync::Arc::new(results);
 
                 tokio::spawn(async move {
                     // Send scan completion notification
@@ -986,6 +1006,74 @@ pub async fn export_scan_csv(
         .body(csv_data))
 }
 
+/// Export a single scan in Markdown format
+#[utoipa::path(
+    get,
+    path = "/api/scans/{id}/export/markdown",
+    tag = "Scans",
+    security(
+        ("bearer_auth" = [])
+    ),
+    params(
+        ("id" = String, Path, description = "Scan ID")
+    ),
+    responses(
+        (status = 200, description = "Markdown report", content_type = "text/markdown"),
+        (status = 400, description = "Scan has no results", body = crate::web::openapi::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = crate::web::openapi::ErrorResponse),
+        (status = 403, description = "Access denied", body = crate::web::openapi::ErrorResponse),
+        (status = 404, description = "Scan not found", body = crate::web::openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::web::openapi::ErrorResponse)
+    )
+)]
+pub async fn export_scan_markdown(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    scan_id: web::Path<String>,
+) -> Result<HttpResponse> {
+    // Fetch scan and verify ownership
+    let scan = db::get_scan_by_id(&pool, &scan_id)
+        .await
+        .map_err(|_| actix_web::error::ErrorInternalServerError("Failed to fetch scan"))?;
+
+    let scan = match scan {
+        Some(s) => {
+            if s.user_id != claims.sub {
+                return Ok(HttpResponse::Forbidden().json(serde_json::json!({
+                    "error": "Access denied"
+                })));
+            }
+            s
+        }
+        None => {
+            return Ok(HttpResponse::NotFound().json(serde_json::json!({
+                "error": "Scan not found"
+            })));
+        }
+    };
+
+    // Parse results
+    let results_json = scan.results.clone().ok_or_else(|| {
+        actix_web::error::ErrorBadRequest("Scan has no results yet")
+    })?;
+
+    let hosts: Vec<HostInfo> = serde_json::from_str(&results_json)
+        .map_err(|e| {
+            log::error!("Failed to parse scan results: {}", e);
+            actix_web::error::ErrorInternalServerError("Invalid scan results format")
+        })?;
+
+    // Generate Markdown report
+    let markdown = crate::reports::formats::markdown::generate_markdown_report(&scan, &hosts);
+
+    let filename = format!("scan-{}.md", scan.id);
+
+    Ok(HttpResponse::Ok()
+        .content_type("text/markdown; charset=utf-8")
+        .insert_header(("Content-Disposition", format!("attachment; filename=\"{}\"", filename)))
+        .body(markdown))
+}
+
 /// Bulk export multiple scans as ZIP archive
 #[utoipa::path(
     post,
@@ -1351,6 +1439,623 @@ pub async fn get_aggregated_stats(
     let stats = crate::web::websocket::aggregator::get_aggregated_stats().await;
 
     Ok(HttpResponse::Ok().json(stats))
+}
+
+// ============================================================================
+// SSL/TLS Report API
+// ============================================================================
+
+/// SSL Report response structure
+#[derive(Debug, serde::Serialize, utoipa::ToSchema)]
+pub struct SslReportEntry {
+    pub host: String,
+    pub port: u16,
+    pub service: Option<String>,
+    pub grade: String,
+    pub overall_score: u8,
+    pub protocol_score: u8,
+    pub cipher_score: u8,
+    pub certificate_score: u8,
+    pub key_exchange_score: u8,
+    pub vulnerabilities_count: usize,
+    pub recommendations_count: usize,
+    #[serde(flatten)]
+    pub ssl_info: crate::types::SslInfo,
+}
+
+/// SSL Report summary
+#[derive(Debug, serde::Serialize, utoipa::ToSchema)]
+pub struct SslReportSummary {
+    pub scan_id: String,
+    pub scan_name: String,
+    pub total_ssl_services: usize,
+    pub grade_distribution: std::collections::HashMap<String, usize>,
+    pub average_score: u8,
+    pub services_with_critical_issues: usize,
+    pub services_with_high_issues: usize,
+    pub entries: Vec<SslReportEntry>,
+}
+
+/// Get SSL/TLS report for a scan
+/// Returns detailed SSL/TLS grading information for all services with SSL detected
+#[utoipa::path(
+    get,
+    path = "/api/scans/{id}/ssl-report",
+    tag = "Scans",
+    security(
+        ("bearer_auth" = [])
+    ),
+    params(
+        ("id" = String, Path, description = "Scan ID")
+    ),
+    responses(
+        (status = 200, description = "SSL report generated successfully", body = SslReportSummary),
+        (status = 401, description = "Unauthorized", body = crate::web::openapi::ErrorResponse),
+        (status = 404, description = "Scan not found", body = crate::web::openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::web::openapi::ErrorResponse)
+    )
+)]
+pub async fn get_ssl_report(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    scan_id: web::Path<String>,
+) -> Result<HttpResponse> {
+    // Fetch scan and verify ownership
+    let scan = db::get_scan_by_id(&pool, &scan_id)
+        .await
+        .map_err(|_| actix_web::error::ErrorInternalServerError("Failed to fetch scan"))?;
+
+    let scan = match scan {
+        Some(s) => s,
+        None => {
+            return Ok(HttpResponse::NotFound().json(serde_json::json!({
+                "error": "Scan not found"
+            })));
+        }
+    };
+
+    // Verify ownership
+    if scan.user_id != claims.sub {
+        return Ok(HttpResponse::Forbidden().json(serde_json::json!({
+            "error": "Access denied"
+        })));
+    }
+
+    // Parse scan results
+    let hosts: Vec<HostInfo> = if let Some(ref results) = scan.results {
+        serde_json::from_str(results).unwrap_or_default()
+    } else {
+        return Ok(HttpResponse::Ok().json(serde_json::json!({
+            "error": "Scan has no results yet",
+            "status": scan.status
+        })));
+    };
+
+    // Collect all SSL entries
+    let mut entries = Vec::new();
+    let mut grade_distribution: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    let mut total_score: u32 = 0;
+    let mut services_with_critical = 0;
+    let mut services_with_high = 0;
+
+    for host in &hosts {
+        for port in &host.ports {
+            if let Some(ref service) = port.service {
+                if let Some(ref ssl_info) = service.ssl_info {
+                    // Get grade information
+                    let (grade_str, overall_score, protocol_score, cipher_score, cert_score, key_score, vuln_count, rec_count, has_critical, has_high) =
+                        if let Some(ref grade) = ssl_info.ssl_grade {
+                            let has_critical = grade.vulnerabilities_found.iter().any(|v|
+                                matches!(v.severity, crate::scanner::ssl_scanner::SslVulnerabilitySeverity::Critical)
+                            );
+                            let has_high = grade.vulnerabilities_found.iter().any(|v|
+                                matches!(v.severity, crate::scanner::ssl_scanner::SslVulnerabilitySeverity::High)
+                            );
+                            (
+                                grade.grade.to_string(),
+                                grade.overall_score,
+                                grade.protocol_score,
+                                grade.cipher_score,
+                                grade.certificate_score,
+                                grade.key_exchange_score,
+                                grade.vulnerabilities_found.len(),
+                                grade.recommendations.len(),
+                                has_critical,
+                                has_high,
+                            )
+                        } else {
+                            // If no grade computed, compute it now
+                            let grade = crate::scanner::ssl_scanner::calculate_ssl_grade(ssl_info);
+                            let has_critical = grade.vulnerabilities_found.iter().any(|v|
+                                matches!(v.severity, crate::scanner::ssl_scanner::SslVulnerabilitySeverity::Critical)
+                            );
+                            let has_high = grade.vulnerabilities_found.iter().any(|v|
+                                matches!(v.severity, crate::scanner::ssl_scanner::SslVulnerabilitySeverity::High)
+                            );
+                            (
+                                grade.grade.to_string(),
+                                grade.overall_score,
+                                grade.protocol_score,
+                                grade.cipher_score,
+                                grade.certificate_score,
+                                grade.key_exchange_score,
+                                grade.vulnerabilities_found.len(),
+                                grade.recommendations.len(),
+                                has_critical,
+                                has_high,
+                            )
+                        };
+
+                    if has_critical {
+                        services_with_critical += 1;
+                    }
+                    if has_high {
+                        services_with_high += 1;
+                    }
+
+                    *grade_distribution.entry(grade_str.clone()).or_insert(0) += 1;
+                    total_score += overall_score as u32;
+
+                    entries.push(SslReportEntry {
+                        host: host.target.ip.to_string(),
+                        port: port.port,
+                        service: Some(service.name.clone()),
+                        grade: grade_str,
+                        overall_score,
+                        protocol_score,
+                        cipher_score,
+                        certificate_score: cert_score,
+                        key_exchange_score: key_score,
+                        vulnerabilities_count: vuln_count,
+                        recommendations_count: rec_count,
+                        ssl_info: ssl_info.clone(),
+                    });
+                }
+            }
+        }
+    }
+
+    // Calculate average score
+    let average_score = if entries.is_empty() {
+        0
+    } else {
+        (total_score / entries.len() as u32) as u8
+    };
+
+    // Sort entries by grade (worst first)
+    entries.sort_by(|a, b| {
+        // Sort by overall_score ascending (lower = worse)
+        a.overall_score.cmp(&b.overall_score)
+    });
+
+    let summary = SslReportSummary {
+        scan_id: scan.id,
+        scan_name: scan.name,
+        total_ssl_services: entries.len(),
+        grade_distribution,
+        average_score,
+        services_with_critical_issues: services_with_critical,
+        services_with_high_issues: services_with_high,
+        entries,
+    };
+
+    Ok(HttpResponse::Ok().json(summary))
+}
+
+// ============================================================================
+// Scan Tags API
+// ============================================================================
+
+/// Get all scan tags
+#[utoipa::path(
+    get,
+    path = "/api/scans/tags",
+    tag = "Scan Tags",
+    security(
+        ("bearer_auth" = [])
+    ),
+    responses(
+        (status = 200, description = "List of all scan tags"),
+        (status = 401, description = "Unauthorized", body = crate::web::openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::web::openapi::ErrorResponse)
+    )
+)]
+pub async fn get_scan_tags(
+    pool: web::Data<SqlitePool>,
+    _claims: web::ReqData<auth::Claims>,
+) -> Result<HttpResponse> {
+    let tags = db::scans::get_all_scan_tags(&pool)
+        .await
+        .map_err(|e| {
+            log::error!("Failed to fetch scan tags: {}", e);
+            actix_web::error::ErrorInternalServerError("Failed to fetch scan tags")
+        })?;
+
+    Ok(HttpResponse::Ok().json(tags))
+}
+
+/// Create a new scan tag
+#[utoipa::path(
+    post,
+    path = "/api/scans/tags",
+    tag = "Scan Tags",
+    security(
+        ("bearer_auth" = [])
+    ),
+    request_body(
+        content = models::CreateScanTagRequest,
+        description = "Tag name and color"
+    ),
+    responses(
+        (status = 201, description = "Tag created successfully"),
+        (status = 400, description = "Invalid request", body = crate::web::openapi::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = crate::web::openapi::ErrorResponse),
+        (status = 409, description = "Tag already exists", body = crate::web::openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::web::openapi::ErrorResponse)
+    )
+)]
+pub async fn create_scan_tag(
+    pool: web::Data<SqlitePool>,
+    _claims: web::ReqData<auth::Claims>,
+    request: web::Json<models::CreateScanTagRequest>,
+) -> Result<HttpResponse> {
+    // Validate name
+    let name = request.name.trim();
+    if name.is_empty() || name.len() > 50 {
+        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "Tag name must be between 1 and 50 characters"
+        })));
+    }
+
+    // Validate color format (hex color)
+    let color = request.color.trim();
+    if !color.starts_with('#') || color.len() != 7 {
+        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "Color must be a valid hex color (e.g., #06b6d4)"
+        })));
+    }
+
+    match db::scans::create_scan_tag(&pool, name, color).await {
+        Ok(tag) => Ok(HttpResponse::Created().json(tag)),
+        Err(e) => {
+            let error_msg = e.to_string();
+            if error_msg.contains("UNIQUE constraint failed") {
+                Ok(HttpResponse::Conflict().json(serde_json::json!({
+                    "error": "A tag with this name already exists"
+                })))
+            } else {
+                log::error!("Failed to create scan tag: {}", e);
+                Err(actix_web::error::ErrorInternalServerError("Failed to create scan tag"))
+            }
+        }
+    }
+}
+
+/// Delete a scan tag
+#[utoipa::path(
+    delete,
+    path = "/api/scans/tags/{id}",
+    tag = "Scan Tags",
+    security(
+        ("bearer_auth" = [])
+    ),
+    params(
+        ("id" = String, Path, description = "Tag ID")
+    ),
+    responses(
+        (status = 200, description = "Tag deleted successfully"),
+        (status = 401, description = "Unauthorized", body = crate::web::openapi::ErrorResponse),
+        (status = 404, description = "Tag not found", body = crate::web::openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::web::openapi::ErrorResponse)
+    )
+)]
+pub async fn delete_scan_tag(
+    pool: web::Data<SqlitePool>,
+    _claims: web::ReqData<auth::Claims>,
+    tag_id: web::Path<String>,
+) -> Result<HttpResponse> {
+    let deleted = db::scans::delete_scan_tag(&pool, &tag_id)
+        .await
+        .map_err(|e| {
+            log::error!("Failed to delete scan tag: {}", e);
+            actix_web::error::ErrorInternalServerError("Failed to delete scan tag")
+        })?;
+
+    if deleted {
+        Ok(HttpResponse::Ok().json(serde_json::json!({
+            "message": "Tag deleted successfully"
+        })))
+    } else {
+        Ok(HttpResponse::NotFound().json(serde_json::json!({
+            "error": "Tag not found"
+        })))
+    }
+}
+
+/// Get tags for a specific scan
+#[utoipa::path(
+    get,
+    path = "/api/scans/{id}/tags",
+    tag = "Scan Tags",
+    security(
+        ("bearer_auth" = [])
+    ),
+    params(
+        ("id" = String, Path, description = "Scan ID")
+    ),
+    responses(
+        (status = 200, description = "Tags for the scan"),
+        (status = 401, description = "Unauthorized", body = crate::web::openapi::ErrorResponse),
+        (status = 404, description = "Scan not found", body = crate::web::openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::web::openapi::ErrorResponse)
+    )
+)]
+pub async fn get_tags_for_scan(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    scan_id: web::Path<String>,
+) -> Result<HttpResponse> {
+    // Verify scan exists and user has access
+    let scan = db::get_scan_by_id(&pool, &scan_id)
+        .await
+        .map_err(|_| actix_web::error::ErrorInternalServerError("Failed to fetch scan"))?;
+
+    match scan {
+        Some(scan) => {
+            if scan.user_id != claims.sub {
+                return Ok(HttpResponse::Forbidden().json(serde_json::json!({
+                    "error": "Access denied"
+                })));
+            }
+
+            let tags = db::scans::get_scan_tags(&pool, &scan_id)
+                .await
+                .map_err(|e| {
+                    log::error!("Failed to fetch tags for scan: {}", e);
+                    actix_web::error::ErrorInternalServerError("Failed to fetch tags")
+                })?;
+
+            Ok(HttpResponse::Ok().json(tags))
+        }
+        None => Ok(HttpResponse::NotFound().json(serde_json::json!({
+            "error": "Scan not found"
+        }))),
+    }
+}
+
+/// Add tags to a scan
+#[utoipa::path(
+    post,
+    path = "/api/scans/{id}/tags",
+    tag = "Scan Tags",
+    security(
+        ("bearer_auth" = [])
+    ),
+    params(
+        ("id" = String, Path, description = "Scan ID")
+    ),
+    request_body(
+        content = models::AddTagsToScanRequest,
+        description = "List of tag IDs to add"
+    ),
+    responses(
+        (status = 200, description = "Tags added successfully"),
+        (status = 401, description = "Unauthorized", body = crate::web::openapi::ErrorResponse),
+        (status = 404, description = "Scan not found", body = crate::web::openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::web::openapi::ErrorResponse)
+    )
+)]
+pub async fn add_tags_to_scan(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    scan_id: web::Path<String>,
+    request: web::Json<models::AddTagsToScanRequest>,
+) -> Result<HttpResponse> {
+    // Verify scan exists and user has access
+    let scan = db::get_scan_by_id(&pool, &scan_id)
+        .await
+        .map_err(|_| actix_web::error::ErrorInternalServerError("Failed to fetch scan"))?;
+
+    match scan {
+        Some(scan) => {
+            if scan.user_id != claims.sub {
+                return Ok(HttpResponse::Forbidden().json(serde_json::json!({
+                    "error": "Access denied"
+                })));
+            }
+
+            db::scans::add_tags_to_scan(&pool, &scan_id, &request.tag_ids)
+                .await
+                .map_err(|e| {
+                    log::error!("Failed to add tags to scan: {}", e);
+                    actix_web::error::ErrorInternalServerError("Failed to add tags")
+                })?;
+
+            // Return updated tags list
+            let tags = db::scans::get_scan_tags(&pool, &scan_id)
+                .await
+                .map_err(|e| {
+                    log::error!("Failed to fetch updated tags: {}", e);
+                    actix_web::error::ErrorInternalServerError("Failed to fetch updated tags")
+                })?;
+
+            Ok(HttpResponse::Ok().json(tags))
+        }
+        None => Ok(HttpResponse::NotFound().json(serde_json::json!({
+            "error": "Scan not found"
+        }))),
+    }
+}
+
+/// Remove a tag from a scan
+#[utoipa::path(
+    delete,
+    path = "/api/scans/{id}/tags/{tag_id}",
+    tag = "Scan Tags",
+    security(
+        ("bearer_auth" = [])
+    ),
+    params(
+        ("id" = String, Path, description = "Scan ID"),
+        ("tag_id" = String, Path, description = "Tag ID to remove")
+    ),
+    responses(
+        (status = 200, description = "Tag removed successfully"),
+        (status = 401, description = "Unauthorized", body = crate::web::openapi::ErrorResponse),
+        (status = 404, description = "Scan or tag not found", body = crate::web::openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::web::openapi::ErrorResponse)
+    )
+)]
+pub async fn remove_tag_from_scan(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    path: web::Path<(String, String)>,
+) -> Result<HttpResponse> {
+    let (scan_id, tag_id) = path.into_inner();
+
+    // Verify scan exists and user has access
+    let scan = db::get_scan_by_id(&pool, &scan_id)
+        .await
+        .map_err(|_| actix_web::error::ErrorInternalServerError("Failed to fetch scan"))?;
+
+    match scan {
+        Some(scan) => {
+            if scan.user_id != claims.sub {
+                return Ok(HttpResponse::Forbidden().json(serde_json::json!({
+                    "error": "Access denied"
+                })));
+            }
+
+            let removed = db::scans::remove_tag_from_scan(&pool, &scan_id, &tag_id)
+                .await
+                .map_err(|e| {
+                    log::error!("Failed to remove tag from scan: {}", e);
+                    actix_web::error::ErrorInternalServerError("Failed to remove tag")
+                })?;
+
+            if removed {
+                Ok(HttpResponse::Ok().json(serde_json::json!({
+                    "message": "Tag removed successfully"
+                })))
+            } else {
+                Ok(HttpResponse::NotFound().json(serde_json::json!({
+                    "error": "Tag not found on this scan"
+                })))
+            }
+        }
+        None => Ok(HttpResponse::NotFound().json(serde_json::json!({
+            "error": "Scan not found"
+        }))),
+    }
+}
+
+/// Get all scans with their tags
+#[utoipa::path(
+    get,
+    path = "/api/scans/with-tags",
+    tag = "Scan Tags",
+    security(
+        ("bearer_auth" = [])
+    ),
+    responses(
+        (status = 200, description = "List of scans with their tags"),
+        (status = 401, description = "Unauthorized", body = crate::web::openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::web::openapi::ErrorResponse)
+    )
+)]
+pub async fn get_scans_with_tags(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+) -> Result<HttpResponse> {
+    let scans_with_tags = db::scans::get_user_scans_with_tags(&pool, &claims.sub)
+        .await
+        .map_err(|e| {
+            log::error!("Failed to fetch scans with tags: {}", e);
+            actix_web::error::ErrorInternalServerError("Failed to fetch scans with tags")
+        })?;
+
+    Ok(HttpResponse::Ok().json(scans_with_tags))
+}
+
+// ============================================================================
+// Duplicate Scan API
+// ============================================================================
+
+/// Duplicate an existing scan configuration
+#[utoipa::path(
+    post,
+    path = "/api/scans/{id}/duplicate",
+    tag = "Scans",
+    security(
+        ("bearer_auth" = [])
+    ),
+    params(
+        ("id" = String, Path, description = "Scan ID to duplicate")
+    ),
+    request_body(
+        content = models::DuplicateScanRequest,
+        description = "Optional new name for the duplicated scan"
+    ),
+    responses(
+        (status = 201, description = "Scan duplicated successfully"),
+        (status = 401, description = "Unauthorized", body = crate::web::openapi::ErrorResponse),
+        (status = 404, description = "Scan not found", body = crate::web::openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::web::openapi::ErrorResponse)
+    )
+)]
+pub async fn duplicate_scan(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    scan_id: web::Path<String>,
+    request: web::Json<models::DuplicateScanRequest>,
+) -> Result<HttpResponse> {
+    // Verify the original scan exists and user has access
+    let original_scan = db::get_scan_by_id(&pool, &scan_id)
+        .await
+        .map_err(|_| actix_web::error::ErrorInternalServerError("Failed to fetch scan"))?;
+
+    match original_scan {
+        Some(scan) => {
+            if scan.user_id != claims.sub {
+                return Ok(HttpResponse::Forbidden().json(serde_json::json!({
+                    "error": "Access denied"
+                })));
+            }
+
+            // Validate new name if provided
+            if let Some(ref name) = request.name {
+                if let Err(e) = validate_scan_name(name) {
+                    return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+                        "error": e
+                    })));
+                }
+            }
+
+            let new_scan = db::scans::duplicate_scan(
+                &pool,
+                &scan_id,
+                &claims.sub,
+                request.name.as_deref(),
+            )
+            .await
+            .map_err(|e| {
+                log::error!("Failed to duplicate scan: {}", e);
+                actix_web::error::ErrorInternalServerError("Failed to duplicate scan")
+            })?;
+
+            log::info!(
+                "User {} duplicated scan {} as {}",
+                claims.username,
+                scan_id.as_str(),
+                new_scan.id
+            );
+
+            Ok(HttpResponse::Created().json(new_scan))
+        }
+        None => Ok(HttpResponse::NotFound().json(serde_json::json!({
+            "error": "Scan not found"
+        }))),
+    }
 }
 
 #[cfg(test)]

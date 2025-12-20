@@ -10,13 +10,10 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio::time::Duration;
 
-use super::credentials::{decrypt_vpn_credentials, VpnCredentials};
+use super::credentials::decrypt_vpn_credentials;
 use super::openvpn::OpenVpnConnection;
 use super::types::{ConnectionMode, VpnConnectionInfo, VpnStatus, VpnType};
 use super::wireguard::{generate_interface_name, WireGuardConnection};
-
-/// Default connection timeout (30 seconds)
-const DEFAULT_CONNECTION_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// VPN Manager singleton instance
 static VPN_MANAGER: once_cell::sync::Lazy<VpnManager> =
@@ -33,13 +30,6 @@ impl ActiveConnection {
         match self {
             ActiveConnection::OpenVPN(conn) => conn.disconnect().await,
             ActiveConnection::WireGuard(conn) => conn.disconnect().await,
-        }
-    }
-
-    async fn is_alive(&self) -> bool {
-        match self {
-            ActiveConnection::OpenVPN(conn) => conn.is_alive().await,
-            ActiveConnection::WireGuard(conn) => conn.is_alive().await,
         }
     }
 
@@ -213,25 +203,6 @@ impl VpnManager {
         Ok(())
     }
 
-    /// Disconnect VPN by connection ID
-    pub async fn disconnect(&self, connection_id: &str) -> Result<()> {
-        let mut connections = self.connections.write().await;
-
-        // Find and remove the connection
-        let user_id = connections
-            .iter()
-            .find(|(_, session)| session.info.id == connection_id)
-            .map(|(user_id, _)| user_id.clone());
-
-        if let Some(user_id) = user_id {
-            if let Some(mut session) = connections.remove(&user_id) {
-                session.connection.disconnect().await?;
-            }
-        }
-
-        Ok(())
-    }
-
     /// Disconnect VPN associated with a scan
     pub async fn disconnect_scan(&self, scan_id: &str) -> Result<()> {
         let mut connections = self.connections.write().await;
@@ -263,69 +234,6 @@ impl VpnManager {
     pub async fn get_user_status(&self, user_id: &str) -> Option<VpnConnectionInfo> {
         let connections = self.connections.read().await;
         connections.get(user_id).map(|s| s.info.clone())
-    }
-
-    /// Get current VPN status by connection ID
-    pub async fn get_status(&self, connection_id: &str) -> Option<VpnConnectionInfo> {
-        let connections = self.connections.read().await;
-        connections
-            .values()
-            .find(|s| s.info.id == connection_id)
-            .map(|s| s.info.clone())
-    }
-
-    /// Check if a user has an active VPN connection
-    pub async fn is_connected(&self, user_id: &str) -> bool {
-        let connections = self.connections.read().await;
-        if let Some(session) = connections.get(user_id) {
-            session.connection.is_alive().await
-        } else {
-            false
-        }
-    }
-
-    /// Get all active connections
-    pub async fn list_active_connections(&self) -> Vec<VpnConnectionInfo> {
-        let connections = self.connections.read().await;
-        connections.values().map(|s| s.info.clone()).collect()
-    }
-
-    /// Cleanup stale connections
-    ///
-    /// Removes connections where the process has died unexpectedly.
-    pub async fn cleanup_stale_connections(&self) {
-        let mut connections = self.connections.write().await;
-        let mut stale_users = Vec::new();
-
-        for (user_id, session) in connections.iter() {
-            if !session.connection.is_alive().await {
-                stale_users.push(user_id.clone());
-            }
-        }
-
-        for user_id in stale_users {
-            log::warn!("Removing stale VPN connection for user {}", user_id);
-            if let Some(mut session) = connections.remove(&user_id) {
-                let _ = session.connection.disconnect().await;
-            }
-        }
-    }
-
-    /// Disconnect all connections (used during shutdown)
-    pub async fn disconnect_all(&self) -> Result<()> {
-        let mut connections = self.connections.write().await;
-
-        for (user_id, mut session) in connections.drain() {
-            log::info!("Disconnecting VPN for user {} during shutdown", user_id);
-            let _ = session.connection.disconnect().await;
-        }
-
-        Ok(())
-    }
-
-    /// Get the VPN config directory
-    pub fn config_dir(&self) -> &Path {
-        &self.config_dir
     }
 
     /// Get the config directory for a specific user
@@ -398,7 +306,8 @@ mod tests {
     #[tokio::test]
     async fn test_manager_creation() {
         let manager = VpnManager::new();
-        assert!(manager.list_active_connections().await.is_empty());
+        // Verify manager is created and has no active sessions
+        assert!(manager.get_user_status("nonexistent-user").await.is_none());
     }
 
     #[test]

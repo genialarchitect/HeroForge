@@ -29,11 +29,6 @@ impl VpnType {
         }
     }
 
-    /// Check if this VPN type requires external credentials (username/password)
-    /// OpenVPN can require credentials, WireGuard uses keys in config
-    pub fn can_require_credentials(&self) -> bool {
-        matches!(self, VpnType::OpenVPN)
-    }
 }
 
 impl std::fmt::Display for VpnType {
@@ -109,23 +104,6 @@ pub enum VpnStatus {
     },
 }
 
-impl VpnStatus {
-    /// Check if status indicates an active or pending connection
-    pub fn is_active(&self) -> bool {
-        matches!(self, VpnStatus::Connected { .. } | VpnStatus::Connecting)
-    }
-
-    /// Get status as a simple string for database storage
-    pub fn as_db_status(&self) -> &'static str {
-        match self {
-            VpnStatus::Disconnected => "disconnected",
-            VpnStatus::Connecting => "connecting",
-            VpnStatus::Connected { .. } => "connected",
-            VpnStatus::Disconnecting => "disconnecting",
-            VpnStatus::Error { .. } => "error",
-        }
-    }
-}
 
 /// Information about an active VPN connection
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -230,17 +208,5 @@ mod tests {
     fn test_connection_mode_parsing() {
         assert_eq!("per_scan".parse::<ConnectionMode>().unwrap(), ConnectionMode::PerScan);
         assert_eq!("persistent".parse::<ConnectionMode>().unwrap(), ConnectionMode::Persistent);
-    }
-
-    #[test]
-    fn test_vpn_status_is_active() {
-        assert!(!VpnStatus::Disconnected.is_active());
-        assert!(VpnStatus::Connecting.is_active());
-        assert!(VpnStatus::Connected {
-            assigned_ip: "10.0.0.1".to_string(),
-            interface: "tun0".to_string()
-        }.is_active());
-        assert!(!VpnStatus::Disconnecting.is_active());
-        assert!(!VpnStatus::Error { message: "test".to_string() }.is_active());
     }
 }

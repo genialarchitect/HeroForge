@@ -45,8 +45,9 @@ export const useAuth = () => {
         setLogin(user, token);
         toast.success('Login successful!');
         return true;
-      } catch (error: any) {
-        const message = error.response?.data?.error || 'Login failed. Please check your credentials.';
+      } catch (error: unknown) {
+        const axiosError = error as { response?: { data?: { error?: string } } };
+        const message = axiosError.response?.data?.error || 'Login failed. Please check your credentials.';
         toast.error(message);
         return false;
       } finally {

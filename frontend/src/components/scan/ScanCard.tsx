@@ -1,16 +1,17 @@
 import React from 'react';
-import { ScanResult } from '../../types';
+import { ScanResult, ScanTag } from '../../types';
 import Badge from '../ui/Badge';
-import { Clock, Target } from 'lucide-react';
+import { Clock, Target, Tag } from 'lucide-react';
 import { format } from 'date-fns';
 
 interface ScanCardProps {
   scan: ScanResult;
   isActive: boolean;
   onClick: () => void;
+  tags?: ScanTag[];
 }
 
-const ScanCard: React.FC<ScanCardProps> = ({ scan, isActive, onClick }) => {
+const ScanCard: React.FC<ScanCardProps> = ({ scan, isActive, onClick, tags }) => {
   const targets = JSON.parse(scan.targets);
   const statusType = scan.status as 'pending' | 'running' | 'completed' | 'failed';
 
@@ -44,6 +45,27 @@ const ScanCard: React.FC<ScanCardProps> = ({ scan, isActive, onClick }) => {
           {getStatusDisplay()}
         </Badge>
       </div>
+
+      {/* Tags display */}
+      {tags && tags.length > 0 && (
+        <div className="flex flex-wrap gap-1 mb-2">
+          {tags.slice(0, 3).map((tag) => (
+            <span
+              key={tag.id}
+              className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
+              style={{ backgroundColor: tag.color + '20', color: tag.color }}
+            >
+              <Tag className="h-3 w-3 mr-1" />
+              {tag.name}
+            </span>
+          ))}
+          {tags.length > 3 && (
+            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs text-slate-400">
+              +{tags.length - 3} more
+            </span>
+          )}
+        </div>
+      )}
 
       <div className="space-y-1 text-sm">
         <div className="flex items-center text-slate-400">

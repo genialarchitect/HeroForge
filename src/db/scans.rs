@@ -17,6 +17,8 @@ pub async fn create_scan(
     user_id: &str,
     name: &str,
     targets: &[String],
+    customer_id: Option<&str>,
+    engagement_id: Option<&str>,
 ) -> Result<models::ScanResult> {
     let id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now();
@@ -24,8 +26,8 @@ pub async fn create_scan(
 
     let scan = sqlx::query_as::<_, models::ScanResult>(
         r#"
-        INSERT INTO scan_results (id, user_id, name, targets, status, created_at)
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+        INSERT INTO scan_results (id, user_id, name, targets, status, created_at, customer_id, engagement_id)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
         RETURNING *
         "#,
     )
@@ -35,6 +37,8 @@ pub async fn create_scan(
     .bind(&targets_str)
     .bind("pending")
     .bind(now)
+    .bind(customer_id)
+    .bind(engagement_id)
     .fetch_one(pool)
     .await?;
 
@@ -984,6 +988,276 @@ pub async fn reset_scheduled_scan_retry(pool: &SqlitePool, id: &str) -> Result<(
     .await?;
 
     Ok(())
+}
+
+// ============================================================================
+// Scan Tags
+// ============================================================================
+
+/// Create a new scan tag
+pub async fn create_scan_tag(
+    pool: &SqlitePool,
+    name: &str,
+    color: &str,
+) -> Result<models::ScanTag> {
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = Utc::now();
+
+    sqlx::query(
+        r#"
+        INSERT INTO scan_tags (id, name, color, created_at)
+        VALUES (?1, ?2, ?3, ?4)
+        "#,
+    )
+    .bind(&id)
+    .bind(name)
+    .bind(color)
+    .bind(now)
+    .execute(pool)
+    .await?;
+
+    Ok(models::ScanTag {
+        id,
+        name: name.to_string(),
+        color: color.to_string(),
+        created_at: now,
+    })
+}
+
+/// Get all scan tags
+pub async fn get_all_scan_tags(pool: &SqlitePool) -> Result<Vec<models::ScanTag>> {
+    let tags = sqlx::query_as::<_, models::ScanTag>(
+        r#"
+        SELECT id, name, color, created_at
+        FROM scan_tags
+        ORDER BY name ASC
+        "#,
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(tags)
+}
+
+/// Get a scan tag by ID
+pub async fn get_scan_tag_by_id(pool: &SqlitePool, tag_id: &str) -> Result<Option<models::ScanTag>> {
+    let tag = sqlx::query_as::<_, models::ScanTag>(
+        r#"
+        SELECT id, name, color, created_at
+        FROM scan_tags
+        WHERE id = ?1
+        "#,
+    )
+    .bind(tag_id)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(tag)
+}
+
+/// Delete a scan tag (cascades to scan_tag_mappings)
+pub async fn delete_scan_tag(pool: &SqlitePool, tag_id: &str) -> Result<bool> {
+    let result = sqlx::query(
+        r#"
+        DELETE FROM scan_tags WHERE id = ?1
+        "#,
+    )
+    .bind(tag_id)
+    .execute(pool)
+    .await?;
+
+    Ok(result.rows_affected() > 0)
+}
+
+/// Get tags for a specific scan
+pub async fn get_scan_tags(pool: &SqlitePool, scan_id: &str) -> Result<Vec<models::ScanTag>> {
+    let tags = sqlx::query_as::<_, models::ScanTag>(
+        r#"
+        SELECT t.id, t.name, t.color, t.created_at
+        FROM scan_tags t
+        INNER JOIN scan_tag_mappings m ON t.id = m.tag_id
+        WHERE m.scan_id = ?1
+        ORDER BY t.name ASC
+        "#,
+    )
+    .bind(scan_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(tags)
+}
+
+/// Add a tag to a scan
+pub async fn add_tag_to_scan(pool: &SqlitePool, scan_id: &str, tag_id: &str) -> Result<()> {
+    let now = Utc::now();
+
+    sqlx::query(
+        r#"
+        INSERT OR IGNORE INTO scan_tag_mappings (scan_id, tag_id, created_at)
+        VALUES (?1, ?2, ?3)
+        "#,
+    )
+    .bind(scan_id)
+    .bind(tag_id)
+    .bind(now)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Add multiple tags to a scan
+pub async fn add_tags_to_scan(pool: &SqlitePool, scan_id: &str, tag_ids: &[String]) -> Result<()> {
+    let now = Utc::now();
+
+    for tag_id in tag_ids {
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO scan_tag_mappings (scan_id, tag_id, created_at)
+            VALUES (?1, ?2, ?3)
+            "#,
+        )
+        .bind(scan_id)
+        .bind(tag_id)
+        .bind(now)
+        .execute(pool)
+        .await?;
+    }
+
+    Ok(())
+}
+
+/// Remove a tag from a scan
+pub async fn remove_tag_from_scan(pool: &SqlitePool, scan_id: &str, tag_id: &str) -> Result<bool> {
+    let result = sqlx::query(
+        r#"
+        DELETE FROM scan_tag_mappings
+        WHERE scan_id = ?1 AND tag_id = ?2
+        "#,
+    )
+    .bind(scan_id)
+    .bind(tag_id)
+    .execute(pool)
+    .await?;
+
+    Ok(result.rows_affected() > 0)
+}
+
+/// Get scans filtered by tag IDs
+pub async fn get_scans_by_tags(
+    pool: &SqlitePool,
+    user_id: &str,
+    tag_ids: &[String],
+) -> Result<Vec<models::ScanResult>> {
+    if tag_ids.is_empty() {
+        return get_user_scans(pool, user_id).await;
+    }
+
+    // Build the query with placeholders for each tag ID
+    let placeholders: Vec<String> = (0..tag_ids.len()).map(|i| format!("?{}", i + 2)).collect();
+    let placeholders_str = placeholders.join(", ");
+
+    let query = format!(
+        r#"
+        SELECT DISTINCT s.id, s.user_id, s.name, s.targets, s.status, s.results,
+               s.created_at, s.started_at, s.completed_at, s.error_message,
+               s.customer_id, s.engagement_id
+        FROM scan_results s
+        INNER JOIN scan_tag_mappings m ON s.id = m.scan_id
+        WHERE s.user_id = ?1 AND m.tag_id IN ({})
+        ORDER BY s.created_at DESC
+        "#,
+        placeholders_str
+    );
+
+    let mut query_builder = sqlx::query_as::<_, models::ScanResult>(&query).bind(user_id);
+
+    for tag_id in tag_ids {
+        query_builder = query_builder.bind(tag_id);
+    }
+
+    let scans = query_builder.fetch_all(pool).await?;
+    Ok(scans)
+}
+
+/// Get all scans with their tags
+pub async fn get_user_scans_with_tags(
+    pool: &SqlitePool,
+    user_id: &str,
+) -> Result<Vec<models::ScanWithTags>> {
+    // First get all scans
+    let scans = get_user_scans(pool, user_id).await?;
+
+    // Then get tags for each scan
+    let mut scans_with_tags = Vec::new();
+    for scan in scans {
+        let tags = get_scan_tags(pool, &scan.id).await?;
+        scans_with_tags.push(models::ScanWithTags { scan, tags });
+    }
+
+    Ok(scans_with_tags)
+}
+
+// ============================================================================
+// Duplicate Scan
+// ============================================================================
+
+/// Duplicate an existing scan configuration, creating a new pending scan
+pub async fn duplicate_scan(
+    pool: &SqlitePool,
+    scan_id: &str,
+    user_id: &str,
+    new_name: Option<&str>,
+) -> Result<models::ScanResult> {
+    // Get the original scan
+    let original = get_scan_by_id(pool, scan_id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("Scan not found"))?;
+
+    // Generate new values
+    let new_id = uuid::Uuid::new_v4().to_string();
+    let now = Utc::now();
+    let name = new_name.map(|n| n.to_string()).unwrap_or_else(|| {
+        format!("{} (Copy)", original.name)
+    });
+
+    // Create the new scan with same config but pending status
+    sqlx::query(
+        r#"
+        INSERT INTO scan_results (id, user_id, name, targets, status, results, created_at, customer_id, engagement_id)
+        VALUES (?1, ?2, ?3, ?4, 'pending', NULL, ?5, ?6, ?7)
+        "#,
+    )
+    .bind(&new_id)
+    .bind(user_id)
+    .bind(&name)
+    .bind(&original.targets)
+    .bind(now)
+    .bind(&original.customer_id)
+    .bind(&original.engagement_id)
+    .execute(pool)
+    .await?;
+
+    // Copy tags from original scan
+    let tags = get_scan_tags(pool, scan_id).await?;
+    for tag in &tags {
+        add_tag_to_scan(pool, &new_id, &tag.id).await?;
+    }
+
+    Ok(models::ScanResult {
+        id: new_id,
+        user_id: user_id.to_string(),
+        name,
+        targets: original.targets,
+        status: "pending".to_string(),
+        results: None,
+        created_at: now,
+        started_at: None,
+        completed_at: None,
+        error_message: None,
+        customer_id: original.customer_id,
+        engagement_id: original.engagement_id,
+    })
 }
 
 // ============================================================================

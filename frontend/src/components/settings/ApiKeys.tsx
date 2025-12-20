@@ -27,7 +27,7 @@ const ApiKeys: React.FC = () => {
     try {
       const response = await apiKeyAPI.getAll();
       setKeys(response.data);
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast.error('Failed to load API keys');
       console.error(error);
     } finally {
@@ -48,8 +48,9 @@ const ApiKeys: React.FC = () => {
       setNewKeyName('');
       await loadKeys();
       toast.success('API key created successfully');
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to create API key');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || 'Failed to create API key');
     } finally {
       setCreating(false);
     }
@@ -64,8 +65,9 @@ const ApiKeys: React.FC = () => {
       await loadKeys();
       toast.success(`API key "${deleteConfirm.name}" revoked successfully`);
       setDeleteConfirm(null);
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to revoke API key');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || 'Failed to revoke API key');
     } finally {
       setIsDeleting(false);
     }

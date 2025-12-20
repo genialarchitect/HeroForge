@@ -79,8 +79,9 @@ const WebAppScanForm: React.FC<WebAppScanFormProps> = ({ onSuccess }) => {
       if (onSuccess && response.data.scan_id) {
         onSuccess(response.data.scan_id);
       }
-    } catch (error: any) {
-      const errorMessage = error.response?.data?.error || 'Failed to start web application scan';
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      const errorMessage = axiosError.response?.data?.error || 'Failed to start web application scan';
       toast.error(errorMessage);
     } finally {
       setLoading(false);
@@ -168,7 +169,7 @@ const WebAppScanForm: React.FC<WebAppScanFormProps> = ({ onSuccess }) => {
             <Checkbox
               id="respectRobotsTxt"
               checked={respectRobotsTxt}
-              onChange={(e) => setRespectRobotsTxt(e.target.checked)}
+              onChange={(checked) => setRespectRobotsTxt(checked)}
               label="Respect robots.txt"
               disabled={loading}
             />

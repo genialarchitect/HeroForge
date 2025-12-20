@@ -16,6 +16,7 @@ mod output;
 mod password_validation;
 mod reports;
 mod scanner;
+mod threat_intel;
 mod types;
 mod vpn;
 mod vuln;

@@ -1,6 +1,8 @@
 pub mod api;
+pub mod audit;
 pub mod auth;
 pub mod broadcast;
+pub mod error;
 pub mod openapi;
 pub mod rate_limit;
 pub mod scheduler;
@@ -8,10 +10,30 @@ pub mod websocket;
 
 use actix_cors::Cors;
 use actix_files as fs;
-use actix_web::{middleware::{DefaultHeaders, Logger}, web, App, HttpServer};
+use actix_web::{middleware::{DefaultHeaders, Logger}, web, App, HttpServer, HttpRequest, HttpResponse};
 use std::sync::Arc;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
+
+/// Fallback handler for SPA - serves index.html for any unmatched non-API routes
+async fn spa_fallback(req: HttpRequest) -> HttpResponse {
+    let path = req.path();
+
+    // Don't serve SPA for API routes - return 404 instead
+    if path.starts_with("/api/") {
+        return HttpResponse::NotFound().json(serde_json::json!({
+            "error": "Not found"
+        }));
+    }
+
+    // Serve index.html for all other routes (SPA client-side routing)
+    match std::fs::read_to_string("./frontend/dist/index.html") {
+        Ok(content) => HttpResponse::Ok()
+            .content_type("text/html; charset=utf-8")
+            .body(content),
+        Err(_) => HttpResponse::NotFound().body("Frontend not found"),
+    }
+}
 
 pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::Result<()> {
     log::info!("Initializing database...");
@@ -103,24 +125,56 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
             )
             // Public privacy policy endpoint (no authentication required)
             .route("/api/privacy-policy", web::get().to(api::privacy::get_privacy_policy))
+            // Customer Portal routes (separate auth from main app) - at /api/portal/*
+            .service(
+                web::scope("/api/portal")
+                    .wrap(rate_limit::api_rate_limiter())
+                    // Public portal auth endpoints
+                    .route("/auth/login", web::post().to(api::portal::auth::login))
+                    .route("/auth/forgot-password", web::post().to(api::portal::auth::forgot_password))
+                    .route("/auth/reset-password", web::post().to(api::portal::auth::reset_password))
+                    // Protected portal endpoints (require portal JWT)
+                    .service(
+                        web::scope("")
+                            .wrap(api::portal::auth::PortalAuthMiddleware)
+                            .route("/auth/me", web::get().to(api::portal::auth::get_current_user))
+                            .route("/auth/change-password", web::post().to(api::portal::auth::change_password))
+                            .route("/profile", web::get().to(api::portal::auth::get_profile))
+                            .route("/profile", web::put().to(api::portal::auth::update_profile))
+                            .route("/dashboard", web::get().to(api::portal::dashboard::get_dashboard))
+                            .route("/engagements", web::get().to(api::portal::engagements::list_engagements))
+                            .route("/engagements/{id}", web::get().to(api::portal::engagements::get_engagement))
+                            .route("/engagements/{id}/milestones", web::get().to(api::portal::engagements::get_milestones))
+                            .route("/engagements/{engagement_id}/milestones/{milestone_id}", web::put().to(api::portal::engagements::update_milestone))
+                            .route("/vulnerabilities", web::get().to(api::portal::vulnerabilities::list_vulnerabilities))
+                            .route("/vulnerabilities/{id}", web::get().to(api::portal::vulnerabilities::get_vulnerability))
+                            .route("/vulnerabilities/{id}/status", web::put().to(api::portal::vulnerabilities::update_status))
+                            .route("/vulnerabilities/{id}/comments", web::get().to(api::portal::vulnerabilities::get_comments))
+                            .route("/vulnerabilities/{id}/comments", web::post().to(api::portal::vulnerabilities::add_comment))
+                            .route("/reports", web::get().to(api::portal::reports::list_reports))
+                            .route("/reports/{id}", web::get().to(api::portal::reports::get_report))
+                            .route("/reports/{id}/download", web::get().to(api::portal::reports::download_report))
+                    )
+            )
             // Protected routes with moderate rate limiting (100 req/min per IP)
             .service(
                 web::scope("/api")
                     .wrap(rate_limit::api_rate_limiter())
                     .wrap(auth::JwtMiddleware)
-                    .route("/auth/me", web::get().to(api::auth::me))
-                    .route("/auth/profile", web::put().to(api::auth::update_profile))
-                    .route("/auth/password", web::put().to(api::auth::change_password))
+                    // User account endpoints (protected, require authentication)
+                    .route("/user/me", web::get().to(api::auth::me))
+                    .route("/user/profile", web::put().to(api::auth::update_profile))
+                    .route("/user/password", web::put().to(api::auth::change_password))
                     // MFA management endpoints (protected, require authentication)
-                    .route("/auth/mfa/setup", web::post().to(api::mfa::setup_mfa))
-                    .route("/auth/mfa/verify-setup", web::post().to(api::mfa::verify_setup))
-                    .route("/auth/mfa", web::delete().to(api::mfa::disable_mfa))
-                    .route("/auth/mfa/recovery-codes", web::post().to(api::mfa::regenerate_recovery_codes))
+                    .route("/user/mfa/setup", web::post().to(api::mfa::setup_mfa))
+                    .route("/user/mfa/verify-setup", web::post().to(api::mfa::verify_setup))
+                    .route("/user/mfa", web::delete().to(api::mfa::disable_mfa))
+                    .route("/user/mfa/recovery-codes", web::post().to(api::mfa::regenerate_recovery_codes))
                     // GDPR compliance endpoints
-                    .route("/auth/terms-status", web::get().to(api::auth::get_terms_status))
-                    .route("/auth/accept-terms", web::post().to(api::auth::accept_terms))
-                    .route("/auth/export", web::get().to(api::auth::export_user_data))
-                    .route("/auth/account", web::delete().to(api::auth::delete_account))
+                    .route("/user/terms-status", web::get().to(api::auth::get_terms_status))
+                    .route("/user/accept-terms", web::post().to(api::auth::accept_terms))
+                    .route("/user/export", web::get().to(api::auth::export_user_data))
+                    .route("/user/account", web::delete().to(api::auth::delete_account))
                     // Scan endpoints
                     .route("/scans", web::post().to(api::scans::create_scan))
                     .route("/scans", web::get().to(api::scans::get_scans))
@@ -134,10 +188,22 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                         web::get().to(api::scans::get_scan_results),
                     )
                     .route("/scans/{id}/export", web::get().to(api::scans::export_scan_csv))
+                    .route("/scans/{id}/export/markdown", web::get().to(api::scans::export_scan_markdown))
+                    .route("/scans/{id}/ssl-report", web::get().to(api::scans::get_ssl_report))
                     .route("/scans/{id}/topology", web::get().to(api::topology::get_scan_topology))
                     .route("/scans/bulk-export", web::post().to(api::scans::bulk_export_scans))
                     .route("/scans/bulk-delete", web::post().to(api::scans::bulk_delete_scans))
                     .route("/scans/compare", web::post().to(api::compare::compare_scans))
+                    // Scan tags endpoints
+                    .route("/scans/tags", web::get().to(api::scans::get_scan_tags))
+                    .route("/scans/tags", web::post().to(api::scans::create_scan_tag))
+                    .route("/scans/tags/{id}", web::delete().to(api::scans::delete_scan_tag))
+                    .route("/scans/with-tags", web::get().to(api::scans::get_scans_with_tags))
+                    .route("/scans/{id}/tags", web::get().to(api::scans::get_tags_for_scan))
+                    .route("/scans/{id}/tags", web::post().to(api::scans::add_tags_to_scan))
+                    .route("/scans/{id}/tags/{tag_id}", web::delete().to(api::scans::remove_tag_from_scan))
+                    // Duplicate scan endpoint
+                    .route("/scans/{id}/duplicate", web::post().to(api::scans::duplicate_scan))
                     .route("/ws/scans/{id}", web::get().to(websocket::ws_handler))
                     // Report endpoints
                     .route("/reports", web::post().to(api::reports::create_report))
@@ -186,12 +252,27 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .route("/analytics/vulnerabilities", web::get().to(api::analytics::get_vulnerabilities_over_time))
                     .route("/analytics/services", web::get().to(api::analytics::get_top_services))
                     .route("/analytics/frequency", web::get().to(api::analytics::get_scan_frequency))
+                    // Executive Analytics endpoints
+                    .route("/analytics/customer/{id}/trends", web::get().to(api::analytics::get_customer_trends))
+                    .route("/analytics/customer/{id}/summary", web::get().to(api::analytics::get_customer_summary))
+                    .route("/analytics/remediation-velocity", web::get().to(api::analytics::get_remediation_velocity))
+                    .route("/analytics/risk-trends", web::get().to(api::analytics::get_risk_trends))
+                    .route("/analytics/methodology-coverage", web::get().to(api::analytics::get_methodology_coverage))
+                    .route("/analytics/executive-dashboard", web::get().to(api::analytics::get_executive_dashboard))
                     // Asset Inventory endpoints
                     .route("/assets", web::get().to(api::assets::get_assets))
-                    .route("/assets/{id}", web::get().to(api::assets::get_asset))
+                    .route("/assets/by-tags", web::get().to(api::assets::get_assets_by_tags))
+                    .route("/assets/tags", web::get().to(api::assets::get_asset_tags))
+                    .route("/assets/tags", web::post().to(api::assets::create_asset_tag))
+                    .route("/assets/tags/{id}", web::get().to(api::assets::get_asset_tag))
+                    .route("/assets/tags/{id}", web::put().to(api::assets::update_asset_tag))
+                    .route("/assets/tags/{id}", web::delete().to(api::assets::delete_asset_tag))
+                    .route("/assets/{id}", web::get().to(api::assets::get_asset_with_tags))
                     .route("/assets/{id}", web::patch().to(api::assets::update_asset))
                     .route("/assets/{id}", web::delete().to(api::assets::delete_asset))
                     .route("/assets/{id}/history", web::get().to(api::assets::get_asset_history))
+                    .route("/assets/{id}/tags", web::post().to(api::assets::add_tags_to_asset))
+                    .route("/assets/{id}/tags/{tag_id}", web::delete().to(api::assets::remove_tag_from_asset))
                     // Vulnerability management endpoints
                     .route("/vulnerabilities", web::get().to(api::vulnerabilities::list_vulnerabilities))
                     .route("/vulnerabilities/stats", web::get().to(api::vulnerabilities::get_vulnerability_stats))
@@ -203,6 +284,12 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .route("/vulnerabilities/{id}/comments", web::post().to(api::vulnerabilities::add_comment))
                     .route("/vulnerabilities/{id}/timeline", web::get().to(api::vulnerabilities::get_vulnerability_timeline))
                     .route("/vulnerabilities/{id}/verify", web::post().to(api::vulnerabilities::mark_for_verification))
+                    // Retest workflow endpoints
+                    .route("/vulnerabilities/pending-retest", web::get().to(api::vulnerabilities::get_pending_retests))
+                    .route("/vulnerabilities/bulk-retest", web::post().to(api::vulnerabilities::bulk_request_retest))
+                    .route("/vulnerabilities/{id}/request-retest", web::post().to(api::vulnerabilities::request_retest))
+                    .route("/vulnerabilities/{id}/complete-retest", web::post().to(api::vulnerabilities::complete_retest))
+                    .route("/vulnerabilities/{id}/retest-history", web::get().to(api::vulnerabilities::get_retest_history))
                     // Compliance endpoints
                     .route("/compliance/frameworks", web::get().to(api::compliance::list_frameworks))
                     .route("/compliance/frameworks/{id}", web::get().to(api::compliance::get_framework))
@@ -213,6 +300,8 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .route("/compliance/reports/{id}/download", web::get().to(api::compliance::download_compliance_report))
                     // Manual compliance assessment endpoints
                     .configure(api::manual_compliance::configure)
+                    // CRM endpoints
+                    .configure(api::crm::configure)
                     // DNS reconnaissance endpoints
                     .route("/dns/recon", web::post().to(api::dns::perform_dns_recon))
                     .route("/dns/recon", web::get().to(api::dns::list_dns_recon_results))
@@ -235,6 +324,25 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .route("/integrations/siem/settings/{id}", web::delete().to(api::siem::delete_siem_settings))
                     .route("/integrations/siem/settings/{id}/test", web::post().to(api::siem::test_siem_connection))
                     .route("/integrations/siem/export/{scan_id}", web::post().to(api::siem::export_scan_to_siem))
+                    // Finding templates endpoints
+                    .route("/finding-templates", web::get().to(api::finding_templates::list_templates))
+                    .route("/finding-templates", web::post().to(api::finding_templates::create_template))
+                    .route("/finding-templates/categories", web::get().to(api::finding_templates::get_categories))
+                    .route("/finding-templates/{id}", web::get().to(api::finding_templates::get_template))
+                    .route("/finding-templates/{id}", web::put().to(api::finding_templates::update_template))
+                    .route("/finding-templates/{id}", web::delete().to(api::finding_templates::delete_template))
+                    .route("/finding-templates/{id}/clone", web::post().to(api::finding_templates::clone_template))
+                    // Methodology checklists endpoints
+                    .route("/methodology/templates", web::get().to(api::methodology::list_templates))
+                    .route("/methodology/templates/{id}", web::get().to(api::methodology::get_template))
+                    .route("/methodology/checklists", web::get().to(api::methodology::list_checklists))
+                    .route("/methodology/checklists", web::post().to(api::methodology::create_checklist))
+                    .route("/methodology/checklists/{id}", web::get().to(api::methodology::get_checklist))
+                    .route("/methodology/checklists/{id}", web::put().to(api::methodology::update_checklist))
+                    .route("/methodology/checklists/{id}", web::delete().to(api::methodology::delete_checklist))
+                    .route("/methodology/checklists/{id}/progress", web::get().to(api::methodology::get_progress))
+                    .route("/methodology/checklists/{checklist_id}/items/{item_id}", web::get().to(api::methodology::get_item))
+                    .route("/methodology/checklists/{checklist_id}/items/{item_id}", web::put().to(api::methodology::update_item))
                     // VPN integration endpoints
                     .route("/vpn/configs", web::post().to(api::vpn::upload_vpn_config))
                     .route("/vpn/configs", web::get().to(api::vpn::list_vpn_configs))
@@ -247,15 +355,41 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .route("/vpn/status", web::get().to(api::vpn::get_vpn_status))
                     .route("/vpn/connections", web::get().to(api::vpn::get_vpn_connections))
                     .configure(api::admin::configure)
-                    .configure(api::dashboard::configure),
+                    .configure(api::dashboard::configure)
+                    .configure(api::threat_intel::configure)
+                    // Cloud infrastructure scanning endpoints
+                    .configure(api::cloud::configure)
+                    // Attack path analysis endpoints
+                    .configure(api::attack_paths::configure)
+                    // API Security scanning endpoints
+                    .configure(api::api_security::configure)
+                    // AD Assessment endpoints
+                    .configure(api::ad_assessment::configure)
+                    // Credential Audit endpoints
+                    .configure(api::credential_audit::configure),
             )
             // Swagger UI for API documentation
             .service(
                 SwaggerUi::new("/api/docs/{_:.*}")
                     .url("/api/openapi.json", openapi::ApiDoc::openapi())
             )
-            // Serve frontend static files
-            .service(fs::Files::new("/", "./frontend/dist").index_file("index.html"))
+            // SPA routes that might conflict with static assets - serve index.html
+            .route("/assets", web::get().to(spa_fallback))
+            // Serve frontend static assets (Vite build output - files like /assets/index-xyz.js)
+            .service(fs::Files::new("/assets", "./frontend/dist/assets"))
+            // Serve vite.svg
+            .route("/vite.svg", web::get().to(|| async {
+                match std::fs::read("./frontend/dist/vite.svg") {
+                    Ok(content) => HttpResponse::Ok()
+                        .content_type("image/svg+xml")
+                        .body(content),
+                    Err(_) => HttpResponse::NotFound().finish(),
+                }
+            }))
+            // Root path serves index.html
+            .route("/", web::get().to(spa_fallback))
+            // SPA fallback - serve index.html for all unmatched non-API routes
+            .default_service(web::route().to(spa_fallback))
     })
     .bind(bind_address)?
     .run()

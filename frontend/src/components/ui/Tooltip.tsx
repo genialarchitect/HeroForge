@@ -19,7 +19,7 @@ const Tooltip: React.FC<TooltipProps> = ({
   const [coords, setCoords] = useState({ x: 0, y: 0 });
   const triggerRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
-  const timeoutRef = useRef<NodeJS.Timeout>();
+  const timeoutRef = useRef<ReturnType<typeof setTimeout>>();
 
   const showTooltip = () => {
     timeoutRef.current = setTimeout(() => {
@@ -80,10 +80,10 @@ const Tooltip: React.FC<TooltipProps> = ({
   }, []);
 
   const positionClasses = {
-    top: 'after:top-full after:left-1/2 after:-translate-x-1/2 after:border-t-dark-surface',
-    bottom: 'after:bottom-full after:left-1/2 after:-translate-x-1/2 after:border-b-dark-surface',
-    left: 'after:left-full after:top-1/2 after:-translate-y-1/2 after:border-l-dark-surface',
-    right: 'after:right-full after:top-1/2 after:-translate-y-1/2 after:border-r-dark-surface',
+    top: 'after:top-full after:left-1/2 after:-translate-x-1/2',
+    bottom: 'after:bottom-full after:left-1/2 after:-translate-x-1/2',
+    left: 'after:left-full after:top-1/2 after:-translate-y-1/2',
+    right: 'after:right-full after:top-1/2 after:-translate-y-1/2',
   };
 
   return (
@@ -103,8 +103,11 @@ const Tooltip: React.FC<TooltipProps> = ({
           ref={tooltipRef}
           role="tooltip"
           className={`
-            fixed z-[200] px-3 py-2 text-sm text-slate-100 bg-dark-surface
-            border border-dark-border rounded-lg shadow-xl
+            fixed z-[200] px-3 py-2 text-sm
+            text-slate-700 dark:text-slate-100
+            bg-light-surface dark:bg-dark-surface
+            border border-light-border dark:border-dark-border
+            rounded-lg shadow-xl
             animate-fade-in pointer-events-none
             ${positionClasses[position]}
           `}

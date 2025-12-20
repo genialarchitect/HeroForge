@@ -43,7 +43,7 @@ pub struct ServiceInfo {
     pub ssl_info: Option<SslInfo>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct SslInfo {
     pub cert_valid: bool,
     pub cert_expired: bool,
@@ -61,6 +61,9 @@ pub struct SslInfo {
     pub hsts_enabled: bool,
     pub hsts_max_age: Option<u64>,
     pub chain_issues: Vec<String>,
+    /// SSL/TLS grade (A+ to F) with detailed breakdown
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ssl_grade: Option<crate::scanner::ssl_scanner::SslGrade>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

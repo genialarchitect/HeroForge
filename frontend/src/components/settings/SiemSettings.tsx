@@ -33,7 +33,7 @@ const SiemSettings: React.FC = () => {
     try {
       const response = await siemAPI.getSettings();
       setSettings(response.data);
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast.error('Failed to load SIEM settings');
       console.error(error);
     } finally {
@@ -50,8 +50,9 @@ const SiemSettings: React.FC = () => {
       } else {
         toast.error(`Connection test failed: ${response.data.message}`);
       }
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Connection test failed');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || 'Connection test failed');
     } finally {
       setTesting(null);
     }
@@ -66,8 +67,9 @@ const SiemSettings: React.FC = () => {
       toast.success(`${deleteConfirm.siem_type.toUpperCase()} integration deleted`);
       loadSettings();
       setDeleteConfirm(null);
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to delete SIEM integration');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || 'Failed to delete SIEM integration');
     } finally {
       setIsDeleting(false);
     }
@@ -79,7 +81,7 @@ const SiemSettings: React.FC = () => {
       const response = await scanAPI.getAll();
       // Only show completed scans
       setScans(response.data.filter(scan => scan.status === 'completed'));
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to load scans:', error);
     } finally {
       setLoadingScans(false);
@@ -109,8 +111,9 @@ const SiemSettings: React.FC = () => {
       } else {
         toast.error('Export failed. Check SIEM configuration.');
       }
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to export scan to SIEM');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || 'Failed to export scan to SIEM');
     } finally {
       setExporting(false);
     }
@@ -423,8 +426,9 @@ const SiemConfigModal: React.FC<SiemConfigModalProps> = ({ settings, onClose, on
         toast.success('SIEM integration created');
       }
       onSave();
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to save SIEM integration');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || 'Failed to save SIEM integration');
     } finally {
       setSaving(false);
     }

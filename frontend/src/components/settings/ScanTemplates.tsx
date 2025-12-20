@@ -86,8 +86,9 @@ const ScanTemplates: React.FC = () => {
       toast.success('Template updated');
       resetForm();
       loadTemplates();
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to update template');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || 'Failed to update template');
     }
   };
 
@@ -100,8 +101,9 @@ const ScanTemplates: React.FC = () => {
       toast.success(`Template "${deleteConfirm.name}" deleted`);
       loadTemplates();
       setDeleteConfirm(null);
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to delete');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || 'Failed to delete');
     } finally {
       setIsDeleting(false);
     }
@@ -116,8 +118,9 @@ const ScanTemplates: React.FC = () => {
       const response = await templateAPI.createScan(templateId, scanName);
       addScan(response.data);
       toast.success('Scan started from template!');
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to create scan');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || 'Failed to create scan');
     } finally {
       setCreatingScans((prev) => {
         const next = new Set(prev);
