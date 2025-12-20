@@ -11,6 +11,7 @@ import DashboardPage from './pages/DashboardPage';
 // Lazy load less frequently used pages
 const AdminPage = lazy(() => import('./pages/AdminPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+const SalesPage = lazy(() => import('./pages/SalesPage'));
 const AssetsPage = lazy(() => import('./pages/AssetsPage'));
 const WebAppScanPage = lazy(() => import('./pages/WebAppScanPage'));
 const DnsToolsPage = lazy(() => import('./pages/DnsToolsPage'));
@@ -116,6 +117,7 @@ function App() {
         <Suspense fallback={<PageLoader />}>
           <Routes>
           <Route path="/" element={<LoginPage />} />
+          <Route path="/sales" element={<SalesPage />} />
           <Route
             path="/dashboard"
             element={

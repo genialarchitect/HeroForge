@@ -429,16 +429,16 @@ Low complexity, high immediate value.
 
 | Feature | Effort | Status | Description |
 |---------|--------|--------|-------------|
-| Asset Tagging & Groups | 1 day | Planned | Organize assets by environment, criticality, owner |
-| Vulnerability Assignments | 1 day | Planned | Assign vulns to team members with due dates |
+| ~~Asset Tagging & Groups~~ | 1 day | **Done** | Organize assets by environment, criticality, owner |
+| ~~Vulnerability Assignments~~ | 1 day | **Done** | Assign vulns to team members with due dates |
 | ~~Audit Trail Enhancement~~ | 1 day | **Done** | Enhanced logging of all user actions |
-| SSL/TLS Grading | 1-2 days | Planned | Detailed certificate health scores (like SSL Labs) |
+| ~~SSL/TLS Grading~~ | 1-2 days | **Done** | Detailed certificate health scores (like SSL Labs) |
 | ~~Dark/Light Theme Toggle~~ | 1 day | **Done** | User-selectable UI theme |
 | ~~Export Scan to Markdown~~ | 0.5 day | **Done** | Markdown format for scan reports |
-| Bulk Vulnerability Actions | 1 day | Planned | Mass update/assign/close vulnerabilities |
-| Scan Tags/Labels | 1 day | Planned | Categorize and filter scans |
-| Duplicate Scan | 0.5 day | Planned | Clone existing scan configuration |
-| Vulnerability Notes/Comments | 1 day | Planned | Add notes and discussion to findings |
+| ~~Bulk Vulnerability Actions~~ | 1 day | **Done** | Mass update/assign/close vulnerabilities |
+| ~~Scan Tags/Labels~~ | 1 day | **Done** | Categorize and filter scans |
+| ~~Duplicate Scan~~ | 0.5 day | **Done** | Clone existing scan configuration |
+| ~~Vulnerability Notes/Comments~~ | 1 day | **Done** | Add notes and discussion to findings |
 | ~~Finding Templates~~ | 1 day | **Done** | Reusable vulnerability finding definitions |
 
 ### Tier 2: Medium Features (3-5 days each)
@@ -514,9 +514,16 @@ Track active work here:
 
 | Feature | Tier | Completed |
 |---------|------|-----------|
-| Dark/Light Theme Toggle | 1 | 2025-12-20 |
+| Asset Tagging & Groups | 1 | 2025-12-20 |
+| Vulnerability Assignments | 1 | 2025-12-20 |
 | Audit Trail Enhancement | 1 | 2025-12-20 |
+| SSL/TLS Grading | 1 | 2025-12-20 |
+| Dark/Light Theme Toggle | 1 | 2025-12-20 |
 | Export Scan to Markdown | 1 | 2025-12-20 |
+| Bulk Vulnerability Actions | 1 | 2025-12-20 |
+| Scan Tags/Labels | 1 | 2025-12-20 |
+| Duplicate Scan | 1 | 2025-12-20 |
+| Vulnerability Notes/Comments | 1 | 2025-12-20 |
 | Finding Templates | 1 | 2025-12-20 |
 | Slack/Teams Notifications | 2 | 2025-12-20 |
 | SLA Tracking & Alerts | 2 | 2025-12-20 |

@@ -3429,13 +3429,15 @@ async fn create_scan_exclusions_table(pool: &SqlitePool) -> Result<()> {
 
 /// Add updated_at column to vulnerability_comments for editing support
 async fn add_updated_at_to_vulnerability_comments(pool: &SqlitePool) -> Result<()> {
-    // Check if the column already exists
-    let columns: Vec<(String,)> = sqlx::query_as("PRAGMA table_info(vulnerability_comments)")
-        .fetch_all(pool)
-        .await
-        .unwrap_or_default();
+    // Check if the column already exists using proper tuple structure
+    // PRAGMA table_info returns: (cid, name, type, notnull, dflt_value, pk)
+    let columns: Vec<(i32, String, String, i32, Option<String>, i32)> =
+        sqlx::query_as("PRAGMA table_info(vulnerability_comments)")
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default();
 
-    let has_updated_at = columns.iter().any(|(name,)| name == "updated_at");
+    let has_updated_at = columns.iter().any(|(_, name, _, _, _, _)| name == "updated_at");
 
     if !has_updated_at {
         sqlx::query("ALTER TABLE vulnerability_comments ADD COLUMN updated_at TEXT")
