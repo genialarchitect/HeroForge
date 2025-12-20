@@ -79,6 +79,9 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     create_ad_assessment_tables(pool).await?;
     // Credential Audit tables
     create_credential_audit_tables(pool).await?;
+    // Asset Groups tables
+    create_asset_groups_table(pool).await?;
+    create_asset_group_members_table(pool).await?;
     Ok(())
 }
 
@@ -3308,6 +3311,73 @@ async fn create_credential_audit_tables(pool: &SqlitePool) -> Result<()> {
         .await?;
 
     log::info!("Created credential audit tables");
+    Ok(())
+}
+
+// ============================================================================
+// Asset Groups Migration Functions
+// ============================================================================
+
+/// Create asset_groups table for organizing assets into logical groups
+async fn create_asset_groups_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS asset_groups (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            color TEXT NOT NULL DEFAULT '#3b82f6',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            UNIQUE(user_id, name)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for efficient lookups
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_asset_groups_user_id ON asset_groups(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_asset_groups_name ON asset_groups(user_id, name)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created asset_groups table");
+    Ok(())
+}
+
+/// Create asset_group_members junction table for asset-group associations
+async fn create_asset_group_members_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS asset_group_members (
+            asset_group_id TEXT NOT NULL,
+            asset_id TEXT NOT NULL,
+            added_at TEXT NOT NULL,
+            PRIMARY KEY (asset_group_id, asset_id),
+            FOREIGN KEY (asset_group_id) REFERENCES asset_groups(id) ON DELETE CASCADE,
+            FOREIGN KEY (asset_id) REFERENCES assets(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for efficient lookups
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_asset_group_members_group_id ON asset_group_members(asset_group_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_asset_group_members_asset_id ON asset_group_members(asset_id)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created asset_group_members table");
     Ok(())
 }
 

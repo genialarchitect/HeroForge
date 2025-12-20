@@ -17,6 +17,7 @@ use std::time::Duration;
 use x509_parser::prelude::*;
 
 /// SSL/TLS grade from A+ to F, similar to SSL Labs grading
+/// Also includes special grades: T (trust issues), M (hostname mismatch)
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, utoipa::ToSchema)]
 pub enum SslGradeLevel {
     #[serde(rename = "A+")]
@@ -32,6 +33,10 @@ pub enum SslGradeLevel {
     C,
     D,
     F,
+    /// Trust issues - certificate is not trusted (self-signed, untrusted CA, etc.)
+    T,
+    /// Hostname mismatch - certificate doesn't match the hostname
+    M,
     /// Grade could not be determined (e.g., connection failure)
     Unknown,
 }
@@ -48,6 +53,8 @@ impl std::fmt::Display for SslGradeLevel {
             SslGradeLevel::C => write!(f, "C"),
             SslGradeLevel::D => write!(f, "D"),
             SslGradeLevel::F => write!(f, "F"),
+            SslGradeLevel::T => write!(f, "T"),
+            SslGradeLevel::M => write!(f, "M"),
             SslGradeLevel::Unknown => write!(f, "Unknown"),
         }
     }
@@ -1361,10 +1368,7 @@ pub fn calculate_ssl_grade(ssl_info: &SslInfo) -> SslGrade {
             description: "Self-signed certificates are not trusted by browsers and cannot verify server identity.".to_string(),
             cve: None,
         });
-        if !grade_capped {
-            grade_capped = true;
-            cap_reason = Some("Self-signed certificate - grade capped at T (not trusted)".to_string());
-        }
+        // Self-signed gets special T grade, handled in grade determination
         recommendations.push("Use a certificate from a trusted Certificate Authority".to_string());
     }
 
@@ -1376,10 +1380,7 @@ pub fn calculate_ssl_grade(ssl_info: &SslInfo) -> SslGrade {
             description: "The certificate does not match the hostname, which could indicate a MITM attack or misconfiguration.".to_string(),
             cve: None,
         });
-        if !grade_capped {
-            grade_capped = true;
-            cap_reason = Some("Hostname mismatch - grade capped at F".to_string());
-        }
+        // Hostname mismatch gets special M grade, handled in grade determination
         recommendations.push("Ensure certificate Subject Alternative Names (SANs) include the hostname".to_string());
     }
 
@@ -1448,11 +1449,17 @@ pub fn calculate_ssl_grade(ssl_info: &SslInfo) -> SslGrade {
     let overall_score = overall_score.min(100) as u8;
 
     // === Determine Grade ===
-    let grade = if grade_capped {
+    // Check for special grades first (T for trust issues, M for mismatch)
+    let grade = if ssl_info.hostname_mismatch {
+        // Hostname mismatch gets the M grade - this is a critical security issue
+        SslGradeLevel::M
+    } else if ssl_info.self_signed {
+        // Self-signed certificate gets the T grade (trust issue)
+        SslGradeLevel::T
+    } else if grade_capped {
         match cap_reason.as_deref() {
             Some(r) if r.contains("capped at F") => SslGradeLevel::F,
             Some(r) if r.contains("capped at C") => SslGradeLevel::C,
-            Some(r) if r.contains("not trusted") => SslGradeLevel::B, // Self-signed but otherwise good
             _ => SslGradeLevel::F,
         }
     } else {
@@ -1867,8 +1874,33 @@ mod tests {
 
         let grade = calculate_ssl_grade(&ssl_info);
 
-        assert!(grade.grade_capped);
+        // Self-signed certificates get the T grade (trust issues)
+        assert_eq!(grade.grade, SslGradeLevel::T);
         assert!(grade.vulnerabilities_found.iter().any(|v| v.id == "SELF_SIGNED"));
+    }
+
+    #[test]
+    fn test_calculate_ssl_grade_hostname_mismatch() {
+        let mut ssl_info = create_perfect_ssl_info();
+        ssl_info.hostname_mismatch = true;
+
+        let grade = calculate_ssl_grade(&ssl_info);
+
+        // Hostname mismatch gets the M grade
+        assert_eq!(grade.grade, SslGradeLevel::M);
+        assert!(grade.vulnerabilities_found.iter().any(|v| v.id == "HOSTNAME_MISMATCH"));
+    }
+
+    #[test]
+    fn test_calculate_ssl_grade_mismatch_takes_precedence() {
+        // When both self-signed and hostname mismatch, mismatch (M) takes precedence
+        let mut ssl_info = create_perfect_ssl_info();
+        ssl_info.self_signed = true;
+        ssl_info.hostname_mismatch = true;
+
+        let grade = calculate_ssl_grade(&ssl_info);
+
+        assert_eq!(grade.grade, SslGradeLevel::M);
     }
 
     #[test]
@@ -1937,5 +1969,7 @@ mod tests {
         assert_eq!(format!("{}", SslGradeLevel::A), "A");
         assert_eq!(format!("{}", SslGradeLevel::AMinus), "A-");
         assert_eq!(format!("{}", SslGradeLevel::F), "F");
+        assert_eq!(format!("{}", SslGradeLevel::T), "T");
+        assert_eq!(format!("{}", SslGradeLevel::M), "M");
     }
 }

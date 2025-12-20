@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Layout from '../components/layout/Layout';
 import Button from '../components/ui/Button';
+import AssetGroups from '../components/assets/AssetGroups';
 import { toast } from 'react-toastify';
 import {
   Server,
@@ -15,8 +16,10 @@ import {
   Edit2,
   Trash2,
   Tags,
+  Folder,
+  FolderPlus,
 } from 'lucide-react';
-import { assetTagsAPI } from '../services/api';
+import { assetTagsAPI, assetGroupsAPI } from '../services/api';
 import type {
   Asset,
   AssetTag,
@@ -24,6 +27,8 @@ import type {
   AssetDetailWithTags,
   AssetTagCategory,
   CreateAssetTagRequest,
+  AssetGroupWithCount,
+  AssetGroup,
 } from '../types';
 
 // Predefined colors for tags
@@ -78,6 +83,22 @@ const AssetsPage: React.FC = () => {
   const [showTagAssignModal, setShowTagAssignModal] = useState(false);
   const [assetToTag, setAssetToTag] = useState<string | null>(null);
 
+  // Groups state
+  const [groups, setGroups] = useState<AssetGroupWithCount[]>([]);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [showGroupManager, setShowGroupManager] = useState(false);
+  const [showGroupAssignModal, setShowGroupAssignModal] = useState(false);
+  const [assetToGroup, setAssetToGroup] = useState<string | null>(null);
+
+  const fetchGroups = useCallback(async () => {
+    try {
+      const response = await assetGroupsAPI.getGroups();
+      setGroups(response.data);
+    } catch (err) {
+      console.error('Failed to fetch groups:', err);
+    }
+  }, []);
+
   const fetchTags = useCallback(async () => {
     try {
       const response = await assetTagsAPI.getTags();
@@ -90,6 +111,18 @@ const AssetsPage: React.FC = () => {
   const fetchAssets = useCallback(async () => {
     try {
       setLoading(true);
+
+      // If a group is selected, filter by group
+      if (selectedGroupId) {
+        const response = await assetGroupsAPI.getAssetsByGroup({
+          group_id: selectedGroupId,
+          status: statusFilter || undefined,
+        });
+        setAssets(response.data);
+        setError('');
+        return;
+      }
+
       const params: { status?: string; tag_ids?: string } = {};
       if (statusFilter) {
         params.status = statusFilter;
@@ -110,11 +143,12 @@ const AssetsPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, selectedTagIds]);
+  }, [statusFilter, selectedTagIds, selectedGroupId]);
 
   useEffect(() => {
     fetchTags();
-  }, [fetchTags]);
+    fetchGroups();
+  }, [fetchTags, fetchGroups]);
 
   useEffect(() => {
     fetchAssets();
@@ -275,6 +309,36 @@ const AssetsPage: React.FC = () => {
     setSelectedTagIds([]);
   };
 
+  const toggleGroupFilter = (groupId: string) => {
+    // Clear tag filters when selecting a group
+    if (selectedGroupId !== groupId) {
+      setSelectedTagIds([]);
+    }
+    setSelectedGroupId(prev => prev === groupId ? null : groupId);
+  };
+
+  const clearGroupFilter = () => {
+    setSelectedGroupId(null);
+  };
+
+  const handleAddAssetToGroup = async (groupId: string) => {
+    if (!assetToGroup) return;
+
+    try {
+      await assetGroupsAPI.addAssetsToGroup(groupId, { asset_ids: [assetToGroup] });
+      toast.success('Asset added to group');
+      setShowGroupAssignModal(false);
+      setAssetToGroup(null);
+      fetchGroups();
+    } catch (err: unknown) {
+      const axiosError = err as { response?: { data?: string | { error?: string } } };
+      const errorMsg = typeof axiosError.response?.data === 'string'
+        ? axiosError.response.data
+        : axiosError.response?.data?.error || 'Failed to add asset to group';
+      toast.error(errorMsg);
+    }
+  };
+
   const filteredAssets = assets.filter(asset => {
     const searchLower = searchTerm.toLowerCase();
     return (
@@ -298,13 +362,23 @@ const AssetsPage: React.FC = () => {
               Track and manage discovered network assets across scans
             </p>
           </div>
-          <Button
-            onClick={() => setShowTagManager(true)}
-            className="flex items-center gap-2"
-          >
-            <Tags className="h-4 w-4" />
-            Manage Tags
-          </Button>
+          <div className="flex items-center gap-3">
+            <Button
+              variant="secondary"
+              onClick={() => setShowGroupManager(true)}
+              className="flex items-center gap-2"
+            >
+              <Folder className="h-4 w-4" />
+              Manage Groups
+            </Button>
+            <Button
+              onClick={() => setShowTagManager(true)}
+              className="flex items-center gap-2"
+            >
+              <Tags className="h-4 w-4" />
+              Manage Tags
+            </Button>
+          </div>
         </div>
 
         {error && (
@@ -313,8 +387,50 @@ const AssetsPage: React.FC = () => {
           </div>
         )}
 
+        {/* Group Filters */}
+        {groups.length > 0 && (
+          <div className="bg-dark-surface rounded-lg border border-dark-border p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium text-slate-300 flex items-center gap-2">
+                <Folder className="h-4 w-4" />
+                Filter by Group
+              </h3>
+              {selectedGroupId && (
+                <button
+                  onClick={clearGroupFilter}
+                  className="text-xs text-slate-400 hover:text-white"
+                >
+                  Clear filter
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {groups.map(({ group, asset_count }) => (
+                <button
+                  key={group.id}
+                  onClick={() => toggleGroupFilter(group.id)}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                    selectedGroupId === group.id
+                      ? 'ring-2 ring-white ring-offset-2 ring-offset-dark-surface'
+                      : 'opacity-70 hover:opacity-100'
+                  }`}
+                  style={{
+                    backgroundColor: `${group.color}20`,
+                    color: group.color,
+                    borderColor: group.color,
+                  }}
+                >
+                  <Folder className="h-3 w-3" style={{ color: group.color }} />
+                  {group.name}
+                  <span className="text-xs opacity-70">({asset_count})</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Tag Filters */}
-        {tags.length > 0 && (
+        {tags.length > 0 && !selectedGroupId && (
           <div className="bg-dark-surface rounded-lg border border-dark-border p-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-medium text-slate-300 flex items-center gap-2">
@@ -459,6 +575,17 @@ const AssetsPage: React.FC = () => {
                             title="Add tags"
                           >
                             <Plus className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setAssetToGroup(asset.id);
+                              setShowGroupAssignModal(true);
+                            }}
+                            className="text-slate-400 hover:text-primary"
+                            title="Add to group"
+                          >
+                            <FolderPlus className="h-4 w-4" />
                           </button>
                         </div>
                       </td>

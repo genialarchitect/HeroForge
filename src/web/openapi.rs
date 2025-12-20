@@ -169,6 +169,8 @@ pub struct CreateScanRequestSchema {
     pub customer_id: Option<String>,
     /// CRM engagement ID to associate with this scan
     pub engagement_id: Option<String>,
+    /// Tag IDs to attach to this scan
+    pub tag_ids: Option<Vec<String>>,
 }
 
 /// Scan result
@@ -366,6 +368,24 @@ pub struct AddCommentRequestSchema {
     pub comment: String,
 }
 
+/// Bulk operation response
+#[derive(ToSchema)]
+#[schema(example = json!({
+    "updated": 5,
+    "failed": 0,
+    "message": "Successfully updated 5 vulnerabilities"
+}))]
+pub struct BulkOperationResponseSchema {
+    /// Number of successfully updated items
+    pub updated: Option<usize>,
+    /// Number of successfully deleted items
+    pub deleted: Option<usize>,
+    /// Number of failed operations
+    pub failed: usize,
+    /// Descriptive message
+    pub message: String,
+}
+
 // ============================================================================
 // Security Scheme for JWT Authentication
 // ============================================================================
@@ -513,6 +533,10 @@ impl Modify for SecurityAddon {
             BulkDeleteRequestSchema,
             BulkUpdateVulnerabilitiesRequestSchema,
             AddCommentRequestSchema,
+            BulkOperationResponseSchema,
+            crate::db::models::BulkUpdateSeverityRequest,
+            crate::db::models::BulkDeleteVulnerabilitiesRequest,
+            crate::db::models::BulkAddTagsRequest,
             // Finding template schemas
             crate::db::models::FindingTemplate,
             crate::db::models::CreateFindingTemplateRequest,

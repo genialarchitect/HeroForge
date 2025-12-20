@@ -5,10 +5,11 @@ import Button from '../ui/Button';
 import Input from '../ui/Input';
 import Checkbox from '../ui/Checkbox';
 import Card from '../ui/Card';
-import { scanAPI, targetGroupAPI, templateAPI, vpnAPI, crmAPI } from '../../services/api';
+import TagInput from './TagInput';
+import { scanAPI, targetGroupAPI, templateAPI, vpnAPI, crmAPI, scanTagAPI } from '../../services/api';
 import { useScanStore } from '../../store/scanStore';
 import { Target, Cpu, Search, Radio, Wifi, FolderOpen, Save, Zap, Radar, Globe, EyeOff, Shield, Building2, ClipboardList } from 'lucide-react';
-import { EnumDepth, EnumService, ScanType, TargetGroup, ScanPreset, VpnConfig, Customer, Engagement } from '../../types';
+import { EnumDepth, EnumService, ScanType, TargetGroup, ScanPreset, VpnConfig, Customer, Engagement, ScanTag } from '../../types';
 
 const SCAN_TYPES: { id: ScanType; label: string; description: string }[] = [
   { id: 'tcp_connect', label: 'TCP Connect', description: 'Standard TCP scan (most reliable)' },
@@ -68,6 +69,9 @@ const ScanForm: React.FC = () => {
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
   const [engagements, setEngagements] = useState<Engagement[]>([]);
   const [selectedEngagementId, setSelectedEngagementId] = useState<string>('');
+  // Tags
+  const [allTags, setAllTags] = useState<ScanTag[]>([]);
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
 
   const { addScan } = useScanStore();
 
@@ -78,6 +82,7 @@ const ScanForm: React.FC = () => {
     loadPresets();
     loadVpnConfigs();
     loadCustomers();
+    loadTags();
   }, []);
 
   // Handle URL parameter for pre-selecting customer (e.g., from customer detail page)
@@ -139,6 +144,15 @@ const ScanForm: React.FC = () => {
       setCustomers(response.data);
     } catch (error) {
       console.error('Failed to load customers:', error);
+    }
+  };
+
+  const loadTags = async () => {
+    try {
+      const response = await scanTagAPI.getAll();
+      setAllTags(response.data);
+    } catch (error) {
+      console.error('Failed to load tags:', error);
     }
   };
 
@@ -288,6 +302,7 @@ const ScanForm: React.FC = () => {
         vpn_config_id: selectedVpn || undefined,
         customer_id: selectedCustomerId || undefined,
         engagement_id: selectedEngagementId || undefined,
+        tag_ids: selectedTagIds.length > 0 ? selectedTagIds : undefined,
       });
 
       addScan(response.data);
@@ -339,6 +354,7 @@ const ScanForm: React.FC = () => {
       setTemplateDescription('');
       setSelectedCustomerId('');
       setSelectedEngagementId('');
+      setSelectedTagIds([]);
     } catch (error: unknown) {
       const axiosError = error as { response?: { data?: { error?: string } } };
       const message = axiosError.response?.data?.error || 'Failed to start scan';
@@ -403,6 +419,14 @@ const ScanForm: React.FC = () => {
           value={name}
           onChange={(e) => setName(e.target.value)}
           required
+        />
+
+        {/* Tags */}
+        <TagInput
+          selectedTagIds={selectedTagIds}
+          onChange={setSelectedTagIds}
+          existingTags={allTags}
+          onTagsChange={setAllTags}
         />
 
         {/* CRM Integration */}

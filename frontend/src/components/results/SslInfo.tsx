@@ -1,15 +1,47 @@
-import React from 'react';
-import { SslInfo as SslInfoType } from '../../types';
+import React, { useState } from 'react';
+import { SslInfo as SslInfoType, SslGradeLevel } from '../../types';
 import Badge from '../ui/Badge';
 import { SslGradeBadge } from './SslGradeBadge';
-import { Shield, AlertTriangle, CheckCircle, XCircle, Lock, Clock, Server } from 'lucide-react';
+import { SslGradeBreakdown } from './SslGradeBreakdown';
+import { Shield, AlertTriangle, CheckCircle, XCircle, Lock, Clock, Server, Maximize2 } from 'lucide-react';
 
 interface SslInfoProps {
   sslInfo: SslInfoType;
   port: number;
+  hostname?: string;
 }
 
-const SslInfoComponent: React.FC<SslInfoProps> = ({ sslInfo, port }) => {
+// Get colors for large grade display
+function getLargeGradeColors(grade: SslGradeLevel): { bg: string; text: string; glow: string } {
+  switch (grade) {
+    case 'A+':
+      return { bg: 'from-emerald-500 to-emerald-600', text: 'text-white', glow: 'shadow-emerald-500/30' };
+    case 'A':
+      return { bg: 'from-green-500 to-green-600', text: 'text-white', glow: 'shadow-green-500/30' };
+    case 'A-':
+      return { bg: 'from-green-400 to-green-500', text: 'text-white', glow: 'shadow-green-400/30' };
+    case 'B+':
+    case 'B':
+    case 'B-':
+      return { bg: 'from-yellow-400 to-yellow-500', text: 'text-gray-900', glow: 'shadow-yellow-400/30' };
+    case 'C':
+      return { bg: 'from-orange-500 to-orange-600', text: 'text-white', glow: 'shadow-orange-500/30' };
+    case 'D':
+      return { bg: 'from-red-400 to-red-500', text: 'text-white', glow: 'shadow-red-400/30' };
+    case 'F':
+      return { bg: 'from-red-600 to-red-700', text: 'text-white', glow: 'shadow-red-600/30' };
+    case 'T':
+      return { bg: 'from-purple-500 to-purple-600', text: 'text-white', glow: 'shadow-purple-500/30' };
+    case 'M':
+      return { bg: 'from-fuchsia-500 to-fuchsia-600', text: 'text-white', glow: 'shadow-fuchsia-500/30' };
+    default:
+      return { bg: 'from-gray-500 to-gray-600', text: 'text-white', glow: '' };
+  }
+}
+
+const SslInfoComponent: React.FC<SslInfoProps> = ({ sslInfo, port, hostname }) => {
+  const [showFullBreakdown, setShowFullBreakdown] = useState(false);
+
   // Determine overall security status
   const getSecurityStatus = () => {
     if (sslInfo.cert_expired || sslInfo.hostname_mismatch) {
@@ -39,11 +71,38 @@ const SslInfoComponent: React.FC<SslInfoProps> = ({ sslInfo, port }) => {
     return 'text-green-400';
   };
 
+  // If full breakdown modal is shown
+  if (showFullBreakdown) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80">
+        <div className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+          <button
+            onClick={() => setShowFullBreakdown(false)}
+            className="absolute top-4 right-4 z-10 p-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-gray-400 hover:text-white transition-colors"
+          >
+            <XCircle className="w-6 h-6" />
+          </button>
+          <SslGradeBreakdown sslInfo={sslInfo} hostname={hostname} />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="mt-3 space-y-3 border-t border-dark-border pt-3">
-      {/* SSL Grade Badge - Show if grade is available */}
+      {/* SSL Grade Badge - Show prominent grade if available */}
       {sslInfo.ssl_grade && (
-        <SslGradeBadge grade={sslInfo.ssl_grade} showDetails={true} />
+        <div className="relative">
+          <SslGradeBadge grade={sslInfo.ssl_grade} showDetails={true} animate={true} />
+          {/* Button to show full breakdown */}
+          <button
+            onClick={() => setShowFullBreakdown(true)}
+            className="absolute top-3 right-12 p-1.5 text-gray-400 hover:text-cyan-400 hover:bg-gray-700/50 rounded transition-colors"
+            title="View detailed SSL/TLS breakdown"
+          >
+            <Maximize2 className="w-4 h-4" />
+          </button>
+        </div>
       )}
 
       <div className="flex items-center gap-2">

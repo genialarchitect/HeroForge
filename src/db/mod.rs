@@ -260,6 +260,8 @@ pub use vulnerabilities::{
     update_vulnerability_status,
     add_vulnerability_comment,
     get_vulnerability_comments,
+    get_vulnerability_comments_with_user,
+    delete_vulnerability_comment,
     bulk_update_vulnerability_status,
     mark_vulnerability_for_verification,
     bulk_assign_vulnerabilities,
@@ -271,6 +273,17 @@ pub use vulnerabilities::{
     complete_vulnerability_retest,
     get_vulnerabilities_pending_retest,
     get_retest_history,
+    // Additional bulk operations
+    bulk_update_severity,
+    bulk_delete_vulnerabilities,
+    bulk_add_tags,
+    verify_vulnerability_ids,
+    // Vulnerability assignment functions
+    get_user_assignments,
+    get_vulnerabilities_with_assignments,
+    assign_vulnerability,
+    unassign_vulnerability,
+    get_user_assignment_stats,
 };
 
 // ============================================================================

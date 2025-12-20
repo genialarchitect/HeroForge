@@ -9,9 +9,10 @@ interface ScanCardProps {
   isActive: boolean;
   onClick: () => void;
   tags?: ScanTag[];
+  onTagClick?: (tagId: string) => void;
 }
 
-const ScanCard: React.FC<ScanCardProps> = ({ scan, isActive, onClick, tags }) => {
+const ScanCard: React.FC<ScanCardProps> = ({ scan, isActive, onClick, tags, onTagClick }) => {
   const targets = JSON.parse(scan.targets);
   const statusType = scan.status as 'pending' | 'running' | 'completed' | 'failed';
 
@@ -50,14 +51,20 @@ const ScanCard: React.FC<ScanCardProps> = ({ scan, isActive, onClick, tags }) =>
       {tags && tags.length > 0 && (
         <div className="flex flex-wrap gap-1 mb-2">
           {tags.slice(0, 3).map((tag) => (
-            <span
+            <button
               key={tag.id}
-              className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onTagClick?.(tag.id);
+              }}
+              className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium hover:opacity-80 transition-opacity"
               style={{ backgroundColor: tag.color + '20', color: tag.color }}
+              title={`Filter by ${tag.name}`}
             >
               <Tag className="h-3 w-3 mr-1" />
               {tag.name}
-            </span>
+            </button>
           ))}
           {tags.length > 3 && (
             <span className="inline-flex items-center px-2 py-0.5 rounded text-xs text-slate-400">

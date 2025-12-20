@@ -407,3 +407,250 @@ pub async fn get_assets_by_tags(
 
     Ok(HttpResponse::Ok().json(assets_list))
 }
+
+// ============================================================================
+// Asset Groups API Endpoints
+// ============================================================================
+
+/// Query parameters for listing assets by group
+#[derive(Debug, Deserialize)]
+pub struct AssetGroupListQuery {
+    status: Option<String>,
+    group_id: Option<String>,
+}
+
+/// Get all asset groups for the current user
+pub async fn get_asset_groups(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+) -> Result<HttpResponse> {
+    let groups = assets::get_user_asset_groups_with_counts(&pool, &claims.sub)
+        .await
+        .map_err(|e| {
+            log::error!("Failed to fetch asset groups: {}", e);
+            actix_web::error::ErrorInternalServerError("An internal error occurred. Please try again later.")
+        })?;
+
+    Ok(HttpResponse::Ok().json(groups))
+}
+
+/// Create a new asset group
+pub async fn create_asset_group(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    request: web::Json<models::CreateAssetGroupRequest>,
+) -> Result<HttpResponse> {
+    // Validate color format (hex color)
+    if !request.color.starts_with('#') || request.color.len() != 7 {
+        return Err(actix_web::error::ErrorBadRequest("Invalid color format. Use hex format like #3b82f6"));
+    }
+
+    let group = assets::create_asset_group(&pool, &claims.sub, &request)
+        .await
+        .map_err(|e| {
+            log::error!("Failed to create asset group: {}", e);
+            if e.to_string().contains("UNIQUE constraint failed") {
+                actix_web::error::ErrorConflict("A group with this name already exists")
+            } else {
+                actix_web::error::ErrorInternalServerError("Failed to create group. Please try again.")
+            }
+        })?;
+
+    Ok(HttpResponse::Created().json(group))
+}
+
+/// Get a specific asset group by ID
+pub async fn get_asset_group(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    group_id: web::Path<String>,
+) -> Result<HttpResponse> {
+    let group_detail = assets::get_asset_group_with_members(&pool, &group_id, &claims.sub)
+        .await
+        .map_err(|e| {
+            log::error!("Failed to fetch asset group: {}", e);
+            actix_web::error::ErrorInternalServerError("An internal error occurred. Please try again later.")
+        })?;
+
+    match group_detail {
+        Some(detail) => Ok(HttpResponse::Ok().json(detail)),
+        None => Err(actix_web::error::ErrorNotFound("Asset group not found")),
+    }
+}
+
+/// Update an asset group
+pub async fn update_asset_group(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    group_id: web::Path<String>,
+    request: web::Json<models::UpdateAssetGroupRequest>,
+) -> Result<HttpResponse> {
+    // Check if group exists
+    let existing = assets::get_asset_group_by_id(&pool, &group_id, &claims.sub)
+        .await
+        .map_err(|e| {
+            log::error!("Database error in update_asset_group: {}", e);
+            actix_web::error::ErrorInternalServerError("An internal error occurred. Please try again later.")
+        })?;
+
+    if existing.is_none() {
+        return Err(actix_web::error::ErrorNotFound("Asset group not found"));
+    }
+
+    // Validate color if provided
+    if let Some(ref color) = request.color {
+        if !color.starts_with('#') || color.len() != 7 {
+            return Err(actix_web::error::ErrorBadRequest("Invalid color format. Use hex format like #3b82f6"));
+        }
+    }
+
+    let updated = assets::update_asset_group(&pool, &group_id, &claims.sub, &request)
+        .await
+        .map_err(|e| {
+            log::error!("Failed to update asset group: {}", e);
+            actix_web::error::ErrorInternalServerError("Update failed. Please try again.")
+        })?;
+
+    Ok(HttpResponse::Ok().json(updated))
+}
+
+/// Delete an asset group
+pub async fn delete_asset_group(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    group_id: web::Path<String>,
+) -> Result<HttpResponse> {
+    // Check if group exists
+    let existing = assets::get_asset_group_by_id(&pool, &group_id, &claims.sub)
+        .await
+        .map_err(|e| {
+            log::error!("Database error in delete_asset_group: {}", e);
+            actix_web::error::ErrorInternalServerError("An internal error occurred. Please try again later.")
+        })?;
+
+    if existing.is_none() {
+        return Err(actix_web::error::ErrorNotFound("Asset group not found"));
+    }
+
+    let deleted = assets::delete_asset_group(&pool, &group_id, &claims.sub)
+        .await
+        .map_err(|e| {
+            log::error!("Failed to delete asset group: {}", e);
+            actix_web::error::ErrorInternalServerError("Delete failed. Please try again.")
+        })?;
+
+    if deleted {
+        Ok(HttpResponse::Ok().json(serde_json::json!({ "message": "Asset group deleted successfully" })))
+    } else {
+        Err(actix_web::error::ErrorNotFound("Asset group not found"))
+    }
+}
+
+/// Add assets to a group
+pub async fn add_assets_to_group(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    group_id: web::Path<String>,
+    request: web::Json<models::AddAssetsToGroupRequest>,
+) -> Result<HttpResponse> {
+    assets::add_assets_to_group(&pool, &group_id, &request.asset_ids, &claims.sub)
+        .await
+        .map_err(|e| {
+            log::error!("Failed to add assets to group: {}", e);
+            if e.to_string().contains("Asset group not found") {
+                actix_web::error::ErrorNotFound("Asset group not found")
+            } else {
+                actix_web::error::ErrorInternalServerError("Failed to add assets. Please try again.")
+            }
+        })?;
+
+    // Return the updated group with members
+    let group_detail = assets::get_asset_group_with_members(&pool, &group_id, &claims.sub)
+        .await
+        .map_err(|e| {
+            log::error!("Failed to fetch updated group: {}", e);
+            actix_web::error::ErrorInternalServerError("Assets added but failed to fetch updated group.")
+        })?;
+
+    match group_detail {
+        Some(detail) => Ok(HttpResponse::Ok().json(detail)),
+        None => Err(actix_web::error::ErrorNotFound("Asset group not found")),
+    }
+}
+
+/// Remove an asset from a group
+pub async fn remove_asset_from_group(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    path: web::Path<(String, String)>,
+) -> Result<HttpResponse> {
+    let (group_id, asset_id) = path.into_inner();
+
+    let removed = assets::remove_asset_from_group(&pool, &group_id, &asset_id, &claims.sub)
+        .await
+        .map_err(|e| {
+            log::error!("Failed to remove asset from group: {}", e);
+            actix_web::error::ErrorInternalServerError("Failed to remove asset. Please try again.")
+        })?;
+
+    if removed {
+        // Return the updated group with members
+        let group_detail = assets::get_asset_group_with_members(&pool, &group_id, &claims.sub)
+            .await
+            .map_err(|e| {
+                log::error!("Failed to fetch updated group: {}", e);
+                actix_web::error::ErrorInternalServerError("Asset removed but failed to fetch updated group.")
+            })?;
+
+        match group_detail {
+            Some(detail) => Ok(HttpResponse::Ok().json(detail)),
+            None => Err(actix_web::error::ErrorNotFound("Asset group not found")),
+        }
+    } else {
+        Err(actix_web::error::ErrorNotFound("Asset group or asset not found"))
+    }
+}
+
+/// Get assets filtered by group
+pub async fn get_assets_by_group(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    query: web::Query<AssetGroupListQuery>,
+) -> Result<HttpResponse> {
+    let group_id = query.group_id.as_ref().ok_or_else(|| {
+        actix_web::error::ErrorBadRequest("group_id query parameter is required")
+    })?;
+
+    let assets_list = assets::get_assets_by_group(
+        &pool,
+        &claims.sub,
+        group_id,
+        query.status.as_deref(),
+    )
+    .await
+    .map_err(|e| {
+        log::error!("Failed to fetch assets by group: {}", e);
+        actix_web::error::ErrorInternalServerError("An internal error occurred. Please try again later.")
+    })?;
+
+    Ok(HttpResponse::Ok().json(assets_list))
+}
+
+/// Get asset with full details (tags and groups)
+pub async fn get_asset_full(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    asset_id: web::Path<String>,
+) -> Result<HttpResponse> {
+    let asset_detail = assets::get_asset_detail_full(&pool, &asset_id, &claims.sub)
+        .await
+        .map_err(|e| {
+            log::error!("Failed to fetch asset with full details: {}", e);
+            actix_web::error::ErrorInternalServerError("An internal error occurred. Please try again later.")
+        })?;
+
+    match asset_detail {
+        Some(detail) => Ok(HttpResponse::Ok().json(detail)),
+        None => Err(actix_web::error::ErrorNotFound("Asset not found")),
+    }
+}

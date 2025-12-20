@@ -379,6 +379,14 @@ pub async fn create_scan(
     .await
     .map_err(|_| actix_web::error::ErrorInternalServerError("Failed to create scan"))?;
 
+    // Add tags to scan if provided
+    if !scan_request.tag_ids.is_empty() {
+        if let Err(e) = db::scans::add_tags_to_scan(&pool, &scan.id, &scan_request.tag_ids).await {
+            log::warn!("Failed to add tags to scan {}: {}", scan.id, e);
+            // Don't fail scan creation if tagging fails
+        }
+    }
+
     // Start scan in background - clone only what's needed for the spawned task
     let scan_id = scan.id.clone();
     let scan_name = scan.name.clone();
@@ -1770,6 +1778,62 @@ pub async fn delete_scan_tag(
             "error": "Tag not found"
         })))
     }
+}
+
+/// Predefined tag suggestion for common categorization
+#[derive(Debug, serde::Serialize)]
+pub struct TagSuggestion {
+    pub name: String,
+    pub color: String,
+    pub category: String,
+}
+
+/// Get predefined tag suggestions for common scan categorizations
+#[utoipa::path(
+    get,
+    path = "/api/scans/tags/suggestions",
+    tag = "Scan Tags",
+    security(
+        ("bearer_auth" = [])
+    ),
+    responses(
+        (status = 200, description = "Predefined tag suggestions"),
+        (status = 401, description = "Unauthorized", body = crate::web::openapi::ErrorResponse)
+    )
+)]
+pub async fn get_tag_suggestions(
+    _claims: web::ReqData<auth::Claims>,
+) -> Result<HttpResponse> {
+    let suggestions = vec![
+        // Environment tags
+        TagSuggestion { name: "production".to_string(), color: "#ef4444".to_string(), category: "Environment".to_string() },
+        TagSuggestion { name: "staging".to_string(), color: "#f59e0b".to_string(), category: "Environment".to_string() },
+        TagSuggestion { name: "development".to_string(), color: "#10b981".to_string(), category: "Environment".to_string() },
+        TagSuggestion { name: "qa".to_string(), color: "#8b5cf6".to_string(), category: "Environment".to_string() },
+        // Type tags
+        TagSuggestion { name: "internal".to_string(), color: "#3b82f6".to_string(), category: "Type".to_string() },
+        TagSuggestion { name: "external".to_string(), color: "#06b6d4".to_string(), category: "Type".to_string() },
+        TagSuggestion { name: "web-app".to_string(), color: "#ec4899".to_string(), category: "Type".to_string() },
+        TagSuggestion { name: "infrastructure".to_string(), color: "#84cc16".to_string(), category: "Type".to_string() },
+        TagSuggestion { name: "api".to_string(), color: "#a855f7".to_string(), category: "Type".to_string() },
+        TagSuggestion { name: "cloud".to_string(), color: "#14b8a6".to_string(), category: "Type".to_string() },
+        // Compliance tags
+        TagSuggestion { name: "pci".to_string(), color: "#f97316".to_string(), category: "Compliance".to_string() },
+        TagSuggestion { name: "hipaa".to_string(), color: "#0ea5e9".to_string(), category: "Compliance".to_string() },
+        TagSuggestion { name: "sox".to_string(), color: "#6366f1".to_string(), category: "Compliance".to_string() },
+        TagSuggestion { name: "gdpr".to_string(), color: "#22c55e".to_string(), category: "Compliance".to_string() },
+        TagSuggestion { name: "nist".to_string(), color: "#eab308".to_string(), category: "Compliance".to_string() },
+        // Priority tags
+        TagSuggestion { name: "critical".to_string(), color: "#dc2626".to_string(), category: "Priority".to_string() },
+        TagSuggestion { name: "high".to_string(), color: "#ea580c".to_string(), category: "Priority".to_string() },
+        TagSuggestion { name: "routine".to_string(), color: "#64748b".to_string(), category: "Priority".to_string() },
+        // Schedule tags
+        TagSuggestion { name: "quarterly".to_string(), color: "#0891b2".to_string(), category: "Schedule".to_string() },
+        TagSuggestion { name: "monthly".to_string(), color: "#7c3aed".to_string(), category: "Schedule".to_string() },
+        TagSuggestion { name: "weekly".to_string(), color: "#059669".to_string(), category: "Schedule".to_string() },
+    ];
+
+    Ok(HttpResponse::Ok().json(suggestions))
 }
 
 /// Get tags for a specific scan

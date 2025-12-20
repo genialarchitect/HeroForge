@@ -332,6 +332,7 @@ const ScanList: React.FC<ScanListProps> = ({ selectedIds, onSelectionChange }) =
                     isActive={activeScan?.id === scan.id}
                     onClick={() => setActiveScan(scan)}
                     tags={scanTagsMap[scan.id]}
+                    onTagClick={(tagId) => setTagFilter(tagId)}
                   />
                   {/* Duplicate button - shown on hover */}
                   <button

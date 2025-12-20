@@ -104,6 +104,9 @@ pub struct CreateScanRequest {
     pub customer_id: Option<String>,
     /// Optional CRM engagement ID to associate with this scan
     pub engagement_id: Option<String>,
+    /// Optional tag IDs to attach to this scan
+    #[serde(default)]
+    pub tag_ids: Vec<String>,
 }
 
 fn default_udp_retries() -> u8 {
@@ -963,6 +966,35 @@ pub struct VerifyVulnerabilityRequest {
 pub struct BulkAssignVulnerabilitiesRequest {
     pub vulnerability_ids: Vec<String>,
     pub assignee_id: String,
+    pub due_date: Option<String>,
+}
+
+/// Request to bulk update severity
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct BulkUpdateSeverityRequest {
+    pub vulnerability_ids: Vec<String>,
+    pub severity: String,
+}
+
+/// Request to bulk delete vulnerabilities
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct BulkDeleteVulnerabilitiesRequest {
+    pub vulnerability_ids: Vec<String>,
+}
+
+/// Request to bulk add tags to vulnerabilities
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct BulkAddTagsRequest {
+    pub vulnerability_ids: Vec<String>,
+    pub tags: Vec<String>,
+}
+
+/// Response for bulk operations
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct BulkOperationResponse {
+    pub updated: usize,
+    pub failed: usize,
+    pub message: String,
 }
 
 /// Request to request a retest for a vulnerability
@@ -997,6 +1029,69 @@ pub struct RetestHistoryEntry {
     pub result: Option<String>,
     pub scan_id: Option<String>,
     pub notes: Option<String>,
+}
+
+// ============================================================================
+// Vulnerability Assignment Models
+// ============================================================================
+
+/// Vulnerability assignment with user info for display
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow, utoipa::ToSchema)]
+pub struct VulnerabilityAssignmentWithUser {
+    pub id: String,
+    pub scan_id: String,
+    pub host_ip: String,
+    pub port: Option<i32>,
+    pub vulnerability_id: String,
+    pub severity: String,
+    pub status: String,
+    pub assignee_id: Option<String>,
+    pub assignee_username: Option<String>,
+    pub assignee_email: Option<String>,
+    pub notes: Option<String>,
+    pub due_date: Option<DateTime<Utc>>,
+    pub priority: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub scan_name: Option<String>,
+    pub is_overdue: bool,
+    pub days_until_due: Option<i64>,
+}
+
+/// User assignment statistics
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct UserAssignmentStats {
+    pub total: i64,
+    pub open: i64,
+    pub in_progress: i64,
+    pub overdue: i64,
+    pub due_today: i64,
+    pub due_this_week: i64,
+    pub critical: i64,
+    pub high: i64,
+}
+
+/// Request to assign a vulnerability
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct AssignVulnerabilityRequest {
+    pub assignee_id: String,
+    pub due_date: Option<DateTime<Utc>>,
+    pub priority: Option<String>,
+}
+
+/// Request to update an assignment
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct UpdateAssignmentRequest {
+    pub due_date: Option<DateTime<Utc>>,
+    pub priority: Option<String>,
+    pub status: Option<String>,
+}
+
+/// Response for my assignments endpoint
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct MyAssignmentsResponse {
+    pub stats: UserAssignmentStats,
+    pub assignments: Vec<VulnerabilityAssignmentWithUser>,
 }
 
 // ============================================================================
@@ -1243,6 +1338,76 @@ pub struct AssetDetailWithTags {
     pub ports: Vec<AssetPort>,
     pub history: Vec<AssetHistoryWithScan>,
     pub asset_tags: Vec<AssetTag>,
+}
+
+// ============================================================================
+// Asset Groups Models
+// ============================================================================
+
+/// Asset group for organizing assets into logical groupings
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct AssetGroup {
+    pub id: String,
+    pub user_id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub color: String,         // Hex color code (e.g., "#3b82f6")
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Asset group member record
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct AssetGroupMember {
+    pub asset_group_id: String,
+    pub asset_id: String,
+    pub added_at: DateTime<Utc>,
+}
+
+/// Request to create a new asset group
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateAssetGroupRequest {
+    pub name: String,
+    pub description: Option<String>,
+    pub color: String,
+}
+
+/// Request to update an asset group
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateAssetGroupRequest {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub color: Option<String>,
+}
+
+/// Request to add assets to a group
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AddAssetsToGroupRequest {
+    pub asset_ids: Vec<String>,
+}
+
+/// Asset group with member count for listing
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AssetGroupWithCount {
+    pub group: AssetGroup,
+    pub asset_count: i64,
+}
+
+/// Asset group with its member assets
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AssetGroupWithMembers {
+    pub group: AssetGroup,
+    pub assets: Vec<Asset>,
+}
+
+/// Asset detail with port details, tags, and groups for API responses
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AssetDetailFull {
+    pub asset: Asset,
+    pub ports: Vec<AssetPort>,
+    pub history: Vec<AssetHistoryWithScan>,
+    pub asset_tags: Vec<AssetTag>,
+    pub asset_groups: Vec<AssetGroup>,
 }
 
 // ============================================================================

@@ -135,6 +135,15 @@ export interface CreateScanRequest {
   // CRM integration
   customer_id?: string;
   engagement_id?: string;
+  // Tags
+  tag_ids?: string[];
+}
+
+// Tag suggestion for predefined tags
+export interface TagSuggestion {
+  name: string;
+  color: string;
+  category: string;
 }
 
 export interface ScanPreset {
@@ -207,7 +216,9 @@ export interface SslInfo {
 }
 
 // SSL/TLS Grading Types
-export type SslGradeLevel = 'A+' | 'A' | 'A-' | 'B+' | 'B' | 'B-' | 'C' | 'D' | 'F' | 'Unknown';
+// T = Trust issues (self-signed, untrusted CA)
+// M = Hostname mismatch
+export type SslGradeLevel = 'A+' | 'A' | 'A-' | 'B+' | 'B' | 'B-' | 'C' | 'D' | 'F' | 'T' | 'M' | 'Unknown';
 
 export type SslVulnerabilitySeverity = 'Critical' | 'High' | 'Medium' | 'Low' | 'Informational';
 
@@ -809,10 +820,82 @@ export interface BulkUpdateVulnerabilitiesRequest {
 export interface BulkAssignVulnerabilitiesRequest {
   vulnerability_ids: string[];
   assignee_id: string;
+  due_date?: string;
+}
+
+export interface BulkUpdateSeverityRequest {
+  vulnerability_ids: string[];
+  severity: 'critical' | 'high' | 'medium' | 'low' | 'info';
+}
+
+export interface BulkDeleteVulnerabilitiesRequest {
+  vulnerability_ids: string[];
+}
+
+export interface BulkAddTagsRequest {
+  vulnerability_ids: string[];
+  tags: string[];
+}
+
+export interface BulkOperationResponse {
+  updated?: number;
+  deleted?: number;
+  failed: number;
+  message: string;
 }
 
 export interface VerifyVulnerabilityRequest {
   scan_id?: string;
+}
+
+// Vulnerability Assignment Types
+export interface VulnerabilityAssignmentWithUser {
+  id: string;
+  scan_id: string;
+  host_ip: string;
+  port: number | null;
+  vulnerability_id: string;
+  severity: string;
+  status: string;
+  assignee_id: string | null;
+  assignee_username: string | null;
+  assignee_email: string | null;
+  notes: string | null;
+  due_date: string | null;
+  priority: string | null;
+  created_at: string;
+  updated_at: string;
+  scan_name: string | null;
+  is_overdue: boolean;
+  days_until_due: number | null;
+}
+
+export interface UserAssignmentStats {
+  total: number;
+  open: number;
+  in_progress: number;
+  overdue: number;
+  due_today: number;
+  due_this_week: number;
+  critical: number;
+  high: number;
+}
+
+export interface MyAssignmentsResponse {
+  stats: UserAssignmentStats;
+  assignments: VulnerabilityAssignmentWithUser[];
+}
+
+export interface AssignVulnerabilityRequest {
+  assignee_id: string;
+  due_date?: string;
+  priority?: string;
+}
+
+export interface UpdateAssignmentRequest {
+  due_date?: string;
+  priority?: string;
+  status?: string;
 }
 
 // Retest workflow types
@@ -2295,5 +2378,50 @@ export interface AssetDetailWithTags {
   ports: AssetPort[];
   history: AssetHistoryWithScan[];
   asset_tags: AssetTag[];
+}
+
+// Asset Groups
+export interface AssetGroup {
+  id: string;
+  user_id: string;
+  name: string;
+  description?: string;
+  color: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AssetGroupWithCount {
+  group: AssetGroup;
+  asset_count: number;
+}
+
+export interface AssetGroupWithMembers {
+  group: AssetGroup;
+  assets: Asset[];
+}
+
+export interface CreateAssetGroupRequest {
+  name: string;
+  description?: string;
+  color: string;
+}
+
+export interface UpdateAssetGroupRequest {
+  name?: string;
+  description?: string;
+  color?: string;
+}
+
+export interface AddAssetsToGroupRequest {
+  asset_ids: string[];
+}
+
+export interface AssetDetailFull {
+  asset: Asset;
+  ports: AssetPort[];
+  history: AssetHistoryWithScan[];
+  asset_tags: AssetTag[];
+  asset_groups: AssetGroup[];
 }
 

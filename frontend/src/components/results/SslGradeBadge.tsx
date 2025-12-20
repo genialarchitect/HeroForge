@@ -1,36 +1,83 @@
-import React, { useState } from 'react';
-import { Shield, ChevronDown, ChevronUp, AlertTriangle, CheckCircle, Info, Lock, Key, FileCheck } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Shield, ChevronDown, ChevronUp, AlertTriangle, CheckCircle, Info, Lock, Key, FileCheck, ShieldAlert, ShieldX } from 'lucide-react';
 import type { SslGrade, SslGradeLevel, SslVulnerability, SslVulnerabilitySeverity } from '../../types';
 
 interface SslGradeBadgeProps {
   grade: SslGrade;
   showDetails?: boolean;
   compact?: boolean;
+  animate?: boolean;
 }
 
 // Get color classes for grade level
-function getGradeColors(grade: SslGradeLevel): { bg: string; text: string; border: string } {
+function getGradeColors(grade: SslGradeLevel): { bg: string; text: string; border: string; glow?: string } {
   switch (grade) {
     case 'A+':
-      return { bg: 'bg-emerald-500', text: 'text-white', border: 'border-emerald-600' };
+      return { bg: 'bg-emerald-500', text: 'text-white', border: 'border-emerald-600', glow: 'shadow-emerald-500/50' };
     case 'A':
-      return { bg: 'bg-green-500', text: 'text-white', border: 'border-green-600' };
+      return { bg: 'bg-green-500', text: 'text-white', border: 'border-green-600', glow: 'shadow-green-500/50' };
     case 'A-':
-      return { bg: 'bg-green-400', text: 'text-white', border: 'border-green-500' };
+      return { bg: 'bg-green-400', text: 'text-white', border: 'border-green-500', glow: 'shadow-green-400/50' };
     case 'B+':
-      return { bg: 'bg-lime-500', text: 'text-white', border: 'border-lime-600' };
+      return { bg: 'bg-lime-500', text: 'text-white', border: 'border-lime-600', glow: 'shadow-lime-500/50' };
     case 'B':
-      return { bg: 'bg-yellow-500', text: 'text-gray-900', border: 'border-yellow-600' };
+      return { bg: 'bg-yellow-500', text: 'text-gray-900', border: 'border-yellow-600', glow: 'shadow-yellow-500/50' };
     case 'B-':
-      return { bg: 'bg-yellow-400', text: 'text-gray-900', border: 'border-yellow-500' };
+      return { bg: 'bg-yellow-400', text: 'text-gray-900', border: 'border-yellow-500', glow: 'shadow-yellow-400/50' };
     case 'C':
-      return { bg: 'bg-orange-500', text: 'text-white', border: 'border-orange-600' };
+      return { bg: 'bg-orange-500', text: 'text-white', border: 'border-orange-600', glow: 'shadow-orange-500/50' };
     case 'D':
-      return { bg: 'bg-red-400', text: 'text-white', border: 'border-red-500' };
+      return { bg: 'bg-red-400', text: 'text-white', border: 'border-red-500', glow: 'shadow-red-400/50' };
     case 'F':
-      return { bg: 'bg-red-600', text: 'text-white', border: 'border-red-700' };
+      return { bg: 'bg-red-600', text: 'text-white', border: 'border-red-700', glow: 'shadow-red-600/50' };
+    case 'T':
+      // Trust issues - purple/violet to indicate trust problem
+      return { bg: 'bg-purple-600', text: 'text-white', border: 'border-purple-700', glow: 'shadow-purple-600/50' };
+    case 'M':
+      // Mismatch - magenta/pink to indicate hostname mismatch
+      return { bg: 'bg-fuchsia-600', text: 'text-white', border: 'border-fuchsia-700', glow: 'shadow-fuchsia-600/50' };
     default:
       return { bg: 'bg-gray-500', text: 'text-white', border: 'border-gray-600' };
+  }
+}
+
+// Get grade description for tooltips
+function getGradeDescription(grade: SslGradeLevel): string {
+  switch (grade) {
+    case 'A+':
+      return 'Excellent - Best possible SSL/TLS configuration with HSTS';
+    case 'A':
+      return 'Very Good - Strong SSL/TLS configuration';
+    case 'A-':
+      return 'Good - Minor improvements possible';
+    case 'B+':
+    case 'B':
+    case 'B-':
+      return 'Acceptable - Some security issues present';
+    case 'C':
+      return 'Weak - Significant security issues';
+    case 'D':
+      return 'Poor - Serious security vulnerabilities';
+    case 'F':
+      return 'Failed - Critical security issues';
+    case 'T':
+      return 'Trust Issue - Certificate not from a trusted CA (self-signed)';
+    case 'M':
+      return 'Mismatch - Certificate hostname does not match';
+    default:
+      return 'Unknown - Grade could not be determined';
+  }
+}
+
+// Get icon for special grades
+function getGradeIcon(grade: SslGradeLevel): React.ElementType | null {
+  switch (grade) {
+    case 'T':
+      return ShieldAlert;
+    case 'M':
+      return ShieldX;
+    default:
+      return null;
   }
 }
 
@@ -107,18 +154,33 @@ function VulnerabilityItem({ vuln }: { vuln: SslVulnerability }) {
   );
 }
 
-export function SslGradeBadge({ grade, showDetails = true, compact = false }: SslGradeBadgeProps) {
+export function SslGradeBadge({ grade, showDetails = true, compact = false, animate = true }: SslGradeBadgeProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isRevealed, setIsRevealed] = useState(!animate);
   const colors = getGradeColors(grade.grade);
+  const GradeIcon = getGradeIcon(grade.grade);
+  const isSpecialGrade = grade.grade === 'T' || grade.grade === 'M';
+
+  // Animation effect for grade reveal
+  useEffect(() => {
+    if (animate && !isRevealed) {
+      const timer = setTimeout(() => setIsRevealed(true), 100);
+      return () => clearTimeout(timer);
+    }
+  }, [animate, isRevealed]);
 
   if (compact) {
-    // Compact mode - just show the grade badge
+    // Compact mode - just show the grade badge with tooltip
     return (
       <div
-        className={`inline-flex items-center justify-center w-8 h-8 rounded-lg font-bold text-sm ${colors.bg} ${colors.text} border ${colors.border}`}
-        title={`SSL/TLS Grade: ${grade.grade} (Score: ${grade.overall_score}/100)`}
+        className={`inline-flex items-center justify-center w-8 h-8 rounded-lg font-bold text-sm
+          ${colors.bg} ${colors.text} border ${colors.border}
+          ${isRevealed ? 'opacity-100 scale-100' : 'opacity-0 scale-75'}
+          ${colors.glow ? `shadow-lg ${colors.glow}` : ''}
+          transition-all duration-300 ease-out`}
+        title={`SSL/TLS Grade: ${grade.grade} - ${getGradeDescription(grade.grade)} (Score: ${grade.overall_score}/100)`}
       >
-        {grade.grade}
+        {GradeIcon ? <GradeIcon className="w-4 h-4" /> : grade.grade}
       </div>
     );
   }
@@ -127,37 +189,54 @@ export function SslGradeBadge({ grade, showDetails = true, compact = false }: Ss
     <div className="bg-gray-800/50 rounded-lg border border-gray-700">
       {/* Header with grade and toggle */}
       <div
-        className={`flex items-center justify-between p-3 ${showDetails ? 'cursor-pointer hover:bg-gray-800/80' : ''}`}
+        className={`flex items-center justify-between p-3 ${showDetails ? 'cursor-pointer hover:bg-gray-800/80' : ''} transition-colors`}
         onClick={() => showDetails && setIsExpanded(!isExpanded)}
       >
         <div className="flex items-center gap-3">
           <div
-            className={`flex items-center justify-center w-12 h-12 rounded-lg font-bold text-xl ${colors.bg} ${colors.text} border-2 ${colors.border}`}
+            className={`flex items-center justify-center w-12 h-12 rounded-lg font-bold text-xl
+              ${colors.bg} ${colors.text} border-2 ${colors.border}
+              ${isRevealed ? 'opacity-100 scale-100' : 'opacity-0 scale-75'}
+              ${colors.glow ? `shadow-lg ${colors.glow}` : ''}
+              transition-all duration-500 ease-out`}
           >
-            {grade.grade}
+            {GradeIcon ? <GradeIcon className="w-6 h-6" /> : grade.grade}
           </div>
           <div>
             <div className="flex items-center gap-2">
               <span className="text-gray-200 font-medium">SSL/TLS Grade</span>
-              {grade.grade_capped && (
+              {isSpecialGrade && (
+                <span className={`text-xs px-2 py-0.5 rounded ${
+                  grade.grade === 'T' ? 'bg-purple-500/20 text-purple-400' : 'bg-fuchsia-500/20 text-fuchsia-400'
+                }`}>
+                  {grade.grade === 'T' ? 'Trust Issue' : 'Hostname Mismatch'}
+                </span>
+              )}
+              {!isSpecialGrade && grade.grade_capped && (
                 <span className="text-xs bg-yellow-500/20 text-yellow-400 px-2 py-0.5 rounded">
                   Capped
                 </span>
               )}
             </div>
             <div className="text-sm text-gray-400">
-              Overall Score: {grade.overall_score}/100
-              {grade.vulnerabilities_found.length > 0 && (
-                <span className="ml-2 text-red-400">
-                  ({grade.vulnerabilities_found.length} issue{grade.vulnerabilities_found.length !== 1 ? 's' : ''})
-                </span>
+              {isSpecialGrade ? (
+                <span>{getGradeDescription(grade.grade)}</span>
+              ) : (
+                <>
+                  Overall Score: {grade.overall_score}/100
+                  {grade.vulnerabilities_found.length > 0 && (
+                    <span className="ml-2 text-red-400">
+                      ({grade.vulnerabilities_found.length} issue{grade.vulnerabilities_found.length !== 1 ? 's' : ''})
+                    </span>
+                  )}
+                </>
               )}
             </div>
           </div>
         </div>
 
         {showDetails && (
-          <button className="text-gray-400 hover:text-gray-200 p-1">
+          <button className="text-gray-400 hover:text-gray-200 p-1 transition-colors">
             {isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
           </button>
         )}

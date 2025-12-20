@@ -42,6 +42,7 @@ import type {
   VulnerabilityTracking,
   VulnerabilityDetail,
   VulnerabilityComment,
+  VulnerabilityCommentWithUser,
   UpdateVulnerabilityRequest,
   BulkUpdateVulnerabilitiesRequest,
   BulkAssignVulnerabilitiesRequest,
@@ -51,6 +52,11 @@ import type {
   RequestRetestRequest,
   BulkRetestRequest,
   CompleteRetestRequest,
+  VulnerabilityAssignmentWithUser,
+  UserAssignmentStats,
+  MyAssignmentsResponse,
+  AssignVulnerabilityRequest,
+  UpdateAssignmentRequest,
   ComplianceFramework,
   ComplianceControlList,
   ComplianceAnalyzeRequest,
@@ -135,6 +141,7 @@ import type {
   AddTagsToScanRequest,
   ScanWithTags,
   DuplicateScanRequest,
+  TagSuggestion,
   // Asset Tags types
   AssetTag,
   AssetTagWithCount,
@@ -143,6 +150,14 @@ import type {
   AddAssetTagsRequest,
   Asset,
   AssetDetailWithTags,
+  // Asset Groups types
+  AssetGroup,
+  AssetGroupWithCount,
+  AssetGroupWithMembers,
+  CreateAssetGroupRequest,
+  UpdateAssetGroupRequest,
+  AddAssetsToGroupRequest,
+  AssetDetailFull,
   // SSL Report types
   SslReportSummary,
 } from '../types';
@@ -231,6 +246,7 @@ export const scanTagAPI = {
   getAll: () => api.get<ScanTag[]>('/scans/tags'),
   create: (data: CreateScanTagRequest) => api.post<ScanTag>('/scans/tags', data),
   delete: (id: string) => api.delete<{ message: string }>(`/scans/tags/${id}`),
+  getSuggestions: () => api.get<TagSuggestion[]>('/scans/tags/suggestions'),
 
   // Tag-scan associations
   getTagsForScan: (scanId: string) => api.get<ScanTag[]>(`/scans/${scanId}/tags`),
@@ -410,6 +426,12 @@ export const vulnerabilityAPI = {
   addComment: (id: string, comment: string) =>
     api.post<VulnerabilityComment>(`/vulnerabilities/${id}/comments`, { comment }),
 
+  getComments: (id: string) =>
+    api.get<VulnerabilityCommentWithUser[]>(`/vulnerabilities/${id}/comments`),
+
+  deleteComment: (vulnId: string, commentId: string) =>
+    api.delete<{ message: string }>(`/vulnerabilities/${vulnId}/comments/${commentId}`),
+
   bulkUpdate: (data: BulkUpdateVulnerabilitiesRequest) =>
     api.post<{ updated: number }>('/vulnerabilities/bulk-update', data),
 
@@ -433,6 +455,68 @@ export const vulnerabilityAPI = {
 
   bulkAssign: (data: BulkAssignVulnerabilitiesRequest) =>
     api.post<{ updated: number }>('/vulnerabilities/bulk-assign', data),
+
+  // Assignment endpoints
+  getMyAssignments: (params?: { status?: string; overdue?: boolean; user_id?: string }) => {
+    const queryParams = new URLSearchParams();
+    if (params?.status) queryParams.append('status', params.status);
+    if (params?.overdue !== undefined) queryParams.append('overdue', params.overdue.toString());
+    if (params?.user_id) queryParams.append('user_id', params.user_id);
+    return api.get<MyAssignmentsResponse>(`/vulnerabilities/assigned?${queryParams.toString()}`);
+  },
+
+  getAssignmentStats: () =>
+    api.get<UserAssignmentStats>('/vulnerabilities/assignment-stats'),
+
+  listWithAssignments: (params?: {
+    scan_id?: string;
+    status?: string;
+    severity?: string;
+    assigned_to?: string;
+    overdue?: boolean;
+  }) => {
+    const queryParams = new URLSearchParams();
+    if (params?.scan_id) queryParams.append('scan_id', params.scan_id);
+    if (params?.status) queryParams.append('status', params.status);
+    if (params?.severity) queryParams.append('severity', params.severity);
+    if (params?.assigned_to) queryParams.append('assigned_to', params.assigned_to);
+    if (params?.overdue !== undefined) queryParams.append('overdue', params.overdue.toString());
+    return api.get<VulnerabilityAssignmentWithUser[]>(`/vulnerabilities/with-assignments?${queryParams.toString()}`);
+  },
+
+  assign: (id: string, data: AssignVulnerabilityRequest) =>
+    api.post<VulnerabilityTracking>(`/vulnerabilities/${id}/assign`, data),
+
+  unassign: (id: string) =>
+    api.delete<VulnerabilityTracking>(`/vulnerabilities/${id}/assign`),
+
+  updateAssignment: (id: string, data: UpdateAssignmentRequest) =>
+    api.put<VulnerabilityTracking>(`/vulnerabilities/${id}/assignment`, data),
+
+  // New bulk operation endpoints
+  bulkUpdateStatus: (vulnerability_ids: string[], status: string) =>
+    api.post<{ updated: number; failed: number; message: string }>(
+      '/vulnerabilities/bulk/status',
+      { vulnerability_ids, status }
+    ),
+
+  bulkUpdateSeverity: (vulnerability_ids: string[], severity: string) =>
+    api.post<{ updated: number; failed: number; message: string }>(
+      '/vulnerabilities/bulk/severity',
+      { vulnerability_ids, severity }
+    ),
+
+  bulkDelete: (vulnerability_ids: string[]) =>
+    api.post<{ deleted: number; failed: number; message: string }>(
+      '/vulnerabilities/bulk/delete',
+      { vulnerability_ids }
+    ),
+
+  bulkAddTags: (vulnerability_ids: string[], tags: string[]) =>
+    api.post<{ updated: number; failed: number; message: string }>(
+      '/vulnerabilities/bulk/tags',
+      { vulnerability_ids, tags }
+    ),
 
   // Retest workflow methods
   requestRetest: (id: string, data: RequestRetestRequest = {}) =>
@@ -1213,6 +1297,45 @@ export const assetTagsAPI = {
   // Get asset history
   getAssetHistory: (assetId: string) =>
     api.get(`/assets/${assetId}/history`),
+
+  // Get asset with full details (tags and groups)
+  getAssetFull: (assetId: string) =>
+    api.get<AssetDetailFull>(`/assets/${assetId}/full`),
+};
+
+// Asset Groups API
+export const assetGroupsAPI = {
+  // Get all asset groups with member counts
+  getGroups: () =>
+    api.get<AssetGroupWithCount[]>('/asset-groups'),
+
+  // Create a new asset group
+  createGroup: (data: CreateAssetGroupRequest) =>
+    api.post<AssetGroup>('/asset-groups', data),
+
+  // Get a specific group by ID with its members
+  getGroup: (groupId: string) =>
+    api.get<AssetGroupWithMembers>(`/asset-groups/${groupId}`),
+
+  // Update an existing group
+  updateGroup: (groupId: string, data: UpdateAssetGroupRequest) =>
+    api.put<AssetGroup>(`/asset-groups/${groupId}`, data),
+
+  // Delete a group
+  deleteGroup: (groupId: string) =>
+    api.delete<{ message: string }>(`/asset-groups/${groupId}`),
+
+  // Add assets to a group
+  addAssetsToGroup: (groupId: string, data: AddAssetsToGroupRequest) =>
+    api.post<AssetGroupWithMembers>(`/asset-groups/${groupId}/members`, data),
+
+  // Remove an asset from a group
+  removeAssetFromGroup: (groupId: string, assetId: string) =>
+    api.delete<AssetGroupWithMembers>(`/asset-groups/${groupId}/members/${assetId}`),
+
+  // Get assets filtered by group
+  getAssetsByGroup: (params: { group_id: string; status?: string }) =>
+    api.get<Asset[]>('/asset-groups/assets', { params }),
 };
 
 export default api;

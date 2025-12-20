@@ -850,3 +850,415 @@ pub async fn get_assets_by_tags(
     let assets = q.fetch_all(pool).await?;
     Ok(assets)
 }
+
+// ============================================================================
+// Asset Groups Functions
+// ============================================================================
+
+/// Create a new asset group
+pub async fn create_asset_group(
+    pool: &SqlitePool,
+    user_id: &str,
+    request: &models::CreateAssetGroupRequest,
+) -> Result<models::AssetGroup> {
+    let now = Utc::now();
+    let id = Uuid::new_v4().to_string();
+
+    let group = sqlx::query_as::<_, models::AssetGroup>(
+        r#"
+        INSERT INTO asset_groups (id, user_id, name, description, color, created_at, updated_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+        RETURNING *
+        "#,
+    )
+    .bind(&id)
+    .bind(user_id)
+    .bind(&request.name)
+    .bind(&request.description)
+    .bind(&request.color)
+    .bind(now)
+    .bind(now)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(group)
+}
+
+/// Get all asset groups for a user
+pub async fn get_user_asset_groups(
+    pool: &SqlitePool,
+    user_id: &str,
+) -> Result<Vec<models::AssetGroup>> {
+    let groups = sqlx::query_as::<_, models::AssetGroup>(
+        "SELECT * FROM asset_groups WHERE user_id = ?1 ORDER BY name",
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(groups)
+}
+
+/// Get all asset groups with member counts
+pub async fn get_user_asset_groups_with_counts(
+    pool: &SqlitePool,
+    user_id: &str,
+) -> Result<Vec<models::AssetGroupWithCount>> {
+    let groups_raw: Vec<(String, String, String, Option<String>, String, DateTime<Utc>, DateTime<Utc>, i64)> = sqlx::query_as(
+        r#"
+        SELECT
+            ag.id,
+            ag.user_id,
+            ag.name,
+            ag.description,
+            ag.color,
+            ag.created_at,
+            ag.updated_at,
+            COUNT(agm.asset_id) as asset_count
+        FROM asset_groups ag
+        LEFT JOIN asset_group_members agm ON ag.id = agm.asset_group_id
+        WHERE ag.user_id = ?1
+        GROUP BY ag.id
+        ORDER BY ag.name
+        "#,
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?;
+
+    let groups_with_counts = groups_raw
+        .into_iter()
+        .map(|(id, user_id, name, description, color, created_at, updated_at, asset_count)| {
+            models::AssetGroupWithCount {
+                group: models::AssetGroup {
+                    id,
+                    user_id,
+                    name,
+                    description,
+                    color,
+                    created_at,
+                    updated_at,
+                },
+                asset_count,
+            }
+        })
+        .collect();
+
+    Ok(groups_with_counts)
+}
+
+/// Get asset group by ID
+pub async fn get_asset_group_by_id(
+    pool: &SqlitePool,
+    group_id: &str,
+    user_id: &str,
+) -> Result<Option<models::AssetGroup>> {
+    let group = sqlx::query_as::<_, models::AssetGroup>(
+        "SELECT * FROM asset_groups WHERE id = ?1 AND user_id = ?2",
+    )
+    .bind(group_id)
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(group)
+}
+
+/// Update an asset group
+pub async fn update_asset_group(
+    pool: &SqlitePool,
+    group_id: &str,
+    user_id: &str,
+    request: &models::UpdateAssetGroupRequest,
+) -> Result<models::AssetGroup> {
+    let now = Utc::now();
+
+    if let Some(name) = &request.name {
+        sqlx::query("UPDATE asset_groups SET name = ?1, updated_at = ?2 WHERE id = ?3 AND user_id = ?4")
+            .bind(name)
+            .bind(now)
+            .bind(group_id)
+            .bind(user_id)
+            .execute(pool)
+            .await?;
+    }
+
+    if let Some(description) = &request.description {
+        sqlx::query("UPDATE asset_groups SET description = ?1, updated_at = ?2 WHERE id = ?3 AND user_id = ?4")
+            .bind(description)
+            .bind(now)
+            .bind(group_id)
+            .bind(user_id)
+            .execute(pool)
+            .await?;
+    }
+
+    if let Some(color) = &request.color {
+        sqlx::query("UPDATE asset_groups SET color = ?1, updated_at = ?2 WHERE id = ?3 AND user_id = ?4")
+            .bind(color)
+            .bind(now)
+            .bind(group_id)
+            .bind(user_id)
+            .execute(pool)
+            .await?;
+    }
+
+    let group = sqlx::query_as::<_, models::AssetGroup>(
+        "SELECT * FROM asset_groups WHERE id = ?1 AND user_id = ?2",
+    )
+    .bind(group_id)
+    .bind(user_id)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(group)
+}
+
+/// Delete an asset group
+pub async fn delete_asset_group(
+    pool: &SqlitePool,
+    group_id: &str,
+    user_id: &str,
+) -> Result<bool> {
+    let result = sqlx::query("DELETE FROM asset_groups WHERE id = ?1 AND user_id = ?2")
+        .bind(group_id)
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+
+    Ok(result.rows_affected() > 0)
+}
+
+/// Add assets to a group
+pub async fn add_assets_to_group(
+    pool: &SqlitePool,
+    group_id: &str,
+    asset_ids: &[String],
+    user_id: &str,
+) -> Result<()> {
+    let now = Utc::now();
+
+    // First verify the group belongs to the user
+    let group = get_asset_group_by_id(pool, group_id, user_id).await?;
+    if group.is_none() {
+        return Err(anyhow::anyhow!("Asset group not found"));
+    }
+
+    for asset_id in asset_ids {
+        // Verify asset belongs to user
+        let asset = get_asset_by_id(pool, asset_id, user_id).await?;
+        if asset.is_none() {
+            continue; // Skip assets that don't exist or don't belong to user
+        }
+
+        // Insert mapping (ignore if already exists)
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO asset_group_members (asset_group_id, asset_id, added_at)
+            VALUES (?1, ?2, ?3)
+            "#,
+        )
+        .bind(group_id)
+        .bind(asset_id)
+        .bind(now)
+        .execute(pool)
+        .await?;
+    }
+
+    Ok(())
+}
+
+/// Remove an asset from a group
+pub async fn remove_asset_from_group(
+    pool: &SqlitePool,
+    group_id: &str,
+    asset_id: &str,
+    user_id: &str,
+) -> Result<bool> {
+    // First verify the group belongs to the user
+    let group = get_asset_group_by_id(pool, group_id, user_id).await?;
+    if group.is_none() {
+        return Ok(false);
+    }
+
+    let result = sqlx::query("DELETE FROM asset_group_members WHERE asset_group_id = ?1 AND asset_id = ?2")
+        .bind(group_id)
+        .bind(asset_id)
+        .execute(pool)
+        .await?;
+
+    Ok(result.rows_affected() > 0)
+}
+
+/// Get all assets in a group
+pub async fn get_group_assets(
+    pool: &SqlitePool,
+    group_id: &str,
+    user_id: &str,
+) -> Result<Vec<models::Asset>> {
+    // First verify the group belongs to the user
+    let group = get_asset_group_by_id(pool, group_id, user_id).await?;
+    if group.is_none() {
+        return Ok(vec![]);
+    }
+
+    let assets = sqlx::query_as::<_, models::Asset>(
+        r#"
+        SELECT a.*
+        FROM assets a
+        INNER JOIN asset_group_members agm ON a.id = agm.asset_id
+        WHERE agm.asset_group_id = ?1
+        ORDER BY a.ip_address
+        "#,
+    )
+    .bind(group_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(assets)
+}
+
+/// Get group with its member assets
+pub async fn get_asset_group_with_members(
+    pool: &SqlitePool,
+    group_id: &str,
+    user_id: &str,
+) -> Result<Option<models::AssetGroupWithMembers>> {
+    let group = get_asset_group_by_id(pool, group_id, user_id).await?;
+
+    if let Some(group) = group {
+        let assets = get_group_assets(pool, group_id, user_id).await?;
+
+        Ok(Some(models::AssetGroupWithMembers {
+            group,
+            assets,
+        }))
+    } else {
+        Ok(None)
+    }
+}
+
+/// Get all groups for an asset
+pub async fn get_asset_groups(
+    pool: &SqlitePool,
+    asset_id: &str,
+) -> Result<Vec<models::AssetGroup>> {
+    let groups = sqlx::query_as::<_, models::AssetGroup>(
+        r#"
+        SELECT ag.*
+        FROM asset_groups ag
+        INNER JOIN asset_group_members agm ON ag.id = agm.asset_group_id
+        WHERE agm.asset_id = ?1
+        ORDER BY ag.name
+        "#,
+    )
+    .bind(asset_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(groups)
+}
+
+/// Get asset detail with tags and groups
+pub async fn get_asset_detail_full(
+    pool: &SqlitePool,
+    asset_id: &str,
+    user_id: &str,
+) -> Result<Option<models::AssetDetailFull>> {
+    let asset = get_asset_by_id(pool, asset_id, user_id).await?;
+
+    if let Some(asset) = asset {
+        // Get ports
+        let ports = sqlx::query_as::<_, models::AssetPort>(
+            "SELECT * FROM asset_ports WHERE asset_id = ?1 ORDER BY port ASC",
+        )
+        .bind(asset_id)
+        .fetch_all(pool)
+        .await?;
+
+        // Get history with scan names
+        let history_raw: Vec<(String, String, String, String, DateTime<Utc>)> = sqlx::query_as(
+            r#"
+            SELECT
+                ah.id,
+                ah.scan_id,
+                sr.name as scan_name,
+                ah.changes,
+                ah.recorded_at
+            FROM asset_history ah
+            JOIN scan_results sr ON ah.scan_id = sr.id
+            WHERE ah.asset_id = ?1
+            ORDER BY ah.recorded_at DESC
+            LIMIT 50
+            "#,
+        )
+        .bind(asset_id)
+        .fetch_all(pool)
+        .await?;
+
+        let history: Vec<models::AssetHistoryWithScan> = history_raw
+            .into_iter()
+            .map(|(id, scan_id, scan_name, changes_str, recorded_at)| {
+                let changes = serde_json::from_str::<serde_json::Value>(&changes_str)
+                    .unwrap_or(serde_json::json!({}));
+                models::AssetHistoryWithScan {
+                    id,
+                    scan_id,
+                    scan_name,
+                    changes,
+                    recorded_at,
+                }
+            })
+            .collect();
+
+        // Get tags
+        let asset_tags = get_asset_tags(pool, asset_id).await?;
+
+        // Get groups
+        let asset_groups = get_asset_groups(pool, asset_id).await?;
+
+        Ok(Some(models::AssetDetailFull {
+            asset,
+            ports,
+            history,
+            asset_tags,
+            asset_groups,
+        }))
+    } else {
+        Ok(None)
+    }
+}
+
+/// Get assets filtered by group ID
+pub async fn get_assets_by_group(
+    pool: &SqlitePool,
+    user_id: &str,
+    group_id: &str,
+    status: Option<&str>,
+) -> Result<Vec<models::Asset>> {
+    let mut query = String::from(
+        r#"
+        SELECT DISTINCT a.*
+        FROM assets a
+        INNER JOIN asset_group_members agm ON a.id = agm.asset_id
+        WHERE a.user_id = ?1 AND agm.asset_group_id = ?2
+        "#,
+    );
+
+    if status.is_some() {
+        query.push_str(" AND a.status = ?3");
+    }
+
+    query.push_str(" ORDER BY a.last_seen DESC");
+
+    let mut q = sqlx::query_as::<_, models::Asset>(&query);
+    q = q.bind(user_id);
+    q = q.bind(group_id);
+
+    if let Some(s) = status {
+        q = q.bind(s);
+    }
+
+    let assets = q.fetch_all(pool).await?;
+    Ok(assets)
+}
