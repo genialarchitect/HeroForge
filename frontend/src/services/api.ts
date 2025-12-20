@@ -23,6 +23,7 @@ import type {
   UpdateNotificationSettingsRequest,
   ScanComparisonResponse,
   ScanTemplate,
+  TemplateCategorySummary,
   CreateTemplateRequest,
   UpdateTemplateRequest,
   UpdateProfileRequest,
@@ -117,7 +118,7 @@ import type {
   CreateFindingTemplateRequest,
   UpdateFindingTemplateRequest,
   CloneTemplateRequest,
-  TemplateCategory,
+  FindingTemplateCategory,
   MethodologyTemplate,
   MethodologyTemplateWithItems,
   MethodologyChecklist,
@@ -171,6 +172,20 @@ import type {
   RemediationRatePoint,
   RecurringVulnerability,
   VulnerabilityTrendsData,
+  // Webhook types
+  Webhook,
+  WebhookDelivery,
+  WebhookStats,
+  WebhookEventTypeInfo,
+  CreateWebhookRequest,
+  UpdateWebhookRequest,
+  WebhookTestResponse,
+  GenerateSecretResponse,
+  // Secret Findings types
+  SecretFinding,
+  SecretFindingStats,
+  UpdateSecretFindingRequest,
+  BulkUpdateSecretsResponse,
 } from '../types';
 
 const api = axios.create({
@@ -374,6 +389,77 @@ export const scheduledScanAPI = {
   delete: (id: string) => api.delete(`/scheduled-scans/${id}`),
 };
 
+// Scheduled Reports API
+export interface ScheduledReport {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string | null;
+  report_type: string;
+  format: string;
+  schedule: string;
+  recipients: string;
+  filters: string | null;
+  include_charts: boolean;
+  last_run_at: string | null;
+  next_run_at: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SchedulePreset {
+  id: string;
+  label: string;
+  cron: string;
+  description: string;
+}
+
+export interface ReportFilters {
+  min_severity?: string;
+  frameworks?: string[];
+  days_back?: number;
+  scan_ids?: string[];
+  customer_id?: string;
+  engagement_id?: string;
+}
+
+export interface CreateScheduledReportRequest {
+  name: string;
+  description?: string;
+  report_type: string;
+  format: string;
+  schedule: string;
+  recipients: string[];
+  filters?: ReportFilters;
+  include_charts?: boolean;
+}
+
+export interface UpdateScheduledReportRequest {
+  name?: string;
+  description?: string;
+  report_type?: string;
+  format?: string;
+  schedule?: string;
+  recipients?: string[];
+  filters?: ReportFilters;
+  include_charts?: boolean;
+  is_active?: boolean;
+}
+
+export const scheduledReportAPI = {
+  getAll: () => api.get<ScheduledReport[]>('/scheduled-reports'),
+  getById: (id: string) => api.get<ScheduledReport>(`/scheduled-reports/${id}`),
+  getPresets: () => api.get<SchedulePreset[]>('/scheduled-reports/presets'),
+  create: (data: CreateScheduledReportRequest) =>
+    api.post<ScheduledReport>('/scheduled-reports', data),
+  update: (id: string, data: UpdateScheduledReportRequest) =>
+    api.put<ScheduledReport>(`/scheduled-reports/${id}`, data),
+  delete: (id: string) => api.delete(`/scheduled-reports/${id}`),
+  runNow: (id: string) =>
+    api.post<{ message: string; report_id: string }>(`/scheduled-reports/${id}/run-now`),
+};
+
 export const notificationAPI = {
   getSettings: () => api.get<NotificationSettings>('/notifications/settings'),
   updateSettings: (data: UpdateNotificationSettingsRequest) =>
@@ -400,12 +486,36 @@ export const compareAPI = {
 };
 
 export const templateAPI = {
+  // Get all templates (user's own + system templates)
   getAll: () => api.get<ScanTemplate[]>('/templates'),
+  // Get system templates only
+  getSystem: () => api.get<ScanTemplate[]>('/templates/system'),
+  // Get template categories with counts
+  getCategories: () => api.get<TemplateCategorySummary[]>('/templates/categories'),
+  // Get user's default template
+  getDefault: () => api.get<ScanTemplate | null>('/templates/default'),
+  // Clear default template
+  clearDefault: () => api.delete('/templates/default'),
+  // Get template by ID
   getById: (id: string) => api.get<ScanTemplate>(`/templates/${id}`),
+  // Create a new template
   create: (data: CreateTemplateRequest) => api.post<ScanTemplate>('/templates', data),
+  // Update a template
   update: (id: string, data: UpdateTemplateRequest) => api.put<ScanTemplate>(`/templates/${id}`, data),
+  // Delete a template
   delete: (id: string) => api.delete(`/templates/${id}`),
-  createScan: (id: string, name: string) => api.post<ScanResult>(`/templates/${id}/scan`, { name }),
+  // Clone a template (copies system or user template)
+  clone: (id: string, newName?: string) => api.post<ScanTemplate>(`/templates/${id}/clone`, { new_name: newName }),
+  // Set a template as default
+  setDefault: (id: string) => api.post<ScanTemplate>(`/templates/${id}/set-default`),
+  // Create scan from template
+  createScan: (id: string, name: string, targets: string[]) =>
+    api.post<ScanResult>(`/templates/${id}/scan`, { name, targets }),
+  // Export template as JSON
+  export: (id: string) => api.get<Blob>(`/templates/${id}/export`, { responseType: 'blob' }),
+  // Import template from JSON
+  import: (template: { name: string; description?: string; category?: string; estimated_duration_mins?: number; config: unknown; is_default?: boolean }) =>
+    api.post<ScanTemplate>('/templates/import', { template }),
 };
 
 // User API (for assignment picker - available to all authenticated users)
@@ -701,6 +811,111 @@ export const siemAPI = {
   // Manually export a scan to SIEM
   exportScan: (scanId: string) =>
     api.post<SiemExportResponse>(`/integrations/siem/export/${scanId}`),
+};
+
+// ============================================================================
+// ServiceNow Integration API
+// ============================================================================
+
+export interface ServiceNowSettings {
+  user_id: string;
+  instance_url: string;
+  username: string;
+  default_assignment_group?: string;
+  default_category?: string;
+  default_impact: number;
+  default_urgency: number;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ServiceNowTicket {
+  id: string;
+  vulnerability_id: string;
+  ticket_number: string;
+  ticket_type: string;
+  ticket_sys_id: string;
+  ticket_url: string;
+  status?: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ServiceNowAssignmentGroup {
+  sys_id: string;
+  name: string;
+}
+
+export interface ServiceNowCategory {
+  label: string;
+  value: string;
+}
+
+export interface ServiceNowTicketStatus {
+  sys_id: string;
+  number: string;
+  state: string;
+  short_description: string;
+}
+
+export const serviceNowAPI = {
+  // Get ServiceNow settings for current user
+  getSettings: () => api.get<ServiceNowSettings>('/integrations/servicenow/settings'),
+
+  // Update ServiceNow settings
+  updateSettings: (data: {
+    instance_url: string;
+    username: string;
+    password: string;
+    default_assignment_group?: string;
+    default_category?: string;
+    default_impact?: number;
+    default_urgency?: number;
+    enabled: boolean;
+  }) => api.post('/integrations/servicenow/settings', data),
+
+  // Test ServiceNow connection
+  testConnection: () => api.post('/integrations/servicenow/test'),
+
+  // Get available assignment groups
+  getAssignmentGroups: () => api.get<ServiceNowAssignmentGroup[]>('/integrations/servicenow/assignment-groups'),
+
+  // Get available categories
+  getCategories: () => api.get<ServiceNowCategory[]>('/integrations/servicenow/categories'),
+
+  // Get ticket status from ServiceNow
+  getTicketStatus: (ticketNumber: string) =>
+    api.get<ServiceNowTicketStatus>(`/integrations/servicenow/tickets/${ticketNumber}/status`),
+
+  // Get ServiceNow tickets for a vulnerability
+  getTicketsForVulnerability: (vulnerabilityId: string) =>
+    api.get<ServiceNowTicket[]>(`/vulnerabilities/${vulnerabilityId}/servicenow/tickets`),
+
+  // Create incident from vulnerability
+  createIncident: (vulnerabilityId: string, data?: {
+    ticket_type?: string;
+    category?: string;
+    assignment_group?: string;
+  }) => api.post<{
+    id: string;
+    ticket_number: string;
+    ticket_type: string;
+    ticket_url: string;
+  }>(`/vulnerabilities/${vulnerabilityId}/servicenow/incident`, data || { ticket_type: 'incident' }),
+
+  // Create change request from vulnerability
+  createChange: (vulnerabilityId: string, data?: {
+    ticket_type?: string;
+    category?: string;
+    assignment_group?: string;
+  }) => api.post<{
+    id: string;
+    ticket_number: string;
+    ticket_type: string;
+    ticket_url: string;
+  }>(`/vulnerabilities/${vulnerabilityId}/servicenow/change`, data || { ticket_type: 'change' }),
 };
 
 export const webappAPI = {
@@ -1056,7 +1271,7 @@ export const findingTemplatesAPI = {
     api.post<FindingTemplate>(`/finding-templates/${id}/clone`, data || {}),
 
   // Get categories with counts
-  getCategories: () => api.get<TemplateCategory[]>('/finding-templates/categories'),
+  getCategories: () => api.get<FindingTemplateCategory[]>('/finding-templates/categories'),
 };
 
 // Methodology Checklists API
@@ -1386,6 +1601,33 @@ export const assetGroupsAPI = {
     api.post<BulkAddToGroupResponse>(`/asset-groups/${groupId}/bulk-add`, data),
 };
 
+// Exclusion validation types
+interface ValidateExclusionRequest {
+  exclusion_type: string;
+  value: string;
+}
+
+interface ValidateExclusionResponse {
+  valid: boolean;
+  error: string | null;
+  normalized_value: string | null;
+}
+
+// Bulk import types
+interface BulkImportExclusionsRequest {
+  exclusion_type: string;
+  values: string;
+  is_global: boolean;
+  name_prefix?: string;
+}
+
+interface BulkImportExclusionsResponse {
+  imported: number;
+  failed: number;
+  errors: string[];
+  created: ScanExclusion[];
+}
+
 // Scan Exclusions API
 export const exclusionsAPI = {
   // Get all exclusions for current user
@@ -1408,6 +1650,92 @@ export const exclusionsAPI = {
   // Delete an exclusion
   delete: (id: string) =>
     api.delete<{ message: string }>(`/exclusions/${id}`),
+
+  // Validate an exclusion value without creating it
+  validate: (data: ValidateExclusionRequest) =>
+    api.post<ValidateExclusionResponse>('/exclusions/validate', data),
+
+  // Bulk import exclusions from a list
+  bulkImport: (data: BulkImportExclusionsRequest) =>
+    api.post<BulkImportExclusionsResponse>('/exclusions/bulk-import', data),
+};
+
+// Webhooks API
+// Secret Findings API
+export const secretFindingsAPI = {
+  // List all secret findings with optional filters
+  list: (params?: {
+    scan_id?: string;
+    host_ip?: string;
+    secret_type?: string;
+    severity?: string;
+    status?: string;
+    limit?: number;
+    offset?: number;
+  }) => api.get<SecretFinding[]>('/secrets', { params }),
+
+  // Get secret findings for a specific scan
+  getByScan: (scanId: string) =>
+    api.get<SecretFinding[]>(`/scans/${scanId}/secrets`),
+
+  // Get statistics for secret findings
+  getStats: (scanId?: string) =>
+    api.get<SecretFindingStats>('/secrets/stats', {
+      params: scanId ? { scan_id: scanId } : undefined,
+    }),
+
+  // Get a single secret finding
+  get: (id: string) => api.get<SecretFinding>(`/secrets/${id}`),
+
+  // Update a secret finding
+  update: (id: string, data: UpdateSecretFindingRequest) =>
+    api.patch<SecretFinding>(`/secrets/${id}`, data),
+
+  // Bulk update status
+  bulkUpdateStatus: (ids: string[], status: string) =>
+    api.post<BulkUpdateSecretsResponse>('/secrets/bulk-status', { ids, status }),
+};
+
+export const webhooksAPI = {
+  // Get all webhooks for current user
+  list: () => api.get<Webhook[]>('/webhooks'),
+
+  // Get a specific webhook
+  get: (id: string) => api.get<Webhook>(`/webhooks/${id}`),
+
+  // Create a new webhook
+  create: (data: CreateWebhookRequest) =>
+    api.post<Webhook>('/webhooks', data),
+
+  // Update a webhook
+  update: (id: string, data: UpdateWebhookRequest) =>
+    api.put<Webhook>(`/webhooks/${id}`, data),
+
+  // Delete a webhook
+  delete: (id: string) =>
+    api.delete(`/webhooks/${id}`),
+
+  // Get available event types
+  getEventTypes: () =>
+    api.get<{ event_types: WebhookEventTypeInfo[] }>('/webhooks/event-types'),
+
+  // Generate a random secret
+  generateSecret: () =>
+    api.post<GenerateSecretResponse>('/webhooks/generate-secret'),
+
+  // Test a webhook
+  test: (id: string) =>
+    api.post<WebhookTestResponse>(`/webhooks/${id}/test`),
+
+  // Get delivery history for a webhook
+  getDeliveries: (id: string, limit?: number) =>
+    api.get<WebhookDelivery[]>(`/webhooks/${id}/deliveries`, {
+      params: { limit },
+    }),
+
+  // Get statistics for a webhook
+  getStats: (id: string) =>
+    api.get<WebhookStats>(`/webhooks/${id}/stats`),
 };
 
 export default api;

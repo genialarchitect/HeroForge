@@ -4,6 +4,7 @@ pub mod forms;
 pub mod sqli;
 pub mod xss;
 pub mod info_disclosure;
+pub mod secrets;
 
 use anyhow::Result;
 use log::info;
@@ -39,6 +40,7 @@ impl Default for WebAppScanConfig {
                 "sqli".to_string(),
                 "xss".to_string(),
                 "info_disclosure".to_string(),
+                "secrets".to_string(),
             ],
             timeout: Duration::from_secs(10),
             user_agent: "HeroForge WebApp Scanner/0.1".to_string(),
@@ -118,6 +120,13 @@ pub async fn scan_webapp(config: WebAppScanConfig) -> Result<WebAppScanResult> {
         findings.extend(info_findings);
     }
 
+    // Phase 7: Secret detection (API keys, passwords, tokens)
+    if config.checks_enabled.contains(&"secrets".to_string()) {
+        info!("Phase 7: Scanning for exposed secrets");
+        let secret_findings = secrets::check_secrets(&client, &discovered_urls).await?;
+        findings.extend(secret_findings);
+    }
+
     info!("Web application scan completed. Found {} findings", findings.len());
 
     Ok(WebAppScanResult {
@@ -155,7 +164,8 @@ mod tests {
         assert!(config.checks_enabled.contains(&"sqli".to_string()));
         assert!(config.checks_enabled.contains(&"xss".to_string()));
         assert!(config.checks_enabled.contains(&"info_disclosure".to_string()));
-        assert_eq!(config.checks_enabled.len(), 5);
+        assert!(config.checks_enabled.contains(&"secrets".to_string()));
+        assert_eq!(config.checks_enabled.len(), 6);
     }
 
     #[test]

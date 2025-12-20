@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { toast } from 'react-toastify';
 import { findingTemplatesAPI } from '../../services/api';
-import { FindingTemplate, CreateFindingTemplateRequest, TemplateCategory } from '../../types';
+import { FindingTemplate, CreateFindingTemplateRequest, FindingTemplateCategory } from '../../types';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
 import LoadingSpinner from '../ui/LoadingSpinner';
@@ -18,7 +18,7 @@ const CATEGORY_OPTIONS = ['web', 'network', 'infrastructure', 'cloud', 'api', 'm
 
 const FindingTemplates: React.FC = () => {
   const [templates, setTemplates] = useState<FindingTemplate[]>([]);
-  const [categories, setCategories] = useState<TemplateCategory[]>([]);
+  const [categories, setCategories] = useState<FindingTemplateCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<FindingTemplate | null>(null);

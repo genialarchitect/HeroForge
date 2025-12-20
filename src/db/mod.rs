@@ -33,11 +33,15 @@ pub mod migrations;
 pub mod models;
 pub mod models_dashboard;
 pub mod scans;
+pub mod scheduled_reports;
+pub mod secret_findings;
+pub mod servicenow;
 pub mod settings;
 pub mod threat_intel;
 pub mod users;
 pub mod vulnerabilities;
 pub mod vpn;
+pub mod webhooks;
 
 // Core imports used by this module
 use sqlx::sqlite::SqlitePool;
@@ -223,11 +227,21 @@ pub use scans::{
     update_report_status,
     delete_report,
     get_all_reports,
+    // Template functions
     create_template,
     get_user_templates,
+    get_user_custom_templates,
+    get_system_templates,
+    get_templates_by_category,
+    get_scan_template_categories,
     get_template_by_id,
+    get_default_template,
+    set_default_template,
+    increment_template_use_count,
+    clone_template as clone_scan_template,
     update_template,
     delete_template,
+    // Target group functions
     create_target_group,
     get_user_target_groups,
     get_target_group_by_id,
@@ -451,4 +465,44 @@ pub use exclusions::{
     UpdateExclusionRequest,
     ExclusionType,
     ExclusionRule,
+};
+
+// ============================================================================
+// Re-exports from webhooks module
+// ============================================================================
+
+pub use webhooks::{
+    create_webhook,
+    get_user_webhooks,
+    get_webhook_by_id,
+    get_webhook_by_id_internal,
+    update_webhook,
+    delete_webhook,
+    get_webhooks_for_event,
+    update_webhook_status,
+    disable_webhook,
+    log_delivery,
+    get_delivery_history,
+    cleanup_old_deliveries,
+    get_webhook_stats,
+    Webhook,
+    WebhookResponse,
+    WebhookDelivery,
+    CreateWebhookRequest,
+    UpdateWebhookRequest,
+    WebhookStats,
+};
+
+// ============================================================================
+// Re-exports from scheduled_reports module
+// ============================================================================
+
+pub use scheduled_reports::{
+    create_scheduled_report,
+    get_user_scheduled_reports,
+    get_scheduled_report_by_id,
+    update_scheduled_report,
+    delete_scheduled_report,
+    get_due_scheduled_reports,
+    update_scheduled_report_execution,
 };

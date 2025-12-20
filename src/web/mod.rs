@@ -196,6 +196,7 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .route("/scans/{id}/export", web::get().to(api::scans::export_scan_csv))
                     .route("/scans/{id}/export/markdown", web::get().to(api::scans::export_scan_markdown))
                     .route("/scans/{id}/ssl-report", web::get().to(api::scans::get_ssl_report))
+                    .route("/scans/{id}/secrets", web::get().to(api::secret_findings::get_scan_secrets))
                     .route("/scans/{id}/topology", web::get().to(api::topology::get_scan_topology))
                     .route("/scans/bulk-export", web::post().to(api::scans::bulk_export_scans))
                     .route("/scans/bulk-delete", web::post().to(api::scans::bulk_delete_scans))
@@ -222,12 +223,18 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     // Template endpoints
                     .route("/templates", web::post().to(api::templates::create_template))
                     .route("/templates", web::get().to(api::templates::get_templates))
+                    .route("/templates/system", web::get().to(api::templates::get_system_templates))
+                    .route("/templates/categories", web::get().to(api::templates::get_template_categories))
+                    .route("/templates/default", web::get().to(api::templates::get_default_template))
+                    .route("/templates/default", web::delete().to(api::templates::clear_default_template))
+                    .route("/templates/import", web::post().to(api::templates::import_template))
                     .route("/templates/{id}", web::get().to(api::templates::get_template))
                     .route("/templates/{id}", web::put().to(api::templates::update_template))
                     .route("/templates/{id}", web::delete().to(api::templates::delete_template))
                     .route("/templates/{id}/export", web::get().to(api::templates::export_template))
-                    .route("/templates/import", web::post().to(api::templates::import_template))
                     .route("/templates/{id}/scan", web::post().to(api::templates::create_scan_from_template))
+                    .route("/templates/{id}/clone", web::post().to(api::templates::clone_template))
+                    .route("/templates/{id}/set-default", web::post().to(api::templates::set_default_template))
                     // Target group endpoints
                     .route("/target-groups", web::post().to(api::target_groups::create_target_group))
                     .route("/target-groups", web::get().to(api::target_groups::get_target_groups))
@@ -241,6 +248,14 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .route("/scheduled-scans/{id}", web::put().to(api::scheduled_scans::update_scheduled_scan))
                     .route("/scheduled-scans/{id}", web::delete().to(api::scheduled_scans::delete_scheduled_scan))
                     .route("/scheduled-scans/{id}/history", web::get().to(api::scheduled_scans::get_scheduled_scan_history))
+                    // Scheduled report endpoints
+                    .route("/scheduled-reports", web::post().to(api::scheduled_reports::create_scheduled_report))
+                    .route("/scheduled-reports", web::get().to(api::scheduled_reports::get_scheduled_reports))
+                    .route("/scheduled-reports/presets", web::get().to(api::scheduled_reports::get_schedule_presets))
+                    .route("/scheduled-reports/{id}", web::get().to(api::scheduled_reports::get_scheduled_report))
+                    .route("/scheduled-reports/{id}", web::put().to(api::scheduled_reports::update_scheduled_report))
+                    .route("/scheduled-reports/{id}", web::delete().to(api::scheduled_reports::delete_scheduled_report))
+                    .route("/scheduled-reports/{id}/run-now", web::post().to(api::scheduled_reports::run_scheduled_report_now))
                     // Notification settings endpoints
                     .route("/notifications/settings", web::get().to(api::notifications::get_notification_settings))
                     .route("/notifications/settings", web::put().to(api::notifications::update_notification_settings))
@@ -363,6 +378,27 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .route("/integrations/siem/settings/{id}", web::delete().to(api::siem::delete_siem_settings))
                     .route("/integrations/siem/settings/{id}/test", web::post().to(api::siem::test_siem_connection))
                     .route("/integrations/siem/export/{scan_id}", web::post().to(api::siem::export_scan_to_siem))
+                    // ServiceNow integration endpoints
+                    .route("/integrations/servicenow/settings", web::get().to(api::servicenow::get_servicenow_settings))
+                    .route("/integrations/servicenow/settings", web::post().to(api::servicenow::upsert_servicenow_settings))
+                    .route("/integrations/servicenow/test", web::post().to(api::servicenow::test_servicenow_connection))
+                    .route("/integrations/servicenow/assignment-groups", web::get().to(api::servicenow::get_assignment_groups))
+                    .route("/integrations/servicenow/categories", web::get().to(api::servicenow::get_categories))
+                    .route("/integrations/servicenow/tickets/{ticket_number}/status", web::get().to(api::servicenow::get_ticket_status))
+                    .route("/vulnerabilities/{id}/servicenow/tickets", web::get().to(api::servicenow::get_tickets_for_vulnerability))
+                    .route("/vulnerabilities/{id}/servicenow/incident", web::post().to(api::servicenow::create_incident))
+                    .route("/vulnerabilities/{id}/servicenow/change", web::post().to(api::servicenow::create_change))
+                    // Webhooks (outbound) endpoints
+                    .route("/webhooks", web::get().to(api::webhooks::list_webhooks))
+                    .route("/webhooks", web::post().to(api::webhooks::create_webhook))
+                    .route("/webhooks/event-types", web::get().to(api::webhooks::get_event_types))
+                    .route("/webhooks/generate-secret", web::post().to(api::webhooks::generate_secret))
+                    .route("/webhooks/{id}", web::get().to(api::webhooks::get_webhook))
+                    .route("/webhooks/{id}", web::put().to(api::webhooks::update_webhook))
+                    .route("/webhooks/{id}", web::delete().to(api::webhooks::delete_webhook))
+                    .route("/webhooks/{id}/test", web::post().to(api::webhooks::test_webhook))
+                    .route("/webhooks/{id}/deliveries", web::get().to(api::webhooks::get_deliveries))
+                    .route("/webhooks/{id}/stats", web::get().to(api::webhooks::get_stats))
                     // Finding templates endpoints
                     .route("/finding-templates", web::get().to(api::finding_templates::list_templates))
                     .route("/finding-templates", web::post().to(api::finding_templates::create_template))
@@ -407,7 +443,9 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     // Credential Audit endpoints
                     .configure(api::credential_audit::configure)
                     // Scan Exclusions endpoints
-                    .configure(api::exclusions::configure),
+                    .configure(api::exclusions::configure)
+                    // Secret Findings endpoints
+                    .configure(api::secret_findings::configure),
             )
             // Swagger UI for API documentation
             .service(

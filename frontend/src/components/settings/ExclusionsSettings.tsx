@@ -6,7 +6,7 @@ import Card from '../ui/Card';
 import Button from '../ui/Button';
 import LoadingSpinner from '../ui/LoadingSpinner';
 import ConfirmationDialog from '../ui/ConfirmationDialog';
-import { Ban, Plus, Edit2, Trash2, Save, X, Globe, Server, Network, Hash, FolderOpen, Info } from 'lucide-react';
+import { Ban, Plus, Edit2, Trash2, Save, X, Globe, Server, Network, Hash, FolderOpen, Info, Upload, AlertTriangle, CheckCircle } from 'lucide-react';
 
 const EXCLUSION_TYPES: { id: ExclusionType; label: string; description: string; placeholder: string; icon: React.ReactNode }[] = [
   {
@@ -54,10 +54,19 @@ interface ExclusionFormData {
   is_global: boolean;
 }
 
+// Bulk import form data
+interface BulkImportFormData {
+  exclusion_type: ExclusionType;
+  values: string;
+  is_global: boolean;
+  name_prefix: string;
+}
+
 const ExclusionsSettings: React.FC = () => {
   const [exclusions, setExclusions] = useState<ScanExclusion[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [showBulkImport, setShowBulkImport] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState<ExclusionFormData>({
     name: '',
@@ -66,6 +75,13 @@ const ExclusionsSettings: React.FC = () => {
     value: '',
     is_global: true,
   });
+  const [bulkImportData, setBulkImportData] = useState<BulkImportFormData>({
+    exclusion_type: 'host',
+    values: '',
+    is_global: true,
+    name_prefix: 'Imported',
+  });
+  const [bulkImporting, setBulkImporting] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<ScanExclusion | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -96,6 +112,16 @@ const ExclusionsSettings: React.FC = () => {
     });
     setEditingId(null);
     setShowForm(false);
+  };
+
+  const resetBulkImportForm = () => {
+    setBulkImportData({
+      exclusion_type: 'host',
+      values: '',
+      is_global: true,
+      name_prefix: 'Imported',
+    });
+    setShowBulkImport(false);
   };
 
   const handleEdit = (exclusion: ScanExclusion) => {
@@ -163,6 +189,58 @@ const ExclusionsSettings: React.FC = () => {
     }
   };
 
+  const handleBulkImport = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!bulkImportData.values.trim()) {
+      toast.error('Please enter values to import');
+      return;
+    }
+
+    if (!bulkImportData.name_prefix.trim()) {
+      toast.error('Please enter a name prefix');
+      return;
+    }
+
+    setBulkImporting(true);
+    try {
+      const response = await exclusionsAPI.bulkImport({
+        exclusion_type: bulkImportData.exclusion_type,
+        values: bulkImportData.values,
+        is_global: bulkImportData.is_global,
+        name_prefix: bulkImportData.name_prefix.trim(),
+      });
+
+      const result = response.data;
+      if (result.imported > 0) {
+        toast.success(`Imported ${result.imported} exclusion(s)`);
+      }
+      if (result.failed > 0) {
+        toast.warning(`${result.failed} value(s) failed to import`);
+        // Show first few errors
+        result.errors.slice(0, 3).forEach((err) => {
+          toast.error(err, { autoClose: 5000 });
+        });
+      }
+      resetBulkImportForm();
+      loadExclusions();
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || 'Failed to bulk import');
+    } finally {
+      setBulkImporting(false);
+    }
+  };
+
+  // Count values in the bulk import textarea
+  const getBulkValueCount = () => {
+    if (!bulkImportData.values.trim()) return 0;
+    return bulkImportData.values
+      .split(/[,\n;]/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0).length;
+  };
+
   const getExclusionTypeInfo = (type: ExclusionType) => {
     return EXCLUSION_TYPES.find((t) => t.id === type) || EXCLUSION_TYPES[0];
   };
@@ -188,11 +266,17 @@ const ExclusionsSettings: React.FC = () => {
             <Ban className="h-5 w-5 text-primary" />
             <h3 className="text-xl font-semibold text-white">Scan Exclusions</h3>
           </div>
-          {!showForm && (
-            <Button variant="primary" onClick={() => setShowForm(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              New Exclusion
-            </Button>
+          {!showForm && !showBulkImport && (
+            <div className="flex gap-2">
+              <Button variant="secondary" onClick={() => setShowBulkImport(true)}>
+                <Upload className="h-4 w-4 mr-2" />
+                Bulk Import
+              </Button>
+              <Button variant="primary" onClick={() => setShowForm(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                New Exclusion
+              </Button>
+            </div>
           )}
         </div>
         <p className="text-sm text-slate-400 mt-2">
@@ -293,7 +377,100 @@ const ExclusionsSettings: React.FC = () => {
         </Card>
       )}
 
-      {exclusions.length === 0 && !showForm ? (
+      {showBulkImport && (
+        <Card>
+          <form onSubmit={handleBulkImport} className="space-y-4">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Upload className="h-5 w-5 text-cyan-400" />
+                <h4 className="text-lg font-medium text-white">Bulk Import Exclusions</h4>
+              </div>
+              <button type="button" onClick={resetBulkImportForm} className="text-slate-400 hover:text-white">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1">Exclusion Type</label>
+                <select
+                  value={bulkImportData.exclusion_type}
+                  onChange={(e) => setBulkImportData({ ...bulkImportData, exclusion_type: e.target.value as ExclusionType })}
+                  className="w-full bg-dark-bg border border-dark-border rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-primary focus:border-transparent"
+                >
+                  {EXCLUSION_TYPES.map((type) => (
+                    <option key={type.id} value={type.id}>
+                      {type.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-slate-500 mt-1">
+                  {getExclusionTypeInfo(bulkImportData.exclusion_type).description}
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1">Name Prefix</label>
+                <input
+                  type="text"
+                  value={bulkImportData.name_prefix}
+                  onChange={(e) => setBulkImportData({ ...bulkImportData, name_prefix: e.target.value })}
+                  className="w-full bg-dark-bg border border-dark-border rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-primary focus:border-transparent"
+                  placeholder="Imported"
+                />
+                <p className="text-xs text-slate-500 mt-1">
+                  Exclusions will be named "{bulkImportData.name_prefix || 'Imported'} 1", "{bulkImportData.name_prefix || 'Imported'} 2", etc.
+                </p>
+              </div>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-sm font-medium text-slate-300">Values</label>
+                <span className="text-xs text-slate-500">
+                  {getBulkValueCount()} value(s) detected
+                </span>
+              </div>
+              <textarea
+                value={bulkImportData.values}
+                onChange={(e) => setBulkImportData({ ...bulkImportData, values: e.target.value })}
+                className="w-full bg-dark-bg border border-dark-border rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-primary focus:border-transparent font-mono text-sm"
+                rows={6}
+                placeholder={`Paste values here, one per line or comma-separated.\n\nExample for IPs:\n192.168.1.1\n192.168.1.2\n10.0.0.0/8\n\nExample for ports:\n22, 23, 135, 139, 445`}
+              />
+            </div>
+
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={bulkImportData.is_global}
+                  onChange={(e) => setBulkImportData({ ...bulkImportData, is_global: e.target.checked })}
+                  className="w-4 h-4 rounded bg-dark-bg border-dark-border text-primary focus:ring-primary focus:ring-offset-dark-bg"
+                />
+                <span className="text-sm text-slate-300">Apply to all scans (global exclusions)</span>
+              </label>
+            </div>
+
+            <div className="flex items-center justify-between pt-2 border-t border-dark-border">
+              <div className="flex items-center gap-2 text-xs text-slate-500">
+                <Info className="h-3 w-3" />
+                <span>Separate values with commas, newlines, or semicolons</span>
+              </div>
+              <div className="flex gap-2">
+                <Button type="button" variant="secondary" onClick={resetBulkImportForm}>
+                  Cancel
+                </Button>
+                <Button type="submit" variant="primary" loading={bulkImporting} disabled={getBulkValueCount() === 0}>
+                  <Upload className="h-4 w-4 mr-2" />
+                  Import {getBulkValueCount() > 0 ? `(${getBulkValueCount()})` : ''}
+                </Button>
+              </div>
+            </div>
+          </form>
+        </Card>
+      )}
+
+      {exclusions.length === 0 && !showForm && !showBulkImport ? (
         <Card>
           <div className="text-center py-12">
             <FolderOpen className="h-12 w-12 text-slate-500 mx-auto mb-4" />

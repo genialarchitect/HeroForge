@@ -26,6 +26,9 @@ pub mod reports;
 pub mod scan_presets;
 pub mod scans;
 pub mod scheduled_scans;
+pub mod scheduled_reports;
+pub mod secret_findings;
+pub mod servicenow;
 pub mod siem;
 pub mod target_groups;
 pub mod templates;
@@ -34,6 +37,7 @@ pub mod topology;
 pub mod vulnerabilities;
 pub mod vpn;
 pub mod webapp;
+pub mod webhooks;
 
 #[cfg(test)]
 mod tests;

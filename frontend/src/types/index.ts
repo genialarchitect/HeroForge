@@ -570,28 +570,66 @@ export interface UpdateNotificationSettingsRequest {
   teams_webhook_url?: string | null;
 }
 
-// Scan Templates
+// Scan Templates (Profiles/Presets)
+
+export type TemplateCategory = 'quick' | 'standard' | 'comprehensive' | 'web' | 'stealth' | 'custom';
+
+export interface ScanTemplateConfig {
+  port_range: [number, number];
+  threads: number;
+  enable_os_detection: boolean;
+  enable_service_detection: boolean;
+  enable_vuln_scan: boolean;
+  enable_enumeration: boolean;
+  enum_depth?: EnumDepth | null;
+  enum_services?: EnumService[] | null;
+  scan_type?: ScanType | null;
+  udp_port_range?: [number, number] | null;
+  udp_retries?: number;
+  target_group_id?: string | null;
+}
 
 export interface ScanTemplate {
   id: string;
   user_id: string;
   name: string;
   description: string | null;
-  config: string; // JSON string of scan config
+  config: ScanTemplateConfig;
+  is_default: boolean;
+  is_system: boolean;
+  category: TemplateCategory;
+  estimated_duration_mins: number | null;
+  use_count: number;
+  last_used_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface TemplateCategorySummary {
+  category: string;
+  count: number;
 }
 
 export interface CreateTemplateRequest {
   name: string;
   description?: string;
-  config: ScheduledScanConfig;
+  config: ScanTemplateConfig;
+  is_default?: boolean;
+  category?: TemplateCategory;
+  estimated_duration_mins?: number;
 }
 
 export interface UpdateTemplateRequest {
   name?: string;
   description?: string;
-  config?: ScheduledScanConfig;
+  config?: ScanTemplateConfig;
+  is_default?: boolean;
+  category?: TemplateCategory;
+  estimated_duration_mins?: number;
+}
+
+export interface CloneTemplateRequest {
+  new_name?: string;
 }
 
 // Profile Types
@@ -1865,7 +1903,7 @@ export interface CloneTemplateRequest {
   new_title?: string;
 }
 
-export interface TemplateCategory {
+export interface FindingTemplateCategory {
   category: string;
   count: number;
 }
@@ -2577,3 +2615,154 @@ export interface UpdateExclusionRequest {
   is_global?: boolean;
 }
 
+// ============================================================================
+// Webhook Types
+// ============================================================================
+
+export type WebhookEventType =
+  | 'scan.started'
+  | 'scan.completed'
+  | 'scan.failed'
+  | 'vulnerability.found'
+  | 'vulnerability.critical'
+  | 'vulnerability.resolved'
+  | 'asset.discovered'
+  | 'compliance.violation';
+
+export interface Webhook {
+  id: string;
+  user_id: string;
+  name: string;
+  url: string;
+  has_secret: boolean;
+  events: WebhookEventType[];
+  headers: Record<string, string> | null;
+  is_active: boolean;
+  last_triggered_at: string | null;
+  last_status_code: number | null;
+  failure_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WebhookDelivery {
+  id: string;
+  webhook_id: string;
+  event_type: string;
+  payload: string;
+  response_status: number | null;
+  response_body: string | null;
+  error: string | null;
+  delivered_at: string;
+}
+
+export interface WebhookStats {
+  total_deliveries: number;
+  successful_deliveries: number;
+  failed_deliveries: number;
+  last_7_days_deliveries: number;
+}
+
+export interface WebhookEventTypeInfo {
+  id: string;
+  name: string;
+  description: string;
+}
+
+export interface CreateWebhookRequest {
+  name: string;
+  url: string;
+  secret?: string;
+  events: WebhookEventType[];
+  headers?: Record<string, string>;
+  is_active?: boolean;
+}
+
+export interface UpdateWebhookRequest {
+  name?: string;
+  url?: string;
+  secret?: string;
+  events?: WebhookEventType[];
+  headers?: Record<string, string>;
+  is_active?: boolean;
+}
+
+export interface WebhookTestResponse {
+  success: boolean;
+  status_code: number | null;
+  error: string | null;
+  attempts: number;
+}
+
+export interface GenerateSecretResponse {
+  secret: string;
+}
+
+// Secret Findings Types
+export type SecretSeverity = 'critical' | 'high' | 'medium' | 'low';
+export type SecretStatus = 'open' | 'resolved' | 'investigating' | 'false_positive';
+
+export interface SecretFinding {
+  id: string;
+  scan_id: string;
+  host_ip: string;
+  port: number | null;
+  secret_type: string;
+  severity: SecretSeverity;
+  redacted_value: string;
+  source_type: string;
+  source_location: string;
+  line_number: number | null;
+  context: string | null;
+  confidence: number;
+  status: SecretStatus;
+  resolved_at: string | null;
+  resolved_by: string | null;
+  false_positive: boolean;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SecretTypeCount {
+  secret_type: string;
+  count: number;
+}
+
+export interface SecretFindingStats {
+  total_findings: number;
+  critical_count: number;
+  high_count: number;
+  medium_count: number;
+  low_count: number;
+  open_count: number;
+  resolved_count: number;
+  false_positive_count: number;
+  by_type: SecretTypeCount[];
+}
+
+export interface SecretFindingsQuery {
+  scan_id?: string;
+  host_ip?: string;
+  secret_type?: string;
+  severity?: string;
+  status?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface UpdateSecretFindingRequest {
+  status?: SecretStatus;
+  false_positive?: boolean;
+  notes?: string;
+}
+
+export interface BulkUpdateSecretsRequest {
+  ids: string[];
+  status: SecretStatus;
+}
+
+export interface BulkUpdateSecretsResponse {
+  updated: number;
+  message: string;
+}

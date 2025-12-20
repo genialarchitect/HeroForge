@@ -186,6 +186,9 @@ pub enum FindingType {
     InformationDisclosure,
     Vulnerability,
     SecurityConfig,
+
+    // Secret/credential findings
+    ExposedSecret(String), // Contains the secret type (e.g., "aws_key", "github_token")
 }
 
 /// DNS record types for DNS enumeration
@@ -310,6 +313,7 @@ impl std::fmt::Display for FindingType {
             FindingType::InformationDisclosure => write!(f, "Information Disclosure"),
             FindingType::Vulnerability => write!(f, "Vulnerability"),
             FindingType::SecurityConfig => write!(f, "Security Configuration"),
+            FindingType::ExposedSecret(ref secret_type) => write!(f, "Exposed Secret ({})", secret_type),
         }
     }
 }

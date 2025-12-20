@@ -6,10 +6,11 @@ import Input from '../ui/Input';
 import Checkbox from '../ui/Checkbox';
 import Card from '../ui/Card';
 import TagInput from './TagInput';
+import TemplateSelector from './TemplateSelector';
 import { scanAPI, targetGroupAPI, templateAPI, vpnAPI, crmAPI, scanTagAPI, exclusionsAPI } from '../../services/api';
 import { useScanStore } from '../../store/scanStore';
 import { Target, Cpu, Search, Radio, Wifi, FolderOpen, Save, Zap, Radar, Globe, EyeOff, Shield, Building2, ClipboardList, Ban } from 'lucide-react';
-import { EnumDepth, EnumService, ScanType, TargetGroup, ScanPreset, VpnConfig, Customer, Engagement, ScanTag, ScanExclusion } from '../../types';
+import { EnumDepth, EnumService, ScanType, TargetGroup, ScanPreset, VpnConfig, Customer, Engagement, ScanTag, ScanExclusion, ScanTemplate } from '../../types';
 
 const SCAN_TYPES: { id: ScanType; label: string; description: string }[] = [
   { id: 'tcp_connect', label: 'TCP Connect', description: 'Standard TCP scan (most reliable)' },
@@ -62,6 +63,7 @@ const ScanForm: React.FC = () => {
   const [templateDescription, setTemplateDescription] = useState('');
   const [presets, setPresets] = useState<ScanPreset[]>([]);
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [vpnConfigs, setVpnConfigs] = useState<VpnConfig[]>([]);
   const [selectedVpn, setSelectedVpn] = useState<string>('');
   // CRM Integration
@@ -231,6 +233,76 @@ const ScanForm: React.FC = () => {
     toast.success(`Applied "${preset.name}" preset`);
   };
 
+  const applyTemplate = (template: ScanTemplate | null) => {
+    if (!template) {
+      // "Start from scratch" - reset to defaults
+      setSelectedTemplateId(null);
+      setSelectedPreset(null);
+      setPortStart(1);
+      setPortEnd(1000);
+      setThreads(100);
+      setScanType('tcp_connect');
+      setUdpPortStart(53);
+      setUdpPortEnd(500);
+      setUdpRetries(2);
+      setOsDetection(true);
+      setServiceDetection(true);
+      setVulnScan(false);
+      setEnableEnumeration(false);
+      setEnumDepth('light');
+      setSelectedServices([]);
+      return;
+    }
+
+    setSelectedTemplateId(template.id);
+    setSelectedPreset(null); // Clear old preset selection
+
+    const config = template.config;
+
+    // Apply port range
+    setPortStart(config.port_range[0]);
+    setPortEnd(config.port_range[1]);
+
+    // Apply threads
+    setThreads(config.threads);
+
+    // Apply scan type
+    if (config.scan_type) {
+      setScanType(config.scan_type);
+    }
+
+    // Apply detection settings
+    setOsDetection(config.enable_os_detection);
+    setServiceDetection(config.enable_service_detection);
+    setVulnScan(config.enable_vuln_scan);
+
+    // Apply enumeration settings
+    setEnableEnumeration(config.enable_enumeration);
+    if (config.enum_depth) {
+      setEnumDepth(config.enum_depth);
+    }
+    if (config.enum_services && config.enum_services.length > 0) {
+      setSelectedServices(config.enum_services);
+    } else {
+      setSelectedServices([]);
+    }
+
+    // Apply UDP settings
+    if (config.udp_port_range) {
+      setUdpPortStart(config.udp_port_range[0]);
+      setUdpPortEnd(config.udp_port_range[1]);
+    }
+    if (config.udp_retries !== undefined && config.udp_retries !== null) {
+      setUdpRetries(config.udp_retries);
+    }
+
+    // Increment use count (fire and forget)
+    templateAPI.createScan(template.id, '', []).catch(() => {
+      // Use count increment happens on the backend, this is just a placeholder
+      // The actual increment should happen server-side
+    });
+  };
+
   const getPresetIcon = (iconName: string) => {
     switch (iconName) {
       case 'Zap':
@@ -331,7 +403,6 @@ const ScanForm: React.FC = () => {
             name: templateName.trim(),
             description: templateDescription.trim() || undefined,
             config: {
-              targets,
               port_range: [portStart, portEnd],
               threads,
               scan_type: scanType,
@@ -371,6 +442,8 @@ const ScanForm: React.FC = () => {
       setSelectedCustomerId('');
       setSelectedEngagementId('');
       setSelectedTagIds([]);
+      setSelectedTemplateId(null);
+      setSelectedPreset(null);
     } catch (error: unknown) {
       const axiosError = error as { response?: { data?: { error?: string } } };
       const message = axiosError.response?.data?.error || 'Failed to start scan';
@@ -392,8 +465,16 @@ const ScanForm: React.FC = () => {
     <Card>
       <h3 className="text-xl font-semibold text-white mb-4">Create New Scan</h3>
       <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Scan Presets */}
-        {presets.length > 0 && (
+        {/* Template Selector */}
+        <div className="pb-4 border-b border-dark-border">
+          <TemplateSelector
+            onSelect={applyTemplate}
+            selectedTemplateId={selectedTemplateId}
+          />
+        </div>
+
+        {/* Legacy Scan Presets - shown when templates unavailable or as fallback */}
+        {presets.length > 0 && !selectedTemplateId && (
           <div className="space-y-3 pb-4 border-b border-dark-border">
             <div className="flex items-center space-x-2">
               <Zap className="h-5 w-5 text-yellow-400" />
@@ -620,6 +701,7 @@ const ScanForm: React.FC = () => {
             onChange={(e) => {
               setPortStart(Number(e.target.value));
               setSelectedPreset(null);
+              setSelectedTemplateId(null);
             }}
           />
           <Input
@@ -631,6 +713,7 @@ const ScanForm: React.FC = () => {
             onChange={(e) => {
               setPortEnd(Number(e.target.value));
               setSelectedPreset(null);
+              setSelectedTemplateId(null);
             }}
           />
         </div>
@@ -649,6 +732,7 @@ const ScanForm: React.FC = () => {
               onChange={(e) => {
                 setThreads(Number(e.target.value));
                 setSelectedPreset(null);
+                setSelectedTemplateId(null);
               }}
               className="w-full h-2 bg-dark-surface rounded-lg appearance-none cursor-pointer slider"
             />
@@ -669,6 +753,7 @@ const ScanForm: React.FC = () => {
                 onClick={() => {
                   setScanType(type.id);
                   setSelectedPreset(null);
+                  setSelectedTemplateId(null);
                 }}
                 className={`px-3 py-2 text-sm rounded-lg border transition-colors text-left ${
                   scanType === type.id

@@ -12,11 +12,14 @@ import ExclusionsSettings from '../components/settings/ExclusionsSettings';
 import MfaSettings from '../components/settings/MfaSettings';
 import ApiKeys from '../components/settings/ApiKeys';
 import JiraSettings from '../components/settings/JiraSettings';
+import ServiceNowSettings from '../components/settings/ServiceNowSettings';
 import SiemSettings from '../components/settings/SiemSettings';
 import VpnSettings from '../components/settings/VpnSettings';
-import { Target, Clock, Bell, Settings, GitCompare, FileText, User, Shield, Lock, Key, ExternalLink, Database, Wifi, BookOpen, Ban } from 'lucide-react';
+import ScheduledReports from '../components/settings/ScheduledReports';
+import WebhookSettings from '../components/settings/WebhookSettings';
+import { Target, Clock, Bell, Settings, GitCompare, FileText, User, Shield, Lock, Key, ExternalLink, Database, Wifi, BookOpen, Ban, Mail, Webhook, Building2 } from 'lucide-react';
 
-type TabId = 'profile' | 'security' | 'api-keys' | 'administration' | 'target-groups' | 'exclusions' | 'scheduled-scans' | 'templates' | 'finding-templates' | 'vpn' | 'notifications' | 'jira-integration' | 'siem-integration' | 'compare-scans';
+type TabId = 'profile' | 'security' | 'api-keys' | 'administration' | 'target-groups' | 'exclusions' | 'scheduled-scans' | 'scheduled-reports' | 'templates' | 'finding-templates' | 'vpn' | 'notifications' | 'webhooks' | 'jira-integration' | 'servicenow-integration' | 'siem-integration' | 'compare-scans';
 
 interface Tab {
   id: TabId;
@@ -90,6 +93,12 @@ const SettingsPage: React.FC = () => {
           component: <ScheduledScans />,
         },
         {
+          id: 'scheduled-reports',
+          label: 'Scheduled Reports',
+          icon: <Mail className="h-4 w-4" />,
+          component: <ScheduledReports />,
+        },
+        {
           id: 'templates',
           label: 'Scan Templates',
           icon: <FileText className="h-4 w-4" />,
@@ -125,10 +134,22 @@ const SettingsPage: React.FC = () => {
           component: <NotificationSettings />,
         },
         {
+          id: 'webhooks',
+          label: 'Webhooks',
+          icon: <Webhook className="h-4 w-4" />,
+          component: <WebhookSettings />,
+        },
+        {
           id: 'jira-integration',
           label: 'JIRA',
           icon: <ExternalLink className="h-4 w-4" />,
           component: <JiraSettings />,
+        },
+        {
+          id: 'servicenow-integration',
+          label: 'ServiceNow',
+          icon: <Building2 className="h-4 w-4" />,
+          component: <ServiceNowSettings />,
         },
         {
           id: 'siem-integration',

@@ -10,6 +10,7 @@ pub mod enumeration;
 pub mod host_discovery;
 pub mod os_fingerprint;
 pub mod port_scanner;
+pub mod secret_detection;
 pub mod service_detection;
 pub mod ssl_scanner;
 pub mod syn_scanner;

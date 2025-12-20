@@ -17,10 +17,16 @@ pub async fn create_template(
             actix_web::error::ErrorInternalServerError("An internal error occurred. Please try again later.")
         })?;
 
-    Ok(HttpResponse::Ok().json(template))
+    // Convert to response format with parsed config
+    let response = template.to_response().map_err(|e| {
+        log::error!("Failed to serialize template response: {}", e);
+        actix_web::error::ErrorInternalServerError("An internal error occurred.")
+    })?;
+
+    Ok(HttpResponse::Ok().json(response))
 }
 
-/// Get all templates for the current user
+/// Get all templates for the current user (including system templates)
 pub async fn get_templates(
     pool: web::Data<SqlitePool>,
     claims: web::ReqData<auth::Claims>,
@@ -32,7 +38,72 @@ pub async fn get_templates(
             actix_web::error::ErrorInternalServerError("An internal error occurred. Please try again later.")
         })?;
 
-    Ok(HttpResponse::Ok().json(templates))
+    // Convert to response format with parsed configs
+    let responses: Vec<models::ScanTemplateResponse> = templates
+        .into_iter()
+        .filter_map(|t| t.to_response().ok())
+        .collect();
+
+    Ok(HttpResponse::Ok().json(responses))
+}
+
+/// Get system templates only (read-only)
+pub async fn get_system_templates(
+    pool: web::Data<SqlitePool>,
+) -> Result<HttpResponse> {
+    let templates = db::get_system_templates(&pool)
+        .await
+        .map_err(|e| {
+            log::error!("Failed to fetch system templates: {}", e);
+            actix_web::error::ErrorInternalServerError("An internal error occurred. Please try again later.")
+        })?;
+
+    // Convert to response format with parsed configs
+    let responses: Vec<models::ScanTemplateResponse> = templates
+        .into_iter()
+        .filter_map(|t| t.to_response().ok())
+        .collect();
+
+    Ok(HttpResponse::Ok().json(responses))
+}
+
+/// Get template categories with counts
+pub async fn get_template_categories(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+) -> Result<HttpResponse> {
+    let categories = db::get_scan_template_categories(&pool, &claims.sub)
+        .await
+        .map_err(|e| {
+            log::error!("Failed to fetch template categories: {}", e);
+            actix_web::error::ErrorInternalServerError("An internal error occurred. Please try again later.")
+        })?;
+
+    Ok(HttpResponse::Ok().json(categories))
+}
+
+/// Get the user's default template
+pub async fn get_default_template(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+) -> Result<HttpResponse> {
+    let template = db::get_default_template(&pool, &claims.sub)
+        .await
+        .map_err(|e| {
+            log::error!("Failed to fetch default template: {}", e);
+            actix_web::error::ErrorInternalServerError("An internal error occurred. Please try again later.")
+        })?;
+
+    match template {
+        Some(t) => {
+            let response = t.to_response().map_err(|e| {
+                log::error!("Failed to serialize template response: {}", e);
+                actix_web::error::ErrorInternalServerError("An internal error occurred.")
+            })?;
+            Ok(HttpResponse::Ok().json(response))
+        }
+        None => Ok(HttpResponse::Ok().json(serde_json::Value::Null))
+    }
 }
 
 /// Get a specific template by ID
@@ -50,17 +121,21 @@ pub async fn get_template(
 
     match template {
         Some(t) => {
-            // Verify the template belongs to the user
-            if t.user_id != claims.sub {
+            // Allow access to system templates or user's own templates
+            if !t.is_system && t.user_id != claims.sub {
                 return Err(actix_web::error::ErrorForbidden("Access denied"));
             }
-            Ok(HttpResponse::Ok().json(t))
+            let response = t.to_response().map_err(|e| {
+                log::error!("Failed to serialize template response: {}", e);
+                actix_web::error::ErrorInternalServerError("An internal error occurred.")
+            })?;
+            Ok(HttpResponse::Ok().json(response))
         }
         None => Err(actix_web::error::ErrorNotFound("Template not found")),
     }
 }
 
-/// Update a template
+/// Update a template (only user's own templates, not system templates)
 pub async fn update_template(
     pool: web::Data<SqlitePool>,
     claims: web::ReqData<auth::Claims>,
@@ -77,6 +152,10 @@ pub async fn update_template(
 
     match existing {
         Some(t) => {
+            // Cannot modify system templates
+            if t.is_system {
+                return Err(actix_web::error::ErrorForbidden("System templates cannot be modified"));
+            }
             if t.user_id != claims.sub {
                 return Err(actix_web::error::ErrorForbidden("Access denied"));
             }
@@ -91,10 +170,15 @@ pub async fn update_template(
             actix_web::error::ErrorInternalServerError("Update failed. Please try again.")
         })?;
 
-    Ok(HttpResponse::Ok().json(updated))
+    let response = updated.to_response().map_err(|e| {
+        log::error!("Failed to serialize template response: {}", e);
+        actix_web::error::ErrorInternalServerError("An internal error occurred.")
+    })?;
+
+    Ok(HttpResponse::Ok().json(response))
 }
 
-/// Delete a template
+/// Delete a template (only user's own templates, not system templates)
 pub async fn delete_template(
     pool: web::Data<SqlitePool>,
     claims: web::ReqData<auth::Claims>,
@@ -110,6 +194,10 @@ pub async fn delete_template(
 
     match existing {
         Some(t) => {
+            // Cannot delete system templates
+            if t.is_system {
+                return Err(actix_web::error::ErrorForbidden("System templates cannot be deleted"));
+            }
             if t.user_id != claims.sub {
                 return Err(actix_web::error::ErrorForbidden("Access denied"));
             }
@@ -117,12 +205,120 @@ pub async fn delete_template(
         None => return Err(actix_web::error::ErrorNotFound("Template not found")),
     }
 
-    db::delete_template(&pool, &template_id)
+    let deleted = db::delete_template(&pool, &template_id)
         .await
         .map_err(|e| {
             log::error!("Failed to delete template: {}", e);
             actix_web::error::ErrorInternalServerError("Delete failed. Please try again.")
         })?;
+
+    if deleted {
+        Ok(HttpResponse::NoContent().finish())
+    } else {
+        Err(actix_web::error::ErrorInternalServerError("Delete failed."))
+    }
+}
+
+/// Clone a template (creates a user copy from any template, including system templates)
+pub async fn clone_template(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    template_id: web::Path<String>,
+    request: web::Json<models::CloneScanTemplateRequest>,
+) -> Result<HttpResponse> {
+    // Verify template exists
+    let existing = db::get_template_by_id(&pool, &template_id)
+        .await
+        .map_err(|e| {
+            log::error!("Database error in clone_template: {}", e);
+            actix_web::error::ErrorInternalServerError("An internal error occurred. Please try again later.")
+        })?;
+
+    if existing.is_none() {
+        return Err(actix_web::error::ErrorNotFound("Template not found"));
+    }
+
+    let cloned = db::clone_scan_template(&pool, &template_id, &claims.sub, request.new_name.clone())
+        .await
+        .map_err(|e| {
+            log::error!("Failed to clone template: {}", e);
+            actix_web::error::ErrorInternalServerError("Clone failed. Please try again.")
+        })?;
+
+    let response = cloned.to_response().map_err(|e| {
+        log::error!("Failed to serialize template response: {}", e);
+        actix_web::error::ErrorInternalServerError("An internal error occurred.")
+    })?;
+
+    Ok(HttpResponse::Ok().json(response))
+}
+
+/// Set a template as the default for the user
+pub async fn set_default_template(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    template_id: web::Path<String>,
+) -> Result<HttpResponse> {
+    // Verify template exists and is accessible
+    let existing = db::get_template_by_id(&pool, &template_id)
+        .await
+        .map_err(|e| {
+            log::error!("Database error in set_default_template: {}", e);
+            actix_web::error::ErrorInternalServerError("An internal error occurred. Please try again later.")
+        })?;
+
+    match existing {
+        Some(t) => {
+            // Can set system templates or own templates as default
+            if !t.is_system && t.user_id != claims.sub {
+                return Err(actix_web::error::ErrorForbidden("Access denied"));
+            }
+        }
+        None => return Err(actix_web::error::ErrorNotFound("Template not found")),
+    }
+
+    let updated = db::set_default_template(&pool, &claims.sub, &template_id)
+        .await
+        .map_err(|e| {
+            log::error!("Failed to set default template: {}", e);
+            actix_web::error::ErrorInternalServerError("Failed to set default. Please try again.")
+        })?;
+
+    let response = updated.to_response().map_err(|e| {
+        log::error!("Failed to serialize template response: {}", e);
+        actix_web::error::ErrorInternalServerError("An internal error occurred.")
+    })?;
+
+    Ok(HttpResponse::Ok().json(response))
+}
+
+/// Clear the default template for the user
+pub async fn clear_default_template(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+) -> Result<HttpResponse> {
+    // Find current default and clear it
+    if let Some(current_default) = db::get_default_template(&pool, &claims.sub)
+        .await
+        .map_err(|e| {
+            log::error!("Database error in clear_default_template: {}", e);
+            actix_web::error::ErrorInternalServerError("An internal error occurred.")
+        })?
+    {
+        db::update_template(&pool, &current_default.id, &models::UpdateTemplateRequest {
+            name: None,
+            description: None,
+            config: None,
+            is_default: Some(false),
+            category: None,
+            estimated_duration_mins: None,
+        })
+        .await
+        .map_err(|e| {
+            log::error!("Failed to clear default template: {}", e);
+            actix_web::error::ErrorInternalServerError("Failed to clear default.")
+        })?;
+    }
 
     Ok(HttpResponse::NoContent().finish())
 }
@@ -147,13 +343,17 @@ pub async fn create_scan_from_template(
 
     let template = match template {
         Some(t) => {
-            if t.user_id != claims.sub {
+            // Allow system templates or user's own templates
+            if !t.is_system && t.user_id != claims.sub {
                 return Err(actix_web::error::ErrorForbidden("Access denied"));
             }
             t
         }
         None => return Err(actix_web::error::ErrorNotFound("Template not found")),
     };
+
+    // Increment use count for the template
+    let _ = db::increment_template_use_count(&pool, &template_id).await;
 
     // Parse the template config
     let template_config: models::ScanTemplateConfig = serde_json::from_str(&template.config)
@@ -343,7 +543,8 @@ pub async fn export_template(
 
     let template = match template {
         Some(t) => {
-            if t.user_id != claims.sub {
+            // Allow exporting system templates or user's own templates
+            if !t.is_system && t.user_id != claims.sub {
                 return Err(actix_web::error::ErrorForbidden("Access denied"));
             }
             t
@@ -357,6 +558,8 @@ pub async fn export_template(
         name: String,
         description: Option<String>,
         config: serde_json::Value,
+        category: String,
+        estimated_duration_mins: Option<i32>,
         is_default: bool,
         export_version: String,
     }
@@ -371,8 +574,10 @@ pub async fn export_template(
         name: template.name.clone(),
         description: template.description.clone(),
         config: config_json,
+        category: template.category.clone(),
+        estimated_duration_mins: template.estimated_duration_mins,
         is_default: template.is_default,
-        export_version: "1.0".to_string(),
+        export_version: "2.0".to_string(),
     };
 
     let json_data = serde_json::to_string_pretty(&exportable)
@@ -440,12 +645,19 @@ pub async fn import_template(
         })));
     }
 
+    // Parse category if provided
+    let category = template_data.category.as_ref().and_then(|c| {
+        c.parse::<models::TemplateCategory>().ok()
+    });
+
     // Create the template
     let create_request = models::CreateTemplateRequest {
         name: template_data.name.clone(),
         description: template_data.description.clone(),
         config,
         is_default: template_data.is_default.unwrap_or(false),
+        category,
+        estimated_duration_mins: template_data.estimated_duration_mins,
     };
 
     let created_template = db::create_template(&pool, &claims.sub, &create_request)
@@ -455,7 +667,12 @@ pub async fn import_template(
             actix_web::error::ErrorInternalServerError("Failed to import template. Please try again.")
         })?;
 
-    Ok(HttpResponse::Ok().json(created_template))
+    let response = created_template.to_response().map_err(|e| {
+        log::error!("Failed to serialize template response: {}", e);
+        actix_web::error::ErrorInternalServerError("An internal error occurred.")
+    })?;
+
+    Ok(HttpResponse::Ok().json(response))
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -467,6 +684,8 @@ pub struct ImportTemplateRequest {
 pub struct ImportedTemplate {
     pub name: String,
     pub description: Option<String>,
+    pub category: Option<String>,
+    pub estimated_duration_mins: Option<i32>,
     pub config: serde_json::Value,
     pub is_default: Option<bool>,
 }

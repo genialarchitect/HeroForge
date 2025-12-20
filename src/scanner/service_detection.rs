@@ -1,6 +1,7 @@
 use anyhow::Result;
-use crate::types::{HostInfo, PortState, ScanConfig, ServiceInfo};
-use log::debug;
+use crate::scanner::secret_detection::{detect_secrets_in_banner, SecretDetectionConfig};
+use crate::types::{HostInfo, PortState, ScanConfig, ServiceInfo, Vulnerability, Severity};
+use log::{debug, info};
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::time::timeout;
@@ -9,6 +10,8 @@ pub async fn detect_services(
     host_info: &mut HostInfo,
     config: &ScanConfig,
 ) -> Result<()> {
+    let secret_config = SecretDetectionConfig::default();
+
     for port_info in &mut host_info.ports {
         if matches!(port_info.state, PortState::Open) {
             debug!(
@@ -24,6 +27,53 @@ pub async fn detect_services(
             .await;
 
             port_info.service = service;
+
+            // Check service banner for exposed secrets
+            if let Some(ref svc) = port_info.service {
+                if let Some(ref banner) = svc.banner {
+                    let secrets = detect_secrets_in_banner(
+                        banner,
+                        port_info.port,
+                        Some(&svc.name),
+                        &secret_config,
+                    );
+
+                    if !secrets.is_empty() {
+                        info!(
+                            "Found {} exposed secret(s) in banner on {}:{}",
+                            secrets.len(),
+                            host_info.target.ip,
+                            port_info.port
+                        );
+
+                        for secret in secrets {
+                            let severity = match secret.severity {
+                                crate::scanner::secret_detection::SecretSeverity::Critical => Severity::Critical,
+                                crate::scanner::secret_detection::SecretSeverity::High => Severity::High,
+                                crate::scanner::secret_detection::SecretSeverity::Medium => Severity::Medium,
+                                crate::scanner::secret_detection::SecretSeverity::Low => Severity::Low,
+                            };
+
+                            host_info.vulnerabilities.push(Vulnerability {
+                                cve_id: None,
+                                title: format!("Exposed {} in Service Banner", secret.secret_type.display_name()),
+                                description: format!(
+                                    "A {} was detected in the service banner on port {}. \
+                                     Exposed value (redacted): {}. Context: {}. \
+                                     Remediation: {}",
+                                    secret.secret_type.display_name(),
+                                    port_info.port,
+                                    secret.redacted_value,
+                                    secret.context,
+                                    secret.remediation()
+                                ),
+                                severity,
+                                affected_service: Some(svc.name.clone()),
+                            });
+                        }
+                    }
+                }
+            }
 
             // If this is an HTTPS port, perform SSL/TLS scanning
             if is_https_port(port_info.port) {

@@ -326,6 +326,53 @@ pub struct ReportTemplate {
 
 // Scan Template Models
 
+/// Template category for organizing scan profiles
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TemplateCategory {
+    Quick,
+    Standard,
+    Comprehensive,
+    Web,
+    Stealth,
+    Custom,
+}
+
+impl Default for TemplateCategory {
+    fn default() -> Self {
+        TemplateCategory::Custom
+    }
+}
+
+impl std::fmt::Display for TemplateCategory {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TemplateCategory::Quick => write!(f, "quick"),
+            TemplateCategory::Standard => write!(f, "standard"),
+            TemplateCategory::Comprehensive => write!(f, "comprehensive"),
+            TemplateCategory::Web => write!(f, "web"),
+            TemplateCategory::Stealth => write!(f, "stealth"),
+            TemplateCategory::Custom => write!(f, "custom"),
+        }
+    }
+}
+
+impl std::str::FromStr for TemplateCategory {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "quick" => Ok(TemplateCategory::Quick),
+            "standard" => Ok(TemplateCategory::Standard),
+            "comprehensive" => Ok(TemplateCategory::Comprehensive),
+            "web" => Ok(TemplateCategory::Web),
+            "stealth" => Ok(TemplateCategory::Stealth),
+            "custom" => Ok(TemplateCategory::Custom),
+            _ => Ok(TemplateCategory::Custom),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct ScanTemplate {
     pub id: String,
@@ -334,8 +381,55 @@ pub struct ScanTemplate {
     pub description: Option<String>,
     pub config: String, // JSON string of scan configuration
     pub is_default: bool,
+    pub is_system: bool,
+    pub category: String, // Stored as string, maps to TemplateCategory
+    pub estimated_duration_mins: Option<i32>,
+    pub use_count: i32,
+    pub last_used_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+/// Extended scan template with parsed category for API responses
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScanTemplateResponse {
+    pub id: String,
+    pub user_id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub config: ScanTemplateConfig,
+    pub is_default: bool,
+    pub is_system: bool,
+    pub category: TemplateCategory,
+    pub estimated_duration_mins: Option<i32>,
+    pub use_count: i32,
+    pub last_used_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl ScanTemplate {
+    /// Convert database row to API response with parsed config and category
+    pub fn to_response(&self) -> Result<ScanTemplateResponse, serde_json::Error> {
+        let config: ScanTemplateConfig = serde_json::from_str(&self.config)?;
+        let category = self.category.parse().unwrap_or(TemplateCategory::Custom);
+
+        Ok(ScanTemplateResponse {
+            id: self.id.clone(),
+            user_id: self.user_id.clone(),
+            name: self.name.clone(),
+            description: self.description.clone(),
+            config,
+            is_default: self.is_default,
+            is_system: self.is_system,
+            category,
+            estimated_duration_mins: self.estimated_duration_mins,
+            use_count: self.use_count,
+            last_used_at: self.last_used_at,
+            created_at: self.created_at,
+            updated_at: self.updated_at,
+        })
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -343,7 +437,11 @@ pub struct CreateTemplateRequest {
     pub name: String,
     pub description: Option<String>,
     pub config: ScanTemplateConfig,
+    #[serde(default)]
     pub is_default: bool,
+    #[serde(default)]
+    pub category: Option<TemplateCategory>,
+    pub estimated_duration_mins: Option<i32>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -352,6 +450,20 @@ pub struct UpdateTemplateRequest {
     pub description: Option<String>,
     pub config: Option<ScanTemplateConfig>,
     pub is_default: Option<bool>,
+    pub category: Option<TemplateCategory>,
+    pub estimated_duration_mins: Option<i32>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CloneScanTemplateRequest {
+    pub new_name: Option<String>,
+}
+
+/// Template categories summary for filtering
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TemplateCategorySummary {
+    pub category: String,
+    pub count: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -470,6 +582,81 @@ pub struct ScheduledScanConfig {
     pub udp_port_range: Option<(u16, u16)>,
     #[serde(default = "default_udp_retries")]
     pub udp_retries: u8,
+}
+
+// Scheduled Report Models
+
+/// Scheduled report configuration for automated report generation and email delivery
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct ScheduledReport {
+    pub id: String,
+    pub user_id: String,
+    pub name: String,
+    pub description: Option<String>,
+    /// Report type: "vulnerability", "compliance", "executive", "scan_summary"
+    pub report_type: String,
+    /// Output format: "pdf", "html", "csv"
+    pub format: String,
+    /// Cron expression for scheduling (e.g., "0 8 * * *" for daily at 8am)
+    pub schedule: String,
+    /// JSON array of recipient email addresses
+    pub recipients: String,
+    /// JSON object with filter criteria
+    pub filters: Option<String>,
+    /// Include charts in the report
+    pub include_charts: bool,
+    pub last_run_at: Option<DateTime<Utc>>,
+    pub next_run_at: DateTime<Utc>,
+    pub is_active: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateScheduledReportRequest {
+    pub name: String,
+    pub description: Option<String>,
+    /// Report type: "vulnerability", "compliance", "executive", "scan_summary"
+    pub report_type: String,
+    /// Output format: "pdf", "html", "csv"
+    pub format: String,
+    /// Cron expression for scheduling
+    pub schedule: String,
+    /// List of recipient email addresses
+    pub recipients: Vec<String>,
+    /// Filter criteria
+    pub filters: Option<ScheduledReportFilters>,
+    /// Include charts in the report (default: true)
+    pub include_charts: Option<bool>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateScheduledReportRequest {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub report_type: Option<String>,
+    pub format: Option<String>,
+    pub schedule: Option<String>,
+    pub recipients: Option<Vec<String>>,
+    pub filters: Option<ScheduledReportFilters>,
+    pub include_charts: Option<bool>,
+    pub is_active: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScheduledReportFilters {
+    /// For vulnerability reports: minimum severity to include
+    pub min_severity: Option<String>,
+    /// For compliance reports: frameworks to include
+    pub frameworks: Option<Vec<String>>,
+    /// Date range: number of days to look back
+    pub days_back: Option<i32>,
+    /// Specific scan IDs to include
+    pub scan_ids: Option<Vec<String>>,
+    /// Customer ID for CRM-filtered reports
+    pub customer_id: Option<String>,
+    /// Engagement ID for engagement-specific reports
+    pub engagement_id: Option<String>,
 }
 
 // Notification Settings Models
@@ -1719,4 +1906,61 @@ pub struct ChecklistWithItems {
     pub template_name: String,
     pub template_version: Option<String>,
     pub items: Vec<super::methodology::ChecklistItemWithTemplate>,
+}
+
+// ============================================================================
+// Secret Finding Models
+// ============================================================================
+
+/// A detected secret/credential finding in a scan
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow, utoipa::ToSchema)]
+pub struct SecretFindingRecord {
+    pub id: String,
+    pub scan_id: String,
+    pub host_ip: String,
+    pub port: Option<i32>,
+    pub secret_type: String,
+    pub severity: String,
+    pub redacted_value: String,
+    pub source_type: String,
+    pub source_location: String,
+    pub line_number: Option<i32>,
+    pub context: Option<String>,
+    pub confidence: f64,
+    pub status: String,
+    pub resolved_at: Option<DateTime<Utc>>,
+    pub resolved_by: Option<String>,
+    pub false_positive: bool,
+    pub notes: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Summary statistics for secret findings
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct SecretFindingStats {
+    pub total_findings: i64,
+    pub critical_count: i64,
+    pub high_count: i64,
+    pub medium_count: i64,
+    pub low_count: i64,
+    pub open_count: i64,
+    pub resolved_count: i64,
+    pub false_positive_count: i64,
+    pub by_type: Vec<SecretTypeCount>,
+}
+
+/// Count of findings by secret type
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct SecretTypeCount {
+    pub secret_type: String,
+    pub count: i64,
+}
+
+/// Request to update a secret finding status
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct UpdateSecretFindingRequest {
+    pub status: Option<String>,
+    pub false_positive: Option<bool>,
+    pub notes: Option<String>,
 }

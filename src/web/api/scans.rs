@@ -505,6 +505,29 @@ pub async fn create_scan(
         // Update status to running
         let _ = db::update_scan_status(&pool_clone, &scan_id, "running", None, None).await;
 
+        // Dispatch webhook for scan started
+        {
+            let pool_for_webhook = pool_clone.clone();
+            let user_id_for_webhook = user_id.clone();
+            let scan_id_for_webhook = scan_id.clone();
+            let scan_name_for_webhook = scan_name.clone();
+            let targets_for_webhook = config.targets.clone();
+
+            tokio::spawn(async move {
+                if let Err(e) = crate::webhooks::dispatch_scan_started(
+                    &pool_for_webhook,
+                    &user_id_for_webhook,
+                    &scan_id_for_webhook,
+                    &scan_name_for_webhook,
+                    &targets_for_webhook,
+                )
+                .await
+                {
+                    log::error!("Failed to dispatch scan.started webhooks: {}", e);
+                }
+            });
+        }
+
         // Connect to VPN if configured for this scan
         let mut vpn_connection_id: Option<String> = None;
         let mut vpn_config_name: Option<String> = None;
@@ -677,7 +700,9 @@ pub async fn create_scan(
                 // Use Arc to avoid expensive deep clone of results
                 let pool_for_notifications = pool_clone.clone();
                 let user_id_for_notifications = user_id.clone();
-                let scan_name_for_notifications = scan_name; // Move, no longer needed after this
+                let scan_name_for_notifications = scan_name.clone();
+                let scan_id_for_notifications = scan_id.clone();
+                let targets_for_notifications = config.targets.clone();
                 let results_for_notifications = std::sync::Arc::new(results);
 
                 tokio::spawn(async move {
@@ -698,6 +723,47 @@ pub async fn create_scan(
                         &results_for_notifications,
                     )
                     .await;
+
+                    // Dispatch webhooks for scan completion
+                    let hosts_discovered = results_for_notifications.len();
+                    let open_ports: usize = results_for_notifications
+                        .iter()
+                        .map(|h| h.ports.iter().filter(|p| matches!(p.state, crate::types::PortState::Open)).count())
+                        .sum();
+                    let (total_vulns, critical, high, medium, low) = {
+                        let mut total = 0usize;
+                        let mut crit = 0usize;
+                        let mut hi = 0usize;
+                        let mut med = 0usize;
+                        let mut lo = 0usize;
+                        for host in results_for_notifications.iter() {
+                            for vuln in &host.vulnerabilities {
+                                total += 1;
+                                match vuln.severity {
+                                    crate::types::Severity::Critical => crit += 1,
+                                    crate::types::Severity::High => hi += 1,
+                                    crate::types::Severity::Medium => med += 1,
+                                    crate::types::Severity::Low => lo += 1,
+                                }
+                            }
+                        }
+                        (total, crit, hi, med, lo)
+                    };
+
+                    if let Err(e) = crate::webhooks::dispatch_scan_completed(
+                        &pool_for_notifications,
+                        &user_id_for_notifications,
+                        &scan_id_for_notifications,
+                        &scan_name_for_notifications,
+                        &targets_for_notifications,
+                        hosts_discovered,
+                        open_ports,
+                        (total_vulns, critical, high, medium, low),
+                    )
+                    .await
+                    {
+                        log::error!("Failed to dispatch scan.completed webhooks: {}", e);
+                    }
                 });
             }
             Err(e) => {
@@ -716,6 +782,27 @@ pub async fn create_scan(
                     Some(&error_msg),
                 )
                 .await;
+
+                // Dispatch webhook for scan failure
+                let pool_for_webhook = pool_clone.clone();
+                let user_id_for_webhook = user_id.clone();
+                let scan_id_for_webhook = scan_id.clone();
+                let scan_name_for_webhook = scan_name.clone();
+                let error_for_webhook = error_msg.clone();
+
+                tokio::spawn(async move {
+                    if let Err(e) = crate::webhooks::dispatch_scan_failed(
+                        &pool_for_webhook,
+                        &user_id_for_webhook,
+                        &scan_id_for_webhook,
+                        &scan_name_for_webhook,
+                        &error_for_webhook,
+                    )
+                    .await
+                    {
+                        log::error!("Failed to dispatch scan.failed webhooks: {}", e);
+                    }
+                });
             }
         }
 

@@ -311,6 +311,33 @@ Create JIRA tickets directly from discovered vulnerabilities:
    - Links ticket back to vulnerability in HeroForge
    - Supports custom labels per ticket
 
+### ServiceNow Integration
+
+Create ServiceNow incidents and change requests from discovered vulnerabilities:
+
+1. Configure in Settings > ServiceNow:
+   - Instance URL (e.g., `https://company.service-now.com`)
+   - Username and password for API access
+   - Default assignment group and category (optional)
+   - Default impact/urgency levels
+
+2. Features:
+   - Create incidents for immediate security issues
+   - Create change requests for remediation work
+   - Auto-maps vulnerability severity to impact/urgency
+   - Tracks linked tickets per vulnerability
+   - Supports loading assignment groups and categories from ServiceNow
+
+3. API Endpoints:
+   - `GET /api/integrations/servicenow/settings` - Get settings
+   - `POST /api/integrations/servicenow/settings` - Save settings
+   - `POST /api/integrations/servicenow/test` - Test connection
+   - `GET /api/integrations/servicenow/assignment-groups` - List groups
+   - `GET /api/integrations/servicenow/categories` - List categories
+   - `POST /api/vulnerabilities/{id}/servicenow/incident` - Create incident
+   - `POST /api/vulnerabilities/{id}/servicenow/change` - Create change request
+   - `GET /api/vulnerabilities/{id}/servicenow/tickets` - Get linked tickets
+
 ### SIEM Integration
 
 Export scan results and vulnerability findings to SIEM systems:
@@ -449,16 +476,16 @@ Moderate complexity, strong value proposition.
 |---------|--------|--------|-------------|
 | ~~Slack/Teams Notifications~~ | 2-3 days | **Done** | Real-time alerts for critical findings |
 | ~~Scan Comparison Dashboard~~ | 3-4 days | **Done** | Visual diff between scan runs |
-| Automated Report Scheduling | 3 days | Planned | Schedule and email PDF reports |
+| ~~Automated Report Scheduling~~ | 3 days | **Done** | Schedule and email PDF reports |
 | ~~SLA Tracking & Alerts~~ | 3-4 days | **Done** | Track remediation against defined SLAs |
-| Custom Webhooks (outbound) | 2-3 days | Planned | Send events to external systems |
-| Secret Detection Scanner | 4-5 days | Planned | Detect exposed API keys, passwords |
+| ~~Custom Webhooks (outbound)~~ | 2-3 days | **Done** | Send events to external systems |
+| ~~Secret Detection Scanner~~ | 4-5 days | **Done** | Detect exposed API keys, passwords |
 | ~~Vulnerability Trends/Charts~~ | 3 days | **Done** | Historical vulnerability analytics |
-| ServiceNow Integration | 4-5 days | Planned | Create incidents/changes from vulns |
+| ~~ServiceNow Integration~~ | 4-5 days | **Done** | Create incidents/changes from vulns |
 | ~~MFA Setup UI~~ | 2-3 days | **Done** | TOTP setup wizard with QR codes |
 | ~~API Rate Limit Dashboard~~ | 2 days | **Done** | Visualize rate limiting stats |
-| Scan Profiles/Presets | 2-3 days | Planned | Enhanced template management |
-| Host/Port Exclusions | 2 days | Planned | Global and per-scan exclusion lists |
+| ~~Scan Profiles/Presets~~ | 2-3 days | **Done** | Enhanced template management |
+| ~~Host/Port Exclusions~~ | 2 days | **Done** | Global and per-scan exclusion lists |
 | ~~Methodology Tracking~~ | 3 days | **Done** | Pentest phases, checklists, progress tracking |
 | ~~Time Tracking~~ | 2 days | **Done** | Track time spent on engagements |
 
@@ -542,3 +569,9 @@ Track active work here:
 | Active Directory Assessment | 3 | 2025-12-20 |
 | CRM System | 3 | 2025-12-20 |
 | VPN Integration | 3 | 2025-12-20 |
+| ServiceNow Integration | 2 | 2025-12-20 |
+| Automated Report Scheduling | 2 | 2025-12-20 |
+| Custom Webhooks (outbound) | 2 | 2025-12-20 |
+| Secret Detection Scanner | 2 | 2025-12-20 |
+| Scan Profiles/Presets | 2 | 2025-12-20 |
+| Host/Port Exclusions | 2 | 2025-12-20 |

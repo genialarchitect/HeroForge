@@ -302,11 +302,14 @@ pub async fn create_template(
     let id = Uuid::new_v4().to_string();
     let now = Utc::now();
     let config_json = serde_json::to_string(&request.config)?;
+    let category = request.category.as_ref()
+        .map(|c| c.to_string())
+        .unwrap_or_else(|| "custom".to_string());
 
     let template = sqlx::query_as::<_, models::ScanTemplate>(
         r#"
-        INSERT INTO scan_templates (id, user_id, name, description, config, is_default, created_at, updated_at)
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+        INSERT INTO scan_templates (id, user_id, name, description, config, is_default, is_system, category, estimated_duration_mins, use_count, created_at, updated_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7, ?8, 0, ?9, ?10)
         RETURNING *
         "#,
     )
@@ -316,6 +319,8 @@ pub async fn create_template(
     .bind(&request.description)
     .bind(&config_json)
     .bind(request.is_default)
+    .bind(&category)
+    .bind(request.estimated_duration_mins)
     .bind(now)
     .bind(now)
     .fetch_one(pool)
@@ -324,10 +329,14 @@ pub async fn create_template(
     Ok(template)
 }
 
-/// Get all templates for a user
+/// Get all templates for a user (including system templates)
 pub async fn get_user_templates(pool: &SqlitePool, user_id: &str) -> Result<Vec<models::ScanTemplate>> {
     let templates = sqlx::query_as::<_, models::ScanTemplate>(
-        "SELECT * FROM scan_templates WHERE user_id = ?1 ORDER BY is_default DESC, created_at DESC",
+        r#"
+        SELECT * FROM scan_templates
+        WHERE user_id = ?1 OR is_system = 1
+        ORDER BY is_system DESC, is_default DESC, use_count DESC, created_at DESC
+        "#,
     )
     .bind(user_id)
     .fetch_all(pool)
@@ -336,12 +345,174 @@ pub async fn get_user_templates(pool: &SqlitePool, user_id: &str) -> Result<Vec<
     Ok(templates)
 }
 
+/// Get only user-created templates (excluding system templates)
+pub async fn get_user_custom_templates(pool: &SqlitePool, user_id: &str) -> Result<Vec<models::ScanTemplate>> {
+    let templates = sqlx::query_as::<_, models::ScanTemplate>(
+        r#"
+        SELECT * FROM scan_templates
+        WHERE user_id = ?1 AND is_system = 0
+        ORDER BY is_default DESC, use_count DESC, created_at DESC
+        "#,
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(templates)
+}
+
+/// Get system templates only
+pub async fn get_system_templates(pool: &SqlitePool) -> Result<Vec<models::ScanTemplate>> {
+    let templates = sqlx::query_as::<_, models::ScanTemplate>(
+        "SELECT * FROM scan_templates WHERE is_system = 1 ORDER BY category, name",
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(templates)
+}
+
+/// Get templates by category
+pub async fn get_templates_by_category(
+    pool: &SqlitePool,
+    user_id: &str,
+    category: &str,
+) -> Result<Vec<models::ScanTemplate>> {
+    let templates = sqlx::query_as::<_, models::ScanTemplate>(
+        r#"
+        SELECT * FROM scan_templates
+        WHERE (user_id = ?1 OR is_system = 1) AND category = ?2
+        ORDER BY is_system DESC, is_default DESC, use_count DESC
+        "#,
+    )
+    .bind(user_id)
+    .bind(category)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(templates)
+}
+
+/// Get scan template categories with counts
+pub async fn get_scan_template_categories(pool: &SqlitePool, user_id: &str) -> Result<Vec<models::TemplateCategorySummary>> {
+    let categories = sqlx::query_as::<_, (String, i32)>(
+        r#"
+        SELECT category, COUNT(*) as count
+        FROM scan_templates
+        WHERE user_id = ?1 OR is_system = 1
+        GROUP BY category
+        ORDER BY category
+        "#,
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(categories
+        .into_iter()
+        .map(|(category, count)| models::TemplateCategorySummary { category, count })
+        .collect())
+}
+
 /// Get a template by ID
 pub async fn get_template_by_id(pool: &SqlitePool, template_id: &str) -> Result<Option<models::ScanTemplate>> {
     let template = sqlx::query_as::<_, models::ScanTemplate>("SELECT * FROM scan_templates WHERE id = ?1")
         .bind(template_id)
         .fetch_optional(pool)
         .await?;
+
+    Ok(template)
+}
+
+/// Get the default template for a user
+pub async fn get_default_template(pool: &SqlitePool, user_id: &str) -> Result<Option<models::ScanTemplate>> {
+    let template = sqlx::query_as::<_, models::ScanTemplate>(
+        "SELECT * FROM scan_templates WHERE user_id = ?1 AND is_default = 1 LIMIT 1",
+    )
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(template)
+}
+
+/// Set a template as the default for a user (clears other defaults)
+pub async fn set_default_template(pool: &SqlitePool, user_id: &str, template_id: &str) -> Result<models::ScanTemplate> {
+    let now = Utc::now();
+
+    // Clear existing default for this user
+    sqlx::query("UPDATE scan_templates SET is_default = 0, updated_at = ?1 WHERE user_id = ?2 AND is_default = 1")
+        .bind(now)
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+
+    // Set new default
+    sqlx::query("UPDATE scan_templates SET is_default = 1, updated_at = ?1 WHERE id = ?2")
+        .bind(now)
+        .bind(template_id)
+        .execute(pool)
+        .await?;
+
+    let template = sqlx::query_as::<_, models::ScanTemplate>("SELECT * FROM scan_templates WHERE id = ?1")
+        .bind(template_id)
+        .fetch_one(pool)
+        .await?;
+
+    Ok(template)
+}
+
+/// Increment use count and update last_used_at for a template
+pub async fn increment_template_use_count(pool: &SqlitePool, template_id: &str) -> Result<()> {
+    let now = Utc::now();
+
+    sqlx::query(
+        "UPDATE scan_templates SET use_count = use_count + 1, last_used_at = ?1, updated_at = ?1 WHERE id = ?2"
+    )
+    .bind(now)
+    .bind(template_id)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Clone a template for a user
+pub async fn clone_template(
+    pool: &SqlitePool,
+    template_id: &str,
+    user_id: &str,
+    new_name: Option<String>,
+) -> Result<models::ScanTemplate> {
+    // Get the original template
+    let original = sqlx::query_as::<_, models::ScanTemplate>("SELECT * FROM scan_templates WHERE id = ?1")
+        .bind(template_id)
+        .fetch_optional(pool)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("Template not found"))?;
+
+    let id = Uuid::new_v4().to_string();
+    let now = Utc::now();
+    let name = new_name.unwrap_or_else(|| format!("{} (Copy)", original.name));
+
+    let template = sqlx::query_as::<_, models::ScanTemplate>(
+        r#"
+        INSERT INTO scan_templates (id, user_id, name, description, config, is_default, is_system, category, estimated_duration_mins, use_count, created_at, updated_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, 0, 0, ?6, ?7, 0, ?8, ?9)
+        RETURNING *
+        "#,
+    )
+    .bind(&id)
+    .bind(user_id)
+    .bind(&name)
+    .bind(&original.description)
+    .bind(&original.config)
+    .bind(&original.category)
+    .bind(original.estimated_duration_mins)
+    .bind(now)
+    .bind(now)
+    .fetch_one(pool)
+    .await?;
 
     Ok(template)
 }
@@ -391,6 +562,24 @@ pub async fn update_template(
             .await?;
     }
 
+    if let Some(category) = &request.category {
+        sqlx::query("UPDATE scan_templates SET category = ?1, updated_at = ?2 WHERE id = ?3")
+            .bind(category.to_string())
+            .bind(now)
+            .bind(template_id)
+            .execute(pool)
+            .await?;
+    }
+
+    if let Some(estimated_duration_mins) = request.estimated_duration_mins {
+        sqlx::query("UPDATE scan_templates SET estimated_duration_mins = ?1, updated_at = ?2 WHERE id = ?3")
+            .bind(estimated_duration_mins)
+            .bind(now)
+            .bind(template_id)
+            .execute(pool)
+            .await?;
+    }
+
     let template = sqlx::query_as::<_, models::ScanTemplate>("SELECT * FROM scan_templates WHERE id = ?1")
         .bind(template_id)
         .fetch_one(pool)
@@ -399,14 +588,14 @@ pub async fn update_template(
     Ok(template)
 }
 
-/// Delete a template
-pub async fn delete_template(pool: &SqlitePool, template_id: &str) -> Result<()> {
-    sqlx::query("DELETE FROM scan_templates WHERE id = ?1")
+/// Delete a template (only non-system templates)
+pub async fn delete_template(pool: &SqlitePool, template_id: &str) -> Result<bool> {
+    let result = sqlx::query("DELETE FROM scan_templates WHERE id = ?1 AND is_system = 0")
         .bind(template_id)
         .execute(pool)
         .await?;
 
-    Ok(())
+    Ok(result.rows_affected() > 0)
 }
 
 // ============================================================================

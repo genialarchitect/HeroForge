@@ -15,11 +15,12 @@ import Input from '../ui/Input';
 import { ReportGenerator, ReportList } from '../reports';
 import { ComplianceAnalysis } from '../compliance';
 import NetworkMap from '../topology/NetworkMap';
-import { Server, Shield, AlertTriangle, Search, SlidersHorizontal, FileText, ClipboardCheck, List, Network, Database, Tag, Plus, X, Copy } from 'lucide-react';
+import SecretFindings from './SecretFindings';
+import { Server, Shield, AlertTriangle, Search, SlidersHorizontal, FileText, ClipboardCheck, List, Network, Database, Tag, Plus, X, Copy, Key } from 'lucide-react';
 
 type SortOption = 'ip' | 'risk' | 'vulns' | 'ports';
 type FilterOption = 'all' | 'with-vulns' | 'critical' | 'high';
-type ViewTab = 'results' | 'topology';
+type ViewTab = 'results' | 'topology' | 'secrets';
 
 const ResultsViewer: React.FC = () => {
   const { activeScan, results } = useScanStore();
@@ -362,12 +363,33 @@ const ResultsViewer: React.FC = () => {
             <Network className="h-4 w-4" />
             Topology
           </button>
+          <button
+            onClick={() => setActiveTab('secrets')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+              activeTab === 'secrets'
+                ? 'bg-dark-surface text-primary border-b-2 border-primary'
+                : 'text-slate-400 hover:text-white hover:bg-dark-hover'
+            }`}
+          >
+            <Key className="h-4 w-4" />
+            Secrets
+          </button>
         </div>
       </Card>
 
       {/* Tab Content */}
       {activeTab === 'topology' && activeScan && (
         <NetworkMap scanId={activeScan.id} />
+      )}
+
+      {activeTab === 'secrets' && activeScan && (
+        <Card>
+          <h3 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
+            <Key className="h-5 w-5 text-yellow-400" />
+            Exposed Secrets
+          </h3>
+          <SecretFindings scanId={activeScan.id} />
+        </Card>
       )}
 
       {activeTab === 'results' && (

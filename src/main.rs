@@ -21,6 +21,7 @@ mod types;
 mod vpn;
 mod vuln;
 mod web;
+mod webhooks;
 
 use types::{OutputFormat, ScanConfig, ScanType};
 

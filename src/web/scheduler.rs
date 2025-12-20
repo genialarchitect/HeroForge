@@ -1,13 +1,14 @@
-//! Background scheduler for executing scheduled scans
+//! Background scheduler for executing scheduled scans and reports
 //!
 //! This module provides a background task that periodically checks for
-//! scheduled scans that are due and executes them automatically.
+//! scheduled scans and reports that are due and executes them automatically.
 //!
 //! Production features:
 //! - Retry logic with exponential backoff
 //! - Email notifications for scan completion and failures
 //! - Execution history tracking
 //! - Jitter to prevent thundering herd
+//! - Automated report generation and email delivery
 
 use crate::db::{self, models};
 use crate::email::{EmailConfig, EmailService, ScanSummary};
@@ -15,6 +16,9 @@ use crate::scanner;
 use crate::types::{HostInfo, OutputFormat, ScanConfig, ScanProgressMessage, ScanType};
 use crate::web::broadcast;
 use anyhow::Result;
+use lettre::message::{header, MultiPart, SinglePart, Attachment};
+use lettre::transport::smtp::authentication::Credentials;
+use lettre::{Message, SmtpTransport, Transport};
 use rand::Rng;
 use sqlx::SqlitePool;
 use std::sync::Arc;
@@ -60,7 +64,12 @@ pub fn start_scheduler(pool: Arc<SqlitePool>) {
 
             // Check and execute due scans
             if let Err(e) = check_and_execute_due_scans(&pool, email_service.clone()).await {
-                log::error!("Scheduler error: {}", e);
+                log::error!("Scheduler error (scans): {}", e);
+            }
+
+            // Check and execute due reports
+            if let Err(e) = check_and_execute_due_reports(&pool, email_service.clone()).await {
+                log::error!("Scheduler error (reports): {}", e);
             }
         }
     });
@@ -504,4 +513,870 @@ async fn send_failure_email(
     );
 
     Ok(())
+}
+
+// ============================================================================
+// Scheduled Reports
+// ============================================================================
+
+/// Check for due scheduled reports and execute them
+async fn check_and_execute_due_reports(
+    pool: &SqlitePool,
+    email_service: Option<Arc<EmailService>>,
+) -> Result<()> {
+    // Get all due scheduled reports
+    let due_reports = db::get_due_scheduled_reports(pool).await?;
+
+    if due_reports.is_empty() {
+        log::debug!("No scheduled reports due");
+        return Ok(());
+    }
+
+    log::info!(
+        "Found {} scheduled report(s) due for execution",
+        due_reports.len()
+    );
+
+    for scheduled_report in due_reports {
+        if let Err(e) = execute_scheduled_report(pool, &scheduled_report).await {
+            log::error!(
+                "Failed to execute scheduled report '{}' ({}): {}",
+                scheduled_report.name,
+                scheduled_report.id,
+                e
+            );
+        }
+    }
+
+    Ok(())
+}
+
+/// Execute a single scheduled report
+pub async fn execute_scheduled_report(
+    pool: &SqlitePool,
+    scheduled_report: &models::ScheduledReport,
+) -> Result<()> {
+    log::info!(
+        "Executing scheduled report '{}' ({})",
+        scheduled_report.name,
+        scheduled_report.id
+    );
+
+    // Parse recipients
+    let recipients: Vec<String> = serde_json::from_str(&scheduled_report.recipients)?;
+    if recipients.is_empty() {
+        return Err(anyhow::anyhow!("No recipients configured for scheduled report"));
+    }
+
+    // Parse filters
+    let filters: Option<models::ScheduledReportFilters> = scheduled_report
+        .filters
+        .as_ref()
+        .map(|f| serde_json::from_str(f))
+        .transpose()?;
+
+    // Get reports directory from environment or use default
+    let reports_dir = std::env::var("REPORTS_DIR").unwrap_or_else(|_| "./reports".to_string());
+
+    // Create reports directory if it doesn't exist
+    std::fs::create_dir_all(&reports_dir)?;
+
+    // Generate the report based on type
+    let report_path = match scheduled_report.report_type.as_str() {
+        "vulnerability" => {
+            generate_vulnerability_report(
+                pool,
+                &scheduled_report.name,
+                &scheduled_report.format,
+                &reports_dir,
+                filters.as_ref(),
+            )
+            .await?
+        }
+        "scan_summary" => {
+            generate_scan_summary_report(
+                pool,
+                &scheduled_report.name,
+                &scheduled_report.format,
+                &reports_dir,
+                filters.as_ref(),
+            )
+            .await?
+        }
+        "compliance" => {
+            generate_compliance_report(
+                pool,
+                &scheduled_report.name,
+                &scheduled_report.format,
+                &reports_dir,
+                filters.as_ref(),
+            )
+            .await?
+        }
+        "executive" => {
+            generate_executive_report(
+                pool,
+                &scheduled_report.name,
+                &scheduled_report.format,
+                &reports_dir,
+                filters.as_ref(),
+            )
+            .await?
+        }
+        _ => {
+            return Err(anyhow::anyhow!(
+                "Unknown report type: {}",
+                scheduled_report.report_type
+            ));
+        }
+    };
+
+    // Send the report via email to all recipients
+    for recipient in &recipients {
+        if let Err(e) = send_report_email(
+            recipient,
+            &scheduled_report.name,
+            &scheduled_report.report_type,
+            &report_path,
+            &scheduled_report.format,
+        )
+        .await
+        {
+            log::error!("Failed to send report to {}: {}", recipient, e);
+        }
+    }
+
+    // Update the scheduled report execution time
+    db::update_scheduled_report_execution(pool, &scheduled_report.id).await?;
+
+    log::info!(
+        "Scheduled report '{}' executed successfully",
+        scheduled_report.name
+    );
+
+    Ok(())
+}
+
+/// Generate a vulnerability report
+async fn generate_vulnerability_report(
+    pool: &SqlitePool,
+    name: &str,
+    format: &str,
+    reports_dir: &str,
+    filters: Option<&models::ScheduledReportFilters>,
+) -> Result<String> {
+    log::info!("Generating vulnerability report: {}", name);
+
+    // Get recent scans (last 30 days by default)
+    let days_back = filters.and_then(|f| f.days_back).unwrap_or(30);
+    let cutoff = chrono::Utc::now() - chrono::Duration::days(days_back as i64);
+
+    // Get all completed scans
+    let scans = db::get_all_scans(pool).await?;
+
+    // Filter to recent completed scans
+    let recent_scans: Vec<_> = scans
+        .into_iter()
+        .filter(|s| s.status == "completed" && s.completed_at.map(|c| c > cutoff).unwrap_or(false))
+        .collect();
+
+    // Collect vulnerabilities from all scans
+    let mut all_vulns = Vec::new();
+    let min_severity = filters.and_then(|f| f.min_severity.as_ref());
+
+    for scan in &recent_scans {
+        if let Some(ref results_json) = scan.results {
+            let hosts: Vec<HostInfo> = serde_json::from_str(results_json).unwrap_or_default();
+            for host in hosts {
+                for vuln in host.vulnerabilities {
+                    // Filter by severity if specified
+                    let include = match min_severity {
+                        Some(min) => {
+                            let severity_order = |s: &str| match s.to_lowercase().as_str() {
+                                "critical" => 4,
+                                "high" => 3,
+                                "medium" => 2,
+                                "low" => 1,
+                                _ => 0,
+                            };
+                            severity_order(&format!("{:?}", vuln.severity))
+                                >= severity_order(min)
+                        }
+                        None => true,
+                    };
+
+                    if include {
+                        all_vulns.push(serde_json::json!({
+                            "host": host.target.ip,
+                            "hostname": host.target.hostname,
+                            "title": vuln.title,
+                            "severity": format!("{:?}", vuln.severity),
+                            "cve_id": vuln.cve_id,
+                            "description": vuln.description,
+                            "affected_service": vuln.affected_service,
+                        }));
+                    }
+                }
+            }
+        }
+    }
+
+    // Generate report content
+    let report_data = serde_json::json!({
+        "report_name": name,
+        "report_type": "vulnerability",
+        "generated_at": chrono::Utc::now().to_rfc3339(),
+        "period_days": days_back,
+        "total_scans": recent_scans.len(),
+        "total_vulnerabilities": all_vulns.len(),
+        "vulnerabilities": all_vulns,
+    });
+
+    // Write report to file
+    let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
+    let filename = format!("vuln_report_{}_{}.{}", sanitize_filename(name), timestamp, format);
+    let filepath = format!("{}/{}", reports_dir, filename);
+
+    match format {
+        "json" => {
+            let content = serde_json::to_string_pretty(&report_data)?;
+            std::fs::write(&filepath, content)?;
+        }
+        "csv" => {
+            let mut csv_content = String::from("Host,Hostname,Title,Severity,CVE ID,Description,Affected Service\n");
+            for vuln in &all_vulns {
+                csv_content.push_str(&format!(
+                    "{},{},{},{},{},{},{}\n",
+                    escape_csv(vuln["host"].as_str().unwrap_or("")),
+                    escape_csv(vuln["hostname"].as_str().unwrap_or("")),
+                    escape_csv(vuln["title"].as_str().unwrap_or("")),
+                    escape_csv(vuln["severity"].as_str().unwrap_or("")),
+                    escape_csv(vuln["cve_id"].as_str().unwrap_or("")),
+                    escape_csv(vuln["description"].as_str().unwrap_or("")),
+                    escape_csv(vuln["affected_service"].as_str().unwrap_or("")),
+                ));
+            }
+            std::fs::write(&filepath, csv_content)?;
+        }
+        "html" | "pdf" => {
+            let html_content = generate_vulnerability_html(&report_data);
+            if format == "html" {
+                std::fs::write(&filepath, html_content)?;
+            } else {
+                // For PDF, write HTML first then convert
+                let html_path = format!("{}/temp_{}.html", reports_dir, timestamp);
+                std::fs::write(&html_path, &html_content)?;
+                // TODO: Use PDF generation library
+                // For now, just use HTML
+                std::fs::write(&filepath.replace(".pdf", ".html"), &html_content)?;
+                let _ = std::fs::remove_file(&html_path);
+            }
+        }
+        _ => {
+            return Err(anyhow::anyhow!("Unsupported format: {}", format));
+        }
+    }
+
+    log::info!("Generated vulnerability report: {}", filepath);
+    Ok(filepath)
+}
+
+/// Generate a scan summary report
+async fn generate_scan_summary_report(
+    pool: &SqlitePool,
+    name: &str,
+    format: &str,
+    reports_dir: &str,
+    filters: Option<&models::ScheduledReportFilters>,
+) -> Result<String> {
+    log::info!("Generating scan summary report: {}", name);
+
+    let days_back = filters.and_then(|f| f.days_back).unwrap_or(30);
+    let cutoff = chrono::Utc::now() - chrono::Duration::days(days_back as i64);
+
+    let scans = db::get_all_scans(pool).await?;
+    let recent_scans: Vec<_> = scans
+        .into_iter()
+        .filter(|s| s.created_at > cutoff)
+        .collect();
+
+    let mut summary = serde_json::json!({
+        "report_name": name,
+        "report_type": "scan_summary",
+        "generated_at": chrono::Utc::now().to_rfc3339(),
+        "period_days": days_back,
+        "total_scans": recent_scans.len(),
+        "completed_scans": recent_scans.iter().filter(|s| s.status == "completed").count(),
+        "failed_scans": recent_scans.iter().filter(|s| s.status == "failed").count(),
+        "pending_scans": recent_scans.iter().filter(|s| s.status == "pending").count(),
+        "scans": recent_scans.iter().map(|s| serde_json::json!({
+            "name": s.name,
+            "targets": s.targets,
+            "status": s.status,
+            "created_at": s.created_at.to_rfc3339(),
+            "completed_at": s.completed_at.map(|c| c.to_rfc3339()),
+        })).collect::<Vec<_>>(),
+    });
+
+    // Write report
+    let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
+    let filename = format!("scan_summary_{}_{}.{}", sanitize_filename(name), timestamp, format);
+    let filepath = format!("{}/{}", reports_dir, filename);
+
+    match format {
+        "json" => {
+            let content = serde_json::to_string_pretty(&summary)?;
+            std::fs::write(&filepath, content)?;
+        }
+        "html" | "pdf" => {
+            let html_content = generate_scan_summary_html(&summary);
+            std::fs::write(&filepath.replace(".pdf", ".html"), html_content)?;
+        }
+        "csv" => {
+            let mut csv = String::from("Name,Targets,Status,Created At,Completed At\n");
+            for scan in &recent_scans {
+                csv.push_str(&format!(
+                    "{},{},{},{},{}\n",
+                    escape_csv(&scan.name),
+                    escape_csv(&scan.targets),
+                    escape_csv(&scan.status),
+                    scan.created_at.to_rfc3339(),
+                    scan.completed_at.map(|c| c.to_rfc3339()).unwrap_or_default(),
+                ));
+            }
+            std::fs::write(&filepath, csv)?;
+        }
+        _ => return Err(anyhow::anyhow!("Unsupported format: {}", format)),
+    }
+
+    log::info!("Generated scan summary report: {}", filepath);
+    Ok(filepath)
+}
+
+/// Generate a compliance report
+async fn generate_compliance_report(
+    pool: &SqlitePool,
+    name: &str,
+    format: &str,
+    reports_dir: &str,
+    filters: Option<&models::ScheduledReportFilters>,
+) -> Result<String> {
+    log::info!("Generating compliance report: {}", name);
+
+    // Get frameworks to include
+    let frameworks = filters
+        .and_then(|f| f.frameworks.as_ref())
+        .cloned()
+        .unwrap_or_else(|| vec!["pci_dss".to_string(), "nist_800_53".to_string()]);
+
+    // Get recent scan data
+    let days_back = filters.and_then(|f| f.days_back).unwrap_or(30);
+    let cutoff = chrono::Utc::now() - chrono::Duration::days(days_back as i64);
+
+    let scans = db::get_all_scans(pool).await?;
+    let recent_scans: Vec<_> = scans
+        .into_iter()
+        .filter(|s| s.status == "completed" && s.completed_at.map(|c| c > cutoff).unwrap_or(false))
+        .collect();
+
+    // Build compliance summary
+    let report_data = serde_json::json!({
+        "report_name": name,
+        "report_type": "compliance",
+        "generated_at": chrono::Utc::now().to_rfc3339(),
+        "period_days": days_back,
+        "frameworks": frameworks,
+        "total_scans_analyzed": recent_scans.len(),
+        "note": "Run compliance analysis via API for detailed control mappings",
+    });
+
+    // Write report
+    let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
+    let filename = format!("compliance_{}_{}.{}", sanitize_filename(name), timestamp, format);
+    let filepath = format!("{}/{}", reports_dir, filename);
+
+    match format {
+        "json" => {
+            let content = serde_json::to_string_pretty(&report_data)?;
+            std::fs::write(&filepath, content)?;
+        }
+        "html" | "pdf" => {
+            let html = generate_compliance_html(&report_data);
+            std::fs::write(&filepath.replace(".pdf", ".html"), html)?;
+        }
+        "csv" => {
+            let csv = format!("Framework,Period Days,Scans Analyzed\n{},{},{}",
+                frameworks.join(";"),
+                days_back,
+                recent_scans.len()
+            );
+            std::fs::write(&filepath, csv)?;
+        }
+        _ => return Err(anyhow::anyhow!("Unsupported format: {}", format)),
+    }
+
+    log::info!("Generated compliance report: {}", filepath);
+    Ok(filepath)
+}
+
+/// Generate an executive report
+async fn generate_executive_report(
+    pool: &SqlitePool,
+    name: &str,
+    format: &str,
+    reports_dir: &str,
+    filters: Option<&models::ScheduledReportFilters>,
+) -> Result<String> {
+    log::info!("Generating executive report: {}", name);
+
+    let days_back = filters.and_then(|f| f.days_back).unwrap_or(30);
+    let cutoff = chrono::Utc::now() - chrono::Duration::days(days_back as i64);
+
+    // Get scan data
+    let scans = db::get_all_scans(pool).await?;
+    let recent_scans: Vec<_> = scans
+        .into_iter()
+        .filter(|s| s.created_at > cutoff)
+        .collect();
+
+    // Calculate summary statistics
+    let completed_scans = recent_scans.iter().filter(|s| s.status == "completed").count();
+    let mut total_hosts = 0;
+    let mut total_vulns = 0;
+    let mut critical_vulns = 0;
+    let mut high_vulns = 0;
+
+    for scan in &recent_scans {
+        if let Some(ref results_json) = scan.results {
+            let hosts: Vec<HostInfo> = serde_json::from_str(results_json).unwrap_or_default();
+            total_hosts += hosts.len();
+            for host in &hosts {
+                total_vulns += host.vulnerabilities.len();
+                for vuln in &host.vulnerabilities {
+                    use crate::types::Severity;
+                    match vuln.severity {
+                        Severity::Critical => critical_vulns += 1,
+                        Severity::High => high_vulns += 1,
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+
+    let report_data = serde_json::json!({
+        "report_name": name,
+        "report_type": "executive",
+        "generated_at": chrono::Utc::now().to_rfc3339(),
+        "period_days": days_back,
+        "summary": {
+            "total_scans": recent_scans.len(),
+            "completed_scans": completed_scans,
+            "total_hosts_discovered": total_hosts,
+            "total_vulnerabilities": total_vulns,
+            "critical_vulnerabilities": critical_vulns,
+            "high_vulnerabilities": high_vulns,
+        },
+        "risk_level": if critical_vulns > 0 { "Critical" } else if high_vulns > 0 { "High" } else { "Medium" },
+    });
+
+    // Write report
+    let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
+    let filename = format!("executive_{}_{}.{}", sanitize_filename(name), timestamp, format);
+    let filepath = format!("{}/{}", reports_dir, filename);
+
+    match format {
+        "json" => {
+            let content = serde_json::to_string_pretty(&report_data)?;
+            std::fs::write(&filepath, content)?;
+        }
+        "html" | "pdf" => {
+            let html = generate_executive_html(&report_data);
+            std::fs::write(&filepath.replace(".pdf", ".html"), html)?;
+        }
+        "csv" => {
+            let csv = format!(
+                "Metric,Value\nTotal Scans,{}\nCompleted Scans,{}\nTotal Hosts,{}\nTotal Vulnerabilities,{}\nCritical Vulnerabilities,{}\nHigh Vulnerabilities,{}",
+                recent_scans.len(),
+                completed_scans,
+                total_hosts,
+                total_vulns,
+                critical_vulns,
+                high_vulns
+            );
+            std::fs::write(&filepath, csv)?;
+        }
+        _ => return Err(anyhow::anyhow!("Unsupported format: {}", format)),
+    }
+
+    log::info!("Generated executive report: {}", filepath);
+    Ok(filepath)
+}
+
+/// Send report email with attachment
+async fn send_report_email(
+    recipient: &str,
+    report_name: &str,
+    report_type: &str,
+    report_path: &str,
+    format: &str,
+) -> Result<()> {
+    // Get email configuration
+    let config = EmailConfig::from_env()?;
+
+    // Read the report file
+    let report_content = std::fs::read(report_path)?;
+    let filename = std::path::Path::new(report_path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("report.txt");
+
+    // Determine content type
+    let content_type = match format {
+        "pdf" => "application/pdf",
+        "html" => "text/html",
+        "csv" => "text/csv",
+        "json" => "application/json",
+        _ => "application/octet-stream",
+    };
+
+    // Build email subject
+    let subject = format!("HeroForge {} Report: {}",
+        report_type.chars().next().unwrap().to_uppercase().to_string() + &report_type[1..],
+        report_name
+    );
+
+    // Build email body
+    let html_body = format!(
+        r#"<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .header {{ background-color: #4F46E5; color: white; padding: 20px; text-align: center; }}
+        .content {{ background-color: #f9fafb; padding: 20px; }}
+        .footer {{ text-align: center; padding: 20px; color: #6b7280; font-size: 12px; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Scheduled Report</h1>
+        </div>
+        <div class="content">
+            <p>Your scheduled HeroForge report <strong>{}</strong> has been generated.</p>
+            <p><strong>Report Type:</strong> {}</p>
+            <p><strong>Generated:</strong> {}</p>
+            <p>The report is attached to this email.</p>
+        </div>
+        <div class="footer">
+            <p>This is an automated report from HeroForge Security Scanner.</p>
+        </div>
+    </div>
+</body>
+</html>"#,
+        report_name,
+        report_type,
+        chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC")
+    );
+
+    let text_body = format!(
+        "HeroForge Scheduled Report: {}\n\nReport Type: {}\nGenerated: {}\n\nThe report is attached to this email.",
+        report_name,
+        report_type,
+        chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC")
+    );
+
+    // Build the email with attachment
+    let attachment = Attachment::new(filename.to_string())
+        .body(report_content, content_type.parse().unwrap());
+
+    let email = Message::builder()
+        .from(
+            format!("{} <{}>", config.from_name, config.from_address)
+                .parse()
+                .map_err(|e| anyhow::anyhow!("Failed to parse from address: {}", e))?,
+        )
+        .to(recipient.parse().map_err(|e| anyhow::anyhow!("Failed to parse recipient: {}", e))?)
+        .subject(&subject)
+        .multipart(
+            MultiPart::mixed()
+                .multipart(
+                    MultiPart::alternative()
+                        .singlepart(
+                            SinglePart::builder()
+                                .header(header::ContentType::TEXT_PLAIN)
+                                .body(text_body),
+                        )
+                        .singlepart(
+                            SinglePart::builder()
+                                .header(header::ContentType::TEXT_HTML)
+                                .body(html_body),
+                        ),
+                )
+                .singlepart(attachment),
+        )?;
+
+    // Send the email
+    let creds = Credentials::new(config.smtp_user.clone(), config.smtp_password.clone());
+
+    let mailer = SmtpTransport::relay(&config.smtp_host)?
+        .credentials(creds)
+        .port(config.smtp_port)
+        .build();
+
+    // Send in blocking task
+    tokio::task::spawn_blocking(move || mailer.send(&email))
+        .await??;
+
+    log::info!("Sent report email to {}", recipient);
+    Ok(())
+}
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/// Sanitize filename to remove unsafe characters
+fn sanitize_filename(name: &str) -> String {
+    name.chars()
+        .map(|c| if c.is_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
+        .collect()
+}
+
+/// Escape a value for CSV
+fn escape_csv(value: &str) -> String {
+    if value.contains(',') || value.contains('"') || value.contains('\n') {
+        format!("\"{}\"", value.replace('"', "\"\""))
+    } else {
+        value.to_string()
+    }
+}
+
+/// Generate HTML for vulnerability report
+fn generate_vulnerability_html(data: &serde_json::Value) -> String {
+    let empty_vec = vec![];
+    let vulns = data["vulnerabilities"].as_array().unwrap_or(&empty_vec);
+
+    let vuln_rows: String = vulns.iter().map(|v| {
+        format!(
+            "<tr><td>{}</td><td>{}</td><td class=\"severity-{}\">{}</td><td>{}</td><td>{}</td></tr>",
+            v["host"].as_str().unwrap_or(""),
+            v["title"].as_str().unwrap_or(""),
+            v["severity"].as_str().unwrap_or("").to_lowercase(),
+            v["severity"].as_str().unwrap_or(""),
+            v["cve_id"].as_str().unwrap_or("N/A"),
+            v["affected_service"].as_str().unwrap_or("N/A"),
+        )
+    }).collect();
+
+    format!(
+        r#"<!DOCTYPE html>
+<html>
+<head>
+    <title>Vulnerability Report - {}</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }}
+        .container {{ max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
+        h1 {{ color: #1e3a5f; border-bottom: 2px solid #4F46E5; padding-bottom: 10px; }}
+        .summary {{ display: flex; gap: 20px; margin-bottom: 20px; }}
+        .stat {{ background: #f0f4f8; padding: 15px; border-radius: 8px; text-align: center; flex: 1; }}
+        .stat-value {{ font-size: 2em; font-weight: bold; color: #4F46E5; }}
+        .stat-label {{ color: #666; }}
+        table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
+        th, td {{ padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }}
+        th {{ background: #4F46E5; color: white; }}
+        tr:hover {{ background: #f5f5f5; }}
+        .severity-critical {{ color: #dc2626; font-weight: bold; }}
+        .severity-high {{ color: #ea580c; font-weight: bold; }}
+        .severity-medium {{ color: #ca8a04; }}
+        .severity-low {{ color: #65a30d; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Vulnerability Report: {}</h1>
+        <p>Generated: {} | Period: {} days</p>
+        <div class="summary">
+            <div class="stat"><div class="stat-value">{}</div><div class="stat-label">Total Scans</div></div>
+            <div class="stat"><div class="stat-value">{}</div><div class="stat-label">Vulnerabilities</div></div>
+        </div>
+        <table>
+            <thead>
+                <tr><th>Host</th><th>Title</th><th>Severity</th><th>CVE</th><th>Service</th></tr>
+            </thead>
+            <tbody>
+                {}
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>"#,
+        data["report_name"].as_str().unwrap_or(""),
+        data["report_name"].as_str().unwrap_or(""),
+        data["generated_at"].as_str().unwrap_or(""),
+        data["period_days"],
+        data["total_scans"],
+        data["total_vulnerabilities"],
+        vuln_rows
+    )
+}
+
+/// Generate HTML for scan summary report
+fn generate_scan_summary_html(data: &serde_json::Value) -> String {
+    let empty_vec = vec![];
+    let scans = data["scans"].as_array().unwrap_or(&empty_vec);
+
+    let scan_rows: String = scans.iter().map(|s| {
+        format!(
+            "<tr><td>{}</td><td>{}</td><td class=\"status-{}\">{}</td><td>{}</td><td>{}</td></tr>",
+            s["name"].as_str().unwrap_or(""),
+            s["targets"].as_str().unwrap_or(""),
+            s["status"].as_str().unwrap_or("").to_lowercase(),
+            s["status"].as_str().unwrap_or(""),
+            s["created_at"].as_str().unwrap_or(""),
+            s["completed_at"].as_str().unwrap_or("N/A"),
+        )
+    }).collect();
+
+    format!(
+        r#"<!DOCTYPE html>
+<html>
+<head>
+    <title>Scan Summary Report - {}</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }}
+        .container {{ max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }}
+        h1 {{ color: #1e3a5f; border-bottom: 2px solid #4F46E5; padding-bottom: 10px; }}
+        .summary {{ display: flex; gap: 20px; margin-bottom: 20px; }}
+        .stat {{ background: #f0f4f8; padding: 15px; border-radius: 8px; text-align: center; flex: 1; }}
+        .stat-value {{ font-size: 2em; font-weight: bold; color: #4F46E5; }}
+        table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
+        th, td {{ padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }}
+        th {{ background: #4F46E5; color: white; }}
+        .status-completed {{ color: #16a34a; }}
+        .status-failed {{ color: #dc2626; }}
+        .status-pending {{ color: #ca8a04; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Scan Summary Report: {}</h1>
+        <p>Generated: {} | Period: {} days</p>
+        <div class="summary">
+            <div class="stat"><div class="stat-value">{}</div><div class="stat-label">Total Scans</div></div>
+            <div class="stat"><div class="stat-value">{}</div><div class="stat-label">Completed</div></div>
+            <div class="stat"><div class="stat-value">{}</div><div class="stat-label">Failed</div></div>
+        </div>
+        <table>
+            <thead><tr><th>Name</th><th>Targets</th><th>Status</th><th>Created</th><th>Completed</th></tr></thead>
+            <tbody>{}</tbody>
+        </table>
+    </div>
+</body>
+</html>"#,
+        data["report_name"].as_str().unwrap_or(""),
+        data["report_name"].as_str().unwrap_or(""),
+        data["generated_at"].as_str().unwrap_or(""),
+        data["period_days"],
+        data["total_scans"],
+        data["completed_scans"],
+        data["failed_scans"],
+        scan_rows
+    )
+}
+
+/// Generate HTML for compliance report
+fn generate_compliance_html(data: &serde_json::Value) -> String {
+    format!(
+        r#"<!DOCTYPE html>
+<html>
+<head>
+    <title>Compliance Report - {}</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }}
+        .container {{ max-width: 1000px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }}
+        h1 {{ color: #1e3a5f; border-bottom: 2px solid #4F46E5; padding-bottom: 10px; }}
+        .info {{ background: #f0f4f8; padding: 20px; border-radius: 8px; margin: 20px 0; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Compliance Report: {}</h1>
+        <p>Generated: {}</p>
+        <div class="info">
+            <p><strong>Frameworks:</strong> {}</p>
+            <p><strong>Period:</strong> {} days</p>
+            <p><strong>Scans Analyzed:</strong> {}</p>
+        </div>
+    </div>
+</body>
+</html>"#,
+        data["report_name"].as_str().unwrap_or(""),
+        data["report_name"].as_str().unwrap_or(""),
+        data["generated_at"].as_str().unwrap_or(""),
+        data["frameworks"].as_array().map(|f| f.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>().join(", ")).unwrap_or_default(),
+        data["period_days"],
+        data["total_scans_analyzed"]
+    )
+}
+
+/// Generate HTML for executive report
+fn generate_executive_html(data: &serde_json::Value) -> String {
+    let summary = &data["summary"];
+    let risk_class = match data["risk_level"].as_str().unwrap_or("Medium") {
+        "Critical" => "risk-critical",
+        "High" => "risk-high",
+        _ => "risk-medium",
+    };
+
+    format!(
+        r#"<!DOCTYPE html>
+<html>
+<head>
+    <title>Executive Report - {}</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }}
+        .container {{ max-width: 1000px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }}
+        h1 {{ color: #1e3a5f; border-bottom: 2px solid #4F46E5; padding-bottom: 10px; }}
+        .risk {{ padding: 15px 25px; border-radius: 8px; display: inline-block; font-weight: bold; margin: 20px 0; }}
+        .risk-critical {{ background: #fee2e2; color: #dc2626; }}
+        .risk-high {{ background: #ffedd5; color: #ea580c; }}
+        .risk-medium {{ background: #fef3c7; color: #ca8a04; }}
+        .stats {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin: 20px 0; }}
+        .stat {{ background: #f0f4f8; padding: 20px; border-radius: 8px; text-align: center; }}
+        .stat-value {{ font-size: 2.5em; font-weight: bold; color: #4F46E5; }}
+        .stat-label {{ color: #666; margin-top: 5px; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Executive Security Report: {}</h1>
+        <p>Generated: {} | Period: {} days</p>
+        <div class="risk {}">{} Risk Level</div>
+        <div class="stats">
+            <div class="stat"><div class="stat-value">{}</div><div class="stat-label">Total Scans</div></div>
+            <div class="stat"><div class="stat-value">{}</div><div class="stat-label">Hosts Discovered</div></div>
+            <div class="stat"><div class="stat-value">{}</div><div class="stat-label">Vulnerabilities</div></div>
+            <div class="stat"><div class="stat-value">{}</div><div class="stat-label">Critical</div></div>
+            <div class="stat"><div class="stat-value">{}</div><div class="stat-label">High</div></div>
+            <div class="stat"><div class="stat-value">{}</div><div class="stat-label">Completed Scans</div></div>
+        </div>
+    </div>
+</body>
+</html>"#,
+        data["report_name"].as_str().unwrap_or(""),
+        data["report_name"].as_str().unwrap_or(""),
+        data["generated_at"].as_str().unwrap_or(""),
+        data["period_days"],
+        risk_class,
+        data["risk_level"].as_str().unwrap_or("Medium"),
+        summary["total_scans"],
+        summary["total_hosts_discovered"],
+        summary["total_vulnerabilities"],
+        summary["critical_vulnerabilities"],
+        summary["high_vulnerabilities"],
+        summary["completed_scans"]
+    )
 }

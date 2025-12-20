@@ -86,6 +86,16 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     create_scan_exclusions_table(pool).await?;
     // Add updated_at column to vulnerability_comments
     add_updated_at_to_vulnerability_comments(pool).await?;
+    // Scheduled reports table
+    create_scheduled_reports_table(pool).await?;
+    // Enhanced scan templates (profiles/presets)
+    enhance_scan_templates_table(pool).await?;
+    seed_system_scan_templates(pool).await?;
+    // ServiceNow integration tables
+    create_servicenow_settings_table(pool).await?;
+    create_servicenow_tickets_table(pool).await?;
+    // Secret findings table
+    create_secret_findings_table(pool).await?;
     Ok(())
 }
 
@@ -3446,5 +3456,433 @@ async fn add_updated_at_to_vulnerability_comments(pool: &SqlitePool) -> Result<(
         log::info!("Added updated_at column to vulnerability_comments table");
     }
 
+    Ok(())
+}
+
+// ============================================================================
+// Webhooks (Outbound) Migration Functions
+// ============================================================================
+
+/// Create webhooks table for storing webhook configurations
+async fn create_webhooks_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS webhooks (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            url TEXT NOT NULL,
+            secret TEXT,
+            events TEXT NOT NULL,
+            headers TEXT,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            last_triggered_at TEXT,
+            last_status_code INTEGER,
+            failure_count INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for efficient lookups
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_webhooks_user_id ON webhooks(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_webhooks_is_active ON webhooks(user_id, is_active)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created webhooks table");
+    Ok(())
+}
+
+/// Create webhook_deliveries table for storing delivery history
+async fn create_webhook_deliveries_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS webhook_deliveries (
+            id TEXT PRIMARY KEY,
+            webhook_id TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            payload TEXT NOT NULL,
+            response_status INTEGER,
+            response_body TEXT,
+            error TEXT,
+            delivered_at TEXT NOT NULL,
+            FOREIGN KEY (webhook_id) REFERENCES webhooks(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for efficient lookups
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_webhook_id ON webhook_deliveries(webhook_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_event_type ON webhook_deliveries(event_type)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_delivered_at ON webhook_deliveries(delivered_at)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created webhook_deliveries table");
+    Ok(())
+}
+
+// ============================================================================
+// Scheduled Reports Migration Functions
+// ============================================================================
+
+/// Create scheduled_reports table for automated report generation and email delivery
+async fn create_scheduled_reports_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS scheduled_reports (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            report_type TEXT NOT NULL,
+            format TEXT NOT NULL,
+            schedule TEXT NOT NULL,
+            recipients TEXT NOT NULL,
+            filters TEXT,
+            include_charts INTEGER DEFAULT 1,
+            last_run_at TEXT,
+            next_run_at TEXT,
+            is_active INTEGER DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for efficient lookups
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_scheduled_reports_user_id ON scheduled_reports(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_scheduled_reports_next_run ON scheduled_reports(next_run_at)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_scheduled_reports_is_active ON scheduled_reports(is_active)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created scheduled_reports table");
+    Ok(())
+}
+
+// ============================================================================
+// Enhanced Scan Templates (Profiles/Presets) Migration
+// ============================================================================
+
+/// Add enhanced columns to scan_templates for profiles/presets feature
+async fn enhance_scan_templates_table(pool: &SqlitePool) -> Result<()> {
+    // Check if the columns already exist
+    let columns: Vec<(i32, String, String, i32, Option<String>, i32)> =
+        sqlx::query_as("PRAGMA table_info(scan_templates)")
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default();
+
+    let has_is_system = columns.iter().any(|(_, name, _, _, _, _)| name == "is_system");
+    let has_category = columns.iter().any(|(_, name, _, _, _, _)| name == "category");
+    let has_estimated_duration = columns.iter().any(|(_, name, _, _, _, _)| name == "estimated_duration_mins");
+    let has_use_count = columns.iter().any(|(_, name, _, _, _, _)| name == "use_count");
+    let has_last_used_at = columns.iter().any(|(_, name, _, _, _, _)| name == "last_used_at");
+
+    if !has_is_system {
+        sqlx::query("ALTER TABLE scan_templates ADD COLUMN is_system INTEGER NOT NULL DEFAULT 0")
+            .execute(pool)
+            .await?;
+        log::info!("Added is_system column to scan_templates table");
+    }
+
+    if !has_category {
+        sqlx::query("ALTER TABLE scan_templates ADD COLUMN category TEXT NOT NULL DEFAULT 'custom'")
+            .execute(pool)
+            .await?;
+        log::info!("Added category column to scan_templates table");
+    }
+
+    if !has_estimated_duration {
+        sqlx::query("ALTER TABLE scan_templates ADD COLUMN estimated_duration_mins INTEGER")
+            .execute(pool)
+            .await?;
+        log::info!("Added estimated_duration_mins column to scan_templates table");
+    }
+
+    if !has_use_count {
+        sqlx::query("ALTER TABLE scan_templates ADD COLUMN use_count INTEGER NOT NULL DEFAULT 0")
+            .execute(pool)
+            .await?;
+        log::info!("Added use_count column to scan_templates table");
+    }
+
+    if !has_last_used_at {
+        sqlx::query("ALTER TABLE scan_templates ADD COLUMN last_used_at TEXT")
+            .execute(pool)
+            .await?;
+        log::info!("Added last_used_at column to scan_templates table");
+    }
+
+    // Create indexes for new columns
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_scan_templates_category ON scan_templates(category)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_scan_templates_is_system ON scan_templates(is_system)")
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+/// Seed system scan templates (profiles/presets)
+async fn seed_system_scan_templates(pool: &SqlitePool) -> Result<()> {
+    use uuid::Uuid;
+    use chrono::Utc;
+
+    // Check if system templates already exist
+    let existing_count: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM scan_templates WHERE is_system = 1"
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap_or((0,));
+
+    if existing_count.0 > 0 {
+        log::info!("System scan templates already exist, skipping seed");
+        return Ok(());
+    }
+
+    let now = Utc::now();
+    let system_user_id = "system"; // Special user ID for system templates
+
+    // Ensure system user exists (needed for foreign key constraint)
+    let system_user_exists: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM users WHERE id = 'system'"
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap_or((0,));
+
+    if system_user_exists.0 == 0 {
+        // Create system user with a random password hash (it will never be used for login)
+        sqlx::query(
+            r#"
+            INSERT INTO users (id, username, email, password_hash, created_at, is_active, accepted_terms_at, terms_version)
+            VALUES ('system', 'system', 'system@heroforge.local', '$2b$12$system.placeholder.hash.never.used', ?1, 0, ?1, '1.0')
+            "#
+        )
+        .bind(now.to_rfc3339())
+        .execute(pool)
+        .await?;
+        log::info!("Created system user for system templates");
+    }
+
+    // Define system templates
+    let templates = vec![
+        (
+            "Quick Scan",
+            "Fast reconnaissance scan targeting common ports. Ideal for initial discovery.",
+            "quick",
+            5, // estimated minutes
+            r#"{"port_range":[1,100],"threads":100,"enable_os_detection":false,"enable_service_detection":false,"enable_vuln_scan":false,"enable_enumeration":false,"enum_depth":null,"enum_services":null,"scan_type":"tcp_connect","udp_port_range":null,"udp_retries":2,"target_group_id":null}"#,
+        ),
+        (
+            "Standard Scan",
+            "Balanced scan with service detection on top 1000 ports. Good for routine assessments.",
+            "standard",
+            30, // estimated minutes
+            r#"{"port_range":[1,1000],"threads":50,"enable_os_detection":true,"enable_service_detection":true,"enable_vuln_scan":true,"enable_enumeration":false,"enum_depth":null,"enum_services":null,"scan_type":"tcp_connect","udp_port_range":null,"udp_retries":2,"target_group_id":null}"#,
+        ),
+        (
+            "Comprehensive Scan",
+            "Full port scan with deep service detection, OS fingerprinting, and vulnerability scanning. Thorough but slow.",
+            "comprehensive",
+            120, // estimated minutes
+            r#"{"port_range":[1,65535],"threads":25,"enable_os_detection":true,"enable_service_detection":true,"enable_vuln_scan":true,"enable_enumeration":true,"enum_depth":"aggressive","enum_services":["http","https","smb","ftp","ssh","mysql","postgresql"],"scan_type":"comprehensive","udp_port_range":[1,1000],"udp_retries":3,"target_group_id":null}"#,
+        ),
+        (
+            "Web Focus",
+            "Optimized for web application targets. Scans common web ports with HTTP enumeration enabled.",
+            "web",
+            45, // estimated minutes
+            r#"{"port_range":[80,443],"threads":30,"enable_os_detection":false,"enable_service_detection":true,"enable_vuln_scan":true,"enable_enumeration":true,"enum_depth":"light","enum_services":["http","https"],"scan_type":"tcp_connect","udp_port_range":null,"udp_retries":2,"target_group_id":null}"#,
+        ),
+        (
+            "Stealth Scan",
+            "Low and slow SYN scan designed to minimize detection. Uses reduced threads and timing.",
+            "stealth",
+            180, // estimated minutes
+            r#"{"port_range":[1,1000],"threads":5,"enable_os_detection":false,"enable_service_detection":true,"enable_vuln_scan":false,"enable_enumeration":false,"enum_depth":null,"enum_services":null,"scan_type":"syn","udp_port_range":null,"udp_retries":1,"target_group_id":null}"#,
+        ),
+    ];
+
+    let template_count = templates.len();
+    for (name, description, category, estimated_duration, config) in templates {
+        let id = Uuid::new_v4().to_string();
+        sqlx::query(
+            r#"
+            INSERT INTO scan_templates (id, user_id, name, description, config, is_default, is_system, category, estimated_duration_mins, use_count, created_at, updated_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, 0, 1, ?6, ?7, 0, ?8, ?9)
+            "#,
+        )
+        .bind(&id)
+        .bind(system_user_id)
+        .bind(name)
+        .bind(description)
+        .bind(config)
+        .bind(category)
+        .bind(estimated_duration)
+        .bind(now)
+        .bind(now)
+        .execute(pool)
+        .await?;
+    }
+
+    log::info!("Seeded {} system scan templates", template_count);
+    Ok(())
+}
+
+// ============================================================================
+// ServiceNow Integration Migrations
+// ============================================================================
+
+/// Create servicenow_settings table for storing user ServiceNow configuration
+async fn create_servicenow_settings_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS servicenow_settings (
+            user_id TEXT PRIMARY KEY,
+            instance_url TEXT NOT NULL,
+            username TEXT NOT NULL,
+            password_encrypted TEXT NOT NULL,
+            default_assignment_group TEXT,
+            default_category TEXT,
+            default_impact INTEGER DEFAULT 3,
+            default_urgency INTEGER DEFAULT 3,
+            enabled INTEGER DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Create servicenow_tickets table for tracking tickets created from vulnerabilities
+async fn create_servicenow_tickets_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS servicenow_tickets (
+            id TEXT PRIMARY KEY,
+            vulnerability_id TEXT NOT NULL,
+            ticket_number TEXT NOT NULL,
+            ticket_type TEXT NOT NULL,
+            ticket_sys_id TEXT NOT NULL,
+            ticket_url TEXT NOT NULL,
+            status TEXT,
+            created_by TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (vulnerability_id) REFERENCES vulnerability_tracking(id) ON DELETE CASCADE,
+            FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create index for efficient lookups by vulnerability
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_servicenow_tickets_vuln_id ON servicenow_tickets(vulnerability_id)")
+        .execute(pool)
+        .await?;
+
+    // Create index for efficient lookups by ticket number
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_servicenow_tickets_number ON servicenow_tickets(ticket_number)")
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+// ============================================================================
+// Secret Findings Migrations
+// ============================================================================
+
+/// Create secret_findings table for storing detected secrets in scans
+async fn create_secret_findings_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS secret_findings (
+            id TEXT PRIMARY KEY,
+            scan_id TEXT NOT NULL,
+            host_ip TEXT NOT NULL,
+            port INTEGER,
+            secret_type TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            redacted_value TEXT NOT NULL,
+            source_type TEXT NOT NULL,
+            source_location TEXT NOT NULL,
+            line_number INTEGER,
+            context TEXT,
+            confidence REAL NOT NULL,
+            status TEXT NOT NULL DEFAULT 'open',
+            resolved_at TEXT,
+            resolved_by TEXT,
+            false_positive INTEGER DEFAULT 0,
+            notes TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (scan_id) REFERENCES scan_results(id) ON DELETE CASCADE,
+            FOREIGN KEY (resolved_by) REFERENCES users(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for efficient queries
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_secret_findings_scan_id ON secret_findings(scan_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_secret_findings_host ON secret_findings(host_ip)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_secret_findings_type ON secret_findings(secret_type)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_secret_findings_severity ON secret_findings(severity)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_secret_findings_status ON secret_findings(status)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created secret_findings table");
     Ok(())
 }

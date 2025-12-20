@@ -1,5 +1,8 @@
 use super::types::{EnumDepth, EnumerationResult, Finding, FindingType, ServiceType};
 use super::wordlists::WordlistManager;
+use crate::scanner::secret_detection::{
+    detect_secrets_in_http_response, detect_secrets_in_header, SecretDetectionConfig,
+};
 use crate::types::{ScanProgressMessage, ScanTarget};
 use anyhow::Result;
 use log::{debug, info};
@@ -147,6 +150,7 @@ fn create_http_client(timeout: Duration, is_https: bool) -> Result<reqwest::Clie
 /// Check for common files (robots.txt, sitemap.xml, etc.)
 async fn check_common_files(client: &reqwest::Client, base_url: &str) -> Vec<Finding> {
     let mut findings = Vec::new();
+    let secret_config = SecretDetectionConfig::default();
 
     let common_files = vec![
         "robots.txt",
@@ -159,6 +163,17 @@ async fn check_common_files(client: &reqwest::Client, base_url: &str) -> Vec<Fin
         ".git/HEAD",
         "package.json",
         "composer.json",
+        // Additional files that often contain secrets
+        "config.js",
+        "config.json",
+        "settings.json",
+        ".npmrc",
+        ".dockerenv",
+        "docker-compose.yml",
+        "application.properties",
+        "application.yml",
+        "appsettings.json",
+        "credentials.json",
     ];
 
     for file in common_files {
@@ -166,11 +181,21 @@ async fn check_common_files(client: &reqwest::Client, base_url: &str) -> Vec<Fin
 
         if let Ok(response) = client.get(&url).send().await {
             if response.status().is_success() {
+                let content_type = response
+                    .headers()
+                    .get("content-type")
+                    .and_then(|v| v.to_str().ok())
+                    .map(|s| s.to_string());
+
                 let finding_type = match file {
                     "robots.txt" => FindingType::RobotsTxt,
                     "sitemap.xml" => FindingType::SitemapXml,
-                    ".env" | "config.php" | "wp-config.php" => FindingType::ConfigFile,
-                    ".git/config" | ".git/HEAD" => FindingType::InformationDisclosure,
+                    ".env" | "config.php" | "wp-config.php" | "config.js" | "config.json"
+                    | "settings.json" | ".npmrc" | "application.properties" | "application.yml"
+                    | "appsettings.json" | "credentials.json" | "docker-compose.yml" => {
+                        FindingType::ConfigFile
+                    }
+                    ".git/config" | ".git/HEAD" | ".dockerenv" => FindingType::InformationDisclosure,
                     _ => FindingType::File,
                 };
 
@@ -180,12 +205,65 @@ async fn check_common_files(client: &reqwest::Client, base_url: &str) -> Vec<Fin
                     response.status().as_u16().to_string(),
                 );
 
-                // For robots.txt, try to extract interesting paths
-                if file == "robots.txt" {
-                    if let Ok(body) = response.text().await {
-                        if body.len() < 10000 {  // Sanity check
-                            finding.metadata.insert("preview".to_string(), body.lines().take(5).collect::<Vec<_>>().join("\n"));
+                // Get response body for secret scanning
+                if let Ok(body) = response.text().await {
+                    // For robots.txt, try to extract interesting paths
+                    if file == "robots.txt" && body.len() < 10000 {
+                        finding.metadata.insert(
+                            "preview".to_string(),
+                            body.lines().take(5).collect::<Vec<_>>().join("\n"),
+                        );
+                    }
+
+                    // Scan for secrets in the response body
+                    let secrets = detect_secrets_in_http_response(
+                        &body,
+                        &url,
+                        content_type.as_deref(),
+                        &secret_config,
+                    );
+
+                    // Convert secret findings to enumeration findings
+                    for secret in secrets {
+                        let secret_type_name = format!("{:?}", secret.secret_type);
+                        let mut secret_finding = Finding::with_confidence(
+                            FindingType::ExposedSecret(secret_type_name.clone()),
+                            secret.redacted_value.clone(),
+                            (secret.confidence * 100.0) as u8,
+                        );
+
+                        secret_finding.metadata.insert(
+                            "secret_type".to_string(),
+                            secret.secret_type.to_string(),
+                        );
+                        secret_finding.metadata.insert(
+                            "severity".to_string(),
+                            secret.severity.to_string(),
+                        );
+                        secret_finding.metadata.insert(
+                            "source_url".to_string(),
+                            url.clone(),
+                        );
+                        secret_finding.metadata.insert(
+                            "source_file".to_string(),
+                            file.to_string(),
+                        );
+                        if let Some(line) = secret.line_number {
+                            secret_finding.metadata.insert(
+                                "line_number".to_string(),
+                                line.to_string(),
+                            );
                         }
+                        secret_finding.metadata.insert(
+                            "context".to_string(),
+                            secret.context.clone(),
+                        );
+                        secret_finding.metadata.insert(
+                            "remediation".to_string(),
+                            secret.remediation().to_string(),
+                        );
+
+                        findings.push(secret_finding);
                     }
                 }
 
@@ -326,7 +404,13 @@ fn determine_finding_type(path: &str, _status_code: u16) -> FindingType {
 
 /// Analyze HTTP response headers
 fn analyze_headers(headers: &HeaderMap) -> Vec<Finding> {
+    analyze_headers_with_url(headers, "")
+}
+
+/// Analyze HTTP response headers with URL context for secret scanning
+fn analyze_headers_with_url(headers: &HeaderMap, url: &str) -> Vec<Finding> {
     let mut findings = Vec::new();
+    let secret_config = SecretDetectionConfig::default();
 
     // Check for Server header
     if let Some(server) = headers.get("server") {
@@ -375,6 +459,55 @@ fn analyze_headers(headers: &HeaderMap) -> Vec<Finding> {
             )
             .with_metadata("missing_headers".to_string(), missing_headers.join(",")),
         );
+    }
+
+    // Scan headers for exposed secrets (Authorization, X-Api-Key, etc.)
+    if !url.is_empty() {
+        for (header_name, header_value) in headers.iter() {
+            if let Ok(value_str) = header_value.to_str() {
+                let header_name_str = header_name.as_str();
+
+                // Check this header for secrets
+                let secrets = detect_secrets_in_header(
+                    value_str,
+                    header_name_str,
+                    url,
+                    &secret_config,
+                );
+
+                for secret in secrets {
+                    let secret_type_name = format!("{:?}", secret.secret_type);
+                    let mut secret_finding = Finding::with_confidence(
+                        FindingType::ExposedSecret(secret_type_name.clone()),
+                        secret.redacted_value.clone(),
+                        (secret.confidence * 100.0) as u8,
+                    );
+
+                    secret_finding.metadata.insert(
+                        "secret_type".to_string(),
+                        secret.secret_type.to_string(),
+                    );
+                    secret_finding.metadata.insert(
+                        "severity".to_string(),
+                        secret.severity.to_string(),
+                    );
+                    secret_finding.metadata.insert(
+                        "source_header".to_string(),
+                        header_name_str.to_string(),
+                    );
+                    secret_finding.metadata.insert(
+                        "source_url".to_string(),
+                        url.to_string(),
+                    );
+                    secret_finding.metadata.insert(
+                        "remediation".to_string(),
+                        secret.remediation().to_string(),
+                    );
+
+                    findings.push(secret_finding);
+                }
+            }
+        }
     }
 
     findings
