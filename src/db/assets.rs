@@ -1262,3 +1262,86 @@ pub async fn get_assets_by_group(
     let assets = q.fetch_all(pool).await?;
     Ok(assets)
 }
+
+// ============================================================================
+// Assets with Tags Functions
+// ============================================================================
+
+/// Get all assets for a user with their tags (for list view with badges)
+pub async fn get_user_assets_with_tags(
+    pool: &SqlitePool,
+    user_id: &str,
+    status: Option<&str>,
+    tag_ids: Option<&[String]>,
+    group_id: Option<&str>,
+) -> Result<Vec<models::AssetWithTags>> {
+    // First, get the assets based on filters
+    let assets = if let Some(gid) = group_id {
+        get_assets_by_group(pool, user_id, gid, status).await?
+    } else if let Some(tids) = tag_ids {
+        if tids.is_empty() {
+            get_user_assets(pool, user_id, status, None, None).await?
+        } else {
+            get_assets_by_tags(pool, user_id, tids, status).await?
+        }
+    } else {
+        get_user_assets(pool, user_id, status, None, None).await?
+    };
+
+    // Now fetch tags for each asset
+    let mut assets_with_tags = Vec::with_capacity(assets.len());
+    for asset in assets {
+        let tags = get_asset_tags(pool, &asset.id).await?;
+        assets_with_tags.push(models::AssetWithTags {
+            asset,
+            asset_tags: tags,
+        });
+    }
+
+    Ok(assets_with_tags)
+}
+
+/// Bulk add assets to a group
+pub async fn bulk_add_assets_to_group(
+    pool: &SqlitePool,
+    group_id: &str,
+    asset_ids: &[String],
+    user_id: &str,
+) -> Result<usize> {
+    let now = Utc::now();
+
+    // First verify the group belongs to the user
+    let group = get_asset_group_by_id(pool, group_id, user_id).await?;
+    if group.is_none() {
+        return Err(anyhow::anyhow!("Asset group not found"));
+    }
+
+    let mut added_count = 0;
+
+    for asset_id in asset_ids {
+        // Verify asset belongs to user
+        let asset = get_asset_by_id(pool, asset_id, user_id).await?;
+        if asset.is_none() {
+            continue; // Skip assets that don't exist or don't belong to user
+        }
+
+        // Insert mapping (ignore if already exists)
+        let result = sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO asset_group_members (asset_group_id, asset_id, added_at)
+            VALUES (?1, ?2, ?3)
+            "#,
+        )
+        .bind(group_id)
+        .bind(asset_id)
+        .bind(now)
+        .execute(pool)
+        .await?;
+
+        if result.rows_affected() > 0 {
+            added_count += 1;
+        }
+    }
+
+    Ok(added_count)
+}

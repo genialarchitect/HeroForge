@@ -865,6 +865,13 @@ pub struct VulnerabilityComment {
     pub user_id: String,
     pub comment: String,
     pub created_at: DateTime<Utc>,
+    pub updated_at: Option<DateTime<Utc>>,
+}
+
+/// Request to update a vulnerability comment
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateVulnerabilityCommentRequest {
+    pub comment: String,
 }
 
 /// Request to update vulnerability tracking
@@ -932,6 +939,7 @@ pub struct VulnerabilityCommentWithUser {
     pub username: String,
     pub comment: String,
     pub created_at: DateTime<Utc>,
+    pub updated_at: Option<DateTime<Utc>>,
 }
 
 /// Remediation timeline event for tracking all changes to vulnerability

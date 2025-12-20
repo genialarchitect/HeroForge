@@ -654,3 +654,89 @@ pub async fn get_asset_full(
         None => Err(actix_web::error::ErrorNotFound("Asset not found")),
     }
 }
+
+// ============================================================================
+// Assets with Tags Endpoints
+// ============================================================================
+
+/// Query parameters for getting assets with tags
+#[derive(Debug, Deserialize)]
+pub struct AssetsWithTagsQuery {
+    status: Option<String>,
+    tag_ids: Option<String>, // Comma-separated tag IDs
+    group_id: Option<String>,
+}
+
+/// Get all assets with their tags for the current user
+pub async fn get_assets_with_tags(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    query: web::Query<AssetsWithTagsQuery>,
+) -> Result<HttpResponse> {
+    // Parse tag_ids if provided
+    let tag_ids: Option<Vec<String>> = query.tag_ids.as_ref().map(|t| {
+        t.split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect()
+    });
+
+    let assets_with_tags = assets::get_user_assets_with_tags(
+        &pool,
+        &claims.sub,
+        query.status.as_deref(),
+        tag_ids.as_deref(),
+        query.group_id.as_deref(),
+    )
+    .await
+    .map_err(|e| {
+        log::error!("Failed to fetch assets with tags: {}", e);
+        actix_web::error::ErrorInternalServerError("An internal error occurred. Please try again later.")
+    })?;
+
+    Ok(HttpResponse::Ok().json(assets_with_tags))
+}
+
+// ============================================================================
+// Bulk Operations
+// ============================================================================
+
+/// Request for bulk adding assets to a group
+#[derive(Debug, Deserialize)]
+pub struct BulkAddToGroupRequest {
+    pub asset_ids: Vec<String>,
+}
+
+/// Bulk add multiple assets to a group
+pub async fn bulk_add_assets_to_group(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    group_id: web::Path<String>,
+    request: web::Json<BulkAddToGroupRequest>,
+) -> Result<HttpResponse> {
+    if request.asset_ids.is_empty() {
+        return Err(actix_web::error::ErrorBadRequest("No assets specified"));
+    }
+
+    let added_count = assets::bulk_add_assets_to_group(
+        &pool,
+        &group_id,
+        &request.asset_ids,
+        &claims.sub,
+    )
+    .await
+    .map_err(|e| {
+        log::error!("Failed to bulk add assets to group: {}", e);
+        if e.to_string().contains("Asset group not found") {
+            actix_web::error::ErrorNotFound("Asset group not found")
+        } else {
+            actix_web::error::ErrorInternalServerError("Failed to add assets. Please try again.")
+        }
+    })?;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "message": format!("Added {} assets to group", added_count),
+        "added_count": added_count,
+        "requested_count": request.asset_ids.len()
+    })))
+}

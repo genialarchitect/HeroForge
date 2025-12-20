@@ -12,6 +12,7 @@ import {
   CriticalVulnsWidget,
   UpcomingScansWidget,
   ThreatIntelWidget,
+  MyAssignmentsWidget,
 } from './widgets';
 
 // Widget-specific configuration types
@@ -47,6 +48,10 @@ interface ThreatIntelWidgetConfig {
   limit?: number;
 }
 
+interface MyAssignmentsWidgetConfig {
+  limit?: number;
+}
+
 type WidgetConfigOptions =
   | RecentScansWidgetConfig
   | VulnerabilitySummaryWidgetConfig
@@ -56,6 +61,7 @@ type WidgetConfigOptions =
   | CriticalVulnsWidgetConfig
   | UpcomingScansWidgetConfig
   | ThreatIntelWidgetConfig
+  | MyAssignmentsWidgetConfig
   | Record<string, never>; // Empty config
 
 interface WidgetConfig {
@@ -82,6 +88,7 @@ const WIDGET_TYPES = [
   { type: 'critical_vulns', label: 'Critical Vulnerabilities', minW: 4, minH: 2 },
   { type: 'upcoming_scheduled_scans', label: 'Upcoming Scans', minW: 4, minH: 2 },
   { type: 'threat_intel', label: 'Threat Intelligence', minW: 4, minH: 3 },
+  { type: 'my_assignments', label: 'My Assignments', minW: 4, minH: 3 },
 ];
 
 const DashboardCustomizer: React.FC<DashboardCustomizerProps> = ({
@@ -214,6 +221,8 @@ const DashboardCustomizer: React.FC<DashboardCustomizerProps> = ({
         return <UpcomingScansWidget {...commonProps} />;
       case 'threat_intel':
         return <ThreatIntelWidget {...commonProps} />;
+      case 'my_assignments':
+        return <MyAssignmentsWidget {...commonProps} />;
       default:
         return null;
     }

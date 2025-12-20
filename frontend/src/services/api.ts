@@ -158,6 +158,8 @@ import type {
   UpdateAssetGroupRequest,
   AddAssetsToGroupRequest,
   AssetDetailFull,
+  AssetWithTags,
+  BulkAddToGroupResponse,
   // SSL Report types
   SslReportSummary,
   // Scan Exclusions types
@@ -401,6 +403,11 @@ export const templateAPI = {
   createScan: (id: string, name: string) => api.post<ScanResult>(`/templates/${id}/scan`, { name }),
 };
 
+// User API (for assignment picker - available to all authenticated users)
+export const usersAPI = {
+  list: () => api.get<User[]>('/users'),
+};
+
 export const analyticsAPI = {
   getSummary: (days: number = 30) =>
     api.get<AnalyticsSummary>(`/analytics/summary?days=${days}`),
@@ -437,6 +444,9 @@ export const vulnerabilityAPI = {
 
   getComments: (id: string) =>
     api.get<VulnerabilityCommentWithUser[]>(`/vulnerabilities/${id}/comments`),
+
+  updateComment: (vulnId: string, commentId: string, comment: string) =>
+    api.put<VulnerabilityComment>(`/vulnerabilities/${vulnId}/comments/${commentId}`, { comment }),
 
   deleteComment: (vulnId: string, commentId: string) =>
     api.delete<{ message: string }>(`/vulnerabilities/${vulnId}/comments/${commentId}`),
@@ -1279,6 +1289,10 @@ export const assetTagsAPI = {
   getAssets: (params?: { status?: string; tag_ids?: string }) =>
     api.get<Asset[]>('/assets', { params }),
 
+  // Get all assets with their tags (for displaying tag badges)
+  getAssetsWithTags: (params?: { status?: string; tag_ids?: string; group_id?: string }) =>
+    api.get<AssetWithTags[]>('/assets/with-tags', { params }),
+
   // Get assets filtered by tags
   getAssetsByTags: (params?: { status?: string; tag_ids?: string }) =>
     api.get<Asset[]>('/assets/by-tags', { params }),
@@ -1345,6 +1359,10 @@ export const assetGroupsAPI = {
   // Get assets filtered by group
   getAssetsByGroup: (params: { group_id: string; status?: string }) =>
     api.get<Asset[]>('/asset-groups/assets', { params }),
+
+  // Bulk add assets to a group
+  bulkAddAssetsToGroup: (groupId: string, data: AddAssetsToGroupRequest) =>
+    api.post<BulkAddToGroupResponse>(`/asset-groups/${groupId}/bulk-add`, data),
 };
 
 // Scan Exclusions API

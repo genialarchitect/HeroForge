@@ -455,7 +455,8 @@ pub async fn get_vulnerability_comments_with_user(
             vc.user_id,
             u.username,
             vc.comment,
-            vc.created_at
+            vc.created_at,
+            vc.updated_at
         FROM vulnerability_comments vc
         JOIN users u ON vc.user_id = u.id
         WHERE vc.vulnerability_tracking_id = ?1
@@ -501,6 +502,52 @@ pub async fn delete_vulnerability_comment(
             .await?;
 
             Ok(result.rows_affected() > 0)
+        }
+        None => Err(anyhow::anyhow!("Comment not found")),
+    }
+}
+
+/// Update a comment (only the author can update)
+pub async fn update_vulnerability_comment(
+    pool: &SqlitePool,
+    vuln_id: &str,
+    comment_id: &str,
+    user_id: &str,
+    new_content: &str,
+) -> Result<models::VulnerabilityComment> {
+    // First verify the comment exists and belongs to the user
+    let comment = sqlx::query_as::<_, models::VulnerabilityComment>(
+        "SELECT * FROM vulnerability_comments WHERE id = ?1 AND vulnerability_tracking_id = ?2",
+    )
+    .bind(comment_id)
+    .bind(vuln_id)
+    .fetch_optional(pool)
+    .await?;
+
+    match comment {
+        Some(c) => {
+            if c.user_id != user_id {
+                return Err(anyhow::anyhow!("You can only edit your own comments"));
+            }
+
+            let now = Utc::now();
+            let updated_comment = sqlx::query_as::<_, models::VulnerabilityComment>(
+                r#"
+                UPDATE vulnerability_comments
+                SET comment = ?1, updated_at = ?2
+                WHERE id = ?3 AND vulnerability_tracking_id = ?4 AND user_id = ?5
+                RETURNING *
+                "#,
+            )
+            .bind(new_content)
+            .bind(now)
+            .bind(comment_id)
+            .bind(vuln_id)
+            .bind(user_id)
+            .fetch_one(pool)
+            .await?;
+
+            Ok(updated_comment)
         }
         None => Err(anyhow::anyhow!("Comment not found")),
     }

@@ -294,6 +294,74 @@ pub async fn delete_comment(
     }
 }
 
+/// Update a comment on a vulnerability (author only)
+#[utoipa::path(
+    put,
+    path = "/api/vulnerabilities/{id}/comments/{comment_id}",
+    tag = "Vulnerabilities",
+    security(
+        ("bearer_auth" = [])
+    ),
+    params(
+        ("id" = String, Path, description = "Vulnerability tracking ID"),
+        ("comment_id" = String, Path, description = "Comment ID")
+    ),
+    request_body(
+        content = crate::web::openapi::UpdateCommentRequestSchema,
+        description = "Updated comment content"
+    ),
+    responses(
+        (status = 200, description = "Comment updated"),
+        (status = 401, description = "Unauthorized", body = crate::web::openapi::ErrorResponse),
+        (status = 403, description = "Forbidden - can only edit own comments", body = crate::web::openapi::ErrorResponse),
+        (status = 404, description = "Comment not found", body = crate::web::openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::web::openapi::ErrorResponse)
+    )
+)]
+pub async fn update_comment(
+    pool: web::Data<SqlitePool>,
+    path: web::Path<(String, String)>,
+    request: web::Json<crate::db::models::UpdateVulnerabilityCommentRequest>,
+    claims: web::ReqData<auth::Claims>,
+) -> HttpResponse {
+    let (vuln_id, comment_id) = path.into_inner();
+
+    if request.comment.trim().is_empty() {
+        return HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "Comment cannot be empty"
+        }));
+    }
+
+    match crate::db::update_vulnerability_comment(
+        pool.get_ref(),
+        &vuln_id,
+        &comment_id,
+        &claims.sub,
+        &request.comment,
+    )
+    .await
+    {
+        Ok(comment) => HttpResponse::Ok().json(comment),
+        Err(e) => {
+            let error_msg = e.to_string();
+            if error_msg.contains("only edit your own comments") {
+                HttpResponse::Forbidden().json(serde_json::json!({
+                    "error": error_msg
+                }))
+            } else if error_msg.contains("not found") {
+                HttpResponse::NotFound().json(serde_json::json!({
+                    "error": "Comment not found"
+                }))
+            } else {
+                log::error!("Failed to update comment: {}", e);
+                HttpResponse::InternalServerError().json(serde_json::json!({
+                    "error": "Failed to update comment"
+                }))
+            }
+        }
+    }
+}
+
 /// Bulk update vulnerabilities
 #[utoipa::path(
     post,
@@ -1509,6 +1577,50 @@ pub async fn get_assignment_stats(
             log::error!("Failed to get assignment stats: {}", e);
             HttpResponse::InternalServerError().json(serde_json::json!({
                 "error": "Failed to retrieve assignment statistics"
+            }))
+        }
+    }
+}
+
+/// Get list of users for assignment picker (any authenticated user can access)
+#[utoipa::path(
+    get,
+    path = "/api/users",
+    tag = "Users",
+    security(
+        ("bearer_auth" = [])
+    ),
+    responses(
+        (status = 200, description = "List of users for assignment picker"),
+        (status = 401, description = "Unauthorized", body = crate::web::openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::web::openapi::ErrorResponse)
+    )
+)]
+pub async fn list_users_for_picker(
+    pool: web::Data<SqlitePool>,
+    _claims: web::ReqData<auth::Claims>,
+) -> HttpResponse {
+    // Get basic user info for assignment picker (id, username, email)
+    match crate::db::get_all_users(pool.get_ref()).await {
+        Ok(users) => {
+            // Return minimal user info for the picker
+            let picker_users: Vec<serde_json::Value> = users
+                .into_iter()
+                .filter(|u| u.is_active)  // Only include active users
+                .map(|u| {
+                    serde_json::json!({
+                        "id": u.id,
+                        "username": u.username,
+                        "email": u.email
+                    })
+                })
+                .collect();
+            HttpResponse::Ok().json(picker_users)
+        }
+        Err(e) => {
+            log::error!("Failed to get users for picker: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to retrieve users"
             }))
         }
     }

@@ -368,6 +368,16 @@ pub struct AddCommentRequestSchema {
     pub comment: String,
 }
 
+/// Update comment request
+#[derive(ToSchema)]
+#[schema(example = json!({
+    "comment": "Updated investigation notes - verified issue is reproducible"
+}))]
+pub struct UpdateCommentRequestSchema {
+    /// Updated comment text
+    pub comment: String,
+}
+
 /// Bulk operation response
 #[derive(ToSchema)]
 #[schema(example = json!({
@@ -533,6 +543,7 @@ impl Modify for SecurityAddon {
             BulkDeleteRequestSchema,
             BulkUpdateVulnerabilitiesRequestSchema,
             AddCommentRequestSchema,
+            UpdateCommentRequestSchema,
             BulkOperationResponseSchema,
             crate::db::models::BulkUpdateSeverityRequest,
             crate::db::models::BulkDeleteVulnerabilitiesRequest,

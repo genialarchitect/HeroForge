@@ -84,6 +84,8 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     create_asset_group_members_table(pool).await?;
     // Scan Exclusions tables
     create_scan_exclusions_table(pool).await?;
+    // Add updated_at column to vulnerability_comments
+    add_updated_at_to_vulnerability_comments(pool).await?;
     Ok(())
 }
 
@@ -3425,3 +3427,22 @@ async fn create_scan_exclusions_table(pool: &SqlitePool) -> Result<()> {
     Ok(())
 }
 
+/// Add updated_at column to vulnerability_comments for editing support
+async fn add_updated_at_to_vulnerability_comments(pool: &SqlitePool) -> Result<()> {
+    // Check if the column already exists
+    let columns: Vec<(String,)> = sqlx::query_as("PRAGMA table_info(vulnerability_comments)")
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default();
+
+    let has_updated_at = columns.iter().any(|(name,)| name == "updated_at");
+
+    if !has_updated_at {
+        sqlx::query("ALTER TABLE vulnerability_comments ADD COLUMN updated_at TEXT")
+            .execute(pool)
+            .await?;
+        log::info!("Added updated_at column to vulnerability_comments table");
+    }
+
+    Ok(())
+}

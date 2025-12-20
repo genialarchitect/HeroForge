@@ -18,10 +18,17 @@ import {
   Tags,
   Folder,
   FolderPlus,
+  CheckSquare,
+  Square,
+  AlertTriangle,
+  Shield,
+  User,
+  Building2,
+  MapPin,
+  FileCheck,
 } from 'lucide-react';
 import { assetTagsAPI, assetGroupsAPI } from '../services/api';
 import type {
-  Asset,
   AssetTag,
   AssetTagWithCount,
   AssetDetailWithTags,
@@ -29,6 +36,7 @@ import type {
   CreateAssetTagRequest,
   AssetGroupWithCount,
   AssetGroup,
+  AssetWithTags,
 } from '../types';
 
 // Predefined colors for tags
@@ -55,9 +63,33 @@ const TAG_CATEGORIES: { value: AssetTagCategory; label: string }[] = [
   { value: 'custom', label: 'Custom' },
 ];
 
+// Helper to get icon for tag category
+const getCategoryIcon = (category: AssetTagCategory) => {
+  switch (category) {
+    case 'environment':
+      return Server;
+    case 'criticality':
+      return AlertTriangle;
+    case 'owner':
+      return User;
+    case 'department':
+      return Building2;
+    case 'location':
+      return MapPin;
+    case 'compliance':
+      return FileCheck;
+    default:
+      return Tag;
+  }
+};
+
+// Predefined environment values (for quick filtering)
+const ENVIRONMENTS = ['Production', 'Staging', 'Development', 'Testing'];
+const CRITICALITY_LEVELS = ['Critical', 'High', 'Medium', 'Low'];
+
 const AssetsPage: React.FC = () => {
-  // Assets state
-  const [assets, setAssets] = useState<Asset[]>([]);
+  // Assets state (now with tags for inline badges)
+  const [assets, setAssets] = useState<AssetWithTags[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
@@ -90,6 +122,10 @@ const AssetsPage: React.FC = () => {
   const [showGroupAssignModal, setShowGroupAssignModal] = useState(false);
   const [assetToGroup, setAssetToGroup] = useState<string | null>(null);
 
+  // Bulk selection state
+  const [selectedAssetIds, setSelectedAssetIds] = useState<Set<string>>(new Set());
+  const [showBulkGroupModal, setShowBulkGroupModal] = useState(false);
+
   const fetchGroups = useCallback(async () => {
     try {
       const response = await assetGroupsAPI.getGroups();
@@ -112,31 +148,24 @@ const AssetsPage: React.FC = () => {
     try {
       setLoading(true);
 
-      // If a group is selected, filter by group
-      if (selectedGroupId) {
-        const response = await assetGroupsAPI.getAssetsByGroup({
-          group_id: selectedGroupId,
-          status: statusFilter || undefined,
-        });
-        setAssets(response.data);
-        setError('');
-        return;
-      }
+      // Use the new getAssetsWithTags API to get assets with inline tags
+      const params: { status?: string; tag_ids?: string; group_id?: string } = {};
 
-      const params: { status?: string; tag_ids?: string } = {};
       if (statusFilter) {
         params.status = statusFilter;
       }
       if (selectedTagIds.length > 0) {
         params.tag_ids = selectedTagIds.join(',');
       }
+      if (selectedGroupId) {
+        params.group_id = selectedGroupId;
+      }
 
-      const response = selectedTagIds.length > 0
-        ? await assetTagsAPI.getAssetsByTags(params)
-        : await assetTagsAPI.getAssets(params);
-
+      const response = await assetTagsAPI.getAssetsWithTags(params);
       setAssets(response.data);
       setError('');
+      // Clear selection when assets change
+      setSelectedAssetIds(new Set());
     } catch (err: unknown) {
       const axiosError = err as { response?: { data?: { error?: string } } };
       setError(axiosError.response?.data?.error || 'Failed to fetch assets');
@@ -339,7 +368,54 @@ const AssetsPage: React.FC = () => {
     }
   };
 
-  const filteredAssets = assets.filter(asset => {
+  // Bulk selection handlers
+  const toggleAssetSelection = (assetId: string) => {
+    setSelectedAssetIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(assetId)) {
+        newSet.delete(assetId);
+      } else {
+        newSet.add(assetId);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedAssetIds.size === filteredAssets.length) {
+      setSelectedAssetIds(new Set());
+    } else {
+      setSelectedAssetIds(new Set(filteredAssets.map(a => a.asset.id)));
+    }
+  };
+
+  const handleBulkAddToGroup = async (groupId: string) => {
+    if (selectedAssetIds.size === 0) return;
+
+    try {
+      const response = await assetGroupsAPI.bulkAddAssetsToGroup(groupId, {
+        asset_ids: Array.from(selectedAssetIds),
+      });
+      toast.success(response.data.message);
+      setShowBulkGroupModal(false);
+      setSelectedAssetIds(new Set());
+      fetchGroups();
+    } catch (err: unknown) {
+      const axiosError = err as { response?: { data?: string | { error?: string } } };
+      const errorMsg = typeof axiosError.response?.data === 'string'
+        ? axiosError.response.data
+        : axiosError.response?.data?.error || 'Failed to add assets to group';
+      toast.error(errorMsg);
+    }
+  };
+
+  // Helper function to get tags by category for an asset
+  const getTagsByCategory = (assetWithTags: AssetWithTags, category: AssetTagCategory) => {
+    return assetWithTags.asset_tags.filter(tag => tag.category === category);
+  };
+
+  const filteredAssets = assets.filter(assetWithTags => {
+    const asset = assetWithTags.asset;
     const searchLower = searchTerm.toLowerCase();
     return (
       asset.ip_address.includes(searchLower) ||
@@ -363,6 +439,30 @@ const AssetsPage: React.FC = () => {
             </p>
           </div>
           <div className="flex items-center gap-3">
+            {/* Bulk Actions */}
+            {selectedAssetIds.size > 0 && (
+              <div className="flex items-center gap-2 bg-primary/10 px-3 py-2 rounded-lg border border-primary/30">
+                <span className="text-sm text-primary">
+                  {selectedAssetIds.size} selected
+                </span>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setShowBulkGroupModal(true)}
+                  className="flex items-center gap-1"
+                >
+                  <FolderPlus className="h-4 w-4" />
+                  Add to Group
+                </Button>
+                <button
+                  onClick={() => setSelectedAssetIds(new Set())}
+                  className="text-slate-400 hover:text-white p-1"
+                  title="Clear selection"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            )}
             <Button
               variant="secondary"
               onClick={() => setShowGroupManager(true)}
@@ -512,22 +612,37 @@ const AssetsPage: React.FC = () => {
             <table className="min-w-full divide-y divide-dark-border">
               <thead className="bg-dark-bg">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left">
+                    <button
+                      onClick={toggleSelectAll}
+                      className="text-slate-400 hover:text-white"
+                    >
+                      {selectedAssetIds.size === filteredAssets.length && filteredAssets.length > 0 ? (
+                        <CheckSquare className="h-5 w-5" />
+                      ) : (
+                        <Square className="h-5 w-5" />
+                      )}
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
                     Asset
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
+                    Environment / Criticality
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
                     Tags
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
-                    Operating System
+                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
+                    OS
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
                     Last Seen
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
                     Status
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
@@ -535,20 +650,42 @@ const AssetsPage: React.FC = () => {
               <tbody className="bg-dark-surface divide-y divide-dark-border">
                 {filteredAssets.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center text-slate-400">
+                    <td colSpan={8} className="px-6 py-12 text-center text-slate-400">
                       <Server className="h-12 w-12 mx-auto mb-4 text-slate-500" />
                       <p className="text-lg">No assets found</p>
                       <p className="text-sm mt-2">Run a scan to discover network assets</p>
                     </td>
                   </tr>
                 ) : (
-                  filteredAssets.map((asset) => (
+                  filteredAssets.map((assetWithTags) => {
+                    const asset = assetWithTags.asset;
+                    const envTags = getTagsByCategory(assetWithTags, 'environment');
+                    const criticalityTags = getTagsByCategory(assetWithTags, 'criticality');
+                    const ownerTags = getTagsByCategory(assetWithTags, 'owner');
+                    const otherTags = assetWithTags.asset_tags.filter(
+                      t => !['environment', 'criticality', 'owner'].includes(t.category)
+                    );
+                    const isSelected = selectedAssetIds.has(asset.id);
+
+                    return (
                     <tr
                       key={asset.id}
-                      className="hover:bg-dark-hover cursor-pointer"
+                      className={`hover:bg-dark-hover cursor-pointer ${isSelected ? 'bg-primary/5' : ''}`}
                       onClick={() => fetchAssetDetail(asset.id)}
                     >
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-4 py-4" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          onClick={() => toggleAssetSelection(asset.id)}
+                          className="text-slate-400 hover:text-white"
+                        >
+                          {isSelected ? (
+                            <CheckSquare className="h-5 w-5 text-primary" />
+                          ) : (
+                            <Square className="h-5 w-5" />
+                          )}
+                        </button>
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap">
                         <div className="flex items-center">
                           <Server className="h-5 w-5 text-primary mr-2" />
                           <div>
@@ -563,8 +700,81 @@ const AssetsPage: React.FC = () => {
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
+                      <td className="px-4 py-4">
+                        <div className="flex flex-wrap gap-1">
+                          {/* Environment badges */}
+                          {envTags.map(tag => (
+                            <span
+                              key={tag.id}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium"
+                              style={{
+                                backgroundColor: `${tag.color}20`,
+                                color: tag.color,
+                              }}
+                              title={`Environment: ${tag.name}`}
+                            >
+                              <Server className="h-3 w-3" />
+                              {tag.name}
+                            </span>
+                          ))}
+                          {/* Criticality badges */}
+                          {criticalityTags.map(tag => (
+                            <span
+                              key={tag.id}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium"
+                              style={{
+                                backgroundColor: `${tag.color}20`,
+                                color: tag.color,
+                              }}
+                              title={`Criticality: ${tag.name}`}
+                            >
+                              <AlertTriangle className="h-3 w-3" />
+                              {tag.name}
+                            </span>
+                          ))}
+                          {/* Owner badges */}
+                          {ownerTags.map(tag => (
+                            <span
+                              key={tag.id}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium"
+                              style={{
+                                backgroundColor: `${tag.color}20`,
+                                color: tag.color,
+                              }}
+                              title={`Owner: ${tag.name}`}
+                            >
+                              <User className="h-3 w-3" />
+                              {tag.name}
+                            </span>
+                          ))}
+                          {envTags.length === 0 && criticalityTags.length === 0 && ownerTags.length === 0 && (
+                            <span className="text-xs text-slate-500">-</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-4">
+                        <div className="flex flex-wrap gap-1 max-w-[200px]">
+                          {otherTags.slice(0, 3).map(tag => (
+                            <span
+                              key={tag.id}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium"
+                              style={{
+                                backgroundColor: `${tag.color}20`,
+                                color: tag.color,
+                              }}
+                            >
+                              <span
+                                className="w-1.5 h-1.5 rounded-full"
+                                style={{ backgroundColor: tag.color }}
+                              />
+                              {tag.name}
+                            </span>
+                          ))}
+                          {otherTags.length > 3 && (
+                            <span className="text-xs text-slate-400">
+                              +{otherTags.length - 3} more
+                            </span>
+                          )}
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -576,6 +786,37 @@ const AssetsPage: React.FC = () => {
                           >
                             <Plus className="h-4 w-4" />
                           </button>
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap">
+                        <div className="text-sm text-white">
+                          {asset.os_family || 'Unknown'}
+                        </div>
+                        {asset.os_version && (
+                          <div className="text-xs text-slate-400">
+                            {asset.os_version}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap">
+                        <div className="flex items-center text-sm text-slate-400">
+                          <Calendar className="h-4 w-4 mr-1" />
+                          {new Date(asset.last_seen).toLocaleDateString()}
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap">
+                        <span
+                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            asset.status === 'active'
+                              ? 'bg-status-completed/20 text-status-completed'
+                              : 'bg-dark-border text-slate-300'
+                          }`}
+                        >
+                          {asset.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm">
+                        <div className="flex items-center gap-2">
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -587,42 +828,14 @@ const AssetsPage: React.FC = () => {
                           >
                             <FolderPlus className="h-4 w-4" />
                           </button>
+                          <button className="text-primary hover:text-primary-light">
+                            <ChevronRight className="h-5 w-5" />
+                          </button>
                         </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-white">
-                          {asset.os_family || 'Unknown'}
-                        </div>
-                        {asset.os_version && (
-                          <div className="text-sm text-slate-400">
-                            {asset.os_version}
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center text-sm text-slate-400">
-                          <Calendar className="h-4 w-4 mr-1" />
-                          {new Date(asset.last_seen).toLocaleDateString()}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            asset.status === 'active'
-                              ? 'bg-status-completed/20 text-status-completed'
-                              : 'bg-dark-border text-slate-300'
-                          }`}
-                        >
-                          {asset.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">
-                        <button className="text-primary hover:text-primary-light">
-                          <ChevronRight className="h-5 w-5" />
-                        </button>
                       </td>
                     </tr>
-                  ))
+                  );
+                  })
                 )}
               </tbody>
             </table>
@@ -1126,6 +1339,192 @@ const AssetsPage: React.FC = () => {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Group Assignment Modal */}
+        {showGroupAssignModal && assetToGroup && (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+            <div className="bg-dark-surface rounded-lg shadow-xl max-w-md w-full border border-dark-border">
+              <div className="p-6 border-b border-dark-border">
+                <div className="flex justify-between items-center">
+                  <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                    <Folder className="h-5 w-5" />
+                    Add Asset to Group
+                  </h2>
+                  <button
+                    onClick={() => {
+                      setShowGroupAssignModal(false);
+                      setAssetToGroup(null);
+                    }}
+                    className="text-slate-400 hover:text-white"
+                  >
+                    <X className="h-6 w-6" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-6">
+                {groups.length === 0 ? (
+                  <div className="text-center py-8 text-slate-400">
+                    <Folder className="h-12 w-12 mx-auto mb-4 text-slate-500" />
+                    <p>No groups available</p>
+                    <Button
+                      className="mt-4"
+                      onClick={() => {
+                        setShowGroupAssignModal(false);
+                        setShowGroupManager(true);
+                      }}
+                    >
+                      Create Groups
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-slate-400 text-sm mb-4">
+                      Select a group to add this asset to:
+                    </p>
+                    <div className="space-y-2 max-h-64 overflow-y-auto">
+                      {groups.map(({ group, asset_count }) => (
+                        <button
+                          key={group.id}
+                          onClick={() => handleAddAssetToGroup(group.id)}
+                          className="w-full flex items-center justify-between p-3 rounded-lg border border-dark-border bg-dark-bg hover:border-primary transition-colors"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div
+                              className="w-8 h-8 rounded-lg flex items-center justify-center"
+                              style={{ backgroundColor: `${group.color}20` }}
+                            >
+                              <Folder
+                                className="h-4 w-4"
+                                style={{ color: group.color }}
+                              />
+                            </div>
+                            <div className="text-left">
+                              <span className="text-white block">{group.name}</span>
+                              {group.description && (
+                                <span className="text-xs text-slate-400">{group.description}</span>
+                              )}
+                            </div>
+                          </div>
+                          <span className="text-xs text-slate-400">
+                            {asset_count} asset{asset_count !== 1 ? 's' : ''}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex justify-end mt-6">
+                      <Button
+                        variant="secondary"
+                        onClick={() => {
+                          setShowGroupAssignModal(false);
+                          setAssetToGroup(null);
+                        }}
+                      >
+                        Close
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Bulk Group Assignment Modal */}
+        {showBulkGroupModal && selectedAssetIds.size > 0 && (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+            <div className="bg-dark-surface rounded-lg shadow-xl max-w-md w-full border border-dark-border">
+              <div className="p-6 border-b border-dark-border">
+                <div className="flex justify-between items-center">
+                  <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                    <FolderPlus className="h-5 w-5" />
+                    Add {selectedAssetIds.size} Assets to Group
+                  </h2>
+                  <button
+                    onClick={() => setShowBulkGroupModal(false)}
+                    className="text-slate-400 hover:text-white"
+                  >
+                    <X className="h-6 w-6" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-6">
+                {groups.length === 0 ? (
+                  <div className="text-center py-8 text-slate-400">
+                    <Folder className="h-12 w-12 mx-auto mb-4 text-slate-500" />
+                    <p>No groups available</p>
+                    <Button
+                      className="mt-4"
+                      onClick={() => {
+                        setShowBulkGroupModal(false);
+                        setShowGroupManager(true);
+                      }}
+                    >
+                      Create Groups
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-slate-400 text-sm mb-4">
+                      Select a group to add the selected assets to:
+                    </p>
+                    <div className="space-y-2 max-h-64 overflow-y-auto">
+                      {groups.map(({ group, asset_count }) => (
+                        <button
+                          key={group.id}
+                          onClick={() => handleBulkAddToGroup(group.id)}
+                          className="w-full flex items-center justify-between p-3 rounded-lg border border-dark-border bg-dark-bg hover:border-primary transition-colors"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div
+                              className="w-8 h-8 rounded-lg flex items-center justify-center"
+                              style={{ backgroundColor: `${group.color}20` }}
+                            >
+                              <Folder
+                                className="h-4 w-4"
+                                style={{ color: group.color }}
+                              />
+                            </div>
+                            <div className="text-left">
+                              <span className="text-white block">{group.name}</span>
+                              {group.description && (
+                                <span className="text-xs text-slate-400">{group.description}</span>
+                              )}
+                            </div>
+                          </div>
+                          <span className="text-xs text-slate-400">
+                            {asset_count} asset{asset_count !== 1 ? 's' : ''}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex justify-end mt-6">
+                      <Button
+                        variant="secondary"
+                        onClick={() => setShowBulkGroupModal(false)}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Asset Groups Manager Modal */}
+        {showGroupManager && (
+          <AssetGroups
+            onGroupSelect={(groupId) => {
+              setSelectedGroupId(groupId);
+              setShowGroupManager(false);
+            }}
+            selectedGroupId={selectedGroupId}
+            onClose={() => setShowGroupManager(false)}
+          />
         )}
       </div>
     </Layout>

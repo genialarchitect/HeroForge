@@ -263,6 +263,7 @@ pub use vulnerabilities::{
     get_vulnerability_comments,
     get_vulnerability_comments_with_user,
     delete_vulnerability_comment,
+    update_vulnerability_comment,
     bulk_update_vulnerability_status,
     mark_vulnerability_for_verification,
     bulk_assign_vulnerabilities,

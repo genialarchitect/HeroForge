@@ -176,6 +176,8 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .route("/user/accept-terms", web::post().to(api::auth::accept_terms))
                     .route("/user/export", web::get().to(api::auth::export_user_data))
                     .route("/user/account", web::delete().to(api::auth::delete_account))
+                    // Users endpoint (for assignment picker - any authenticated user)
+                    .route("/users", web::get().to(api::vulnerabilities::list_users_for_picker))
                     // Scan endpoints
                     .route("/scans", web::post().to(api::scans::create_scan))
                     .route("/scans", web::get().to(api::scans::get_scans))
@@ -264,6 +266,7 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     // Asset Inventory endpoints
                     .route("/assets", web::get().to(api::assets::get_assets))
                     .route("/assets/by-tags", web::get().to(api::assets::get_assets_by_tags))
+                    .route("/assets/with-tags", web::get().to(api::assets::get_assets_with_tags))
                     .route("/assets/tags", web::get().to(api::assets::get_asset_tags))
                     .route("/assets/tags", web::post().to(api::assets::create_asset_tag))
                     .route("/assets/tags/{id}", web::get().to(api::assets::get_asset_tag))
@@ -285,6 +288,7 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .route("/asset-groups/{id}", web::delete().to(api::assets::delete_asset_group))
                     .route("/asset-groups/{id}/members", web::post().to(api::assets::add_assets_to_group))
                     .route("/asset-groups/{id}/members/{asset_id}", web::delete().to(api::assets::remove_asset_from_group))
+                    .route("/asset-groups/{id}/bulk-add", web::post().to(api::assets::bulk_add_assets_to_group))
                     // Vulnerability management endpoints
                     .route("/vulnerabilities", web::get().to(api::vulnerabilities::list_vulnerabilities))
                     .route("/vulnerabilities/stats", web::get().to(api::vulnerabilities::get_vulnerability_stats))
@@ -306,6 +310,7 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .route("/vulnerabilities/{id}/assignment", web::put().to(api::vulnerabilities::update_assignment))
                     .route("/vulnerabilities/{id}/comments", web::get().to(api::vulnerabilities::get_comments))
                     .route("/vulnerabilities/{id}/comments", web::post().to(api::vulnerabilities::add_comment))
+                    .route("/vulnerabilities/{id}/comments/{comment_id}", web::put().to(api::vulnerabilities::update_comment))
                     .route("/vulnerabilities/{id}/comments/{comment_id}", web::delete().to(api::vulnerabilities::delete_comment))
                     .route("/vulnerabilities/{id}/timeline", web::get().to(api::vulnerabilities::get_vulnerability_timeline))
                     .route("/vulnerabilities/{id}/verify", web::post().to(api::vulnerabilities::mark_for_verification))

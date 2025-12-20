@@ -773,6 +773,7 @@ export interface VulnerabilityCommentWithUser {
   username: string;
   comment: string;
   created_at: string;
+  updated_at: string | null;
 }
 
 export interface RemediationTimelineEvent {
@@ -2418,6 +2419,17 @@ export interface UpdateAssetGroupRequest {
 
 export interface AddAssetsToGroupRequest {
   asset_ids: string[];
+}
+
+export interface BulkAddToGroupResponse {
+  message: string;
+  added_count: number;
+  requested_count: number;
+}
+
+export interface AssetWithTags {
+  asset: Asset;
+  asset_tags: AssetTag[];
 }
 
 export interface AssetDetailFull {
