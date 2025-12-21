@@ -8,10 +8,11 @@ HeroForge is a network reconnaissance and triage tool written in Rust, designed 
 
 **Key Technologies:**
 - **Backend:** Rust with Tokio async runtime, Actix-web for HTTP server
-- **Frontend:** React 18 + TypeScript + Vite + TailwindCSS
+- **Frontend:** React 18 + TypeScript + Vite + TailwindCSS (see `frontend/CLAUDE.md` for frontend-specific guidance)
 - **State Management:** Zustand (global state) + React Query (server state)
 - **Database:** SQLite with sqlx for async queries, optional SQLCipher encryption (AES-256)
 - **Authentication:** JWT tokens with bcrypt password hashing, TOTP-based MFA, account lockout protection
+- **Cloud SDKs:** AWS, Azure, GCP for cloud security scanning
 
 **Deployment:**
 - Production URL: https://heroforge.genialarchitect.io
@@ -33,6 +34,10 @@ sudo ./deploy.sh                      # Full deploy (frontend + backend + Docker
 docker logs heroforge -f              # View logs
 docker exec -it heroforge /bin/bash   # Shell access
 docker restart heroforge              # Restart container
+
+# Debug running container
+docker exec heroforge sqlite3 /root/Development/HeroForge/heroforge.db ".schema"
+docker exec heroforge curl -s http://localhost:8080/api/auth/me
 ```
 
 **Container Configuration:** The production container runs with `CAP_NET_RAW` for raw socket operations (SYN scans), resource limits of 2 CPUs and 2GB memory, and mounts `/root/heroforge_data` for persistent storage.
@@ -67,17 +72,20 @@ cargo test -- --nocapture             # With output
 cargo test -- --test-threads=1        # Sequential (for DB-dependent tests)
 cargo test scanner::                  # Test specific module
 cargo test scanner::comparison::tests::test_compare_scans  # Specific test
+RUST_BACKTRACE=1 cargo test           # With stack traces on failure
 ```
 
 ### Frontend (React/TypeScript)
+
+See `frontend/CLAUDE.md` for detailed frontend architecture. Key commands:
 
 ```bash
 cd frontend
 npm install                           # Install dependencies
 npm run build                         # Production build
 npm run build:check                   # TypeScript check + build
-npm run dev                           # Development server (hot reload)
-npm run lint                          # Lint TypeScript/React
+npm run dev                           # Development server (proxies /api to :8080)
+npm run lint                          # ESLint with strict warnings
 ```
 
 ### Deployment
@@ -98,6 +106,8 @@ cd /root && docker compose build heroforge && docker compose up -d heroforge
 sqlite3 heroforge.db ".schema"
 sqlite3 heroforge.db "SELECT id, name, status, created_at FROM scan_results;"
 ```
+
+**Migrations:** Handled automatically at startup in `db::init_database()`. Schema updates are applied via inline SQL in the initialization code.
 
 **Encryption:** Optional AES-256 encryption via SQLCipher. Set `DATABASE_ENCRYPTION_KEY` env var to enable. See `DATABASE_ENCRYPTION_MIGRATION.md` for migration instructions.
 
@@ -130,9 +140,9 @@ src/
 ├── agents/              # Distributed scanning agents and mesh networking
 ├── ai/                  # AI-powered vulnerability prioritization
 ├── plugins/             # Plugin marketplace and extensibility
-├── siem/                # Full SIEM capabilities (log ingestion, correlation)
+├── siem/                # SIEM integration (log ingestion, correlation engine, alerting)
 ├── threat_intel/        # Threat intelligence feeds (CVE, exploit DB, Shodan)
-├── vpn/                 # VPN integration (OpenVPN, WireGuard)
+├── vpn/                 # VPN integration for scanning through OpenVPN/WireGuard tunnels
 ├── webhooks/            # Outbound webhook notifications
 ├── workflows/           # Custom remediation workflows
 ├── notifications/       # Multi-channel notifications (Slack, Teams, email)
@@ -241,6 +251,8 @@ All integrations are configured via Settings page in the web UI or via `/api/int
 Supported: PCI-DSS 4.0, NIST 800-53, NIST CSF, CIS Benchmarks, HIPAA, SOC 2, FERPA, OWASP Top 10
 
 ## Rate Limiting
+
+Implemented via `actix-governor` in `src/web/rate_limit.rs`:
 
 | Endpoint Category | Limit | Window |
 |-------------------|-------|--------|
