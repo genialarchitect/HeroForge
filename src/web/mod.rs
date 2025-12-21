@@ -3,6 +3,7 @@ pub mod audit;
 pub mod auth;
 pub mod broadcast;
 pub mod error;
+pub mod exploitation_broadcast;
 pub mod openapi;
 pub mod rate_limit;
 pub mod rate_limit_stats;
@@ -223,6 +224,7 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     // Duplicate scan endpoint
                     .route("/scans/{id}/duplicate", web::post().to(api::scans::duplicate_scan))
                     .route("/ws/scans/{id}", web::get().to(websocket::ws_handler))
+                    .route("/ws/exploitation/{id}", web::get().to(websocket::exploitation::ws_handler))
                     // Report endpoints
                     .route("/reports", web::post().to(api::reports::create_report))
                     .route("/reports", web::get().to(api::reports::get_reports))
