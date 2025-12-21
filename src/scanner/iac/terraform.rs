@@ -1,10 +1,11 @@
+#![allow(dead_code)]
 //! Terraform HCL parser and analyzer
 //!
 //! This module parses Terraform HCL files and extracts resources for security analysis.
 
 use super::rules::{get_builtin_rules, RuleMatcher};
 use super::types::*;
-use anyhow::{Context, Result};
+use anyhow::Result;
 use regex::Regex;
 use serde_json::Value;
 use std::collections::HashMap;

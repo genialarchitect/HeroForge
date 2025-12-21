@@ -227,6 +227,31 @@ import type {
   ApproveWorkflowRequest,
   RejectWorkflowRequest,
   UpdateWorkflowRequest,
+  // BAS types
+  MitreTactic,
+  AttackTechnique,
+  SimulationScenario,
+  SimulationSummary,
+  SimulationDetails,
+  DetectionGap,
+  BasStats,
+  CreateScenarioRequest,
+  StartSimulationRequest,
+  AcknowledgeGapRequest,
+  // SIEM types
+  SiemLogSource,
+  CreateSiemLogSourceRequest,
+  UpdateSiemLogSourceRequest,
+  SiemLogEntry,
+  SiemLogSearchParams,
+  SiemLogSearchResponse,
+  SiemRule,
+  CreateSiemRuleRequest,
+  UpdateSiemRuleRequest,
+  SiemAlert,
+  UpdateSiemAlertStatusRequest,
+  ResolveSiemAlertRequest,
+  SiemStatsResponse,
 } from '../types';
 
 const api = axios.create({
@@ -1829,12 +1854,19 @@ import type {
   AgentGroupWithAgents,
   AgentStats,
   AgentHeartbeat,
+  AgentTask,
+  AgentMeshConfig,
+  AgentMeshPeerData,
+  MeshClusterWithMembers,
   RegisterAgentRequest,
   RegisterAgentResponse,
   UpdateAgentRequest,
   CreateAgentGroupRequest,
   UpdateAgentGroupRequest,
   AssignAgentsToGroupRequest,
+  CreateMeshClusterRequest,
+  UpdateMeshClusterRequest,
+  UpdateMeshConfigRequest,
 } from '../types';
 
 export const agentAPI = {
@@ -1901,6 +1933,60 @@ export const agentAPI = {
     // Remove agent from group
     removeAgent: (groupId: string, agentId: string) =>
       api.delete(`/agents/groups/${groupId}/agents/${agentId}`),
+  },
+
+  // Task management
+  tasks: {
+    // List all tasks
+    list: (params?: { limit?: number; status?: string }) =>
+      api.get<AgentTask[]>('/agents/tasks', { params }),
+
+    // Get tasks for a specific agent
+    getForAgent: (agentId: string) =>
+      api.get<AgentTask[]>(`/agents/${agentId}/tasks`),
+  },
+
+  // Mesh networking
+  mesh: {
+    // Get mesh peers for all user agents
+    getPeers: () =>
+      api.get<AgentMeshPeerData[]>('/agents/mesh/peers'),
+
+    // Get all clusters
+    getClusters: () =>
+      api.get<MeshClusterWithMembers[]>('/agents/mesh/clusters'),
+
+    // Create a new cluster
+    createCluster: (data: CreateMeshClusterRequest) =>
+      api.post<MeshClusterWithMembers>('/agents/mesh/clusters', data),
+
+    // Get a cluster by ID
+    getCluster: (id: string) =>
+      api.get<MeshClusterWithMembers>(`/agents/mesh/clusters/${id}`),
+
+    // Update a cluster
+    updateCluster: (id: string, data: UpdateMeshClusterRequest) =>
+      api.put<MeshClusterWithMembers>(`/agents/mesh/clusters/${id}`, data),
+
+    // Delete a cluster
+    deleteCluster: (id: string) =>
+      api.delete(`/agents/mesh/clusters/${id}`),
+
+    // Add agent to cluster
+    addAgentToCluster: (clusterId: string, agentId: string) =>
+      api.post(`/agents/mesh/clusters/${clusterId}/agents/${agentId}`),
+
+    // Remove agent from cluster
+    removeAgentFromCluster: (clusterId: string, agentId: string) =>
+      api.delete(`/agents/mesh/clusters/${clusterId}/agents/${agentId}`),
+
+    // Get mesh config for an agent
+    getAgentConfig: (agentId: string) =>
+      api.get<AgentMeshConfig | null>(`/agents/${agentId}/mesh`),
+
+    // Update mesh config for an agent
+    updateAgentConfig: (agentId: string, data: UpdateMeshConfigRequest) =>
+      api.put<AgentMeshConfig>(`/agents/${agentId}/mesh`, data),
   },
 };
 
@@ -2297,6 +2383,109 @@ export const iacAPI = {
   // Get supported platforms
   getPlatforms: () =>
     api.get<IacPlatformInfo[]>('/iac/platforms'),
+};
+
+// ============================================================================
+// Breach & Attack Simulation (BAS) API
+// ============================================================================
+
+export const basAPI = {
+  // Techniques
+  listTechniques: () =>
+    api.get<{ techniques: AttackTechnique[]; total: number }>('/bas/techniques'),
+
+  listTactics: () =>
+    api.get<{ tactics: MitreTactic[]; total: number }>('/bas/tactics'),
+
+  // Scenarios
+  listScenarios: () =>
+    api.get<{ scenarios: SimulationScenario[]; total: number }>('/bas/scenarios'),
+
+  createScenario: (data: CreateScenarioRequest) =>
+    api.post<SimulationScenario>('/bas/scenarios', data),
+
+  getScenario: (id: string) =>
+    api.get<SimulationScenario>(`/bas/scenarios/${id}`),
+
+  deleteScenario: (id: string) =>
+    api.delete<{ message: string }>(`/bas/scenarios/${id}`),
+
+  // Simulations
+  listSimulations: () =>
+    api.get<{ simulations: SimulationSummary[]; total: number }>('/bas/simulations'),
+
+  startSimulation: (data: StartSimulationRequest) =>
+    api.post<SimulationSummary>('/bas/simulations', data),
+
+  getSimulation: (id: string) =>
+    api.get<SimulationDetails>(`/bas/simulations/${id}`),
+
+  // Detection Gaps
+  getUnacknowledgedGaps: () =>
+    api.get<DetectionGap[]>('/bas/gaps/unacknowledged'),
+
+  acknowledgeGap: (id: string, data: AcknowledgeGapRequest) =>
+    api.post<{ message: string }>(`/bas/gaps/${id}/acknowledge`, data),
+
+  // Statistics
+  getStats: () =>
+    api.get<BasStats>('/bas/stats'),
+};
+
+// ============================================================================
+// SIEM (Full SIEM Capabilities) API
+// ============================================================================
+
+export const siemFullAPI = {
+  // Log Sources
+  listLogSources: (params?: { status?: string; source_type?: string }) =>
+    api.get<SiemLogSource[]>('/siem/sources', { params }),
+
+  createLogSource: (data: CreateSiemLogSourceRequest) =>
+    api.post<SiemLogSource>('/siem/sources', data),
+
+  getLogSource: (id: string) =>
+    api.get<SiemLogSource>(`/siem/sources/${id}`),
+
+  updateLogSource: (id: string, data: UpdateSiemLogSourceRequest) =>
+    api.put<SiemLogSource>(`/siem/sources/${id}`, data),
+
+  deleteLogSource: (id: string) =>
+    api.delete<{ message: string }>(`/siem/sources/${id}`),
+
+  // Log Entries
+  queryLogs: (params: SiemLogSearchParams) =>
+    api.get<SiemLogSearchResponse>('/siem/logs', { params }),
+
+  getLogEntry: (id: string) =>
+    api.get<SiemLogEntry>(`/siem/logs/${id}`),
+
+  // Detection Rules
+  listRules: (params?: { status?: string; rule_type?: string; severity?: string }) =>
+    api.get<SiemRule[]>('/siem/rules', { params }),
+
+  createRule: (data: CreateSiemRuleRequest) =>
+    api.post<SiemRule>('/siem/rules', data),
+
+  updateRule: (id: string, data: UpdateSiemRuleRequest) =>
+    api.put<SiemRule>(`/siem/rules/${id}`, data),
+
+  deleteRule: (id: string) =>
+    api.delete<{ message: string }>(`/siem/rules/${id}`),
+
+  // Alerts
+  listAlerts: (params?: { status?: string; severity?: string; rule_id?: string; assigned_to?: string; limit?: number }) =>
+    api.get<SiemAlert[]>('/siem/alerts', { params }),
+
+  updateAlertStatus: (id: string, data: UpdateSiemAlertStatusRequest) =>
+    api.put<SiemAlert>(`/siem/alerts/${id}/status`, data),
+
+  resolveAlert: (id: string, data: ResolveSiemAlertRequest) =>
+    api.post<SiemAlert>(`/siem/alerts/${id}/resolve`, data),
+
+  // Statistics
+  getStats: () =>
+    api.get<SiemStatsResponse>('/siem/stats'),
 };
 
 export default api;

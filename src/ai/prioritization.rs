@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Prioritization Algorithms
 //!
 //! Contains the core prioritization logic and algorithms for
@@ -237,7 +238,7 @@ pub struct RiskReductionPoint {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ai::models::{EffortLevel, FactorScore, ImpactLevel, RemediationEffort};
+    use crate::ai::models::{EffortLevel, ImpactLevel, RemediationEffort};
     use chrono::Utc;
 
     fn create_test_score(id: &str, risk_score: f64) -> AIVulnerabilityScore {

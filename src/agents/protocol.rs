@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Agent communication protocol definitions
 //!
 //! This module defines the protocol for communication between the server

@@ -179,7 +179,7 @@ fn parse_instruction(line: &str, line_number: i32) -> Result<Option<DockerfileIn
 /// Analyze instructions for security issues
 fn analyze_instructions(
     instructions: &[DockerfileInstruction],
-    content: &str,
+    _content: &str,
 ) -> Result<Vec<ContainerFinding>> {
     let scan_id = Uuid::new_v4().to_string();
     let mut findings = Vec::new();

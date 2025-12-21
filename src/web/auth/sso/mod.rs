@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! SSO (Single Sign-On) Authentication Module
 //!
 //! This module provides enterprise identity provider support including:
@@ -31,12 +32,12 @@ use crate::db::models::UserInfo;
 use crate::web::auth::{create_jwt, create_refresh_token};
 
 pub use oidc::OidcClient;
-pub use providers::{get_provider_preset, get_provider_presets};
+pub use providers::get_provider_presets;
 pub use saml::SamlServiceProvider;
 pub use types::*;
 
-/// Cache for SSO states (for CSRF protection)
-/// In production, this should be backed by Redis or similar
+// Cache for SSO states (for CSRF protection)
+// In production, this should be backed by Redis or similar
 lazy_static::lazy_static! {
     static ref SSO_STATE_CACHE: Arc<RwLock<HashMap<String, SsoState>>> =
         Arc::new(RwLock::new(HashMap::new()));
@@ -405,7 +406,7 @@ impl SsoManager {
                 return match config {
                     ProviderConfig::Saml(saml_config) => {
                         if let Some(slo_url) = saml_config.idp_slo_url {
-                            let logout_request = saml::create_logout_request(
+                            let _logout_request = saml::create_logout_request(
                                 &self.get_sp_entity_id(&provider.id),
                                 &slo_url,
                                 session.name_id.as_deref().unwrap_or(""),

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Rate limiting configuration for API endpoints
 //!
 //! Implements rate limiting per OWASP guidelines and CIS Controls.

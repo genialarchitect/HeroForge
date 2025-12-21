@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Rate limit statistics tracking for the API Rate Limit Dashboard.
 //!
 //! Provides in-memory tracking of:

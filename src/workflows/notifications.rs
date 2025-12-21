@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Workflow Notifications
 //!
 //! This module handles sending notifications for workflow events:

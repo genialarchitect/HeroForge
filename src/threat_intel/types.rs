@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Common types for threat intelligence data
 //!
 //! This module defines the core data structures used across all threat intelligence

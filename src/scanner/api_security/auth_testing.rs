@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Authentication Bypass Testing Module
 //!
 //! Tests for common authentication bypass vulnerabilities including:

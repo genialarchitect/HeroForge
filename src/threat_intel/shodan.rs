@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Shodan API integration for exposed service detection
 //!
 //! This module provides integration with the Shodan API to look up

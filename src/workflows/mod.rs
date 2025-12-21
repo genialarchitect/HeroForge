@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Workflow Engine for Remediation Workflows
 //!
 //! This module provides configurable approval chains for vulnerability remediation:
@@ -14,7 +15,6 @@ pub mod notifications;
 
 pub use types::*;
 pub use executor::WorkflowExecutor;
-pub use notifications::WorkflowNotifier;
 
 use anyhow::Result;
 use sqlx::SqlitePool;

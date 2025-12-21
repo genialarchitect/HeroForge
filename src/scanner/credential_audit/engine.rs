@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Credential Audit Engine
 //!
 //! This module provides the orchestration engine for credential auditing.
@@ -13,7 +14,7 @@ use super::types::*;
 use super::wordlists::get_credentials_for_service;
 use anyhow::Result;
 use chrono::Utc;
-use log::{debug, error, info, warn};
+use log::{debug, error, info};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::{broadcast, Semaphore};

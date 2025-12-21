@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Container and Kubernetes scanning type definitions
 //!
 //! This module defines the core data structures used for container security scanning,

@@ -15,7 +15,7 @@ use uuid::Uuid;
 
 use super::types::{
     ContainerFinding, ContainerFindingSeverity, ContainerFindingType, ContainerImage,
-    ContainerScanConfig, FindingStatus, ImageLayer, ImagePackage,
+    ContainerScanConfig, FindingStatus,
 };
 
 /// Scan Docker images for vulnerabilities (real implementation)
@@ -584,7 +584,7 @@ fn generate_demo_hash() -> String {
 fn generate_demo_vulnerabilities(
     image_id: &str,
     scan_id: &str,
-    image_ref: &str,
+    _image_ref: &str,
 ) -> Vec<ContainerFinding> {
     let demo_vulns = vec![
         (

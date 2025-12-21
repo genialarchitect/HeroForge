@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! AI-Based Vulnerability Prioritization Module
 //!
 //! This module provides ML-based risk scoring for vulnerability prioritization.
@@ -17,13 +18,12 @@ pub mod prioritization;
 
 use anyhow::Result;
 use chrono::Utc;
-use log::{debug, info, warn};
+use log::{info, warn};
 use sqlx::SqlitePool;
 use std::sync::Arc;
 
 pub use features::*;
 pub use models::*;
-pub use prioritization::*;
 
 /// AI Prioritization Manager
 ///
@@ -237,7 +237,7 @@ impl AIPrioritizationManager {
         let business_score = features.business_context_score.min(100.0);
 
         // Historical remediation factor (inverse - faster remediation = lower priority)
-        let remediation_factor = if features.historical_remediation_days > 0 {
+        let _remediation_factor = if features.historical_remediation_days > 0 {
             ((features.historical_remediation_days as f64) / 30.0 * 100.0).min(100.0)
         } else {
             50.0 // Default medium priority

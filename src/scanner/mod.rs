@@ -2,6 +2,7 @@ use anyhow::Result;
 pub mod ad_assessment;
 pub mod api_security;
 pub mod attack_paths;
+pub mod bas;
 pub mod cloud;
 pub mod comparison;
 pub mod container;

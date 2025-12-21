@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! LDAP Client for Active Directory Assessment
 //!
 //! This module provides a wrapper around the ldap3 crate for AD-specific operations.
@@ -169,7 +170,7 @@ impl AdLdapClient {
     ) -> Result<Vec<SearchEntry>> {
         let base = if base.is_empty() { &self.base_dn } else { base };
         let mut all_entries = Vec::new();
-        let mut cookie: Vec<u8> = Vec::new();
+        let _cookie: Vec<u8> = Vec::new();
 
         debug!("LDAP paged search: base={}, filter={}, page_size={}", base, filter, page_size);
 

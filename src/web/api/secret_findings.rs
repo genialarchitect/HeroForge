@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Secret Findings API endpoints
 //!
 //! This module provides REST API endpoints for managing detected secrets

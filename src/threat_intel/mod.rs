@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Threat Intelligence Feed Integration
 //!
 //! This module provides integration with multiple threat intelligence sources:

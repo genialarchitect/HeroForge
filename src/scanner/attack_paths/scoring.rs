@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Attack Path Scoring
 //!
 //! Calculates risk scores for attack paths based on vulnerability chains,

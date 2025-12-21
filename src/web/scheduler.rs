@@ -522,7 +522,7 @@ async fn send_failure_email(
 /// Check for due scheduled reports and execute them
 async fn check_and_execute_due_reports(
     pool: &SqlitePool,
-    email_service: Option<Arc<EmailService>>,
+    _email_service: Option<Arc<EmailService>>,
 ) -> Result<()> {
     // Get all due scheduled reports
     let due_reports = db::get_due_scheduled_reports(pool).await?;
@@ -800,7 +800,7 @@ async fn generate_scan_summary_report(
         .filter(|s| s.created_at > cutoff)
         .collect();
 
-    let mut summary = serde_json::json!({
+    let summary = serde_json::json!({
         "report_name": name,
         "report_type": "scan_summary",
         "generated_at": chrono::Utc::now().to_rfc3339(),

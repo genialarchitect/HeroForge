@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Agent-Based Scanning Module
 //!
 //! This module provides lightweight agent support for scanning internal networks.
@@ -17,7 +18,7 @@
 //!          ┌────────────────┼────────────────┐
 //!          │                │                │
 //!     ┌────▼────┐     ┌────▼────┐     ┌────▼────┐
-//!     │ Agent 1 │     │ Agent 2 │     │ Agent 3 │
+//!     │ Agent 1 │◀───▶│ Agent 2 │◀───▶│ Agent 3 │  (Mesh Network)
 //!     │ Zone A  │     │ Zone B  │     │ Zone C  │
 //!     └─────────┘     └─────────┘     └─────────┘
 //! ```
@@ -29,6 +30,9 @@
 //! - **Task Distribution**: Smart task routing based on network zones
 //! - **Result Aggregation**: Combines results from multiple agents
 //! - **Agent Groups**: Logical groupings for network segmentation
+//! - **Mesh Networking**: P2P communication between agents for work distribution
+//! - **Work Stealing**: Load balancing across agent mesh
+//! - **Cluster Coordination**: Agent clusters with leader election
 //!
 //! ## Usage
 //!
@@ -39,13 +43,23 @@
 //! 5. Tasks are distributed to appropriate agents
 //! 6. Results are aggregated and stored
 //!
+//! ## Mesh Networking
+//!
+//! Agents can form a mesh network for peer-to-peer communication:
+//! - Discover peers via central registry, mDNS, or gossip
+//! - Delegate tasks to available peers
+//! - Steal work from overloaded peers
+//! - Form clusters with automatic leader election
+//!
 //! ## Security
 //!
 //! - Agents authenticate via bearer tokens (256-bit random)
 //! - Tokens are bcrypt hashed in the database
 //! - All communication should use HTTPS in production
 //! - Token rotation is supported
+//! - Mesh communication is authenticated per-agent
 
+pub mod mesh;
 pub mod protocol;
 pub mod results;
 pub mod tasks;
@@ -53,18 +67,15 @@ pub mod types;
 
 // Re-export commonly used types
 pub use protocol::{
-    generate_agent_token, get_token_prefix, ErrorCode, TaskConfig, TaskType, PROTOCOL_VERSION,
+    generate_agent_token, get_token_prefix,
 };
-pub use results::{AggregatedResults, AgentUpdate, ResultCollector, ResultSummary};
-pub use tasks::{AgentSelectionStrategy, ScanTaskStatus, TaskDistributor};
+pub use results::ResultCollector;
+pub use tasks::TaskDistributor;
 pub use types::{
-    AgentGroup, AgentGroupMember, AgentGroupWithAgents, AgentGroupWithCount, AgentHeartbeat,
-    AgentResult, AgentStats, AgentStatus, AgentTask, AgentTaskInfo, AgentWithGroups,
-    AssignAgentsToGroupRequest, CreateAgentGroupRequest, GetTasksRequest, HeartbeatRequest,
+    AgentStats, AgentStatus, AgentTask, AgentWithGroups,
+    AssignAgentsToGroupRequest, CreateAgentGroupRequest, HeartbeatRequest,
     HeartbeatResponse, RegisterAgentRequest, RegisterAgentResponse, ScanAgent, SubmitResultRequest,
-    TaskStatus, TaskSummary, UpdateAgentGroupRequest, UpdateAgentRequest,
-    DEFAULT_HEARTBEAT_INTERVAL, DEFAULT_TASK_TIMEOUT, HEARTBEAT_TIMEOUT_SECONDS,
-    MAX_CONCURRENT_TASKS, TOKEN_PREFIX_LENGTH,
+    TaskStatus, UpdateAgentGroupRequest, UpdateAgentRequest, HEARTBEAT_TIMEOUT_SECONDS,
 };
 
 use anyhow::Result;

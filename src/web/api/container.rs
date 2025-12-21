@@ -21,8 +21,7 @@ use crate::db::container::{
     UpdateFindingStatusRequest,
 };
 use crate::scanner::container::{
-    run_container_scan, ContainerScanConfig, ContainerScanStatus, ContainerScanType,
-    DockerfileAnalysis, FindingStatus, K8sManifestAnalysis,
+    run_container_scan, ContainerScanConfig, ContainerScanStatus, ContainerScanType, FindingStatus,
 };
 use crate::web::auth;
 
@@ -609,6 +608,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
 
 #[cfg(test)]
 mod tests {
+    #[allow(unused_imports)]
     use super::*;
 
     #[test]

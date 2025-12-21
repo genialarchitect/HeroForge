@@ -27,6 +27,12 @@ const ScanComparisonPage = lazy(() => import('./pages/ScanComparisonPage'));
 const WorkflowsPage = lazy(() => import('./pages/WorkflowsPage'));
 const ContainerSecurityPage = lazy(() => import('./pages/ContainerSecurityPage'));
 const IacSecurityPage = lazy(() => import('./pages/IacSecurityPage'));
+const PluginsPage = lazy(() => import('./pages/PluginsPage'));
+const AgentsPage = lazy(() => import('./pages/AgentsPage'));
+const MeshAgentsPage = lazy(() => import('./pages/MeshAgentsPage'));
+const EvidencePage = lazy(() => import('./pages/EvidencePage'));
+const SiemPage = lazy(() => import('./pages/SiemPage'));
+const AttackSimulationPage = lazy(() => import('./pages/AttackSimulationPage'));
 
 // CRM pages
 const CrmDashboard = lazy(() => import('./pages/crm/CrmDashboard'));
@@ -186,6 +192,14 @@ function App() {
             }
           />
           <Route
+            path="/evidence"
+            element={
+              <ProtectedRoute>
+                <EvidencePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/remediation"
             element={
               <ProtectedRoute>
@@ -278,6 +292,46 @@ function App() {
             element={
               <ProtectedRoute>
                 <IacSecurityPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/attack-simulation"
+            element={
+              <ProtectedRoute>
+                <AttackSimulationPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/plugins"
+            element={
+              <ProtectedRoute>
+                <PluginsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/agents"
+            element={
+              <ProtectedRoute>
+                <AgentsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/agents/mesh"
+            element={
+              <ProtectedRoute>
+                <MeshAgentsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/siem"
+            element={
+              <ProtectedRoute>
+                <SiemPage />
               </ProtectedRoute>
             }
           />

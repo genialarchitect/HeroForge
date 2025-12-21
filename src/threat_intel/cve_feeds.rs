@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Real-time CVE announcement feeds (NVD, CISA KEV)
 //!
 //! This module provides integration with CVE data sources including:
@@ -6,7 +7,7 @@
 
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Utc};
-use log::{debug, info, warn};
+use log::{debug, info};
 use reqwest::Client;
 use serde::Deserialize;
 use std::time::Duration;

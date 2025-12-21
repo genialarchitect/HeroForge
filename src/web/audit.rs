@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Audit logging helper module for tracking user actions
 //!
 //! This module provides structured audit logging with typed actions,

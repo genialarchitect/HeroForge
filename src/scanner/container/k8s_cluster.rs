@@ -434,7 +434,7 @@ fn get_all_namespaces() -> Result<Vec<String>> {
 async fn scan_cluster_level(
     scan_id: &str,
 ) -> Result<(Vec<K8sResource>, Vec<ContainerFinding>)> {
-    let mut resources = Vec::new();
+    let resources = Vec::new();
     let mut findings = Vec::new();
 
     // Check cluster version

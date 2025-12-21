@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Infrastructure-as-Code (IaC) Security Scanning API Endpoints
 //!
 //! This module provides REST API endpoints for IaC security scanning:

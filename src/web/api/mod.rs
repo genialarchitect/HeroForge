@@ -8,6 +8,7 @@ pub mod api_security;
 pub mod assets;
 pub mod attack_paths;
 pub mod auth;
+pub mod bas;
 pub mod cicd;
 pub mod cloud;
 pub mod container;
@@ -24,9 +25,12 @@ pub mod jira;
 pub mod manual_compliance;
 pub mod methodology;
 pub mod mfa;
+pub mod mobile;
 pub mod notifications;
+pub mod plugins;
 pub mod portal;
 pub mod privacy;
+pub mod push;
 pub mod reports;
 pub mod scan_presets;
 pub mod scans;
@@ -45,6 +49,7 @@ pub mod vpn;
 pub mod webapp;
 pub mod webhooks;
 pub mod workflows;
+pub mod evidence;
 
 #[cfg(test)]
 mod tests;

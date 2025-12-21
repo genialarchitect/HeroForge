@@ -17,6 +17,7 @@
 
 // Submodules
 pub mod ad_assessment;
+pub mod agent_mesh;
 pub mod agents;
 pub mod ai;
 pub mod analytics;
@@ -24,11 +25,13 @@ pub mod api_security;
 pub mod assets;
 pub mod attack_paths;
 pub mod auth;
+pub mod bas;
 pub mod cicd;
 pub mod cloud;
 pub mod container;
 pub mod credential_audit;
 pub mod crm;
+pub mod evidence;
 pub mod exclusions;
 pub mod finding_templates;
 pub mod iac;
@@ -37,6 +40,8 @@ pub mod methodology;
 pub mod migrations;
 pub mod models;
 pub mod models_dashboard;
+pub mod plugins;
+pub mod push_tokens;
 pub mod scans;
 pub mod scheduled_reports;
 pub mod secret_findings;

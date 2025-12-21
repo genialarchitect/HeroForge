@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! SSO API Endpoints
 //!
 //! This module provides REST API endpoints for SSO (SAML/OIDC) authentication management.

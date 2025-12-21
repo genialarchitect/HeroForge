@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! SSO Provider Presets - Configuration templates for popular identity providers
 //!
 //! This module provides preset configurations for common enterprise identity providers.

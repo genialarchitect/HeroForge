@@ -27,6 +27,11 @@ import {
   ChevronDown,
   Search,
   FileText,
+  Puzzle,
+  Radio,
+  Activity,
+  Crosshair,
+  Share2,
 } from 'lucide-react';
 
 interface NavItem {
@@ -114,15 +119,19 @@ const Header: React.FC = () => {
     { to: '/dashboard', icon: <LayoutDashboard className="h-4 w-4" />, label: 'Scans' },
     { to: '/compare', icon: <GitCompare className="h-4 w-4" />, label: 'Compare' },
     { to: '/assets', icon: <Server className="h-4 w-4" />, label: 'Assets' },
+    { to: '/agents', icon: <Radio className="h-4 w-4" />, label: 'Agents' },
+    { to: '/agents/mesh', icon: <Share2 className="h-4 w-4" />, label: 'Mesh Network' },
     { to: '/webapp-scan', icon: <Globe className="h-4 w-4" />, label: 'Web Scan' },
     { to: '/dns-tools', icon: <Network className="h-4 w-4" />, label: 'DNS Tools' },
     { to: '/api-security', icon: <Zap className="h-4 w-4" />, label: 'API Security' },
     { to: '/container-security', icon: <Box className="h-4 w-4" />, label: 'Containers' },
     { to: '/iac-security', icon: <FileCode className="h-4 w-4" />, label: 'IaC Security' },
+    { to: '/attack-simulation', icon: <Crosshair className="h-4 w-4" />, label: 'BAS' },
   ];
 
   const complianceItems: NavItem[] = [
     { to: '/compliance', icon: <ShieldCheck className="h-4 w-4" />, label: 'Compliance' },
+    { to: '/evidence', icon: <FileText className="h-4 w-4" />, label: 'Evidence' },
     { to: '/manual-assessments', icon: <ClipboardCheck className="h-4 w-4" />, label: 'Assessments' },
     { to: '/methodology', icon: <BookOpenCheck className="h-4 w-4" />, label: 'Methodology' },
   ];
@@ -200,6 +209,19 @@ const Header: React.FC = () => {
                   isActive={isReportsActive}
                 />
 
+                {/* SIEM - Standalone */}
+                <Link
+                  to="/siem"
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
+                    location.pathname.startsWith('/siem')
+                      ? 'bg-primary/10 text-primary font-medium'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-light-hover dark:hover:bg-dark-hover'
+                  }`}
+                >
+                  <Activity className="h-4 w-4" />
+                  SIEM
+                </Link>
+
                 {/* Settings - Standalone */}
                 <Link
                   to="/settings"
@@ -211,6 +233,19 @@ const Header: React.FC = () => {
                 >
                   <Settings className="h-4 w-4" />
                   Settings
+                </Link>
+
+                {/* Plugins - Standalone */}
+                <Link
+                  to="/plugins"
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
+                    location.pathname.startsWith('/plugins')
+                      ? 'bg-primary/10 text-primary font-medium'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-light-hover dark:hover:bg-dark-hover'
+                  }`}
+                >
+                  <Puzzle className="h-4 w-4" />
+                  Plugins
                 </Link>
 
                 {/* Admin - Standalone (conditional) */}

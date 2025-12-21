@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Infrastructure-as-Code (IaC) Security Scanning Module
 //!
 //! This module provides comprehensive scanning capabilities for IaC files:
@@ -27,7 +28,7 @@ pub mod types;
 
 pub use arm::ArmScanner;
 pub use cloudformation::CloudFormationScanner;
-pub use rules::{get_builtin_iac_rules, get_builtin_rules, RuleMatcher};
+pub use rules::{get_builtin_iac_rules, RuleMatcher};
 pub use terraform::TerraformScanner;
 pub use types::*;
 

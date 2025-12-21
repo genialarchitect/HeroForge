@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Container and Kubernetes Security Scanning Module
 //!
 //! This module provides comprehensive security scanning capabilities for:
@@ -38,16 +39,12 @@ pub use types::{
     ContainerImage,
     ContainerScan,
     ContainerScanConfig,
-    ContainerScanResults,
     ContainerScanStatus,
     ContainerScanSummary,
     ContainerScanType,
     ContainerScanner,
     DockerfileAnalysis,
-    DockerfileInstruction,
     FindingStatus,
-    ImageLayer,
-    ImagePackage,
     ImageVulnSummary,
     K8sManifestAnalysis,
     K8sResource,
@@ -56,7 +53,6 @@ pub use types::{
 
 use anyhow::Result;
 use std::collections::HashMap;
-use uuid::Uuid;
 
 /// Run a container scan with the given configuration
 ///
@@ -317,7 +313,7 @@ mod tests {
             engagement_id: None,
         };
 
-        let (images, resources, findings) = run_container_scan(&config).await.unwrap();
+        let (images, _resources, findings) = run_container_scan(&config).await.unwrap();
 
         assert!(!images.is_empty());
         assert!(!findings.is_empty());

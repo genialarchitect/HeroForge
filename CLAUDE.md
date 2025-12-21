@@ -520,12 +520,12 @@ Strategic initiatives that transform the product.
 
 | Feature | Effort | Status | Description |
 |---------|--------|--------|-------------|
-| Mobile App | 4-6 weeks | Planned | React Native companion app |
-| Distributed Scanning Agents | 4-6 weeks | Planned | Mesh of scanning agents |
-| Plugin Marketplace | 6-8 weeks | Planned | Extensible plugin architecture |
-| Compliance Automation | 4-6 weeks | Planned | Full SOC2/ISO27001 evidence collection |
-| Breach & Attack Simulation | 6-8 weeks | Planned | Safe exploit simulation framework |
-| Full SIEM Capabilities | 8-12 weeks | Planned | Log ingestion and correlation engine |
+| Mobile App | 4-6 weeks | Partial | React Native companion app (API backend done, no native app) |
+| ~~Distributed Scanning Agents~~ | 4-6 weeks | **Done** | Mesh of scanning agents |
+| ~~Plugin Marketplace~~ | 6-8 weeks | **Done** | Extensible plugin architecture |
+| ~~Compliance Automation~~ | 4-6 weeks | **Done** | Full SOC2/ISO27001 evidence collection |
+| ~~Breach & Attack Simulation~~ | 6-8 weeks | **Done** | Safe exploit simulation framework |
+| ~~Full SIEM Capabilities~~ | 8-12 weeks | **Done** | Log ingestion and correlation engine |
 
 ### Implementation Notes
 
@@ -584,3 +584,8 @@ Track active work here:
 | AI Vulnerability Prioritization | 3 | 2025-12-21 |
 | SAML/SSO Authentication | 3 | 2025-12-21 |
 | Custom Remediation Workflows | 3 | 2025-12-21 |
+| Full SIEM Capabilities | 4 | 2025-12-21 |
+| Distributed Scanning Agents | 4 | 2025-12-21 |
+| Plugin Marketplace | 4 | 2025-12-21 |
+| Compliance Automation | 4 | 2025-12-21 |
+| Breach & Attack Simulation | 4 | 2025-12-21 |

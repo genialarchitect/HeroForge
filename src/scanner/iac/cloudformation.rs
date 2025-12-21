@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! AWS CloudFormation template analyzer
 //!
 //! This module parses CloudFormation templates (JSON/YAML) and analyzes them for security issues.

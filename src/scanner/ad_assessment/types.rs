@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Active Directory Assessment Types
 //!
 //! This module defines all types used for AD security assessment including

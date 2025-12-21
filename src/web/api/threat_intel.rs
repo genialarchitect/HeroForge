@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Threat Intelligence API endpoints
 //!
 //! Provides REST API access to threat intelligence data including:

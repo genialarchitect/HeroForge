@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Workflow Executor - handles workflow execution logic
 //!
 //! This module provides the core logic for:

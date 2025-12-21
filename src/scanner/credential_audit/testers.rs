@@ -5,7 +5,7 @@
 
 use super::types::{Credential, CredentialServiceType, CredentialTestResult};
 use anyhow::Result;
-use log::{debug, warn};
+use log::debug;
 use sha2::{Digest, Sha256};
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;
@@ -77,7 +77,7 @@ async fn test_ssh(host: &str, port: u16, credential: &Credential, timeout: Durat
     let host = host.to_string();
     let port = port;
     let username = credential.username.clone();
-    let password = credential.password.clone();
+    let _password = credential.password.clone();
 
     tokio::task::spawn_blocking(move || {
         let addr = format!("{}:{}", host, port);

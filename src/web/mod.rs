@@ -381,13 +381,17 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .route("/integrations/jira/projects", web::get().to(api::jira::list_jira_projects))
                     .route("/integrations/jira/issue-types", web::get().to(api::jira::list_jira_issue_types))
                     .route("/vulnerabilities/{id}/create-ticket", web::post().to(api::jira::create_jira_ticket))
-                    // SIEM integration endpoints
-                    .route("/integrations/siem/settings", web::get().to(api::siem::get_siem_settings))
-                    .route("/integrations/siem/settings", web::post().to(api::siem::create_siem_settings))
-                    .route("/integrations/siem/settings/{id}", web::put().to(api::siem::update_siem_settings))
-                    .route("/integrations/siem/settings/{id}", web::delete().to(api::siem::delete_siem_settings))
-                    .route("/integrations/siem/settings/{id}/test", web::post().to(api::siem::test_siem_connection))
-                    .route("/integrations/siem/export/{scan_id}", web::post().to(api::siem::export_scan_to_siem))
+                    // SIEM integration endpoints (Full SIEM)
+                    .route("/siem/sources", web::get().to(api::siem::list_log_sources))
+                    .route("/siem/sources", web::post().to(api::siem::create_log_source))
+                    .route("/siem/sources/{id}", web::get().to(api::siem::get_log_source))
+                    .route("/siem/sources/{id}", web::put().to(api::siem::update_log_source))
+                    .route("/siem/sources/{id}", web::delete().to(api::siem::delete_log_source))
+                    .route("/siem/logs", web::get().to(api::siem::query_logs))
+                    .route("/siem/logs/{id}", web::get().to(api::siem::get_log_entry))
+                    .route("/siem/rules", web::get().to(api::siem::list_rules))
+                    .route("/siem/rules", web::post().to(api::siem::create_rule))
+                    .route("/siem/stats", web::get().to(api::siem::get_siem_stats))
                     // ServiceNow integration endpoints
                     .route("/integrations/servicenow/settings", web::get().to(api::servicenow::get_servicenow_settings))
                     .route("/integrations/servicenow/settings", web::post().to(api::servicenow::upsert_servicenow_settings))
@@ -466,8 +470,20 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .configure(api::cicd::configure)
                     // IaC Security scanning endpoints
                     .configure(api::iac::configure)
+                    // Breach & Attack Simulation endpoints
+                    .configure(api::bas::configure)
                     // Remediation Workflows endpoints
                     .configure(api::workflows::configure)
+                    // Mobile app endpoints
+                    .configure(api::mobile::configure)
+                    // Push notification endpoints
+                    .configure(api::push::configure)
+                    // Plugin marketplace endpoints
+                    .configure(api::plugins::configure)
+                    // Compliance Evidence Collection endpoints
+                    .configure(api::evidence::configure)
+                    // SIEM (Full capabilities) endpoints
+                    .configure(api::siem::configure)
                     // Start workflow from vulnerability
                     .route("/vulnerabilities/{id}/workflow", web::post().to(api::workflows::start_workflow))
                     // SSO Admin endpoints

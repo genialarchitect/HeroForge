@@ -828,7 +828,7 @@ fn analyze_network_policy(
     // Check for allow-all policies
     if let Some(spec) = manifest.get("spec") {
         let ingress = spec.get("ingress").and_then(|i| i.as_array());
-        let egress = spec.get("egress").and_then(|e| e.as_array());
+        let _egress = spec.get("egress").and_then(|e| e.as_array());
 
         if ingress.map(|i| i.is_empty()).unwrap_or(false) {
             findings.push(ContainerFinding {

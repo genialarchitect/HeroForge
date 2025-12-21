@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use actix_web::{web, HttpResponse, Result};
 use sqlx::SqlitePool;
 use serde::Deserialize;

@@ -291,7 +291,7 @@ fn generate_findings(
     users: &[AdUser],
     groups: &[AdGroup],
     computers: &[AdComputer],
-    spns: &[AdSpn],
+    _spns: &[AdSpn],
     domain_info: Option<&AdDomainInfo>,
 ) -> Vec<AdSecurityFinding> {
     let mut findings = Vec::new();

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! OpenID Connect Authentication Implementation
 //!
 //! This module implements OIDC authentication using the Authorization Code flow with PKCE.

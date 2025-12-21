@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! CORS Misconfiguration Testing Module
 //!
 //! Tests for Cross-Origin Resource Sharing (CORS) misconfigurations:

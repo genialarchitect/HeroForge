@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! AI Prioritization Data Models
 //!
 //! Contains all data structures used by the AI prioritization system.

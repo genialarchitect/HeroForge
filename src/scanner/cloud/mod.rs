@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Cloud Infrastructure Scanning Module
 //!
 //! This module provides comprehensive scanning capabilities for major cloud providers:

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Types for Infrastructure-as-Code (IaC) security scanning
 //!
 //! This module defines data structures for scanning Terraform, CloudFormation,

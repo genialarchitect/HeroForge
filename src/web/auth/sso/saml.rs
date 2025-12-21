@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! SAML 2.0 Authentication Implementation
 //!
 //! This module implements SAML 2.0 Service Provider (SP) functionality including:

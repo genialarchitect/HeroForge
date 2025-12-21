@@ -762,7 +762,7 @@ pub async fn update_task_status(
     pool: &SqlitePool,
     task_id: &str,
     status: &str,
-    agent_id: Option<&str>,
+    _agent_id: Option<&str>,
     error_message: Option<&str>,
 ) -> Result<()> {
     let now = Utc::now();

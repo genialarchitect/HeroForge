@@ -3941,3 +3941,549 @@ export interface UpdateWorkflowRequest {
   status?: string;
   notes?: string;
 }
+
+// ============================================================================
+// Agent Mesh Network Types
+// ============================================================================
+
+export interface AgentMeshConfig {
+  agent_id: string;
+  enabled: boolean;
+  mesh_port: number;
+  external_address: string | null;
+  cluster_id: string | null;
+  cluster_role: string | null;
+  config_json: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MeshPeerConnection {
+  id: string;
+  from_agent_id: string;
+  to_agent_id: string;
+  connection_status: 'connected' | 'disconnected' | 'connecting' | 'error';
+  latency_ms: number | null;
+  bandwidth_mbps: number | null;
+  last_seen_at: string | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MeshConnectionStats {
+  total_connections: number;
+  active_connections: number;
+  failed_connections: number;
+  avg_latency_ms: number | null;
+  total_bandwidth_mbps: number | null;
+}
+
+export interface AgentMeshPeerData {
+  agent_id: string;
+  agent_name: string;
+  mesh_config: AgentMeshConfig;
+  peers: MeshPeerConnection[];
+  stats: MeshConnectionStats | null;
+}
+
+export interface MeshCluster {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string | null;
+  leader_agent_id: string | null;
+  config_json: string | null;
+  health_json: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MeshClusterWithMembers extends MeshCluster {
+  member_count: number;
+  members: ScanAgent[];
+}
+
+export interface CreateMeshClusterRequest {
+  name: string;
+  description?: string;
+  config_json?: string;
+}
+
+export interface UpdateMeshClusterRequest {
+  name?: string;
+  description?: string;
+  config_json?: string;
+  health_json?: string;
+}
+
+export interface UpdateMeshConfigRequest {
+  enabled?: boolean;
+  mesh_port?: number;
+  external_address?: string;
+  cluster_id?: string;
+  cluster_role?: string;
+  config_json?: string;
+}
+
+// ============================================================================
+// Breach & Attack Simulation (BAS) Types
+// ============================================================================
+
+/** MITRE ATT&CK Tactic */
+export interface MitreTactic {
+  id: string;
+  name: string;
+  description: string;
+  techniques: string[]; // List of technique IDs belonging to this tactic
+}
+
+/** MITRE ATT&CK Technique */
+export interface AttackTechnique {
+  id: string;
+  name: string;
+  description: string;
+  tactic: string;
+  tactic_name: string;
+  mitre_url: string;
+  platforms: string[];
+  permissions_required: string[];
+  data_sources: string[];
+  detection: string;
+  payloads: string[]; // Available payload types for this technique
+}
+
+/** Execution mode for BAS simulations */
+export type BasExecutionMode = 'dry_run' | 'safe' | 'full';
+
+/** Status of a BAS scenario */
+export type BasScenarioStatus = 'draft' | 'ready' | 'builtin';
+
+/** Status of a BAS simulation */
+export type BasSimulationStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+
+/** BAS Scenario - a configured set of techniques to run */
+export interface SimulationScenario {
+  id: string;
+  name: string;
+  description?: string;
+  status: BasScenarioStatus;
+  execution_mode: BasExecutionMode;
+  technique_count: number;
+  target_count: number;
+  tags: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+/** Summary of a BAS simulation run */
+export interface SimulationSummary {
+  id: string;
+  scenario_id: string;
+  status: BasSimulationStatus;
+  execution_mode: BasExecutionMode;
+  total_techniques: number;
+  detection_rate: number;
+  security_score: number;
+  started_at: string;
+  completed_at?: string;
+  duration_ms?: number;
+}
+
+/** Statistics from a simulation run */
+export interface SimulationStats {
+  total_techniques: number;
+  succeeded: number;
+  blocked: number;
+  detected: number;
+  failed: number;
+  skipped: number;
+  detection_rate: number;
+  block_rate: number;
+  security_score: number;
+}
+
+/** Result of executing a single technique */
+export interface TechniqueExecution {
+  id: string;
+  technique_id: string;
+  target?: string;
+  status: string;
+  detection_observed: boolean;
+  detection_details?: string;
+  duration_ms?: number;
+  error?: string;
+}
+
+/** A detection gap - technique that wasn't detected */
+export interface DetectionGap {
+  id: string;
+  technique_id: string;
+  technique_name: string;
+  tactics: string[];
+  severity: number; // 1-5, where 5 is critical
+  reason?: string;
+  recommendations: string[];
+  acknowledged: boolean;
+}
+
+/** Full details of a simulation run */
+export interface SimulationDetails {
+  id: string;
+  scenario_id: string;
+  status: BasSimulationStatus;
+  execution_mode: BasExecutionMode;
+  summary: SimulationStats;
+  executions: TechniqueExecution[];
+  detection_gaps: DetectionGap[];
+  started_at: string;
+  completed_at?: string;
+  duration_ms?: number;
+  error?: string;
+}
+
+/** Overall BAS statistics for the user */
+export interface BasStats {
+  total_scenarios: number;
+  total_simulations: number;
+  total_techniques_tested: number;
+  avg_detection_rate: number;
+  avg_security_score: number;
+  total_detection_gaps: number;
+  unacknowledged_gaps: number;
+}
+
+/** Request to create a new BAS scenario */
+export interface CreateScenarioRequest {
+  name: string;
+  description: string;
+  execution_mode: BasExecutionMode;
+  technique_ids: string[];
+  targets: string[];
+  timeout_secs: number;
+  parallel_execution: boolean;
+  continue_on_failure: boolean;
+  tags: string[];
+}
+
+/** Request to start a simulation */
+export interface StartSimulationRequest {
+  scenario_id: string;
+  execution_mode?: BasExecutionMode;
+  target_override?: string;
+}
+
+/** Request to acknowledge a detection gap */
+export interface AcknowledgeGapRequest {
+  notes?: string;
+}
+
+// =============================================================================
+// SIEM (Security Information and Event Management) Types
+// =============================================================================
+
+/** Log format types */
+export type SiemLogFormat =
+  | 'syslog_rfc3164'
+  | 'syslog_rfc5424'
+  | 'cef'
+  | 'leef'
+  | 'json'
+  | 'windows_event'
+  | 'raw'
+  | 'heroforge';
+
+/** Transport protocol types */
+export type SiemTransportProtocol = 'udp' | 'tcp' | 'tcp_tls' | 'http' | 'https';
+
+/** Log source status */
+export type SiemLogSourceStatus = 'pending' | 'active' | 'inactive' | 'error';
+
+/** SIEM severity levels */
+export type SiemSeverity =
+  | 'debug'
+  | 'info'
+  | 'notice'
+  | 'warning'
+  | 'error'
+  | 'critical'
+  | 'alert'
+  | 'emergency';
+
+/** Detection rule types */
+export type SiemRuleType =
+  | 'pattern'
+  | 'regex'
+  | 'threshold'
+  | 'correlation'
+  | 'anomaly'
+  | 'machine_learning'
+  | 'sigma'
+  | 'yara';
+
+/** Rule status */
+export type SiemRuleStatus = 'enabled' | 'disabled' | 'testing';
+
+/** Alert status */
+export type SiemAlertStatus =
+  | 'new'
+  | 'in_progress'
+  | 'escalated'
+  | 'resolved'
+  | 'false_positive'
+  | 'ignored';
+
+/** Log source configuration */
+export interface SiemLogSource {
+  id: string;
+  name: string;
+  description?: string;
+  source_type: string;
+  host?: string;
+  format: SiemLogFormat;
+  protocol: SiemTransportProtocol;
+  port?: number;
+  status: SiemLogSourceStatus;
+  last_seen?: string;
+  log_count: number;
+  logs_per_hour: number;
+  custom_patterns?: Record<string, string>;
+  field_mappings?: Record<string, string>;
+  tags: string[];
+  auto_enrich: boolean;
+  retention_days?: number;
+  created_at: string;
+  updated_at: string;
+  created_by?: string;
+}
+
+/** Create log source request */
+export interface CreateSiemLogSourceRequest {
+  name: string;
+  description?: string;
+  source_type: string;
+  host?: string;
+  format: string;
+  protocol: string;
+  port?: number;
+  tags?: string[];
+  auto_enrich?: boolean;
+  retention_days?: number;
+}
+
+/** Update log source request */
+export interface UpdateSiemLogSourceRequest {
+  name?: string;
+  description?: string;
+  source_type?: string;
+  host?: string;
+  format?: string;
+  protocol?: string;
+  port?: number;
+  status?: string;
+  tags?: string[];
+  auto_enrich?: boolean;
+  retention_days?: number;
+}
+
+/** Log entry */
+export interface SiemLogEntry {
+  id: string;
+  source_id: string;
+  timestamp: string;
+  received_at: string;
+  severity: string;
+  facility?: number;
+  format: string;
+  source_ip?: string;
+  destination_ip?: string;
+  source_port?: number;
+  destination_port?: number;
+  protocol?: string;
+  hostname?: string;
+  application?: string;
+  pid?: number;
+  message_id?: string;
+  structured_data: Record<string, unknown>;
+  message: string;
+  raw: string;
+  category?: string;
+  action?: string;
+  outcome?: string;
+  user?: string;
+  tags: string[];
+  alerted: boolean;
+  alert_ids: string[];
+  partition_date: string;
+}
+
+/** Log search query parameters */
+export interface SiemLogSearchParams {
+  query?: string;
+  source_id?: string;
+  min_severity?: string;
+  source_ip?: string;
+  destination_ip?: string;
+  hostname?: string;
+  application?: string;
+  user?: string;
+  start_time?: string;
+  end_time?: string;
+  alerted?: boolean;
+  offset?: number;
+  limit?: number;
+}
+
+/** Log search response */
+export interface SiemLogSearchResponse {
+  entries: SiemLogEntry[];
+  total_count: number;
+  query_time_ms: number;
+  offset: number;
+  limit: number;
+}
+
+/** Detection rule */
+export interface SiemRule {
+  id: string;
+  name: string;
+  description?: string;
+  rule_type: SiemRuleType;
+  severity: SiemSeverity;
+  status: SiemRuleStatus;
+  definition: Record<string, unknown>;
+  source_ids: string[];
+  categories: string[];
+  mitre_tactics: string[];
+  mitre_techniques: string[];
+  false_positive_rate?: number;
+  trigger_count: number;
+  last_triggered?: string;
+  tags: string[];
+  response_actions: string[];
+  time_window_seconds?: number;
+  threshold_count?: number;
+  group_by_fields: string[];
+  created_at: string;
+  updated_at: string;
+  created_by?: string;
+}
+
+/** Create rule request */
+export interface CreateSiemRuleRequest {
+  name: string;
+  description?: string;
+  rule_type: string;
+  severity: string;
+  status?: string;
+  definition: Record<string, unknown>;
+  source_ids?: string[];
+  categories?: string[];
+  mitre_tactics?: string[];
+  mitre_techniques?: string[];
+  tags?: string[];
+  response_actions?: string[];
+  time_window_seconds?: number;
+  threshold_count?: number;
+  group_by_fields?: string[];
+}
+
+/** Update rule request */
+export interface UpdateSiemRuleRequest {
+  name?: string;
+  description?: string;
+  rule_type?: string;
+  severity?: string;
+  status?: string;
+  definition?: Record<string, unknown>;
+  source_ids?: string[];
+  categories?: string[];
+  mitre_tactics?: string[];
+  mitre_techniques?: string[];
+  tags?: string[];
+  response_actions?: string[];
+  time_window_seconds?: number;
+  threshold_count?: number;
+  group_by_fields?: string[];
+}
+
+/** SIEM Alert */
+export interface SiemAlert {
+  id: string;
+  rule_id: string;
+  rule_name: string;
+  severity: SiemSeverity;
+  status: SiemAlertStatus;
+  title: string;
+  description?: string;
+  log_entry_ids: string[];
+  event_count: number;
+  source_ips: string[];
+  destination_ips: string[];
+  users: string[];
+  hosts: string[];
+  first_seen: string;
+  last_seen: string;
+  created_at: string;
+  updated_at: string;
+  assigned_to?: string;
+  resolved_by?: string;
+  resolved_at?: string;
+  resolution_notes?: string;
+  mitre_tactics: string[];
+  mitre_techniques: string[];
+  tags: string[];
+  context: Record<string, unknown>;
+  related_alert_ids: string[];
+  external_ticket_id?: string;
+}
+
+/** Update alert status request */
+export interface UpdateSiemAlertStatusRequest {
+  status: string;
+  assigned_to?: string;
+}
+
+/** Resolve alert request */
+export interface ResolveSiemAlertRequest {
+  resolution_notes?: string;
+  is_false_positive?: boolean;
+}
+
+/** Alert status count */
+export interface SiemAlertStatusCount {
+  status: string;
+  count: number;
+}
+
+/** Alert severity count */
+export interface SiemAlertSeverityCount {
+  severity: string;
+  count: number;
+}
+
+/** Top log source stats */
+export interface SiemTopSourceStats {
+  id: string;
+  name: string;
+  log_count: number;
+  logs_per_hour: number;
+}
+
+/** SIEM statistics response */
+export interface SiemStatsResponse {
+  total_sources: number;
+  active_sources: number;
+  total_logs_today: number;
+  total_logs_all: number;
+  logs_per_hour: number;
+  total_rules: number;
+  enabled_rules: number;
+  total_alerts: number;
+  open_alerts: number;
+  critical_alerts: number;
+  alerts_by_status: SiemAlertStatusCount[];
+  alerts_by_severity: SiemAlertSeverityCount[];
+  top_sources: SiemTopSourceStats[];
+  ingestion_rate: number;
+}

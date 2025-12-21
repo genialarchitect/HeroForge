@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Common types for cloud infrastructure scanning
 //!
 //! This module defines the core data structures used across all cloud providers

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Secret Detection Scanner
 //!
 //! This module provides comprehensive secret detection capabilities for identifying
@@ -28,7 +29,6 @@ pub mod types;
 pub use patterns::SECRET_PATTERNS;
 pub use types::{
     SecretDetectionConfig, SecretDetectionSummary, SecretFinding, SecretSeverity, SecretSource,
-    SecretType,
 };
 
 use log::{debug, info};
@@ -457,6 +457,7 @@ pub fn might_contain_secrets(content: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::types::SecretType;
 
     fn default_config() -> SecretDetectionConfig {
         SecretDetectionConfig::default()

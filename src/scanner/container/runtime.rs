@@ -9,7 +9,6 @@
 
 use anyhow::Result;
 use chrono::Utc;
-use serde::Deserialize;
 use std::process::Command;
 use uuid::Uuid;
 

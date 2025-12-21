@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Webhook event types and payload structures
 //!
 //! This module defines the event types that can trigger webhooks and the

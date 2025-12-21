@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Agent data structures and types for distributed scanning
 //!
 //! This module defines the core types used for agent-based scanning:

@@ -48,27 +48,9 @@ pub mod sender;
 pub mod types;
 
 pub use dispatcher::{
-    dispatch_event,
     dispatch_scan_started,
     dispatch_scan_completed,
     dispatch_scan_failed,
-    dispatch_vulnerability_found,
-    dispatch_vulnerability_resolved,
-    dispatch_asset_discovered,
-    dispatch_compliance_violation,
     send_test_webhook,
-    DispatchResult,
 };
-pub use sender::{send_webhook, verify_signature, DeliveryResult, MAX_FAILURE_COUNT};
-pub use types::{
-    WebhookEventType,
-    WebhookPayload,
-    ScanStartedData,
-    ScanCompletedData,
-    ScanFailedData,
-    VulnerabilityFoundData,
-    VulnerabilityResolvedData,
-    AssetDiscoveredData,
-    ComplianceViolationData,
-    TestWebhookData,
-};
+pub use types::WebhookEventType;

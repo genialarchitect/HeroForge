@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Injection Testing Module
 //!
 //! Tests for various injection vulnerabilities in API endpoints:

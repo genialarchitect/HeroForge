@@ -1,11 +1,29 @@
 import React from 'react';
 import { BadgeSeverityType, BadgeStatusType, BadgeType } from '../../types';
 
+type BadgeVariant =
+  | 'status'
+  | 'severity'
+  | 'primary'
+  | 'success'
+  | 'warning'
+  | 'danger'
+  | 'secondary'
+  | 'info'
+  | 'default'
+  // Color aliases for backward compatibility
+  | 'green'
+  | 'yellow'
+  | 'red'
+  | 'gray'
+  | 'blue';
+
 interface BadgeProps {
   children: React.ReactNode;
-  variant?: 'status' | 'severity' | 'primary' | 'success' | 'warning' | 'danger';
+  variant?: BadgeVariant;
   type?: BadgeType;
   className?: string;
+  size?: 'sm' | 'md';
 }
 
 // Re-export types for convenience
@@ -16,8 +34,13 @@ const Badge: React.FC<BadgeProps> = ({
   variant = 'status',
   type = 'pending',
   className = '',
+  size = 'md',
 }) => {
-  const baseStyles = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium';
+  const sizeStyles = {
+    sm: 'px-1.5 py-0.5 text-[10px]',
+    md: 'px-2.5 py-0.5 text-xs',
+  };
+  const baseStyles = `inline-flex items-center rounded-full font-medium ${sizeStyles[size]}`;
 
   const statusStyles = {
     pending: 'bg-status-pending/20 text-status-pending border border-status-pending/30',
@@ -39,6 +62,15 @@ const Badge: React.FC<BadgeProps> = ({
     success: 'bg-green-500/20 text-green-400 border border-green-500/30',
     warning: 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30',
     danger: 'bg-red-500/20 text-red-400 border border-red-500/30',
+    secondary: 'bg-slate-500/20 text-slate-400 border border-slate-500/30',
+    info: 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30',
+    default: 'bg-slate-500/20 text-slate-400 border border-slate-500/30',
+    // Color aliases
+    green: 'bg-green-500/20 text-green-400 border border-green-500/30',
+    yellow: 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30',
+    red: 'bg-red-500/20 text-red-400 border border-red-500/30',
+    gray: 'bg-slate-500/20 text-slate-400 border border-slate-500/30',
+    blue: 'bg-blue-500/20 text-blue-400 border border-blue-500/30',
   };
 
   // Check if variant is a direct color variant

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Unified API error handling
 
 use actix_web::{HttpResponse, ResponseError, http::StatusCode};

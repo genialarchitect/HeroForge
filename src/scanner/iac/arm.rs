@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Azure ARM (Azure Resource Manager) template analyzer
 //!
 //! This module parses Azure ARM templates and analyzes them for security issues.

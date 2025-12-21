@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Webhook HTTP sender with HMAC signing and retry logic
 //!
 //! This module handles the actual HTTP delivery of webhook payloads,

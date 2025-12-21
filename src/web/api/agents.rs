@@ -7,12 +7,12 @@
 //! - Task distribution and result collection
 
 use actix_web::{delete, get, post, put, web, HttpRequest, HttpResponse, Result};
-use actix_web::error::{ErrorBadRequest, ErrorForbidden, ErrorInternalServerError, ErrorNotFound, ErrorUnauthorized};
+use actix_web::error::{ErrorForbidden, ErrorInternalServerError, ErrorNotFound, ErrorUnauthorized};
 use serde::Deserialize;
 use sqlx::SqlitePool;
 
 use crate::agents::{
-    generate_agent_token, get_token_prefix, AgentManager,
+    generate_agent_token, get_token_prefix, AgentManager, AgentTask,
     AgentWithGroups, AssignAgentsToGroupRequest, CreateAgentGroupRequest, HeartbeatRequest,
     RegisterAgentRequest, SubmitResultRequest,
     TaskStatus, UpdateAgentGroupRequest, UpdateAgentRequest,
@@ -736,6 +736,491 @@ fn extract_agent_token(req: &HttpRequest) -> Result<String> {
 // Route Configuration
 // ============================================================================
 
+// ============================================================================
+// Mesh Network Endpoints
+// ============================================================================
+
+/// Get mesh peer status for all user agents
+///
+/// GET /api/agents/mesh/peers
+#[get("/agents/mesh/peers")]
+pub async fn get_mesh_peers(
+    pool: web::Data<SqlitePool>,
+    claims: Claims,
+) -> Result<HttpResponse> {
+    // Get all agents for the user that have mesh enabled
+    let agents = db::agents::get_user_agents(pool.get_ref(), &claims.sub)
+        .await
+        .map_err(|e| ErrorInternalServerError(e.to_string()))?;
+
+    let mut peer_data = Vec::new();
+    for agent in agents {
+        // Get mesh config for this agent
+        if let Ok(Some(mesh_config)) = db::agent_mesh::get_mesh_config(pool.get_ref(), &agent.id).await {
+            if mesh_config.enabled {
+                // Get peer connections for this agent
+                let peers = db::agent_mesh::get_agent_peer_connections(pool.get_ref(), &agent.id)
+                    .await
+                    .unwrap_or_default();
+
+                // Get connection stats
+                let stats = db::agent_mesh::get_peer_connection_stats(pool.get_ref(), &agent.id)
+                    .await
+                    .ok();
+
+                peer_data.push(serde_json::json!({
+                    "agent_id": agent.id,
+                    "agent_name": agent.name,
+                    "mesh_config": mesh_config,
+                    "peers": peers,
+                    "stats": stats
+                }));
+            }
+        }
+    }
+
+    Ok(HttpResponse::Ok().json(peer_data))
+}
+
+/// Get all clusters for the user
+///
+/// GET /api/agents/mesh/clusters
+#[get("/agents/mesh/clusters")]
+pub async fn get_mesh_clusters(
+    pool: web::Data<SqlitePool>,
+    claims: Claims,
+) -> Result<HttpResponse> {
+    let clusters = db::agent_mesh::get_user_clusters(pool.get_ref(), &claims.sub)
+        .await
+        .map_err(|e| ErrorInternalServerError(e.to_string()))?;
+
+    let mut cluster_data = Vec::new();
+    for cluster in clusters {
+        let member_count = db::agent_mesh::get_cluster_member_count(pool.get_ref(), &cluster.id)
+            .await
+            .unwrap_or(0);
+
+        let members = db::agent_mesh::get_cluster_agents(pool.get_ref(), &cluster.id)
+            .await
+            .unwrap_or_default();
+
+        cluster_data.push(serde_json::json!({
+            "id": cluster.id,
+            "name": cluster.name,
+            "description": cluster.description,
+            "leader_agent_id": cluster.leader_agent_id,
+            "config_json": cluster.config_json,
+            "health_json": cluster.health_json,
+            "member_count": member_count,
+            "members": members,
+            "created_at": cluster.created_at,
+            "updated_at": cluster.updated_at
+        }));
+    }
+
+    Ok(HttpResponse::Ok().json(cluster_data))
+}
+
+/// Create a new cluster
+///
+/// POST /api/agents/mesh/clusters
+#[post("/agents/mesh/clusters")]
+pub async fn create_mesh_cluster(
+    pool: web::Data<SqlitePool>,
+    claims: Claims,
+    body: web::Json<CreateClusterRequest>,
+) -> Result<HttpResponse> {
+    let req = body.into_inner();
+
+    let cluster = db::agent_mesh::create_cluster(
+        pool.get_ref(),
+        &claims.sub,
+        &req.name,
+        req.description.as_deref(),
+        None,
+        req.config_json.as_deref(),
+    )
+    .await
+    .map_err(|e| ErrorInternalServerError(e.to_string()))?;
+
+    Ok(HttpResponse::Created().json(cluster))
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct CreateClusterRequest {
+    pub name: String,
+    pub description: Option<String>,
+    pub config_json: Option<String>,
+}
+
+/// Get a specific cluster
+///
+/// GET /api/agents/mesh/clusters/{id}
+#[get("/agents/mesh/clusters/{id}")]
+pub async fn get_mesh_cluster(
+    pool: web::Data<SqlitePool>,
+    claims: Claims,
+    path: web::Path<String>,
+) -> Result<HttpResponse> {
+    let cluster_id = path.into_inner();
+
+    let cluster = db::agent_mesh::get_cluster_by_id(pool.get_ref(), &cluster_id)
+        .await
+        .map_err(|e| ErrorInternalServerError(e.to_string()))?
+        .ok_or_else(|| ErrorNotFound("Cluster not found"))?;
+
+    // Verify ownership
+    if cluster.user_id != claims.sub {
+        return Err(ErrorForbidden("Not authorized to access this cluster"));
+    }
+
+    let members = db::agent_mesh::get_cluster_agents(pool.get_ref(), &cluster_id)
+        .await
+        .unwrap_or_default();
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "id": cluster.id,
+        "name": cluster.name,
+        "description": cluster.description,
+        "leader_agent_id": cluster.leader_agent_id,
+        "config_json": cluster.config_json,
+        "health_json": cluster.health_json,
+        "members": members,
+        "created_at": cluster.created_at,
+        "updated_at": cluster.updated_at
+    })))
+}
+
+/// Update a cluster
+///
+/// PUT /api/agents/mesh/clusters/{id}
+#[put("/agents/mesh/clusters/{id}")]
+pub async fn update_mesh_cluster(
+    pool: web::Data<SqlitePool>,
+    claims: Claims,
+    path: web::Path<String>,
+    body: web::Json<UpdateClusterRequest>,
+) -> Result<HttpResponse> {
+    let cluster_id = path.into_inner();
+
+    // Verify ownership
+    let cluster = db::agent_mesh::get_cluster_by_id(pool.get_ref(), &cluster_id)
+        .await
+        .map_err(|e| ErrorInternalServerError(e.to_string()))?
+        .ok_or_else(|| ErrorNotFound("Cluster not found"))?;
+
+    if cluster.user_id != claims.sub {
+        return Err(ErrorForbidden("Not authorized to modify this cluster"));
+    }
+
+    let req = body.into_inner();
+    db::agent_mesh::update_cluster(
+        pool.get_ref(),
+        &cluster_id,
+        req.name.as_deref(),
+        req.description.as_deref(),
+        None,
+        req.config_json.as_deref(),
+        req.health_json.as_deref(),
+    )
+    .await
+    .map_err(|e| ErrorInternalServerError(e.to_string()))?;
+
+    // Return updated cluster
+    let updated = db::agent_mesh::get_cluster_by_id(pool.get_ref(), &cluster_id)
+        .await
+        .map_err(|e| ErrorInternalServerError(e.to_string()))?
+        .ok_or_else(|| ErrorNotFound("Cluster not found"))?;
+
+    Ok(HttpResponse::Ok().json(updated))
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct UpdateClusterRequest {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub config_json: Option<String>,
+    pub health_json: Option<String>,
+}
+
+/// Delete a cluster
+///
+/// DELETE /api/agents/mesh/clusters/{id}
+#[delete("/agents/mesh/clusters/{id}")]
+pub async fn delete_mesh_cluster(
+    pool: web::Data<SqlitePool>,
+    claims: Claims,
+    path: web::Path<String>,
+) -> Result<HttpResponse> {
+    let cluster_id = path.into_inner();
+
+    // Verify ownership
+    let cluster = db::agent_mesh::get_cluster_by_id(pool.get_ref(), &cluster_id)
+        .await
+        .map_err(|e| ErrorInternalServerError(e.to_string()))?
+        .ok_or_else(|| ErrorNotFound("Cluster not found"))?;
+
+    if cluster.user_id != claims.sub {
+        return Err(ErrorForbidden("Not authorized to delete this cluster"));
+    }
+
+    db::agent_mesh::delete_cluster(pool.get_ref(), &cluster_id)
+        .await
+        .map_err(|e| ErrorInternalServerError(e.to_string()))?;
+
+    Ok(HttpResponse::NoContent().finish())
+}
+
+/// Add agent to cluster
+///
+/// POST /api/agents/mesh/clusters/{id}/agents/{agent_id}
+#[post("/agents/mesh/clusters/{id}/agents/{agent_id}")]
+pub async fn add_agent_to_cluster(
+    pool: web::Data<SqlitePool>,
+    claims: Claims,
+    path: web::Path<(String, String)>,
+) -> Result<HttpResponse> {
+    let (cluster_id, agent_id) = path.into_inner();
+
+    // Verify cluster ownership
+    let cluster = db::agent_mesh::get_cluster_by_id(pool.get_ref(), &cluster_id)
+        .await
+        .map_err(|e| ErrorInternalServerError(e.to_string()))?
+        .ok_or_else(|| ErrorNotFound("Cluster not found"))?;
+
+    if cluster.user_id != claims.sub {
+        return Err(ErrorForbidden("Not authorized to modify this cluster"));
+    }
+
+    // Verify agent ownership
+    let agent = db::agents::get_agent_by_id(pool.get_ref(), &agent_id)
+        .await
+        .map_err(|e| ErrorInternalServerError(e.to_string()))?
+        .ok_or_else(|| ErrorNotFound("Agent not found"))?;
+
+    if agent.user_id != claims.sub {
+        return Err(ErrorForbidden("Not authorized to add this agent"));
+    }
+
+    // Check if agent has mesh config, create one if not
+    if db::agent_mesh::get_mesh_config(pool.get_ref(), &agent_id)
+        .await
+        .map_err(|e| ErrorInternalServerError(e.to_string()))?
+        .is_none()
+    {
+        db::agent_mesh::create_mesh_config(
+            pool.get_ref(),
+            &agent_id,
+            true,
+            9876,
+            None,
+            Some(&cluster_id),
+            Some("member"),
+            None,
+        )
+        .await
+        .map_err(|e| ErrorInternalServerError(e.to_string()))?;
+    } else {
+        db::agent_mesh::add_agent_to_cluster(pool.get_ref(), &agent_id, &cluster_id)
+            .await
+            .map_err(|e| ErrorInternalServerError(e.to_string()))?;
+    }
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "message": "Agent added to cluster"
+    })))
+}
+
+/// Remove agent from cluster
+///
+/// DELETE /api/agents/mesh/clusters/{id}/agents/{agent_id}
+#[delete("/agents/mesh/clusters/{id}/agents/{agent_id}")]
+pub async fn remove_agent_from_cluster(
+    pool: web::Data<SqlitePool>,
+    claims: Claims,
+    path: web::Path<(String, String)>,
+) -> Result<HttpResponse> {
+    let (cluster_id, agent_id) = path.into_inner();
+
+    // Verify cluster ownership
+    let cluster = db::agent_mesh::get_cluster_by_id(pool.get_ref(), &cluster_id)
+        .await
+        .map_err(|e| ErrorInternalServerError(e.to_string()))?
+        .ok_or_else(|| ErrorNotFound("Cluster not found"))?;
+
+    if cluster.user_id != claims.sub {
+        return Err(ErrorForbidden("Not authorized to modify this cluster"));
+    }
+
+    db::agent_mesh::remove_agent_from_cluster(pool.get_ref(), &agent_id)
+        .await
+        .map_err(|e| ErrorInternalServerError(e.to_string()))?;
+
+    Ok(HttpResponse::NoContent().finish())
+}
+
+/// Get all tasks for the current user
+///
+/// GET /api/agents/tasks
+#[get("/agents/tasks")]
+pub async fn list_all_agent_tasks(
+    pool: web::Data<SqlitePool>,
+    claims: Claims,
+    query: web::Query<TasksListQuery>,
+) -> Result<HttpResponse> {
+    let limit = query.limit.unwrap_or(100);
+    let status = query.status.as_deref();
+
+    // Get tasks for all user's agents
+    let tasks: Vec<AgentTask> = if let Some(status_filter) = status {
+        sqlx::query_as::<_, AgentTask>(
+            r#"
+            SELECT t.* FROM agent_tasks t
+            INNER JOIN scan_agents a ON t.agent_id = a.id OR t.user_id = a.user_id
+            WHERE a.user_id = ?1 AND t.status = ?2
+            ORDER BY t.created_at DESC
+            LIMIT ?3
+            "#,
+        )
+        .bind(&claims.sub)
+        .bind(status_filter)
+        .bind(limit)
+        .fetch_all(pool.get_ref())
+        .await
+        .map_err(|e| ErrorInternalServerError(e.to_string()))?
+    } else {
+        sqlx::query_as::<_, AgentTask>(
+            r#"
+            SELECT t.* FROM agent_tasks t
+            WHERE t.user_id = ?1
+            ORDER BY t.created_at DESC
+            LIMIT ?2
+            "#,
+        )
+        .bind(&claims.sub)
+        .bind(limit)
+        .fetch_all(pool.get_ref())
+        .await
+        .map_err(|e| ErrorInternalServerError(e.to_string()))?
+    };
+
+    Ok(HttpResponse::Ok().json(tasks))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TasksListQuery {
+    limit: Option<i32>,
+    status: Option<String>,
+}
+
+/// Get mesh config for an agent
+///
+/// GET /api/agents/{id}/mesh
+#[get("/agents/{id}/mesh")]
+pub async fn get_agent_mesh_config(
+    pool: web::Data<SqlitePool>,
+    claims: Claims,
+    path: web::Path<String>,
+) -> Result<HttpResponse> {
+    let agent_id = path.into_inner();
+
+    // Verify ownership
+    let agent = db::agents::get_agent_by_id(pool.get_ref(), &agent_id)
+        .await
+        .map_err(|e| ErrorInternalServerError(e.to_string()))?
+        .ok_or_else(|| ErrorNotFound("Agent not found"))?;
+
+    if agent.user_id != claims.sub {
+        return Err(ErrorForbidden("Not authorized to access this agent"));
+    }
+
+    let mesh_config = db::agent_mesh::get_mesh_config(pool.get_ref(), &agent_id)
+        .await
+        .map_err(|e| ErrorInternalServerError(e.to_string()))?;
+
+    Ok(HttpResponse::Ok().json(mesh_config))
+}
+
+/// Update mesh config for an agent
+///
+/// PUT /api/agents/{id}/mesh
+#[put("/agents/{id}/mesh")]
+pub async fn update_agent_mesh_config(
+    pool: web::Data<SqlitePool>,
+    claims: Claims,
+    path: web::Path<String>,
+    body: web::Json<UpdateMeshConfigRequest>,
+) -> Result<HttpResponse> {
+    let agent_id = path.into_inner();
+
+    // Verify ownership
+    let agent = db::agents::get_agent_by_id(pool.get_ref(), &agent_id)
+        .await
+        .map_err(|e| ErrorInternalServerError(e.to_string()))?
+        .ok_or_else(|| ErrorNotFound("Agent not found"))?;
+
+    if agent.user_id != claims.sub {
+        return Err(ErrorForbidden("Not authorized to modify this agent"));
+    }
+
+    let req = body.into_inner();
+
+    // Check if config exists
+    if db::agent_mesh::get_mesh_config(pool.get_ref(), &agent_id)
+        .await
+        .map_err(|e| ErrorInternalServerError(e.to_string()))?
+        .is_some()
+    {
+        // Update existing
+        db::agent_mesh::update_mesh_config(
+            pool.get_ref(),
+            &agent_id,
+            req.enabled,
+            req.mesh_port,
+            req.external_address.as_deref(),
+            req.cluster_id.as_deref(),
+            req.cluster_role.as_deref(),
+            req.config_json.as_deref(),
+        )
+        .await
+        .map_err(|e| ErrorInternalServerError(e.to_string()))?;
+    } else {
+        // Create new
+        db::agent_mesh::create_mesh_config(
+            pool.get_ref(),
+            &agent_id,
+            req.enabled.unwrap_or(false),
+            req.mesh_port.unwrap_or(9876),
+            req.external_address.as_deref(),
+            req.cluster_id.as_deref(),
+            req.cluster_role.as_deref(),
+            req.config_json.as_deref(),
+        )
+        .await
+        .map_err(|e| ErrorInternalServerError(e.to_string()))?;
+    }
+
+    let updated = db::agent_mesh::get_mesh_config(pool.get_ref(), &agent_id)
+        .await
+        .map_err(|e| ErrorInternalServerError(e.to_string()))?;
+
+    Ok(HttpResponse::Ok().json(updated))
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct UpdateMeshConfigRequest {
+    pub enabled: Option<bool>,
+    pub mesh_port: Option<i32>,
+    pub external_address: Option<String>,
+    pub cluster_id: Option<String>,
+    pub cluster_role: Option<String>,
+    pub config_json: Option<String>,
+}
+
+// ============================================================================
+// Route Configuration
+// ============================================================================
+
 /// Configure agent routes
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(register_agent)
@@ -756,5 +1241,17 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .service(get_agent_tasks)
         .service(submit_agent_results)
         .service(start_agent_task)
-        .service(get_agent_heartbeats);
+        .service(get_agent_heartbeats)
+        // Mesh endpoints
+        .service(get_mesh_peers)
+        .service(get_mesh_clusters)
+        .service(create_mesh_cluster)
+        .service(get_mesh_cluster)
+        .service(update_mesh_cluster)
+        .service(delete_mesh_cluster)
+        .service(add_agent_to_cluster)
+        .service(remove_agent_from_cluster)
+        .service(list_all_agent_tasks)
+        .service(get_agent_mesh_config)
+        .service(update_agent_mesh_config);
 }

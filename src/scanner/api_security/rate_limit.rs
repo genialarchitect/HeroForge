@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Rate Limiting Testing Module
 //!
 //! Tests for rate limiting bypass and resource exhaustion vulnerabilities:

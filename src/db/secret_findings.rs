@@ -198,7 +198,7 @@ pub async fn update_finding(
     }
 
     // Simple approach: update all provided fields
-    let query = format!(
+    let _query = format!(
         "UPDATE secret_findings SET updated_at = ?1, {} WHERE id = ?{} RETURNING *",
         if update.status.is_some() { "status = ?2," } else { "" }.to_string()
             + if update.false_positive.is_some() { "false_positive = ?," } else { "" }

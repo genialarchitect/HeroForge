@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Security rules engine for IaC scanning
 //!
 //! This module contains built-in security rules for Terraform, CloudFormation,
@@ -8,7 +9,6 @@ use super::types::*;
 use lazy_static::lazy_static;
 use regex::Regex;
 use serde_json::Value;
-use std::collections::HashMap;
 
 /// A rule matcher that can check IaC content for security issues
 pub trait RuleMatcher: Send + Sync {
@@ -43,7 +43,7 @@ pub struct RuleMatch {
     pub message: Option<String>,
 }
 
-/// Secret patterns to detect
+// Secret patterns to detect
 lazy_static! {
     static ref SECRET_PATTERNS: Vec<(&'static str, Regex)> = vec![
         ("AWS Access Key", Regex::new(r#"(?i)(aws_access_key_id|access_key)\s*=\s*["']?[A-Z0-9]{20}["']?"#).unwrap()),

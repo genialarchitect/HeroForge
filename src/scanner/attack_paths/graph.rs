@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Attack Graph Data Structure
 //!
 //! Provides graph-based representation of attack paths through a network.

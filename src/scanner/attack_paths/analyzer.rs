@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Attack Path Analyzer
 //!
 //! Analyzes scan results to identify attack chains and build attack graphs.

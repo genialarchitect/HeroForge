@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Task distribution logic for agent-based scanning
 //!
 //! This module handles:
@@ -6,10 +7,8 @@
 //! - Task assignment and load balancing
 //! - Task lifecycle management
 
-use anyhow::{anyhow, Result};
-use chrono::Utc;
+use anyhow::Result;
 use sqlx::SqlitePool;
-use uuid::Uuid;
 
 use super::protocol::{TaskConfig, TaskType};
 use super::types::{

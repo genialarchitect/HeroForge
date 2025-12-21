@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Secret detection patterns
 //!
 //! This module defines regex patterns for detecting various types of secrets

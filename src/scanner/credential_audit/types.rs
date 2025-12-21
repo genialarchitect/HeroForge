@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Types for credential auditing
 
 use serde::{Deserialize, Serialize};

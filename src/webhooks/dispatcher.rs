@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Webhook event dispatcher
 //!
 //! This module provides functions to dispatch webhook events to all

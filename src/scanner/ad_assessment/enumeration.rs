@@ -4,7 +4,7 @@
 
 use anyhow::Result;
 use ldap3::Scope;
-use log::{debug, info, warn};
+use log::{info, warn};
 
 use super::ldap_client::{ldap_utils, AdLdapClient};
 use super::types::*;

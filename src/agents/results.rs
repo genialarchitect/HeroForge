@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Result aggregation for agent-based scanning
 //!
 //! This module handles:
@@ -5,10 +6,8 @@
 //! - Aggregating results from multiple agents
 //! - Merging results into scan results
 
-use anyhow::{anyhow, Result};
-use chrono::Utc;
+use anyhow::Result;
 use sqlx::SqlitePool;
-use uuid::Uuid;
 
 use super::types::AgentResult;
 use crate::db;

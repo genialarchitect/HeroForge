@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! SSO Types - Shared types for SAML and OIDC authentication
 //!
 //! This module defines the core types used across SSO authentication methods.

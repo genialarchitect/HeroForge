@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Types for secret detection scanner
 //!
 //! This module provides data structures for detecting exposed secrets such as

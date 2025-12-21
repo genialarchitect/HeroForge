@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Workflow types and definitions for remediation workflows
 //!
 //! This module defines the core types for configurable approval chains:
