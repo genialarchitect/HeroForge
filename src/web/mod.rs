@@ -16,6 +16,7 @@ use actix_web::{middleware::{DefaultHeaders, Logger}, web, App, HttpServer, Http
 use std::sync::Arc;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
+use crate::scanner::exploitation::ExploitationEngine;
 
 /// Fallback handler for SPA - serves index.html for any unmatched non-API routes
 async fn spa_fallback(req: HttpRequest) -> HttpResponse {
@@ -43,6 +44,10 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
         .await
         .expect("Failed to initialize database");
 
+    // Initialize the shared exploitation engine
+    let exploitation_engine = Arc::new(ExploitationEngine::with_default_safety());
+    log::info!("Exploitation engine initialized");
+
     // Start the background scheduler daemon
     scheduler::start_scheduler(Arc::new(pool.clone()));
 
@@ -52,6 +57,8 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
     log::info!("Rate limiting enabled:");
     log::info!("  - Auth endpoints: 5 requests/minute per IP");
     log::info!("  - API endpoints: 100 requests/minute per IP");
+
+    let engine_clone = exploitation_engine.clone();
 
     HttpServer::new(move || {
         // Configure CORS origins from environment variable or use defaults
@@ -95,6 +102,7 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
 
         App::new()
             .app_data(web::Data::new(pool.clone()))
+            .app_data(web::Data::from(engine_clone.clone()))
             .wrap(cors)
             .wrap(Logger::default())
             // Security headers per OWASP guidelines
