@@ -499,14 +499,14 @@ High complexity, significant new capabilities.
 |---------|--------|--------|-------------|
 | ~~Credential Audit~~ | 1-2 weeks | **Done** | Password policy checking, breach detection |
 | ~~Container/K8s Scanning~~ | 2 weeks | **Done** | Docker and Kubernetes security |
-| CI/CD Integration | 1 week | Planned | GitHub Actions, Jenkins plugins |
+| ~~CI/CD Integration~~ | 1 week | **Done** | GitHub Actions, Jenkins, GitLab plugins |
 | Custom Remediation Workflows | 1-2 weeks | Planned | Configurable approval chains |
-| Terraform/IaC Scanning | 2 weeks | Planned | Infrastructure-as-Code security |
+| ~~Terraform/IaC Scanning~~ | 2 weeks | **Done** | Infrastructure-as-Code security |
 | ~~Cloud Security Posture~~ | 2-3 weeks | **Done** | AWS/Azure/GCP configuration audit |
-| Agent-Based Scanning | 2-3 weeks | Planned | Lightweight agents for internal networks |
-| AI Vulnerability Prioritization | 1-2 weeks | Planned | ML-based risk scoring |
+| ~~Agent-Based Scanning~~ | 2-3 weeks | **Done** | Lightweight agents for internal networks |
+| ~~AI Vulnerability Prioritization~~ | 1-2 weeks | **Done** | ML-based risk scoring |
 | ~~Multi-Tenancy / Customer Portal~~ | 2-3 weeks | **Done** | Isolated customer environments with portal |
-| SAML/SSO Authentication | 1-2 weeks | Planned | Enterprise identity provider support |
+| ~~SAML/SSO Authentication~~ | 1-2 weeks | **Done** | Enterprise identity provider support |
 | ~~Threat Intelligence~~ | 2 weeks | **Done** | CVE feeds, exploit DB, Shodan integration |
 | ~~API Security Scanning~~ | 2 weeks | **Done** | Endpoint discovery, auth testing, injection |
 | ~~Attack Path Analysis~~ | 2 weeks | **Done** | Graph-based attack path visualization |
@@ -578,3 +578,8 @@ Track active work here:
 | Scan Profiles/Presets | 2 | 2025-12-20 |
 | Host/Port Exclusions | 2 | 2025-12-20 |
 | Container/K8s Scanning | 3 | 2025-12-20 |
+| CI/CD Integration | 3 | 2025-12-21 |
+| Terraform/IaC Scanning | 3 | 2025-12-21 |
+| Agent-Based Scanning | 3 | 2025-12-21 |
+| AI Vulnerability Prioritization | 3 | 2025-12-21 |
+| SAML/SSO Authentication | 3 | 2025-12-21 |
