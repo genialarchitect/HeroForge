@@ -56,20 +56,6 @@ heroforge serve --bind 127.0.0.1:8080   # Start web server
 | `udp` | Protocol-specific probes with ICMP detection | root |
 | `comprehensive` | Combined TCP + UDP scan | root |
 
-### Common Scan Examples
-
-```bash
-# Basic scan
-cargo run -- scan 192.168.1.0/24 --ports 1-1000
-
-# Fast scan (skip detection)
-cargo run -- scan 192.168.1.0/24 --no-os-detect --no-service-detect
-
-# UDP/privileged scans (require root)
-sudo ./target/release/heroforge scan 192.168.1.0/24 --scan-type udp
-sudo ./target/release/heroforge scan 192.168.1.0/24 --scan-type comprehensive
-```
-
 ## Development
 
 ### Backend (Rust)
@@ -130,80 +116,58 @@ src/
 │   ├── service_detection.rs, os_fingerprint.rs
 │   ├── udp_scanner.rs, udp_probes.rs, udp_service_detection.rs
 │   ├── ssl_scanner.rs   # SSL/TLS certificate analysis
-│   ├── dns_recon.rs     # DNS reconnaissance (subdomains, zone transfers, records)
+│   ├── dns_recon.rs     # DNS reconnaissance
 │   ├── comparison.rs    # Scan diff between results
-│   ├── webapp/          # Web application scanning (XSS, SQLi, headers, forms, crawler)
-│   └── enumeration/     # Service-specific enumeration (http, dns, smb, ftp, ssh, snmp, etc.)
+│   ├── webapp/          # Web application scanning (XSS, SQLi, headers, forms)
+│   └── enumeration/     # Service-specific enumeration (http, dns, smb, ftp, ssh, snmp)
 ├── cve/                 # CVE lookup: offline_db → cache → NVD API
 ├── vuln/                # Vulnerability scanning and misconfiguration detection
 ├── compliance/          # Security compliance frameworks
 │   ├── frameworks/      # CIS, NIST 800-53, NIST CSF, PCI-DSS, HIPAA, SOC2, FERPA, OWASP
 │   ├── controls/        # Control mappings and compliance checks
+│   ├── manual_assessment/  # Rubrics for non-automated controls
 │   └── analyzer.rs, scanner.rs, scoring.rs
-├── notifications/       # Multi-channel notifications (Slack, Microsoft Teams, email)
-├── integrations/        # External integrations
-│   ├── jira.rs          # Jira ticket creation
-│   └── siem/            # SIEM integrations (Splunk, Elasticsearch, Syslog)
-├── email/               # SMTP notifications (scan complete, critical vulns)
-├── reports/             # Report generation (JSON, HTML, PDF, CSV) with risk scoring
-├── output/              # CLI output formatting (terminal, json, csv)
-├── db/                  # SQLite via sqlx (models.rs, migrations.rs, analytics.rs, assets.rs, crm.rs)
+├── agents/              # Distributed scanning agents and mesh networking
+├── ai/                  # AI-powered vulnerability prioritization
+├── plugins/             # Plugin marketplace and extensibility
+├── siem/                # Full SIEM capabilities (log ingestion, correlation)
+├── threat_intel/        # Threat intelligence feeds (CVE, exploit DB, Shodan)
+├── vpn/                 # VPN integration (OpenVPN, WireGuard)
+├── webhooks/            # Outbound webhook notifications
+├── workflows/           # Custom remediation workflows
+├── notifications/       # Multi-channel notifications (Slack, Teams, email)
+├── integrations/        # External integrations (JIRA, ServiceNow, SIEM export)
+├── email/               # SMTP notifications
+├── reports/             # Report generation (JSON, HTML, PDF, CSV, Markdown)
+├── output/              # CLI output formatting
+├── db/                  # SQLite via sqlx (models, migrations, analytics, assets, crm)
 └── web/                 # Actix-web server
     ├── auth/            # JWT auth (jwt.rs, middleware.rs)
-    ├── api/             # REST endpoints (see API section below)
+    ├── api/             # REST endpoints
     │   └── portal/      # Customer portal API (separate auth)
-    ├── websocket/       # Real-time scan progress with aggregation
-    ├── error.rs         # Unified API error types (ApiErrorKind, ResponseError impl)
+    ├── websocket/       # Real-time scan progress
+    ├── error.rs         # Unified API error types
     ├── rate_limit.rs    # Request rate limiting
     └── scheduler.rs     # Background job scheduler
 ```
-
-### Frontend Routes
-
-| Route | Description |
-|-------|-------------|
-| `/` | Login page |
-| `/dashboard` | Scan list and new scan form |
-| `/dashboard/:scanId` | Scan details with results/progress |
-| `/admin` | Admin panel (requires admin role) |
-| `/settings` | Target Groups, Scheduled Scans, Templates, Notifications, Profile, API Keys, JIRA, SIEM |
-| `/assets` | Asset inventory management |
-| `/webapp-scan` | Web application security scanning |
-| `/dns-tools` | DNS reconnaissance tools |
-| `/compliance` | Compliance framework analysis |
-| `/manual-assessments` | Manual compliance rubric assessments |
-| `/manual-assessments/:id` | Assessment detail/edit view |
-| `/remediation` | Vulnerability remediation workflow board |
-| `/container-security` | Container and Kubernetes security scanning |
-| `/portal/login` | Customer portal login |
-| `/portal/dashboard` | Customer portal dashboard |
-| `/portal/engagements` | Customer engagement list |
-| `/portal/vulnerabilities` | Customer vulnerability view |
-| `/portal/reports` | Customer report downloads |
 
 ### REST API
 
 Full API documentation available via Swagger UI at `/api/docs` (requires running server).
 
 **Key endpoint categories:**
-- `/api/auth/*` - Public auth endpoints (register, login, logout, refresh, MFA verify)
-- `/api/user/*` - Protected user endpoints (me, profile, password, MFA management, GDPR)
-- `/api/portal/*` - Customer portal (separate auth system for external customers)
-- `/api/scans/*` - Scan CRUD, results, export, compare, bulk operations
-- `/api/reports/*` - Report generation (JSON, HTML, PDF, CSV)
-- `/api/templates/*` - Scan template management
-- `/api/target-groups/*` - Target group management
-- `/api/scheduled-scans/*` - Scheduled scan CRUD and history
-- `/api/assets/*` - Asset inventory management
-- `/api/vulnerabilities/*` - Vulnerability management and remediation workflow
-- `/api/compliance/*` - Compliance framework analysis, reports, manual rubrics, assessments, campaigns
-- `/api/dns/*` - DNS reconnaissance
-- `/api/webapp/*` - Web application scanning
-- `/api/container/*` - Container and Kubernetes security scanning
-- `/api/integrations/jira/*` - JIRA ticket creation
-- `/api/integrations/siem/*` - SIEM export (Splunk, Elasticsearch, Syslog)
+- `/api/auth/*` - Authentication (register, login, logout, refresh, MFA)
+- `/api/user/*` - User profile and settings
+- `/api/portal/*` - Customer portal (separate auth system)
+- `/api/scans/*` - Scan CRUD, results, export, compare
+- `/api/reports/*` - Report generation
+- `/api/assets/*` - Asset inventory
+- `/api/vulnerabilities/*` - Vulnerability management and remediation
+- `/api/compliance/*` - Compliance analysis and manual assessments
+- `/api/container/*` - Container and Kubernetes security
+- `/api/integrations/*` - JIRA, ServiceNow, SIEM integrations
 - `/api/admin/*` - User management, audit logs (admin role required)
-- `WS /api/ws/scans/{id}` - WebSocket for real-time scan progress (JWT as query param)
+- `WS /api/ws/scans/{id}` - WebSocket for real-time scan progress
 
 ### Data Flow
 
@@ -222,18 +186,6 @@ Progress updates sent via `ScanProgressMessage` broadcast channel to WebSocket c
 1. **Offline DB** (`cve::offline_db`) - Embedded common CVEs
 2. **SQLite Cache** (`cve::cache`) - Cached NVD results (30-day TTL)
 3. **NVD API** (`cve::nvd_client`) - Real-time queries on cache miss
-
-### Manual Compliance Assessments
-
-For controls that cannot be digitally verified (physical security, policies, training), HeroForge provides a manual assessment rubric system in `src/compliance/manual_assessment/`:
-
-- **Rubrics** - Assessment templates with criteria, rating scales, and evidence requirements
-- **Assessments** - User-submitted evaluations with workflow (Draft → Pending Review → Approved/Rejected)
-- **Evidence** - File uploads, links, screenshots, and notes attached to assessments
-- **Campaigns** - Group multiple assessments for coordinated compliance efforts
-- **Combined Reports** - Merge automated scan results with manual assessments
-
-Default rubrics are seeded for 45+ non-automated controls across PCI-DSS, SOC2, HIPAA, and NIST 800-53.
 
 ### Key Architectural Patterns
 
@@ -269,132 +221,32 @@ Default rubrics are seeded for 45+ non-automated controls across PCI-DSS, SOC2, 
 | `ADMIN_USERNAME` | Username to auto-grant admin role on registration |
 | `CORS_ALLOWED_ORIGINS` | Comma-separated list of allowed CORS origins |
 | `REPORTS_DIR` | Directory for generated reports (default: `./reports`) |
-| `SMTP_HOST` | SMTP server hostname |
-| `SMTP_PORT` | SMTP server port |
-| `SMTP_USER` | SMTP authentication username |
-| `SMTP_PASSWORD` | SMTP authentication password |
-| `SMTP_FROM_ADDRESS` | Email sender address |
-| `SMTP_FROM_NAME` | Email sender display name |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` | SMTP server configuration |
+| `SMTP_FROM_ADDRESS`, `SMTP_FROM_NAME` | Email sender configuration |
 | `BACKUP_GPG_PASSPHRASE` | GPG passphrase for encrypted database backups |
 
 ## Integrations
 
-### Notification Channels
+All integrations are configured via Settings page in the web UI or via `/api/integrations/*` endpoints.
 
-HeroForge supports multi-channel notifications for scan events:
-
-**Slack Integration:**
-- Configure via Settings > Notifications in web UI
-- Provide Slack Incoming Webhook URL
-- Events: Scan completed, Critical vulnerabilities found, Scheduled scan started/completed
-
-**Microsoft Teams Integration:**
-- Configure via Settings > Notifications in web UI
-- Provide Teams Incoming Webhook URL
-- Same event types as Slack
-
-**Email Notifications:**
-- Requires SMTP environment variables (see above)
-- Sends formatted HTML emails for scan completion and critical findings
-
-### JIRA Integration
-
-Create JIRA tickets directly from discovered vulnerabilities:
-
-1. Configure in Settings > JIRA:
-   - JIRA URL (e.g., `https://yourcompany.atlassian.net`)
-   - Username (email) and API token
-   - Default project key and issue type
-   - Optional default assignee
-
-2. Features:
-   - Auto-maps vulnerability severity to JIRA priority
-   - Formats vulnerability details in ticket description
-   - Links ticket back to vulnerability in HeroForge
-   - Supports custom labels per ticket
-
-### ServiceNow Integration
-
-Create ServiceNow incidents and change requests from discovered vulnerabilities:
-
-1. Configure in Settings > ServiceNow:
-   - Instance URL (e.g., `https://company.service-now.com`)
-   - Username and password for API access
-   - Default assignment group and category (optional)
-   - Default impact/urgency levels
-
-2. Features:
-   - Create incidents for immediate security issues
-   - Create change requests for remediation work
-   - Auto-maps vulnerability severity to impact/urgency
-   - Tracks linked tickets per vulnerability
-   - Supports loading assignment groups and categories from ServiceNow
-
-3. API Endpoints:
-   - `GET /api/integrations/servicenow/settings` - Get settings
-   - `POST /api/integrations/servicenow/settings` - Save settings
-   - `POST /api/integrations/servicenow/test` - Test connection
-   - `GET /api/integrations/servicenow/assignment-groups` - List groups
-   - `GET /api/integrations/servicenow/categories` - List categories
-   - `POST /api/vulnerabilities/{id}/servicenow/incident` - Create incident
-   - `POST /api/vulnerabilities/{id}/servicenow/change` - Create change request
-   - `GET /api/vulnerabilities/{id}/servicenow/tickets` - Get linked tickets
-
-### SIEM Integration
-
-Export scan results and vulnerability findings to SIEM systems:
-
-**Supported SIEM Types:**
-| Type | Configuration |
-|------|---------------|
-| Syslog | Endpoint URL (host:port), Protocol (tcp/udp) |
-| Splunk HEC | HEC endpoint URL, HEC token (required) |
-| Elasticsearch | Elasticsearch URL, API key (optional) |
-
-**Exported Events:**
-- `scan_complete` - Scan finished with summary
-- `vulnerability_found` - Each vulnerability with severity, CVE IDs, CVSS scores
-- `host_discovered` - New hosts found
-
-Configure via Settings > SIEM or API endpoints.
+| Integration | Purpose |
+|-------------|---------|
+| Slack/Teams | Real-time alerts for scan events and critical findings |
+| JIRA | Create tickets from vulnerabilities with severity mapping |
+| ServiceNow | Create incidents/change requests from vulnerabilities |
+| SIEM (Splunk, Elasticsearch, Syslog) | Export scan results and findings |
 
 ### Compliance Frameworks
 
-Supported frameworks for compliance analysis:
-
-| Framework | ID | Description |
-|-----------|-----|-------------|
-| PCI-DSS 4.0 | `pci_dss` | Payment Card Industry Data Security Standard |
-| NIST 800-53 | `nist_800_53` | Security and Privacy Controls |
-| NIST CSF | `nist_csf` | Cybersecurity Framework |
-| CIS Benchmarks | `cis` | Center for Internet Security Benchmarks |
-| HIPAA | `hipaa` | Health Insurance Portability and Accountability Act |
-| SOC 2 | `soc2` | Service Organization Control 2 |
-| FERPA | `ferpa` | Family Educational Rights and Privacy Act |
-| OWASP Top 10 | `owasp_top10` | Web Application Security Risks |
-
-Run compliance analysis via:
-```bash
-# API
-POST /api/scans/{id}/compliance
-{ "frameworks": ["pci_dss", "nist_800_53", "owasp_top10"] }
-
-# Generate report
-POST /api/scans/{id}/compliance/report
-{ "frameworks": ["pci_dss"], "format": "pdf", "include_evidence": true }
-```
+Supported: PCI-DSS 4.0, NIST 800-53, NIST CSF, CIS Benchmarks, HIPAA, SOC 2, FERPA, OWASP Top 10
 
 ## Rate Limiting
-
-The API implements rate limiting per IP address:
 
 | Endpoint Category | Limit | Window |
 |-------------------|-------|--------|
 | Auth endpoints (`/api/auth/*`) | 5 requests | per minute |
 | Scan creation (`POST /api/scans`) | 10 requests | per hour |
 | General API endpoints | 100 requests | per minute |
-
-Rate limit responses return HTTP 429 with `Retry-After` header.
 
 ## Important Notes
 
@@ -438,154 +290,8 @@ docker logs root-traefik-1 --tail 50 | grep -i cert
 cd /root && docker compose restart traefik     # Force refresh
 ```
 
-### Enumeration Not Working
-Requires `--enum` flag and successful service detection. For SMB, ensure `smbclient` and `enum4linux` are installed. Use `-v` for debug logs.
-
 ### WebSocket Connection Fails
-If scans show "connection failed" or "failed to connect to web socket":
 1. Check browser console for WebSocket errors
 2. Verify JWT token is valid and not expired
 3. Ensure middleware skips `/ws/` paths (check `src/web/auth/middleware.rs`)
-4. Check Traefik logs for WebSocket upgrade issues: `docker logs root-traefik-1 | grep -i websocket`
-
-## Feature Roadmap
-
-Planned features organized by implementation complexity and priority.
-
-### Tier 1: Quick Wins (1-2 days each)
-
-Low complexity, high immediate value.
-
-| Feature | Effort | Status | Description |
-|---------|--------|--------|-------------|
-| ~~Asset Tagging & Groups~~ | 1 day | **Done** | Organize assets by environment, criticality, owner |
-| ~~Vulnerability Assignments~~ | 1 day | **Done** | Assign vulns to team members with due dates |
-| ~~Audit Trail Enhancement~~ | 1 day | **Done** | Enhanced logging of all user actions |
-| ~~SSL/TLS Grading~~ | 1-2 days | **Done** | Detailed certificate health scores (like SSL Labs) |
-| ~~Dark/Light Theme Toggle~~ | 1 day | **Done** | User-selectable UI theme |
-| ~~Export Scan to Markdown~~ | 0.5 day | **Done** | Markdown format for scan reports |
-| ~~Bulk Vulnerability Actions~~ | 1 day | **Done** | Mass update/assign/close vulnerabilities |
-| ~~Scan Tags/Labels~~ | 1 day | **Done** | Categorize and filter scans |
-| ~~Duplicate Scan~~ | 0.5 day | **Done** | Clone existing scan configuration |
-| ~~Vulnerability Notes/Comments~~ | 1 day | **Done** | Add notes and discussion to findings |
-| ~~Finding Templates~~ | 1 day | **Done** | Reusable vulnerability finding definitions |
-
-### Tier 2: Medium Features (3-5 days each)
-
-Moderate complexity, strong value proposition.
-
-| Feature | Effort | Status | Description |
-|---------|--------|--------|-------------|
-| ~~Slack/Teams Notifications~~ | 2-3 days | **Done** | Real-time alerts for critical findings |
-| ~~Scan Comparison Dashboard~~ | 3-4 days | **Done** | Visual diff between scan runs |
-| ~~Automated Report Scheduling~~ | 3 days | **Done** | Schedule and email PDF reports |
-| ~~SLA Tracking & Alerts~~ | 3-4 days | **Done** | Track remediation against defined SLAs |
-| ~~Custom Webhooks (outbound)~~ | 2-3 days | **Done** | Send events to external systems |
-| ~~Secret Detection Scanner~~ | 4-5 days | **Done** | Detect exposed API keys, passwords |
-| ~~Vulnerability Trends/Charts~~ | 3 days | **Done** | Historical vulnerability analytics |
-| ~~ServiceNow Integration~~ | 4-5 days | **Done** | Create incidents/changes from vulns |
-| ~~MFA Setup UI~~ | 2-3 days | **Done** | TOTP setup wizard with QR codes |
-| ~~API Rate Limit Dashboard~~ | 2 days | **Done** | Visualize rate limiting stats |
-| ~~Scan Profiles/Presets~~ | 2-3 days | **Done** | Enhanced template management |
-| ~~Host/Port Exclusions~~ | 2 days | **Done** | Global and per-scan exclusion lists |
-| ~~Methodology Tracking~~ | 3 days | **Done** | Pentest phases, checklists, progress tracking |
-| ~~Time Tracking~~ | 2 days | **Done** | Track time spent on engagements |
-
-### Tier 3: Major Features (1-2 weeks each)
-
-High complexity, significant new capabilities.
-
-| Feature | Effort | Status | Description |
-|---------|--------|--------|-------------|
-| ~~Credential Audit~~ | 1-2 weeks | **Done** | Password policy checking, breach detection |
-| ~~Container/K8s Scanning~~ | 2 weeks | **Done** | Docker and Kubernetes security |
-| ~~CI/CD Integration~~ | 1 week | **Done** | GitHub Actions, Jenkins, GitLab plugins |
-| ~~Custom Remediation Workflows~~ | 1-2 weeks | **Done** | Configurable approval chains |
-| ~~Terraform/IaC Scanning~~ | 2 weeks | **Done** | Infrastructure-as-Code security |
-| ~~Cloud Security Posture~~ | 2-3 weeks | **Done** | AWS/Azure/GCP configuration audit |
-| ~~Agent-Based Scanning~~ | 2-3 weeks | **Done** | Lightweight agents for internal networks |
-| ~~AI Vulnerability Prioritization~~ | 1-2 weeks | **Done** | ML-based risk scoring |
-| ~~Multi-Tenancy / Customer Portal~~ | 2-3 weeks | **Done** | Isolated customer environments with portal |
-| ~~SAML/SSO Authentication~~ | 1-2 weeks | **Done** | Enterprise identity provider support |
-| ~~Threat Intelligence~~ | 2 weeks | **Done** | CVE feeds, exploit DB, Shodan integration |
-| ~~API Security Scanning~~ | 2 weeks | **Done** | Endpoint discovery, auth testing, injection |
-| ~~Attack Path Analysis~~ | 2 weeks | **Done** | Graph-based attack path visualization |
-| ~~Active Directory Assessment~~ | 2 weeks | **Done** | LDAP enumeration, Kerberoasting detection |
-| ~~CRM System~~ | 2-3 weeks | **Done** | Customer management, engagements, contracts |
-| ~~VPN Integration~~ | 1 week | **Done** | Route scans through OpenVPN/WireGuard |
-
-### Tier 4: Platform Expansions (1+ months)
-
-Strategic initiatives that transform the product.
-
-| Feature | Effort | Status | Description |
-|---------|--------|--------|-------------|
-| Mobile App | 4-6 weeks | Partial | React Native companion app (API backend done, no native app) |
-| ~~Distributed Scanning Agents~~ | 4-6 weeks | **Done** | Mesh of scanning agents |
-| ~~Plugin Marketplace~~ | 6-8 weeks | **Done** | Extensible plugin architecture |
-| ~~Compliance Automation~~ | 4-6 weeks | **Done** | Full SOC2/ISO27001 evidence collection |
-| ~~Breach & Attack Simulation~~ | 6-8 weeks | **Done** | Safe exploit simulation framework |
-| ~~Full SIEM Capabilities~~ | 8-12 weeks | **Done** | Log ingestion and correlation engine |
-
-### Implementation Notes
-
-When implementing features:
-1. **Tier 1 items** - Can be done independently, good for quick iterations
-2. **Tier 2 items** - May have dependencies on existing modules
-3. **Tier 3+ items** - Require planning phase, consider using `EnterPlanMode`
-
-### Current Sprint
-
-Track active work here:
-- [ ] No items currently in progress
-
-### Completed Features
-
-| Feature | Tier | Completed |
-|---------|------|-----------|
-| Asset Tagging & Groups | 1 | 2025-12-20 |
-| Vulnerability Assignments | 1 | 2025-12-20 |
-| Audit Trail Enhancement | 1 | 2025-12-20 |
-| SSL/TLS Grading | 1 | 2025-12-20 |
-| Dark/Light Theme Toggle | 1 | 2025-12-20 |
-| Export Scan to Markdown | 1 | 2025-12-20 |
-| Bulk Vulnerability Actions | 1 | 2025-12-20 |
-| Scan Tags/Labels | 1 | 2025-12-20 |
-| Duplicate Scan | 1 | 2025-12-20 |
-| Vulnerability Notes/Comments | 1 | 2025-12-20 |
-| Finding Templates | 1 | 2025-12-20 |
-| Slack/Teams Notifications | 2 | 2025-12-20 |
-| Scan Comparison Dashboard | 2 | 2025-12-20 |
-| SLA Tracking & Alerts | 2 | 2025-12-20 |
-| Vulnerability Trends/Charts | 2 | 2025-12-20 |
-| MFA Setup UI | 2 | 2025-12-20 |
-| API Rate Limit Dashboard | 2 | 2025-12-20 |
-| Methodology Tracking | 2 | 2025-12-20 |
-| Time Tracking | 2 | 2025-12-20 |
-| Credential Audit | 3 | 2025-12-20 |
-| Cloud Security Posture (AWS/Azure/GCP) | 3 | 2025-12-20 |
-| Multi-Tenancy / Customer Portal | 3 | 2025-12-20 |
-| Threat Intelligence | 3 | 2025-12-20 |
-| API Security Scanning | 3 | 2025-12-20 |
-| Attack Path Analysis | 3 | 2025-12-20 |
-| Active Directory Assessment | 3 | 2025-12-20 |
-| CRM System | 3 | 2025-12-20 |
-| VPN Integration | 3 | 2025-12-20 |
-| ServiceNow Integration | 2 | 2025-12-20 |
-| Automated Report Scheduling | 2 | 2025-12-20 |
-| Custom Webhooks (outbound) | 2 | 2025-12-20 |
-| Secret Detection Scanner | 2 | 2025-12-20 |
-| Scan Profiles/Presets | 2 | 2025-12-20 |
-| Host/Port Exclusions | 2 | 2025-12-20 |
-| Container/K8s Scanning | 3 | 2025-12-20 |
-| CI/CD Integration | 3 | 2025-12-21 |
-| Terraform/IaC Scanning | 3 | 2025-12-21 |
-| Agent-Based Scanning | 3 | 2025-12-21 |
-| AI Vulnerability Prioritization | 3 | 2025-12-21 |
-| SAML/SSO Authentication | 3 | 2025-12-21 |
-| Custom Remediation Workflows | 3 | 2025-12-21 |
-| Full SIEM Capabilities | 4 | 2025-12-21 |
-| Distributed Scanning Agents | 4 | 2025-12-21 |
-| Plugin Marketplace | 4 | 2025-12-21 |
-| Compliance Automation | 4 | 2025-12-21 |
-| Breach & Attack Simulation | 4 | 2025-12-21 |
+4. Check Traefik logs: `docker logs root-traefik-1 | grep -i websocket`
