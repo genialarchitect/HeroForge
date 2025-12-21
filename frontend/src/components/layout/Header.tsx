@@ -36,6 +36,11 @@ import {
   Key,
   Terminal,
   Layers,
+  Unlock,
+  Database,
+  UserCheck,
+  Lock,
+  ArrowRight,
 } from 'lucide-react';
 
 interface NavItem {
@@ -141,9 +146,14 @@ const Header: React.FC = () => {
   const exploitationItems: NavItem[] = [
     { to: '/exploitation', icon: <Target className="h-4 w-4" />, label: 'Dashboard' },
     { to: '/exploitation/password-spray', icon: <Key className="h-4 w-4" />, label: 'Password Spray' },
-    { to: '/exploitation/kerberos', icon: <Shield className="h-4 w-4" />, label: 'Kerberos Attacks' },
+    { to: '/exploitation/kerberos', icon: <Shield className="h-4 w-4" />, label: 'Kerberoasting' },
+    { to: '/exploitation/asrep-roast', icon: <Unlock className="h-4 w-4" />, label: 'AS-REP Roast' },
+    { to: '/exploitation/smb-relay', icon: <Network className="h-4 w-4" />, label: 'SMB Relay' },
     { to: '/exploitation/shells', icon: <Terminal className="h-4 w-4" />, label: 'Shell Generator' },
-    { to: '/exploitation/post-exploit', icon: <Layers className="h-4 w-4" />, label: 'Post-Exploitation' },
+    { to: '/exploitation/credential-dump', icon: <Database className="h-4 w-4" />, label: 'Credential Dump' },
+    { to: '/exploitation/priv-esc', icon: <UserCheck className="h-4 w-4" />, label: 'Privilege Escalation' },
+    { to: '/exploitation/persistence', icon: <Lock className="h-4 w-4" />, label: 'Persistence' },
+    { to: '/exploitation/lateral-movement', icon: <ArrowRight className="h-4 w-4" />, label: 'Lateral Movement' },
   ];
 
   const complianceItems: NavItem[] = [
