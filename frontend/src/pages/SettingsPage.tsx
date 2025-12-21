@@ -15,11 +15,14 @@ import JiraSettings from '../components/settings/JiraSettings';
 import ServiceNowSettings from '../components/settings/ServiceNowSettings';
 import SiemSettings from '../components/settings/SiemSettings';
 import VpnSettings from '../components/settings/VpnSettings';
+import AgentManagement from '../components/settings/AgentManagement';
 import ScheduledReports from '../components/settings/ScheduledReports';
 import WebhookSettings from '../components/settings/WebhookSettings';
-import { Target, Clock, Bell, Settings, GitCompare, FileText, User, Shield, Lock, Key, ExternalLink, Database, Wifi, BookOpen, Ban, Mail, Webhook, Building2 } from 'lucide-react';
+import CiCdSettings from '../components/settings/CiCdSettings';
+import SsoSettings from '../components/settings/SsoSettings';
+import { Target, Clock, Bell, Settings, GitCompare, FileText, User, Shield, Lock, Key, ExternalLink, Database, Wifi, BookOpen, Ban, Mail, Webhook, Building2, Server, GitBranch, Users } from 'lucide-react';
 
-type TabId = 'profile' | 'security' | 'api-keys' | 'administration' | 'target-groups' | 'exclusions' | 'scheduled-scans' | 'scheduled-reports' | 'templates' | 'finding-templates' | 'vpn' | 'notifications' | 'webhooks' | 'jira-integration' | 'servicenow-integration' | 'siem-integration' | 'compare-scans';
+type TabId = 'profile' | 'security' | 'api-keys' | 'administration' | 'sso' | 'target-groups' | 'exclusions' | 'scheduled-scans' | 'scheduled-reports' | 'templates' | 'finding-templates' | 'vpn' | 'agents' | 'notifications' | 'webhooks' | 'jira-integration' | 'servicenow-integration' | 'siem-integration' | 'cicd' | 'compare-scans';
 
 interface Tab {
   id: TabId;
@@ -69,6 +72,12 @@ const SettingsPage: React.FC = () => {
           icon: <Shield className="h-4 w-4" />,
           component: <Administration />,
         },
+        {
+          id: 'sso',
+          label: 'SSO',
+          icon: <Users className="h-4 w-4" />,
+          component: <SsoSettings />,
+        },
       ],
     },
     {
@@ -117,6 +126,12 @@ const SettingsPage: React.FC = () => {
           component: <VpnSettings />,
         },
         {
+          id: 'agents',
+          label: 'Agents',
+          icon: <Server className="h-4 w-4" />,
+          component: <AgentManagement />,
+        },
+        {
           id: 'compare-scans',
           label: 'Compare',
           icon: <GitCompare className="h-4 w-4" />,
@@ -156,6 +171,12 @@ const SettingsPage: React.FC = () => {
           label: 'SIEM',
           icon: <Database className="h-4 w-4" />,
           component: <SiemSettings />,
+        },
+        {
+          id: 'cicd',
+          label: 'CI/CD',
+          icon: <GitBranch className="h-4 w-4" />,
+          component: <CiCdSettings />,
         },
       ],
     },

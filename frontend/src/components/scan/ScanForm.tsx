@@ -7,10 +7,10 @@ import Checkbox from '../ui/Checkbox';
 import Card from '../ui/Card';
 import TagInput from './TagInput';
 import TemplateSelector from './TemplateSelector';
-import { scanAPI, targetGroupAPI, templateAPI, vpnAPI, crmAPI, scanTagAPI, exclusionsAPI } from '../../services/api';
+import { scanAPI, targetGroupAPI, templateAPI, vpnAPI, crmAPI, scanTagAPI, exclusionsAPI, agentAPI } from '../../services/api';
 import { useScanStore } from '../../store/scanStore';
-import { Target, Cpu, Search, Radio, Wifi, FolderOpen, Save, Zap, Radar, Globe, EyeOff, Shield, Building2, ClipboardList, Ban } from 'lucide-react';
-import { EnumDepth, EnumService, ScanType, TargetGroup, ScanPreset, VpnConfig, Customer, Engagement, ScanTag, ScanExclusion, ScanTemplate } from '../../types';
+import { Target, Cpu, Search, Radio, Wifi, FolderOpen, Save, Zap, Radar, Globe, EyeOff, Shield, Building2, ClipboardList, Ban, Server } from 'lucide-react';
+import { EnumDepth, EnumService, ScanType, TargetGroup, ScanPreset, VpnConfig, Customer, Engagement, ScanTag, ScanExclusion, ScanTemplate, AgentGroup, AgentWithGroups } from '../../types';
 
 const SCAN_TYPES: { id: ScanType; label: string; description: string }[] = [
   { id: 'tcp_connect', label: 'TCP Connect', description: 'Standard TCP scan (most reliable)' },
@@ -78,6 +78,12 @@ const ScanForm: React.FC = () => {
   const [exclusions, setExclusions] = useState<ScanExclusion[]>([]);
   const [selectedExclusionIds, setSelectedExclusionIds] = useState<string[]>([]);
   const [skipGlobalExclusions, setSkipGlobalExclusions] = useState(false);
+  // Agent-Based Scanning
+  const [agents, setAgents] = useState<AgentWithGroups[]>([]);
+  const [agentGroups, setAgentGroups] = useState<AgentGroup[]>([]);
+  const [scanExecutionMode, setScanExecutionMode] = useState<'local' | 'agent' | 'agent_group'>('local');
+  const [selectedAgentId, setSelectedAgentId] = useState<string>('');
+  const [selectedAgentGroupId, setSelectedAgentGroupId] = useState<string>('');
 
   const { addScan } = useScanStore();
 
@@ -90,6 +96,7 @@ const ScanForm: React.FC = () => {
     loadCustomers();
     loadTags();
     loadExclusions();
+    loadAgents();
   }, []);
 
   // Handle URL parameter for pre-selecting customer (e.g., from customer detail page)
@@ -169,6 +176,23 @@ const ScanForm: React.FC = () => {
       setExclusions(response.data);
     } catch (error) {
       console.error('Failed to load exclusions:', error);
+    }
+  };
+
+  const loadAgents = async () => {
+    try {
+      const [agentsRes, groupsRes] = await Promise.all([
+        agentAPI.list(),
+        agentAPI.groups.list(),
+      ]);
+      // Filter to only show online agents
+      const onlineAgents = agentsRes.data.filter(
+        (a: AgentWithGroups) => a.status === 'online'
+      );
+      setAgents(onlineAgents);
+      setAgentGroups(groupsRes.data);
+    } catch (error) {
+      console.error('Failed to load agents:', error);
     }
   };
 
@@ -391,6 +415,9 @@ const ScanForm: React.FC = () => {
         tag_ids: selectedTagIds.length > 0 ? selectedTagIds : undefined,
         exclusion_ids: selectedExclusionIds.length > 0 ? selectedExclusionIds : undefined,
         skip_global_exclusions: skipGlobalExclusions || undefined,
+        execution_mode: scanExecutionMode,
+        agent_id: scanExecutionMode === 'agent' && selectedAgentId ? selectedAgentId : undefined,
+        agent_group_id: scanExecutionMode === 'agent_group' && selectedAgentGroupId ? selectedAgentGroupId : undefined,
       });
 
       addScan(response.data);
@@ -444,6 +471,9 @@ const ScanForm: React.FC = () => {
       setSelectedTagIds([]);
       setSelectedTemplateId(null);
       setSelectedPreset(null);
+      setScanExecutionMode('local');
+      setSelectedAgentId('');
+      setSelectedAgentGroupId('');
     } catch (error: unknown) {
       const axiosError = error as { response?: { data?: { error?: string } } };
       const message = axiosError.response?.data?.error || 'Failed to start scan';
@@ -837,6 +867,126 @@ const ScanForm: React.FC = () => {
                 VPN connects before scan and disconnects when complete. Configure VPNs in Settings.
               </p>
             </div>
+          </div>
+        )}
+
+        {/* Agent-Based Scanning */}
+        {(agents.length > 0 || agentGroups.length > 0) && (
+          <div className="space-y-3 border-t border-dark-border pt-4">
+            <div className="flex items-center space-x-2">
+              <Server className="h-5 w-5 text-purple-400" />
+              <p className="text-sm font-medium text-slate-300">Scan Execution</p>
+            </div>
+
+            {/* Execution Mode Selection */}
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setScanExecutionMode('local');
+                  setSelectedAgentId('');
+                  setSelectedAgentGroupId('');
+                }}
+                className={`px-3 py-2 text-sm rounded-lg border transition-colors text-left ${
+                  scanExecutionMode === 'local'
+                    ? 'bg-purple-600/20 border-purple-500 text-white'
+                    : 'bg-dark-surface border-dark-border text-slate-400 hover:border-slate-500'
+                }`}
+              >
+                <div className="font-medium">Local</div>
+                <div className="text-xs opacity-70">Run on this server</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setScanExecutionMode('agent');
+                  setSelectedAgentGroupId('');
+                }}
+                disabled={agents.length === 0}
+                className={`px-3 py-2 text-sm rounded-lg border transition-colors text-left ${
+                  scanExecutionMode === 'agent'
+                    ? 'bg-purple-600/20 border-purple-500 text-white'
+                    : 'bg-dark-surface border-dark-border text-slate-400 hover:border-slate-500'
+                } ${agents.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                <div className="font-medium">Agent</div>
+                <div className="text-xs opacity-70">{agents.length} online</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setScanExecutionMode('agent_group');
+                  setSelectedAgentId('');
+                }}
+                disabled={agentGroups.length === 0}
+                className={`px-3 py-2 text-sm rounded-lg border transition-colors text-left ${
+                  scanExecutionMode === 'agent_group'
+                    ? 'bg-purple-600/20 border-purple-500 text-white'
+                    : 'bg-dark-surface border-dark-border text-slate-400 hover:border-slate-500'
+                } ${agentGroups.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                <div className="font-medium">Group</div>
+                <div className="text-xs opacity-70">{agentGroups.length} groups</div>
+              </button>
+            </div>
+
+            {/* Agent Selection */}
+            {scanExecutionMode === 'agent' && agents.length > 0 && (
+              <div className="ml-4 animate-fadeIn">
+                <label className="block text-sm font-medium text-slate-400 mb-2">
+                  Select Agent
+                </label>
+                <select
+                  value={selectedAgentId}
+                  onChange={(e) => setSelectedAgentId(e.target.value)}
+                  className="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                >
+                  <option value="">Select an agent...</option>
+                  {agents.map((agent) => (
+                    <option key={agent.id} value={agent.id}>
+                      {agent.name}
+                      {agent.network_zones ? ` (${JSON.parse(agent.network_zones).join(', ')})` : ''}
+                    </option>
+                  ))}
+                </select>
+                {selectedAgentId && (
+                  <p className="mt-1 text-xs text-slate-500">
+                    Scan will be executed by the selected agent in its network zone.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Agent Group Selection */}
+            {scanExecutionMode === 'agent_group' && agentGroups.length > 0 && (
+              <div className="ml-4 animate-fadeIn">
+                <label className="block text-sm font-medium text-slate-400 mb-2">
+                  Select Agent Group
+                </label>
+                <select
+                  value={selectedAgentGroupId}
+                  onChange={(e) => setSelectedAgentGroupId(e.target.value)}
+                  className="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                >
+                  <option value="">Select a group...</option>
+                  {agentGroups.map((group) => (
+                    <option key={group.id} value={group.id}>
+                      {group.name}
+                      {group.network_ranges ? ` (${JSON.parse(group.network_ranges).join(', ')})` : ''}
+                    </option>
+                  ))}
+                </select>
+                {selectedAgentGroupId && (
+                  <p className="mt-1 text-xs text-slate-500">
+                    Scan tasks will be distributed across agents in this group based on network zones.
+                  </p>
+                )}
+              </div>
+            )}
+
+            <p className="text-xs text-slate-500">
+              Configure agents in Settings &gt; Agents for distributed scanning across network zones.
+            </p>
           </div>
         )}
 

@@ -127,6 +127,16 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
             )
             // Public privacy policy endpoint (no authentication required)
             .route("/api/privacy-policy", web::get().to(api::privacy::get_privacy_policy))
+            // SSO public endpoints (callbacks, provider list for login)
+            .service(
+                web::scope("/api/sso")
+                    .wrap(rate_limit::RateLimitStatsMiddleware::auth())
+                    .wrap(rate_limit::auth_rate_limiter())
+                    .route("/providers", web::get().to(api::sso::get_sso_providers_for_login))
+                    .route("/login/{provider_id}", web::get().to(api::sso::initiate_login))
+                    .route("/callback/saml", web::post().to(api::sso::saml_callback))
+                    .route("/callback/oidc", web::get().to(api::sso::oidc_callback))
+            )
             // Customer Portal routes (separate auth from main app) - at /api/portal/*
             .service(
                 web::scope("/api/portal")
@@ -429,11 +439,15 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .route("/vpn/disconnect", web::post().to(api::vpn::disconnect_vpn))
                     .route("/vpn/status", web::get().to(api::vpn::get_vpn_status))
                     .route("/vpn/connections", web::get().to(api::vpn::get_vpn_connections))
+                    // Agent-based scanning endpoints
+                    .configure(api::agents::configure)
                     .configure(api::admin::configure)
                     .configure(api::dashboard::configure)
                     .configure(api::threat_intel::configure)
                     // Cloud infrastructure scanning endpoints
                     .configure(api::cloud::configure)
+                    // Container/K8s scanning endpoints
+                    .configure(api::container::configure)
                     // Attack path analysis endpoints
                     .configure(api::attack_paths::configure)
                     // API Security scanning endpoints
@@ -445,7 +459,30 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     // Scan Exclusions endpoints
                     .configure(api::exclusions::configure)
                     // Secret Findings endpoints
-                    .configure(api::secret_findings::configure),
+                    .configure(api::secret_findings::configure)
+                    // AI Prioritization endpoints
+                    .configure(api::ai::configure)
+                    // CI/CD integration endpoints
+                    .configure(api::cicd::configure)
+                    // IaC Security scanning endpoints
+                    .configure(api::iac::configure)
+                    // Remediation Workflows endpoints
+                    .configure(api::workflows::configure)
+                    // Start workflow from vulnerability
+                    .route("/vulnerabilities/{id}/workflow", web::post().to(api::workflows::start_workflow))
+                    // SSO Admin endpoints
+                    .route("/sso/admin/providers", web::get().to(api::sso::list_sso_providers))
+                    .route("/sso/admin/providers", web::post().to(api::sso::create_provider))
+                    .route("/sso/admin/presets", web::get().to(api::sso::get_presets))
+                    .route("/sso/admin/parse-metadata", web::post().to(api::sso::parse_idp_metadata))
+                    .route("/sso/admin/providers/{id}", web::get().to(api::sso::get_provider))
+                    .route("/sso/admin/providers/{id}", web::put().to(api::sso::update_provider))
+                    .route("/sso/admin/providers/{id}", web::delete().to(api::sso::delete_provider))
+                    .route("/sso/admin/providers/{id}/metadata", web::get().to(api::sso::get_provider_metadata))
+                    .route("/sso/admin/providers/{id}/metadata.xml", web::get().to(api::sso::download_metadata_xml))
+                    .route("/sso/admin/providers/{id}/mappings", web::put().to(api::sso::update_mappings))
+                    .route("/sso/admin/providers/{id}/test", web::post().to(api::sso::test_provider))
+                    .route("/sso/logout", web::post().to(api::sso::sso_logout)),
             )
             // Swagger UI for API documentation
             .service(

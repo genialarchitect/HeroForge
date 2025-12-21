@@ -34,6 +34,44 @@ pub async fn create_audit_log(pool: &SqlitePool, log: &models::AuditLog) -> Resu
     Ok(())
 }
 
+/// Convenience function to create audit log with individual fields (7 args, no user_agent)
+pub async fn log_audit(
+    pool: &SqlitePool,
+    user_id: &str,
+    action: &str,
+    target_type: Option<&str>,
+    target_id: Option<&str>,
+    details: Option<&str>,
+    ip_address: Option<&str>,
+) -> Result<()> {
+    log_audit_full(pool, user_id, action, target_type, target_id, details, ip_address, None).await
+}
+
+/// Convenience function to create audit log with all fields (8 args, includes user_agent)
+pub async fn log_audit_full(
+    pool: &SqlitePool,
+    user_id: &str,
+    action: &str,
+    target_type: Option<&str>,
+    target_id: Option<&str>,
+    details: Option<&str>,
+    ip_address: Option<&str>,
+    user_agent: Option<&str>,
+) -> Result<()> {
+    let log = models::AuditLog {
+        id: Uuid::new_v4().to_string(),
+        user_id: user_id.to_string(),
+        action: action.to_string(),
+        target_type: target_type.map(|s| s.to_string()),
+        target_id: target_id.map(|s| s.to_string()),
+        details: details.map(|s| s.to_string()),
+        ip_address: ip_address.map(|s| s.to_string()),
+        user_agent: user_agent.map(|s| s.to_string()),
+        created_at: Utc::now(),
+    };
+    create_audit_log(pool, &log).await
+}
+
 pub async fn get_audit_logs(
     pool: &SqlitePool,
     limit: i64,
@@ -240,6 +278,47 @@ pub async fn update_setting(
 // ============================================================================
 // Notification Settings Functions
 // ============================================================================
+
+/// Get system-level notification settings (from first admin or any configured settings)
+/// Used for system notifications like workflow events where there's no specific user context
+pub async fn get_system_notification_settings(
+    pool: &SqlitePool,
+) -> Result<models::NotificationSettings> {
+    // First try to find any notification settings with webhooks configured
+    if let Some(settings) = sqlx::query_as::<_, models::NotificationSettings>(
+        "SELECT * FROM notification_settings WHERE slack_webhook_url IS NOT NULL OR teams_webhook_url IS NOT NULL LIMIT 1",
+    )
+    .fetch_optional(pool)
+    .await?
+    {
+        return Ok(settings);
+    }
+
+    // Fall back to first admin's settings
+    if let Some(admin) = sqlx::query_as::<_, models::User>(
+        "SELECT * FROM users WHERE roles LIKE '%admin%' LIMIT 1",
+    )
+    .fetch_optional(pool)
+    .await?
+    {
+        return get_notification_settings(pool, &admin.id).await;
+    }
+
+    // If no admin, return default empty settings
+    Ok(models::NotificationSettings {
+        user_id: "system".to_string(),
+        email_on_scan_complete: false,
+        email_on_critical_vuln: false,
+        email_address: String::new(),
+        slack_webhook_url: None,
+        teams_webhook_url: None,
+        notify_on_workflow_action: Some(false),
+        notify_on_sla_breach: Some(false),
+        notification_email: None,
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+    })
+}
 
 /// Get notification settings for a user (creates default if not exists)
 pub async fn get_notification_settings(

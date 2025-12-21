@@ -24,6 +24,9 @@ const ExecutiveDashboardPage = lazy(() => import('./pages/ExecutiveDashboardPage
 const ApiSecurityPage = lazy(() => import('./pages/ApiSecurityPage'));
 const AttackPathsPage = lazy(() => import('./pages/AttackPathsPage'));
 const ScanComparisonPage = lazy(() => import('./pages/ScanComparisonPage'));
+const WorkflowsPage = lazy(() => import('./pages/WorkflowsPage'));
+const ContainerSecurityPage = lazy(() => import('./pages/ContainerSecurityPage'));
+const IacSecurityPage = lazy(() => import('./pages/IacSecurityPage'));
 
 // CRM pages
 const CrmDashboard = lazy(() => import('./pages/crm/CrmDashboard'));
@@ -191,6 +194,14 @@ function App() {
             }
           />
           <Route
+            path="/workflows"
+            element={
+              <ProtectedRoute>
+                <WorkflowsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/manual-assessments"
             element={
               <ProtectedRoute>
@@ -251,6 +262,22 @@ function App() {
             element={
               <ProtectedRoute>
                 <ScanComparisonPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/container-security"
+            element={
+              <ProtectedRoute>
+                <ContainerSecurityPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/iac-security"
+            element={
+              <ProtectedRoute>
+                <IacSecurityPage />
               </ProtectedRoute>
             }
           />

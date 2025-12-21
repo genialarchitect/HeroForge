@@ -33,6 +33,11 @@ pub async fn get_user_by_id(pool: &SqlitePool, user_id: &str) -> Result<Option<m
     Ok(user)
 }
 
+pub async fn get_user_by_email(pool: &SqlitePool, email: &str) -> Result<Option<models::User>> {
+    let user = sqlx::query_as::<_, models::User>("SELECT * FROM users WHERE email = ?1").bind(email).fetch_optional(pool).await?;
+    Ok(user)
+}
+
 pub async fn update_user_profile(pool: &SqlitePool, user_id: &str, updates: &models::UpdateProfileRequest) -> Result<models::User> {
     if let Some(ref email) = updates.email {
         crate::email_validation::validate_email(email).map_err(|e| anyhow::anyhow!("{}", e))?;

@@ -17,7 +17,7 @@ pub struct PortInfo {
     pub service: Option<ServiceInfo>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Protocol {
     TCP,
     UDP,
@@ -147,6 +147,17 @@ pub enum ScanType {
     TCPSyn,
     UDPScan,
     Comprehensive,
+}
+
+impl std::fmt::Display for ScanType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ScanType::TCPConnect => write!(f, "tcp-connect"),
+            ScanType::TCPSyn => write!(f, "tcp-syn"),
+            ScanType::UDPScan => write!(f, "udp"),
+            ScanType::Comprehensive => write!(f, "comprehensive"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

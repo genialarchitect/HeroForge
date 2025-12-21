@@ -51,6 +51,11 @@ impl TeamsNotifier {
 
         Ok(())
     }
+
+    /// Send a raw JSON message to Teams webhook (public method for custom messages)
+    pub async fn send_raw_message(&self, payload: &serde_json::Value) -> Result<()> {
+        self.send_message(payload.clone()).await
+    }
 }
 
 impl Notifier for TeamsNotifier {

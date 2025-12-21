@@ -96,6 +96,23 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     create_servicenow_tickets_table(pool).await?;
     // Secret findings table
     create_secret_findings_table(pool).await?;
+    // AI Prioritization tables
+    create_ai_prioritization_tables(pool).await?;
+    // CI/CD integration tables
+    create_cicd_tokens_table(pool).await?;
+    create_cicd_runs_table(pool).await?;
+    create_quality_gates_table(pool).await?;
+    // Remediation workflow tables
+    create_workflow_tables(pool).await?;
+    // Agent-based scanning tables
+    create_agent_tables(pool).await?;
+    // SSO (SAML/OIDC) authentication tables
+    create_sso_providers_table(pool).await?;
+    create_sso_sessions_table(pool).await?;
+    // Container/Kubernetes scanning tables
+    create_container_scan_tables(pool).await?;
+    // IaC (Infrastructure-as-Code) scanning tables
+    create_iac_scan_tables(pool).await?;
     Ok(())
 }
 
@@ -3884,5 +3901,1114 @@ async fn create_secret_findings_table(pool: &SqlitePool) -> Result<()> {
         .await?;
 
     log::info!("Created secret_findings table");
+    Ok(())
+}
+
+// ============================================================================
+// AI Prioritization Migrations
+// ============================================================================
+
+/// Create AI prioritization tables
+async fn create_ai_prioritization_tables(pool: &SqlitePool) -> Result<()> {
+    // AI Scores table - stores calculated AI scores for each vulnerability
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ai_scores (
+            id TEXT PRIMARY KEY,
+            scan_id TEXT NOT NULL,
+            vulnerability_id TEXT NOT NULL,
+            effective_risk_score REAL NOT NULL,
+            risk_category TEXT NOT NULL,
+            factor_scores TEXT NOT NULL,
+            remediation_priority INTEGER NOT NULL,
+            estimated_effort TEXT NOT NULL,
+            confidence REAL NOT NULL,
+            calculated_at TEXT NOT NULL,
+            FOREIGN KEY (scan_id) REFERENCES scan_results(id) ON DELETE CASCADE,
+            UNIQUE(scan_id, vulnerability_id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for AI scores
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ai_scores_scan_id ON ai_scores(scan_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ai_scores_vuln_id ON ai_scores(vulnerability_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ai_scores_risk_category ON ai_scores(risk_category)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ai_scores_priority ON ai_scores(remediation_priority)")
+        .execute(pool)
+        .await?;
+
+    // AI Prioritization Results table - stores summary results per scan
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ai_prioritization_results (
+            id TEXT PRIMARY KEY,
+            scan_id TEXT NOT NULL UNIQUE,
+            total_vulnerabilities INTEGER NOT NULL,
+            critical_count INTEGER NOT NULL,
+            high_count INTEGER NOT NULL,
+            medium_count INTEGER NOT NULL,
+            low_count INTEGER NOT NULL,
+            average_risk_score REAL NOT NULL,
+            highest_risk_score REAL NOT NULL,
+            summary_json TEXT NOT NULL,
+            calculated_at TEXT NOT NULL,
+            FOREIGN KEY (scan_id) REFERENCES scan_results(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // AI Model Configuration table - stores scoring weight configurations
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ai_model_config (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            weights TEXT NOT NULL,
+            is_active INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ai_model_config_active ON ai_model_config(is_active)")
+        .execute(pool)
+        .await?;
+
+    // AI Feedback table - stores user feedback for learning
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ai_feedback (
+            id TEXT PRIMARY KEY,
+            vulnerability_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            priority_appropriate INTEGER NOT NULL,
+            priority_adjustment INTEGER NOT NULL,
+            effort_accurate INTEGER NOT NULL,
+            actual_effort_hours INTEGER,
+            notes TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ai_feedback_vuln_id ON ai_feedback(vulnerability_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ai_feedback_user_id ON ai_feedback(user_id)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created AI prioritization tables");
+    Ok(())
+}
+
+// ============================================================================
+// CI/CD Integration Migrations
+// ============================================================================
+
+/// Create cicd_tokens table for CI/CD API tokens with restricted permissions
+async fn create_cicd_tokens_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS cicd_tokens (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            token_hash TEXT NOT NULL UNIQUE,
+            token_prefix TEXT NOT NULL,
+            platform TEXT NOT NULL,
+            permissions TEXT NOT NULL,
+            last_used_at TEXT,
+            expires_at TEXT,
+            created_at TEXT NOT NULL,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for efficient queries
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_cicd_tokens_user_id ON cicd_tokens(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_cicd_tokens_token_hash ON cicd_tokens(token_hash)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_cicd_tokens_is_active ON cicd_tokens(is_active)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created cicd_tokens table");
+    Ok(())
+}
+
+/// Create cicd_runs table for tracking CI/CD triggered scans
+async fn create_cicd_runs_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS cicd_runs (
+            id TEXT PRIMARY KEY,
+            token_id TEXT NOT NULL,
+            scan_id TEXT NOT NULL,
+            platform TEXT NOT NULL,
+            ci_ref TEXT,
+            ci_branch TEXT,
+            ci_url TEXT,
+            repository TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            quality_gate_passed INTEGER,
+            quality_gate_details TEXT,
+            started_at TEXT NOT NULL,
+            completed_at TEXT,
+            FOREIGN KEY (token_id) REFERENCES cicd_tokens(id) ON DELETE CASCADE,
+            FOREIGN KEY (scan_id) REFERENCES scan_results(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for efficient queries
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_cicd_runs_token_id ON cicd_runs(token_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_cicd_runs_scan_id ON cicd_runs(scan_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_cicd_runs_status ON cicd_runs(status)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_cicd_runs_started_at ON cicd_runs(started_at)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created cicd_runs table");
+    Ok(())
+}
+
+/// Create quality_gates table for configurable thresholds
+async fn create_quality_gates_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS quality_gates (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            fail_on_severity TEXT NOT NULL DEFAULT 'high',
+            max_vulnerabilities INTEGER,
+            max_critical INTEGER,
+            max_high INTEGER,
+            max_medium INTEGER,
+            max_low INTEGER,
+            fail_on_new_vulns INTEGER NOT NULL DEFAULT 0,
+            baseline_scan_id TEXT,
+            is_default INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (baseline_scan_id) REFERENCES scan_results(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for efficient queries
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_quality_gates_user_id ON quality_gates(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_quality_gates_is_default ON quality_gates(is_default)")
+        .execute(pool)
+        .await?;
+
+    // Seed a default quality gate
+    seed_default_quality_gate(pool).await?;
+
+    log::info!("Created quality_gates table");
+    Ok(())
+}
+
+/// Seed a default quality gate for new installations
+async fn seed_default_quality_gate(pool: &SqlitePool) -> Result<()> {
+    // Check if any quality gates exist already
+    let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM quality_gates")
+        .fetch_one(pool)
+        .await?;
+
+    if count.0 > 0 {
+        return Ok(()); // Quality gates already exist
+    }
+
+    // Note: This creates a "system" quality gate that is not owned by any user
+    // Users can create their own quality gates or admins can modify this one
+    sqlx::query(
+        r#"
+        INSERT INTO quality_gates (id, user_id, name, fail_on_severity, max_critical, max_high, is_default, created_at, updated_at)
+        VALUES ('default', 'system', 'Default Quality Gate', 'high', 0, NULL, 1, datetime('now'), datetime('now'))
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    log::info!("Seeded default quality gate");
+    Ok(())
+}
+
+/// Create remediation workflow tables
+async fn create_workflow_tables(pool: &SqlitePool) -> Result<()> {
+    // Workflow templates table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS workflow_templates (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            is_system INTEGER NOT NULL DEFAULT 0,
+            created_by TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            FOREIGN KEY (created_by) REFERENCES users(id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Workflow stages table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS workflow_stages (
+            id TEXT PRIMARY KEY,
+            template_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            stage_order INTEGER NOT NULL,
+            stage_type TEXT NOT NULL,
+            required_approvals INTEGER NOT NULL DEFAULT 0,
+            approver_role TEXT,
+            approver_user_ids TEXT,
+            sla_hours INTEGER,
+            notify_on_enter INTEGER NOT NULL DEFAULT 1,
+            notify_on_sla_breach INTEGER NOT NULL DEFAULT 1,
+            auto_advance_conditions TEXT,
+            FOREIGN KEY (template_id) REFERENCES workflow_templates(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create index for efficient stage lookups
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_workflow_stages_template ON workflow_stages(template_id, stage_order)")
+        .execute(pool)
+        .await?;
+
+    // Workflow instances table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS workflow_instances (
+            id TEXT PRIMARY KEY,
+            template_id TEXT NOT NULL,
+            vulnerability_id TEXT NOT NULL,
+            current_stage_id TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'active',
+            started_by TEXT NOT NULL,
+            started_at TEXT NOT NULL,
+            completed_at TEXT,
+            notes TEXT,
+            FOREIGN KEY (template_id) REFERENCES workflow_templates(id),
+            FOREIGN KEY (vulnerability_id) REFERENCES vulnerability_tracking(id),
+            FOREIGN KEY (current_stage_id) REFERENCES workflow_stages(id),
+            FOREIGN KEY (started_by) REFERENCES users(id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for workflow instances
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_workflow_instances_vuln ON workflow_instances(vulnerability_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_workflow_instances_status ON workflow_instances(status)")
+        .execute(pool)
+        .await?;
+
+    // Workflow stage instances table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS workflow_stage_instances (
+            id TEXT PRIMARY KEY,
+            instance_id TEXT NOT NULL,
+            stage_id TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            entered_at TEXT NOT NULL,
+            completed_at TEXT,
+            sla_deadline TEXT,
+            sla_breached INTEGER NOT NULL DEFAULT 0,
+            approvals_received INTEGER NOT NULL DEFAULT 0,
+            notes TEXT,
+            FOREIGN KEY (instance_id) REFERENCES workflow_instances(id) ON DELETE CASCADE,
+            FOREIGN KEY (stage_id) REFERENCES workflow_stages(id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for stage instances
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_workflow_stage_instances_instance ON workflow_stage_instances(instance_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_workflow_stage_instances_sla ON workflow_stage_instances(sla_deadline) WHERE sla_breached = 0")
+        .execute(pool)
+        .await?;
+
+    // Workflow approvals table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS workflow_approvals (
+            id TEXT PRIMARY KEY,
+            stage_instance_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            approved INTEGER NOT NULL,
+            comment TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (stage_instance_id) REFERENCES workflow_stage_instances(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create index for approval lookups
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_workflow_approvals_stage ON workflow_approvals(stage_instance_id)")
+        .execute(pool)
+        .await?;
+
+    // Workflow transitions table (audit trail)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS workflow_transitions (
+            id TEXT PRIMARY KEY,
+            instance_id TEXT NOT NULL,
+            from_stage_id TEXT,
+            to_stage_id TEXT NOT NULL,
+            action TEXT NOT NULL,
+            performed_by TEXT NOT NULL,
+            comment TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (instance_id) REFERENCES workflow_instances(id) ON DELETE CASCADE,
+            FOREIGN KEY (from_stage_id) REFERENCES workflow_stages(id),
+            FOREIGN KEY (to_stage_id) REFERENCES workflow_stages(id),
+            FOREIGN KEY (performed_by) REFERENCES users(id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create index for transition lookups
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_workflow_transitions_instance ON workflow_transitions(instance_id)")
+        .execute(pool)
+        .await?;
+
+    // Add workflow notification setting if it doesn't exist
+    sqlx::query(
+        r#"
+        INSERT OR IGNORE INTO system_settings (key, value, description, updated_at)
+        VALUES ('notify_on_workflow_action', 'true', 'Send notifications for workflow actions', datetime('now'))
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Add notify_on_workflow_action column to notification_settings if it doesn't exist
+    let columns: Vec<(String,)> = sqlx::query_as(
+        "SELECT name FROM pragma_table_info('notification_settings') WHERE name = 'notify_on_workflow_action'"
+    )
+    .fetch_all(pool)
+    .await?;
+
+    if columns.is_empty() {
+        sqlx::query(
+            "ALTER TABLE notification_settings ADD COLUMN notify_on_workflow_action INTEGER DEFAULT 1"
+        )
+        .execute(pool)
+        .await?;
+    }
+
+    log::info!("Created workflow tables");
+    Ok(())
+}
+
+// ============================================================================
+// Agent-Based Scanning Migrations
+// ============================================================================
+
+/// Create all agent-related tables
+async fn create_agent_tables(pool: &SqlitePool) -> Result<()> {
+    // Scan agents table - registered agents
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS scan_agents (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            token_hash TEXT NOT NULL,
+            token_prefix TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            version TEXT,
+            hostname TEXT,
+            ip_address TEXT,
+            os_info TEXT,
+            capabilities TEXT,
+            network_zones TEXT,
+            max_concurrent_tasks INTEGER NOT NULL DEFAULT 1,
+            current_tasks INTEGER NOT NULL DEFAULT 0,
+            last_heartbeat_at TEXT,
+            last_task_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_scan_agents_user_id ON scan_agents(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_scan_agents_status ON scan_agents(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_scan_agents_token_prefix ON scan_agents(token_prefix)")
+        .execute(pool)
+        .await?;
+
+    // Agent groups table - logical groupings for network segmentation
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS agent_groups (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            network_ranges TEXT,
+            color TEXT NOT NULL DEFAULT '#06b6d4',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            UNIQUE(user_id, name)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_agent_groups_user_id ON agent_groups(user_id)")
+        .execute(pool)
+        .await?;
+
+    // Agent group members - junction table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS agent_group_members (
+            agent_id TEXT NOT NULL,
+            group_id TEXT NOT NULL,
+            added_at TEXT NOT NULL,
+            PRIMARY KEY (agent_id, group_id),
+            FOREIGN KEY (agent_id) REFERENCES scan_agents(id) ON DELETE CASCADE,
+            FOREIGN KEY (group_id) REFERENCES agent_groups(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_agent_group_members_agent_id ON agent_group_members(agent_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_agent_group_members_group_id ON agent_group_members(group_id)")
+        .execute(pool)
+        .await?;
+
+    // Agent tasks table - distributed tasks
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS agent_tasks (
+            id TEXT PRIMARY KEY,
+            scan_id TEXT NOT NULL,
+            agent_id TEXT,
+            group_id TEXT,
+            user_id TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            task_type TEXT NOT NULL,
+            config TEXT NOT NULL,
+            targets TEXT NOT NULL,
+            priority INTEGER NOT NULL DEFAULT 1,
+            timeout_seconds INTEGER NOT NULL DEFAULT 3600,
+            retry_count INTEGER NOT NULL DEFAULT 0,
+            max_retries INTEGER NOT NULL DEFAULT 3,
+            error_message TEXT,
+            assigned_at TEXT,
+            started_at TEXT,
+            completed_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (scan_id) REFERENCES scan_results(id) ON DELETE CASCADE,
+            FOREIGN KEY (agent_id) REFERENCES scan_agents(id) ON DELETE SET NULL,
+            FOREIGN KEY (group_id) REFERENCES agent_groups(id) ON DELETE SET NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_agent_tasks_scan_id ON agent_tasks(scan_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_agent_tasks_agent_id ON agent_tasks(agent_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_agent_tasks_status ON agent_tasks(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_agent_tasks_user_id ON agent_tasks(user_id)")
+        .execute(pool)
+        .await?;
+
+    // Agent results table - collected results
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS agent_results (
+            id TEXT PRIMARY KEY,
+            task_id TEXT NOT NULL,
+            agent_id TEXT NOT NULL,
+            result_data TEXT NOT NULL,
+            hosts_discovered INTEGER NOT NULL DEFAULT 0,
+            ports_found INTEGER NOT NULL DEFAULT 0,
+            vulnerabilities_found INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (task_id) REFERENCES agent_tasks(id) ON DELETE CASCADE,
+            FOREIGN KEY (agent_id) REFERENCES scan_agents(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_agent_results_task_id ON agent_results(task_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_agent_results_agent_id ON agent_results(agent_id)")
+        .execute(pool)
+        .await?;
+
+    // Agent heartbeats table - health tracking
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS agent_heartbeats (
+            id TEXT PRIMARY KEY,
+            agent_id TEXT NOT NULL,
+            cpu_usage REAL,
+            memory_usage REAL,
+            disk_usage REAL,
+            active_tasks INTEGER NOT NULL DEFAULT 0,
+            queued_tasks INTEGER NOT NULL DEFAULT 0,
+            latency_ms INTEGER,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (agent_id) REFERENCES scan_agents(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_agent_heartbeats_agent_id ON agent_heartbeats(agent_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_agent_heartbeats_created_at ON agent_heartbeats(created_at)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created agent-based scanning tables");
+    Ok(())
+}
+
+// ============================================================================
+// SSO (SAML/OIDC) Authentication Migrations
+// ============================================================================
+
+/// Create sso_providers table for storing SSO identity provider configurations
+async fn create_sso_providers_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS sso_providers (
+            id TEXT PRIMARY KEY,
+            name TEXT UNIQUE NOT NULL,
+            display_name TEXT NOT NULL,
+            provider_type TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'disabled',
+            icon TEXT,
+            config TEXT NOT NULL,
+            attribute_mappings TEXT,
+            group_mappings TEXT,
+            jit_provisioning INTEGER NOT NULL DEFAULT 0,
+            default_role TEXT NOT NULL DEFAULT 'user',
+            update_on_login INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            last_used_at TEXT
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for efficient queries
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sso_providers_name ON sso_providers(name)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sso_providers_status ON sso_providers(status)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sso_providers_type ON sso_providers(provider_type)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created sso_providers table");
+    Ok(())
+}
+
+/// Create sso_sessions table for tracking SSO sessions (for SLO support)
+async fn create_sso_sessions_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS sso_sessions (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            provider_id TEXT NOT NULL,
+            session_index TEXT,
+            name_id TEXT,
+            name_id_format TEXT,
+            created_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            logged_out_at TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (provider_id) REFERENCES sso_providers(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for efficient queries
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sso_sessions_user_id ON sso_sessions(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sso_sessions_provider_id ON sso_sessions(provider_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sso_sessions_expires_at ON sso_sessions(expires_at)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sso_sessions_logged_out_at ON sso_sessions(logged_out_at)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created sso_sessions table");
+    Ok(())
+}
+
+// ============================================================================
+// IaC (Infrastructure-as-Code) Scanning Migrations
+// ============================================================================
+
+/// Create IaC scanning tables for Terraform, CloudFormation, and ARM templates
+async fn create_iac_scan_tables(pool: &SqlitePool) -> Result<()> {
+    // Main IaC scans table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS iac_scans (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            source_type TEXT NOT NULL,
+            source_url TEXT,
+            platforms TEXT,
+            providers TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            file_count INTEGER DEFAULT 0,
+            resource_count INTEGER DEFAULT 0,
+            finding_count INTEGER DEFAULT 0,
+            critical_count INTEGER DEFAULT 0,
+            high_count INTEGER DEFAULT 0,
+            medium_count INTEGER DEFAULT 0,
+            low_count INTEGER DEFAULT 0,
+            info_count INTEGER DEFAULT 0,
+            error_message TEXT,
+            customer_id TEXT,
+            engagement_id TEXT,
+            started_at TEXT,
+            completed_at TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL,
+            FOREIGN KEY (engagement_id) REFERENCES engagements(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for iac_scans
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_iac_scans_user_id ON iac_scans(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_iac_scans_status ON iac_scans(status)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_iac_scans_created_at ON iac_scans(created_at)")
+        .execute(pool)
+        .await?;
+
+    // IaC files table - stores scanned files
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS iac_files (
+            id TEXT PRIMARY KEY,
+            scan_id TEXT NOT NULL,
+            filename TEXT NOT NULL,
+            path TEXT NOT NULL,
+            content TEXT,
+            platform TEXT NOT NULL,
+            provider TEXT NOT NULL,
+            size_bytes INTEGER DEFAULT 0,
+            line_count INTEGER DEFAULT 0,
+            resource_count INTEGER DEFAULT 0,
+            finding_count INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (scan_id) REFERENCES iac_scans(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_iac_files_scan_id ON iac_files(scan_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_iac_files_platform ON iac_files(platform)")
+        .execute(pool)
+        .await?;
+
+    // IaC findings table - stores security issues found
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS iac_findings (
+            id TEXT PRIMARY KEY,
+            scan_id TEXT NOT NULL,
+            file_id TEXT NOT NULL,
+            rule_id TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            category TEXT NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT NOT NULL,
+            resource_type TEXT,
+            resource_name TEXT,
+            line_start INTEGER DEFAULT 0,
+            line_end INTEGER DEFAULT 0,
+            code_snippet TEXT,
+            remediation TEXT NOT NULL,
+            documentation_url TEXT,
+            compliance_mappings TEXT,
+            status TEXT NOT NULL DEFAULT 'open',
+            suppressed INTEGER DEFAULT 0,
+            suppression_reason TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (scan_id) REFERENCES iac_scans(id) ON DELETE CASCADE,
+            FOREIGN KEY (file_id) REFERENCES iac_files(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_iac_findings_scan_id ON iac_findings(scan_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_iac_findings_file_id ON iac_findings(file_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_iac_findings_severity ON iac_findings(severity)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_iac_findings_category ON iac_findings(category)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_iac_findings_status ON iac_findings(status)")
+        .execute(pool)
+        .await?;
+
+    // IaC rules table - stores built-in and custom security rules
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS iac_rules (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            category TEXT NOT NULL,
+            platforms TEXT NOT NULL,
+            providers TEXT NOT NULL,
+            resource_types TEXT,
+            pattern TEXT,
+            pattern_type TEXT NOT NULL,
+            remediation TEXT NOT NULL,
+            documentation_url TEXT,
+            compliance_mappings TEXT,
+            is_builtin INTEGER DEFAULT 0,
+            is_enabled INTEGER DEFAULT 1,
+            user_id TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_iac_rules_is_builtin ON iac_rules(is_builtin)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_iac_rules_is_enabled ON iac_rules(is_enabled)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_iac_rules_user_id ON iac_rules(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_iac_rules_severity ON iac_rules(severity)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created IaC scanning tables");
+    Ok(())
+}
+
+// ============================================================================
+// Container/Kubernetes Scanning Migrations
+// ============================================================================
+
+/// Create container scanning tables for Docker and Kubernetes security scanning
+async fn create_container_scan_tables(pool: &SqlitePool) -> Result<()> {
+    // Container scans table - main scan records
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS container_scans (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            scan_types TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            images_count INTEGER DEFAULT 0,
+            resources_count INTEGER DEFAULT 0,
+            findings_count INTEGER DEFAULT 0,
+            critical_count INTEGER DEFAULT 0,
+            high_count INTEGER DEFAULT 0,
+            error_message TEXT,
+            created_at TEXT NOT NULL,
+            started_at TEXT,
+            completed_at TEXT,
+            customer_id TEXT,
+            engagement_id TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_container_scans_user_id ON container_scans(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_container_scans_status ON container_scans(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_container_scans_created_at ON container_scans(created_at)")
+        .execute(pool)
+        .await?;
+
+    // Container images table - discovered Docker images
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS container_images (
+            id TEXT PRIMARY KEY,
+            scan_id TEXT NOT NULL,
+            image_ref TEXT NOT NULL,
+            digest TEXT,
+            registry TEXT,
+            repository TEXT NOT NULL,
+            tag TEXT NOT NULL,
+            os TEXT,
+            architecture TEXT,
+            created TEXT,
+            size_bytes INTEGER,
+            layer_count INTEGER DEFAULT 0,
+            labels TEXT,
+            vuln_count INTEGER DEFAULT 0,
+            critical_count INTEGER DEFAULT 0,
+            high_count INTEGER DEFAULT 0,
+            discovered_at TEXT NOT NULL,
+            FOREIGN KEY (scan_id) REFERENCES container_scans(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_container_images_scan_id ON container_images(scan_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_container_images_image_ref ON container_images(image_ref)")
+        .execute(pool)
+        .await?;
+
+    // K8s resources table - Kubernetes resources analyzed
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS k8s_resources (
+            id TEXT PRIMARY KEY,
+            scan_id TEXT NOT NULL,
+            resource_type TEXT NOT NULL,
+            api_version TEXT NOT NULL,
+            name TEXT NOT NULL,
+            namespace TEXT,
+            labels TEXT,
+            annotations TEXT,
+            manifest TEXT,
+            finding_count INTEGER DEFAULT 0,
+            discovered_at TEXT NOT NULL,
+            FOREIGN KEY (scan_id) REFERENCES container_scans(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_k8s_resources_scan_id ON k8s_resources(scan_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_k8s_resources_resource_type ON k8s_resources(resource_type)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_k8s_resources_namespace ON k8s_resources(namespace)")
+        .execute(pool)
+        .await?;
+
+    // Container findings table - security findings from scans
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS container_findings (
+            id TEXT PRIMARY KEY,
+            scan_id TEXT NOT NULL,
+            image_id TEXT,
+            resource_id TEXT,
+            finding_type TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT NOT NULL,
+            cve_id TEXT,
+            cvss_score REAL,
+            cwe_ids TEXT,
+            package_name TEXT,
+            package_version TEXT,
+            fixed_version TEXT,
+            file_path TEXT,
+            line_number INTEGER,
+            remediation TEXT,
+            "references" TEXT,
+            status TEXT NOT NULL DEFAULT 'open',
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (scan_id) REFERENCES container_scans(id) ON DELETE CASCADE,
+            FOREIGN KEY (image_id) REFERENCES container_images(id) ON DELETE SET NULL,
+            FOREIGN KEY (resource_id) REFERENCES k8s_resources(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_container_findings_scan_id ON container_findings(scan_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_container_findings_image_id ON container_findings(image_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_container_findings_resource_id ON container_findings(resource_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_container_findings_severity ON container_findings(severity)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_container_findings_status ON container_findings(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_container_findings_cve_id ON container_findings(cve_id)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created container/Kubernetes scanning tables");
     Ok(())
 }

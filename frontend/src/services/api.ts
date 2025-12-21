@@ -186,6 +186,47 @@ import type {
   SecretFindingStats,
   UpdateSecretFindingRequest,
   BulkUpdateSecretsResponse,
+  // Container/K8s Scanning types
+  ContainerScan,
+  ContainerScanSummary,
+  ContainerImage,
+  K8sResource,
+  ContainerFinding,
+  CreateContainerScanRequest,
+  AnalyzeDockerfileRequest,
+  AnalyzeK8sManifestRequest,
+  DockerfileAnalysis,
+  K8sManifestAnalysis,
+  ContainerScanListResponse,
+  ContainerScanDetailResponse,
+  ContainerScanTypeInfo,
+  UpdateContainerFindingStatusRequest,
+  FindingStatus,
+  // IaC Security Scanning types
+  IacScan,
+  IacScanDetailResponse,
+  IacFile,
+  IacFinding,
+  IacRule,
+  IacPlatformInfo,
+  IacAnalyzeFileRequest,
+  IacAnalyzeFileResponse,
+  CreateIacRuleRequest,
+  UpdateIacRuleRequest,
+  UpdateIacFindingStatusRequest,
+  // Workflow types
+  WorkflowTemplate,
+  WorkflowTemplateWithStages,
+  WorkflowInstance,
+  WorkflowInstanceDetail,
+  PendingApproval,
+  WorkflowStats,
+  CreateWorkflowTemplateRequest,
+  UpdateWorkflowTemplateRequest,
+  StartWorkflowRequest,
+  ApproveWorkflowRequest,
+  RejectWorkflowRequest,
+  UpdateWorkflowRequest,
 } from '../types';
 
 const api = axios.create({
@@ -1736,6 +1777,526 @@ export const webhooksAPI = {
   // Get statistics for a webhook
   getStats: (id: string) =>
     api.get<WebhookStats>(`/webhooks/${id}/stats`),
+};
+
+// ============================================================================
+// AI Vulnerability Prioritization API
+// ============================================================================
+
+import type {
+  AIPrioritizationResult,
+  AIVulnerabilityScore,
+  AIModelConfig,
+  PrioritizeRequest,
+  UpdateAIConfigRequest,
+  SubmitAIFeedbackRequest,
+} from '../types';
+
+export const aiAPI = {
+  // Calculate AI prioritization scores for a scan
+  prioritize: (scanId: string, data?: PrioritizeRequest) =>
+    api.post<AIPrioritizationResult>(`/ai/prioritize/${scanId}`, data || {}),
+
+  // Get existing prioritization scores for a scan
+  getScores: (scanId: string) =>
+    api.get<AIPrioritizationResult>(`/ai/scores/${scanId}`),
+
+  // Get score breakdown for a specific vulnerability
+  getVulnerabilityScore: (vulnId: string) =>
+    api.get<AIVulnerabilityScore>(`/ai/scores/vulnerability/${vulnId}`),
+
+  // Get current AI model configuration
+  getConfig: () =>
+    api.get<AIModelConfig>('/ai/config'),
+
+  // Update AI model configuration (admin only)
+  updateConfig: (data: UpdateAIConfigRequest) =>
+    api.put<AIModelConfig>('/ai/config', data),
+
+  // Submit feedback for AI learning
+  submitFeedback: (data: SubmitAIFeedbackRequest) =>
+    api.post<{ message: string }>('/ai/feedback', data),
+};
+
+// ============================================================================
+// Agent-Based Scanning API
+// ============================================================================
+
+import type {
+  AgentWithGroups,
+  AgentGroup,
+  AgentGroupWithCount,
+  AgentGroupWithAgents,
+  AgentStats,
+  AgentHeartbeat,
+  RegisterAgentRequest,
+  RegisterAgentResponse,
+  UpdateAgentRequest,
+  CreateAgentGroupRequest,
+  UpdateAgentGroupRequest,
+  AssignAgentsToGroupRequest,
+} from '../types';
+
+export const agentAPI = {
+  // Register a new agent
+  register: (data: RegisterAgentRequest) =>
+    api.post<RegisterAgentResponse>('/agents/register', data),
+
+  // List all agents
+  list: () =>
+    api.get<AgentWithGroups[]>('/agents'),
+
+  // Get agent by ID
+  get: (id: string) =>
+    api.get<AgentWithGroups>(`/agents/${id}`),
+
+  // Update an agent
+  update: (id: string, data: UpdateAgentRequest) =>
+    api.put<AgentWithGroups>(`/agents/${id}`, data),
+
+  // Delete an agent
+  delete: (id: string) =>
+    api.delete(`/agents/${id}`),
+
+  // Get agent statistics
+  getStats: () =>
+    api.get<AgentStats>('/agents/stats'),
+
+  // Regenerate agent token
+  regenerateToken: (id: string) =>
+    api.post<{ token: string; token_prefix: string }>(`/agents/${id}/regenerate-token`),
+
+  // Get agent heartbeat history
+  getHeartbeats: (id: string, limit?: number) =>
+    api.get<AgentHeartbeat[]>(`/agents/${id}/heartbeats`, {
+      params: { limit },
+    }),
+
+  // Agent groups
+  groups: {
+    // List all groups
+    list: () =>
+      api.get<AgentGroupWithCount[]>('/agents/groups'),
+
+    // Get group by ID
+    get: (id: string) =>
+      api.get<AgentGroupWithAgents>(`/agents/groups/${id}`),
+
+    // Create a new group
+    create: (data: CreateAgentGroupRequest) =>
+      api.post<AgentGroup>('/agents/groups', data),
+
+    // Update a group
+    update: (id: string, data: UpdateAgentGroupRequest) =>
+      api.put<AgentGroup>(`/agents/groups/${id}`, data),
+
+    // Delete a group
+    delete: (id: string) =>
+      api.delete(`/agents/groups/${id}`),
+
+    // Assign agents to group
+    assignAgents: (groupId: string, data: AssignAgentsToGroupRequest) =>
+      api.put(`/agents/groups/${groupId}/agents`, data),
+
+    // Remove agent from group
+    removeAgent: (groupId: string, agentId: string) =>
+      api.delete(`/agents/groups/${groupId}/agents/${agentId}`),
+  },
+};
+
+// ============================================================================
+// SSO (SAML/OIDC) API
+// ============================================================================
+
+import type {
+  SsoProviderForLogin,
+  SsoProvider,
+  SsoProviderPreset,
+  SsoMetadata,
+  SsoLoginResponse,
+  SsoTestResult,
+  CreateSsoProviderRequest,
+  UpdateSsoProviderRequest,
+  UpdateMappingsRequest,
+  SamlConfig,
+} from '../types';
+
+export const ssoAPI = {
+  // Public endpoints (for login page)
+  getProvidersForLogin: () =>
+    api.get<SsoProviderForLogin[]>('/sso/providers'),
+
+  initiateLogin: (providerId: string) =>
+    api.get<SsoLoginResponse>(`/sso/login/${providerId}`),
+
+  // Admin endpoints
+  admin: {
+    // List all providers
+    listProviders: () =>
+      api.get<SsoProvider[]>('/sso/admin/providers'),
+
+    // Get provider by ID
+    getProvider: (id: string) =>
+      api.get<SsoProvider>(`/sso/admin/providers/${id}`),
+
+    // Create provider
+    createProvider: (data: CreateSsoProviderRequest) =>
+      api.post<SsoProvider>('/sso/admin/providers', data),
+
+    // Update provider
+    updateProvider: (id: string, data: UpdateSsoProviderRequest) =>
+      api.put<SsoProvider>(`/sso/admin/providers/${id}`, data),
+
+    // Delete provider
+    deleteProvider: (id: string) =>
+      api.delete(`/sso/admin/providers/${id}`),
+
+    // Get provider presets (templates for common IdPs)
+    getPresets: () =>
+      api.get<SsoProviderPreset[]>('/sso/admin/presets'),
+
+    // Get SP metadata for a provider
+    getMetadata: (id: string) =>
+      api.get<SsoMetadata>(`/sso/admin/providers/${id}/metadata`),
+
+    // Download SP metadata XML (SAML only)
+    downloadMetadataXml: (id: string) =>
+      api.get(`/sso/admin/providers/${id}/metadata.xml`, {
+        responseType: 'blob',
+      }),
+
+    // Update attribute/group mappings
+    updateMappings: (id: string, data: UpdateMappingsRequest) =>
+      api.put<SsoProvider>(`/sso/admin/providers/${id}/mappings`, data),
+
+    // Test provider connection
+    testProvider: (id: string) =>
+      api.post<SsoTestResult>(`/sso/admin/providers/${id}/test`),
+
+    // Parse IdP metadata (SAML)
+    parseMetadata: (metadata_xml: string) =>
+      api.post<SamlConfig>('/sso/admin/parse-metadata', { metadata_xml }),
+  },
+
+  // Logout (authenticated)
+  logout: (logoutFromIdp?: boolean) =>
+    api.post<{ success: boolean; idp_logout_url?: string }>('/sso/logout', {
+      logout_from_idp: logoutFromIdp,
+    }),
+};
+
+// ============================================================================
+// CI/CD Integration API
+// ============================================================================
+
+import type {
+  CiCdToken,
+  CreateCiCdTokenRequest,
+  CreateCiCdTokenResponse,
+  QualityGate,
+  CreateQualityGateRequest,
+  UpdateQualityGateRequest,
+  CiCdRun,
+  CiCdScanRequest,
+  QualityGateResult,
+  PipelineExample,
+} from '../types';
+
+export const cicdAPI = {
+  // Token Management
+  tokens: {
+    // Get all CI/CD tokens for the current user
+    list: () => api.get<CiCdToken[]>('/cicd/tokens'),
+
+    // Create a new CI/CD token
+    create: (data: CreateCiCdTokenRequest) =>
+      api.post<CreateCiCdTokenResponse>('/cicd/tokens', data),
+
+    // Delete a CI/CD token
+    delete: (id: string) =>
+      api.delete<{ message: string }>(`/cicd/tokens/${id}`),
+  },
+
+  // Quality Gates
+  qualityGates: {
+    // Get all quality gates
+    list: () => api.get<QualityGate[]>('/cicd/quality-gates'),
+
+    // Get the default quality gate
+    getDefault: () => api.get<QualityGate>('/cicd/quality-gates/default'),
+
+    // Get a specific quality gate
+    get: (id: string) => api.get<QualityGate>(`/cicd/quality-gates/${id}`),
+
+    // Create a new quality gate
+    create: (data: CreateQualityGateRequest) =>
+      api.post<QualityGate>('/cicd/quality-gates', data),
+
+    // Update a quality gate
+    update: (id: string, data: UpdateQualityGateRequest) =>
+      api.put<QualityGate>(`/cicd/quality-gates/${id}`, data),
+
+    // Delete a quality gate
+    delete: (id: string) =>
+      api.delete<{ message: string }>(`/cicd/quality-gates/${id}`),
+  },
+
+  // CI/CD Runs
+  runs: {
+    // Get recent CI/CD runs
+    list: (limit?: number) =>
+      api.get<CiCdRun[]>('/cicd/runs', { params: { limit } }),
+
+    // Get a specific run
+    get: (id: string) => api.get<CiCdRun>(`/cicd/runs/${id}`),
+
+    // Trigger a new scan from CI/CD
+    trigger: (data: CiCdScanRequest) =>
+      api.post<CiCdRun>('/cicd/scan', data),
+
+    // Get the status of a run
+    getStatus: (id: string) =>
+      api.get<CiCdRun>(`/cicd/runs/${id}/status`),
+
+    // Get quality gate result for a run
+    getQualityGateResult: (runId: string) =>
+      api.get<QualityGateResult>(`/cicd/runs/${runId}/quality-gate`),
+  },
+
+  // Reports
+  reports: {
+    // Get SARIF report for a scan (GitHub Security tab format)
+    getSarif: (scanId: string) =>
+      api.get(`/cicd/scans/${scanId}/sarif`, { responseType: 'blob' }),
+
+    // Get JUnit XML report for a scan (Jenkins format)
+    getJunit: (scanId: string) =>
+      api.get(`/cicd/scans/${scanId}/junit`, { responseType: 'blob' }),
+
+    // Get GitLab Security Report
+    getGitLabSecurity: (scanId: string) =>
+      api.get(`/cicd/scans/${scanId}/gitlab-security`, { responseType: 'blob' }),
+
+    // Get GitLab Code Quality Report
+    getGitLabQuality: (scanId: string) =>
+      api.get(`/cicd/scans/${scanId}/gitlab-quality`, { responseType: 'blob' }),
+  },
+
+  // Pipeline Examples
+  examples: {
+    // Get pipeline example for a platform
+    get: (platform: string) =>
+      api.get<PipelineExample>(`/cicd/examples/${platform}`),
+
+    // Get all pipeline examples
+    list: () => api.get<PipelineExample[]>('/cicd/examples'),
+  },
+};
+
+// ============================================================================
+// Container/K8s Security Scanning API
+// ============================================================================
+
+export const containerAPI = {
+  // List all container scans
+  listScans: (params?: { scan_type?: string; status?: string; limit?: number; offset?: number }) =>
+    api.get<ContainerScanListResponse>('/container/scans', { params }),
+
+  // Get a specific scan with summary
+  getScan: (id: string) =>
+    api.get<ContainerScanDetailResponse>(`/container/scans/${id}`),
+
+  // Create a new container scan
+  createScan: (data: CreateContainerScanRequest) =>
+    api.post<ContainerScan>('/container/scans', data),
+
+  // Delete a container scan
+  deleteScan: (id: string) =>
+    api.delete<{ message: string }>(`/container/scans/${id}`),
+
+  // Get findings for a scan
+  getFindings: (scanId: string, params?: { severity?: string; finding_type?: string; status?: string }) =>
+    api.get<ContainerFinding[]>(`/container/scans/${scanId}/findings`, { params }),
+
+  // Get images for a scan
+  getImages: (scanId: string) =>
+    api.get<ContainerImage[]>(`/container/scans/${scanId}/images`),
+
+  // Get K8s resources for a scan
+  getResources: (scanId: string) =>
+    api.get<K8sResource[]>(`/container/scans/${scanId}/resources`),
+
+  // Update finding status
+  updateFindingStatus: (findingId: string, data: UpdateContainerFindingStatusRequest) =>
+    api.patch<ContainerFinding>(`/container/findings/${findingId}/status`, data),
+
+  // Analyze a Dockerfile (without creating a full scan)
+  analyzeDockerfile: (data: AnalyzeDockerfileRequest) =>
+    api.post<DockerfileAnalysis>('/container/analyze-dockerfile', data),
+
+  // Analyze K8s manifests (without creating a full scan)
+  analyzeManifest: (data: AnalyzeK8sManifestRequest) =>
+    api.post<K8sManifestAnalysis>('/container/analyze-manifest', data),
+
+  // Get available scan types with descriptions
+  getScanTypes: () =>
+    api.get<ContainerScanTypeInfo[]>('/container/scan-types'),
+};
+
+// ============================================================================
+// Remediation Workflow API
+// ============================================================================
+
+export const workflowAPI = {
+  // Template management
+  templates: {
+    // Get all workflow templates
+    list: () => api.get<WorkflowTemplate[]>('/workflows/templates'),
+
+    // Get a specific template with stages
+    get: (id: string) => api.get<WorkflowTemplateWithStages>(`/workflows/templates/${id}`),
+
+    // Create a new template
+    create: (data: CreateWorkflowTemplateRequest) =>
+      api.post<WorkflowTemplateWithStages>('/workflows/templates', data),
+
+    // Update a template
+    update: (id: string, data: UpdateWorkflowTemplateRequest) =>
+      api.put<WorkflowTemplateWithStages>(`/workflows/templates/${id}`, data),
+
+    // Delete a template
+    delete: (id: string) =>
+      api.delete<{ message: string }>(`/workflows/templates/${id}`),
+  },
+
+  // Workflow instance management
+  instances: {
+    // List all workflow instances
+    list: (params?: { status?: string; vulnerability_id?: string }) => {
+      const queryParams = new URLSearchParams();
+      if (params?.status) queryParams.append('status', params.status);
+      if (params?.vulnerability_id) queryParams.append('vulnerability_id', params.vulnerability_id);
+      const query = queryParams.toString();
+      return api.get<WorkflowInstance[]>(`/workflows/instances${query ? `?${query}` : ''}`);
+    },
+
+    // Get a specific instance with full details
+    get: (id: string) => api.get<WorkflowInstanceDetail>(`/workflows/instances/${id}`),
+
+    // Start a workflow for a vulnerability
+    start: (vulnerabilityId: string, data: StartWorkflowRequest) =>
+      api.post<WorkflowInstance>(`/vulnerabilities/${vulnerabilityId}/workflow`, data),
+
+    // Update a workflow instance (e.g., put on hold)
+    update: (id: string, data: UpdateWorkflowRequest) =>
+      api.put<WorkflowInstance>(`/workflows/instances/${id}`, data),
+
+    // Cancel a workflow
+    cancel: (id: string, comment?: string) =>
+      api.post<WorkflowInstance>(`/workflows/instances/${id}/cancel`, { comment }),
+
+    // Put a workflow on hold
+    hold: (id: string, notes?: string) =>
+      api.post<WorkflowInstance>(`/workflows/instances/${id}/hold`, { notes }),
+
+    // Resume a workflow from hold
+    resume: (id: string) =>
+      api.post<WorkflowInstance>(`/workflows/instances/${id}/resume`),
+  },
+
+  // Stage actions
+  stages: {
+    // Approve the current stage
+    approve: (instanceId: string, data?: ApproveWorkflowRequest) =>
+      api.post<WorkflowInstance>(`/workflows/instances/${instanceId}/approve`, data || {}),
+
+    // Advance to the next stage (for non-approval stages)
+    advance: (instanceId: string, comment?: string) =>
+      api.post<WorkflowInstance>(`/workflows/instances/${instanceId}/advance`, { comment }),
+
+    // Reject the current stage
+    reject: (instanceId: string, data: RejectWorkflowRequest) =>
+      api.post<WorkflowInstance>(`/workflows/instances/${instanceId}/reject`, data),
+  },
+
+  // Dashboard and approvals
+  // Get pending approvals for the current user
+  getPendingApprovals: () => api.get<PendingApproval[]>('/workflows/pending-approvals'),
+
+  // Get workflow statistics
+  getStats: () => api.get<WorkflowStats>('/workflows/stats'),
+
+  // Get workflow for a specific vulnerability
+  getForVulnerability: (vulnerabilityId: string) =>
+    api.get<WorkflowInstanceDetail | null>(`/vulnerabilities/${vulnerabilityId}/workflow`),
+};
+
+// ============================================================================
+// IaC (Infrastructure-as-Code) Security Scanning API
+// ============================================================================
+
+export const iacAPI = {
+  // Create a new IaC scan from uploaded files
+  createScan: (formData: FormData) =>
+    api.post<{ id: string; message: string }>('/iac/scan', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+
+  // List all IaC scans
+  listScans: (params?: { limit?: number; offset?: number; status?: string }) =>
+    api.get<IacScan[]>('/iac/scans', { params }),
+
+  // Get a specific scan with details
+  getScan: (id: string) =>
+    api.get<IacScanDetailResponse>(`/iac/scans/${id}`),
+
+  // Delete an IaC scan
+  deleteScan: (id: string) =>
+    api.delete<{ message: string }>(`/iac/scans/${id}`),
+
+  // Get findings for a scan
+  getFindings: (scanId: string) =>
+    api.get<IacFinding[]>(`/iac/scans/${scanId}/findings`),
+
+  // Get files for a scan
+  getFiles: (scanId: string) =>
+    api.get<IacFile[]>(`/iac/scans/${scanId}/files`),
+
+  // Get a specific file with content
+  getFile: (fileId: string) =>
+    api.get<IacFile>(`/iac/files/${fileId}`),
+
+  // Get findings for a specific file
+  getFileFindings: (fileId: string) =>
+    api.get<IacFinding[]>(`/iac/files/${fileId}/findings`),
+
+  // Update finding status
+  updateFindingStatus: (findingId: string, data: UpdateIacFindingStatusRequest) =>
+    api.patch<{ message: string; status: string }>(`/iac/findings/${findingId}/status`, data),
+
+  // Analyze a file immediately (without creating a scan)
+  analyzeFile: (data: IacAnalyzeFileRequest) =>
+    api.post<IacAnalyzeFileResponse>('/iac/analyze', data),
+
+  // List security rules (builtin + user's custom)
+  listRules: () =>
+    api.get<IacRule[]>('/iac/rules'),
+
+  // Create a custom rule
+  createRule: (data: CreateIacRuleRequest) =>
+    api.post<IacRule>('/iac/rules', data),
+
+  // Update a custom rule
+  updateRule: (id: string, data: UpdateIacRuleRequest) =>
+    api.put<IacRule>(`/iac/rules/${id}`, data),
+
+  // Delete a custom rule
+  deleteRule: (id: string) =>
+    api.delete<{ message: string }>(`/iac/rules/${id}`),
+
+  // Get supported platforms
+  getPlatforms: () =>
+    api.get<IacPlatformInfo[]>('/iac/platforms'),
 };
 
 export default api;

@@ -76,7 +76,7 @@ impl EmailNotifier {
     }
 
     /// Send an email with both HTML and plain text parts
-    async fn send_email(&self, subject: &str, text_body: &str, html_body: &str) -> Result<()> {
+    pub async fn send_email(&self, subject: &str, text_body: &str, html_body: &str) -> Result<()> {
         let email = Message::builder()
             .from(
                 format!("{} <{}>", self.config.from_name, self.config.from_address)

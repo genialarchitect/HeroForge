@@ -671,6 +671,16 @@ pub struct NotificationSettings {
     pub teams_webhook_url: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// Whether to send notifications for workflow actions
+    #[serde(default)]
+    pub notify_on_workflow_action: Option<bool>,
+    /// Whether to send notifications on SLA breaches
+    #[serde(default)]
+    pub notify_on_sla_breach: Option<bool>,
+    /// Notification email (alias for email_address for compatibility)
+    #[sqlx(skip)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub notification_email: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -680,6 +690,8 @@ pub struct UpdateNotificationSettingsRequest {
     pub email_address: Option<String>,
     pub slack_webhook_url: Option<String>,
     pub teams_webhook_url: Option<String>,
+    pub notify_on_workflow_action: Option<bool>,
+    pub notify_on_sla_breach: Option<bool>,
 }
 
 // Refresh Token Models

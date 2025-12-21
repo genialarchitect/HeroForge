@@ -4,7 +4,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useAuthStore } from '../../store/authStore';
 import Button from '../ui/Button';
 import ThemeToggle from '../ui/ThemeToggle';
-import { Shield, LogOut, User, LayoutDashboard, Users, Settings, Server, Globe, Network, ShieldCheck, ClipboardCheck, Building2, BookOpenCheck, BarChart3, Zap, GitCompare } from 'lucide-react';
+import { Shield, LogOut, User, LayoutDashboard, Users, Settings, Server, Globe, Network, ShieldCheck, ClipboardCheck, Building2, BookOpenCheck, BarChart3, Zap, GitCompare, GitBranch, Box, FileCode } from 'lucide-react';
 
 const Header: React.FC = () => {
   const { user, logout } = useAuth();
@@ -108,6 +108,28 @@ const Header: React.FC = () => {
                   API Sec
                 </Link>
                 <Link
+                  to="/container-security"
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
+                    location.pathname.startsWith('/container-security')
+                      ? 'bg-primary/10 text-primary font-medium'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-light-hover dark:hover:bg-dark-hover'
+                  }`}
+                >
+                  <Box className="h-4 w-4" />
+                  Containers
+                </Link>
+                <Link
+                  to="/iac-security"
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
+                    location.pathname.startsWith('/iac-security')
+                      ? 'bg-primary/10 text-primary font-medium'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-light-hover dark:hover:bg-dark-hover'
+                  }`}
+                >
+                  <FileCode className="h-4 w-4" />
+                  IaC
+                </Link>
+                <Link
                   to="/compliance"
                   className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
                     location.pathname === '/compliance'
@@ -150,6 +172,17 @@ const Header: React.FC = () => {
                 >
                   <BarChart3 className="h-4 w-4" />
                   Executive
+                </Link>
+                <Link
+                  to="/workflows"
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
+                    location.pathname.startsWith('/workflows')
+                      ? 'bg-primary/10 text-primary font-medium'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-light-hover dark:hover:bg-dark-hover'
+                  }`}
+                >
+                  <GitBranch className="h-4 w-4" />
+                  Workflows
                 </Link>
                 <Link
                   to="/settings"

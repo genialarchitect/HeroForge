@@ -140,6 +140,10 @@ export interface CreateScanRequest {
   // Exclusions
   exclusion_ids?: string[];
   skip_global_exclusions?: boolean;
+  // Agent-based scanning
+  execution_mode?: 'local' | 'agent' | 'agent_group';
+  agent_id?: string;
+  agent_group_id?: string;
 }
 
 // Tag suggestion for predefined tags
@@ -2765,4 +2769,1175 @@ export interface BulkUpdateSecretsRequest {
 export interface BulkUpdateSecretsResponse {
   updated: number;
   message: string;
+}
+
+// ============================================================================
+// AI Vulnerability Prioritization Types
+// ============================================================================
+
+export type RiskCategory = 'critical' | 'high' | 'medium' | 'low';
+export type AssetCriticality = 'critical' | 'high' | 'medium' | 'low';
+export type NetworkExposure = 'internet_facing' | 'dmz' | 'internal' | 'isolated';
+export type ExploitMaturity = 'active_exploitation' | 'functional' | 'proof_of_concept' | 'unproven';
+export type EffortLevel = 'low' | 'medium' | 'high' | 'very_high';
+export type ImpactLevel = 'low' | 'medium' | 'high' | 'critical';
+
+export interface ScoringWeights {
+  cvss_weight: number;
+  exploit_weight: number;
+  asset_criticality_weight: number;
+  network_exposure_weight: number;
+  attack_path_weight: number;
+  compliance_weight: number;
+  business_context_weight: number;
+}
+
+export interface AIModelConfig {
+  id: string;
+  name: string;
+  description: string | null;
+  weights: ScoringWeights;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FactorScore {
+  factor_name: string;
+  raw_value: number;
+  normalized_value: number;
+  weight: number;
+  contribution: number;
+}
+
+export interface RemediationEffort {
+  estimated_hours: number;
+  effort_level: EffortLevel;
+  impact_level: ImpactLevel;
+  requires_downtime: boolean;
+  requires_testing: boolean;
+}
+
+export interface AIVulnerabilityScore {
+  vulnerability_id: string;
+  effective_risk_score: number;
+  risk_category: RiskCategory;
+  factor_scores: FactorScore[];
+  remediation_priority: number;
+  estimated_effort: RemediationEffort;
+  confidence: number;
+  calculated_at: string;
+}
+
+export interface PrioritizationSummary {
+  total_vulnerabilities: number;
+  critical_count: number;
+  high_count: number;
+  medium_count: number;
+  low_count: number;
+  average_risk_score: number;
+  highest_risk_score: number;
+}
+
+export interface AIPrioritizationResult {
+  scan_id: string;
+  scores: AIVulnerabilityScore[];
+  summary: PrioritizationSummary;
+  calculated_at: string;
+}
+
+export interface PrioritizeRequest {
+  force_recalculate?: boolean;
+}
+
+export interface UpdateAIConfigRequest {
+  name?: string;
+  description?: string;
+  weights?: ScoringWeights;
+}
+
+export interface SubmitAIFeedbackRequest {
+  vulnerability_id: string;
+  priority_appropriate: boolean;
+  priority_adjustment?: number;
+  effort_accurate?: boolean;
+  actual_effort_hours?: number;
+  notes?: string;
+}
+
+// ============================================================================
+// Agent-Based Scanning Types
+// ============================================================================
+
+export type AgentStatus = 'pending' | 'online' | 'busy' | 'offline' | 'disabled';
+
+export type AgentTaskStatus = 'pending' | 'assigned' | 'running' | 'completed' | 'failed' | 'cancelled' | 'timed_out';
+
+export interface ScanAgent {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string | null;
+  token_prefix: string;
+  status: AgentStatus;
+  version: string | null;
+  hostname: string | null;
+  ip_address: string | null;
+  os_info: string | null;
+  capabilities: string | null; // JSON array
+  network_zones: string | null; // JSON array
+  max_concurrent_tasks: number;
+  current_tasks: number;
+  last_heartbeat_at: string | null;
+  last_task_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AgentGroup {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string | null;
+  network_ranges: string | null; // JSON array
+  color: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AgentWithGroups {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string | null;
+  token_prefix: string;
+  status: AgentStatus;
+  version: string | null;
+  hostname: string | null;
+  ip_address: string | null;
+  os_info: string | null;
+  capabilities: string | null;
+  network_zones: string | null;
+  max_concurrent_tasks: number;
+  current_tasks: number;
+  last_heartbeat_at: string | null;
+  last_task_at: string | null;
+  created_at: string;
+  updated_at: string;
+  groups: AgentGroup[];
+}
+
+export interface AgentGroupWithCount extends AgentGroup {
+  agent_count: number;
+}
+
+export interface AgentGroupWithAgents extends AgentGroup {
+  agents: ScanAgent[];
+}
+
+export interface AgentStats {
+  total_agents: number;
+  online_agents: number;
+  busy_agents: number;
+  offline_agents: number;
+  total_tasks_completed: number;
+  total_tasks_failed: number;
+  average_task_duration_secs: number | null;
+}
+
+export interface AgentHeartbeat {
+  id: string;
+  agent_id: string;
+  cpu_usage: number | null;
+  memory_usage: number | null;
+  disk_usage: number | null;
+  active_tasks: number;
+  queued_tasks: number;
+  latency_ms: number | null;
+  created_at: string;
+}
+
+export interface AgentTask {
+  id: string;
+  scan_id: string;
+  agent_id: string | null;
+  group_id: string | null;
+  user_id: string;
+  status: AgentTaskStatus;
+  task_type: string;
+  config: string; // JSON
+  targets: string;
+  priority: number;
+  timeout_seconds: number;
+  retry_count: number;
+  max_retries: number;
+  error_message: string | null;
+  assigned_at: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RegisterAgentRequest {
+  name: string;
+  description?: string;
+  network_zones?: string[];
+  max_concurrent_tasks?: number;
+}
+
+export interface RegisterAgentResponse {
+  id: string;
+  name: string;
+  token: string;
+  token_prefix: string;
+  created_at: string;
+}
+
+export interface UpdateAgentRequest {
+  name?: string;
+  description?: string;
+  network_zones?: string[];
+  max_concurrent_tasks?: number;
+  status?: string;
+}
+
+export interface CreateAgentGroupRequest {
+  name: string;
+  description?: string;
+  network_ranges?: string[];
+  color?: string;
+}
+
+export interface UpdateAgentGroupRequest {
+  name?: string;
+  description?: string;
+  network_ranges?: string[];
+  color?: string;
+}
+
+export interface AssignAgentsToGroupRequest {
+  agent_ids: string[];
+}
+
+// ============================================================================
+// SSO (SAML/OIDC) Types
+// ============================================================================
+
+export type SsoProviderType = 'saml' | 'oidc' | 'okta' | 'azure_ad' | 'google' | 'onelogin' | 'ping' | 'auth0' | 'keycloak' | 'jumpcloud';
+export type SsoProviderStatus = 'active' | 'disabled' | 'incomplete' | 'error';
+
+export interface SsoProviderForLogin {
+  id: string;
+  name: string;
+  display_name: string;
+  provider_type: SsoProviderType;
+  icon: string | null;
+}
+
+export interface SsoProvider {
+  id: string;
+  name: string;
+  display_name: string;
+  provider_type: SsoProviderType;
+  status: SsoProviderStatus;
+  icon: string | null;
+  jit_provisioning: boolean;
+  default_role: string;
+  update_on_login: boolean;
+  created_at: string;
+  updated_at: string;
+  last_used_at: string | null;
+  config?: SamlConfig | OidcConfig;
+  attribute_mappings?: AttributeMapping[];
+  group_mappings?: GroupMapping[];
+}
+
+export interface SamlConfig {
+  type: 'saml';
+  idp_entity_id: string;
+  idp_sso_url: string;
+  idp_slo_url?: string;
+  idp_certificate: string;
+  sp_entity_id?: string;
+  sign_requests: boolean;
+  require_signed_response: boolean;
+  require_signed_assertion: boolean;
+  encrypt_assertions: boolean;
+  name_id_format?: string;
+  acs_binding?: string;
+  force_authn: boolean;
+  authn_context?: string[];
+  allowed_clock_skew: number;
+}
+
+export interface OidcConfig {
+  type: 'oidc';
+  issuer_url: string;
+  client_id: string;
+  client_secret: string;
+  scopes: string[];
+  claims?: string[];
+  use_pkce: boolean;
+  response_type: string;
+  response_mode?: string;
+  token_endpoint_auth_method?: string;
+  authorization_endpoint?: string;
+  token_endpoint?: string;
+  userinfo_endpoint?: string;
+  jwks_uri?: string;
+  end_session_endpoint?: string;
+}
+
+export interface AttributeMapping {
+  source: string;
+  target: string;
+  required: boolean;
+  default_value?: string;
+}
+
+export interface GroupMapping {
+  group: string;
+  role: string;
+  priority: number;
+}
+
+export interface CreateSsoProviderRequest {
+  name: string;
+  display_name: string;
+  provider_type: SsoProviderType;
+  icon?: string;
+  config: SamlConfig | OidcConfig;
+  attribute_mappings?: AttributeMapping[];
+  group_mappings?: GroupMapping[];
+  jit_provisioning?: boolean;
+  default_role?: string;
+  update_on_login?: boolean;
+}
+
+export interface UpdateSsoProviderRequest {
+  display_name?: string;
+  icon?: string;
+  status?: SsoProviderStatus;
+  config?: SamlConfig | OidcConfig;
+  attribute_mappings?: AttributeMapping[];
+  group_mappings?: GroupMapping[];
+  jit_provisioning?: boolean;
+  default_role?: string;
+  update_on_login?: boolean;
+}
+
+export interface SsoMetadata {
+  entity_id: string;
+  metadata_xml?: string;
+  acs_url?: string;
+  slo_url?: string;
+  redirect_uri?: string;
+}
+
+export interface SsoLoginResponse {
+  redirect_url: string;
+  state?: string;
+  request_id?: string;
+}
+
+export interface SsoTestResult {
+  success: boolean;
+  message: string;
+  details?: Record<string, unknown>;
+}
+
+export interface SsoProviderPreset {
+  id: string;
+  name: string;
+  description: string;
+  provider_type: SsoProviderType;
+  icon: string;
+  default_config: SamlConfig | OidcConfig;
+  default_attribute_mappings: AttributeMapping[];
+  setup_instructions: string;
+}
+
+export interface UpdateMappingsRequest {
+  attribute_mappings?: AttributeMapping[];
+  group_mappings?: GroupMapping[];
+}
+
+// ============================================================================
+// CI/CD Integration Types
+// ============================================================================
+
+export type CiCdPlatform = 'github_actions' | 'jenkins' | 'gitlab_ci' | 'azure_devops' | 'bitbucket_pipelines' | 'circleci';
+
+export type CiCdSeverity = 'low' | 'medium' | 'high' | 'critical';
+
+export type CiCdPermission = 'trigger_scans' | 'view_results' | 'download_reports' | 'view_quality_gates';
+
+export interface CiCdTokenPermissions {
+  trigger_scans: boolean;
+  view_results: boolean;
+  download_reports: boolean;
+  view_quality_gates: boolean;
+}
+
+export interface CiCdToken {
+  id: string;
+  user_id: string;
+  name: string;
+  prefix: string;
+  permissions: CiCdTokenPermissions;
+  platform: CiCdPlatform;
+  last_used_at: string | null;
+  expires_at: string | null;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface CreateCiCdTokenRequest {
+  name: string;
+  platform: CiCdPlatform;
+  permissions: CiCdTokenPermissions;
+  expires_at?: string;
+}
+
+export interface CreateCiCdTokenResponse {
+  id: string;
+  name: string;
+  token: string;
+  prefix: string;
+  platform: CiCdPlatform;
+  permissions: CiCdTokenPermissions;
+  created_at: string;
+  expires_at: string | null;
+}
+
+export interface SeverityThreshold {
+  severity: CiCdSeverity;
+  max_count: number;
+}
+
+export interface QualityGate {
+  id: string;
+  user_id: string | null;
+  name: string;
+  description: string | null;
+  is_default: boolean;
+  fail_on_critical: boolean;
+  fail_on_high: boolean;
+  max_critical: number;
+  max_high: number;
+  max_medium: number;
+  max_low: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateQualityGateRequest {
+  name: string;
+  description?: string;
+  is_default?: boolean;
+  fail_on_critical?: boolean;
+  fail_on_high?: boolean;
+  max_critical?: number;
+  max_high?: number;
+  max_medium?: number;
+  max_low?: number;
+}
+
+export interface UpdateQualityGateRequest {
+  name?: string;
+  description?: string;
+  is_default?: boolean;
+  fail_on_critical?: boolean;
+  fail_on_high?: boolean;
+  max_critical?: number;
+  max_high?: number;
+  max_medium?: number;
+  max_low?: number;
+}
+
+export type CiCdRunStatus = 'pending' | 'running' | 'completed' | 'failed';
+
+export interface CiCdRun {
+  id: string;
+  user_id: string;
+  token_id: string;
+  scan_id: string | null;
+  status: CiCdRunStatus;
+  platform: CiCdPlatform;
+  pipeline_id: string | null;
+  pipeline_url: string | null;
+  commit_sha: string | null;
+  branch: string | null;
+  quality_gate_passed: boolean | null;
+  quality_gate_id: string | null;
+  exit_code: number | null;
+  started_at: string;
+  completed_at: string | null;
+  created_at: string;
+}
+
+export interface CiCdScanRequest {
+  targets: string[];
+  name?: string;
+  port_range?: [number, number];
+  quality_gate_id?: string;
+  template_id?: string;
+  commit_sha?: string;
+  branch?: string;
+  pipeline_id?: string;
+  pipeline_url?: string;
+}
+
+export interface QualityGateResult {
+  passed: boolean;
+  gate_name: string;
+  critical_count: number;
+  high_count: number;
+  medium_count: number;
+  low_count: number;
+  critical_exceeded: boolean;
+  high_exceeded: boolean;
+  medium_exceeded: boolean;
+  low_exceeded: boolean;
+  exit_code: number;
+}
+
+export interface PipelineExample {
+  platform: CiCdPlatform;
+  name: string;
+  content: string;
+}
+
+// ============================================================================
+// Container/K8s Security Scanning Types
+// ============================================================================
+
+export type ContainerScanType = 'image' | 'dockerfile' | 'runtime' | 'k8s_manifest' | 'k8s_cluster' | 'comprehensive';
+export type ContainerScanStatus = 'pending' | 'running' | 'completed' | 'failed';
+export type ContainerFindingSeverity = 'critical' | 'high' | 'medium' | 'low' | 'info';
+export type ContainerFindingType =
+  | 'cve'
+  | 'misconfiguration'
+  | 'secret'
+  | 'best_practice'
+  | 'rbac'
+  | 'network_policy'
+  | 'pod_security'
+  | 'resource_limits';
+export type FindingStatus = 'open' | 'resolved' | 'accepted' | 'false_positive';
+export type K8sResourceType =
+  | 'Pod'
+  | 'Deployment'
+  | 'DaemonSet'
+  | 'StatefulSet'
+  | 'ReplicaSet'
+  | 'Service'
+  | 'Ingress'
+  | 'ConfigMap'
+  | 'Secret'
+  | 'Role'
+  | 'ClusterRole'
+  | 'RoleBinding'
+  | 'ClusterRoleBinding'
+  | 'NetworkPolicy'
+  | 'ServiceAccount'
+  | 'Namespace';
+
+export interface ContainerImage {
+  id: string;
+  scan_id: string;
+  image_name: string;
+  image_tag: string;
+  image_digest: string | null;
+  registry: string | null;
+  os: string | null;
+  architecture: string | null;
+  size_bytes: number | null;
+  layer_count: number | null;
+  created_at: string;
+}
+
+export interface K8sResource {
+  id: string;
+  scan_id: string;
+  resource_type: K8sResourceType;
+  name: string;
+  namespace: string | null;
+  api_version: string | null;
+  labels: string | null;
+  annotations: string | null;
+  spec_summary: string | null;
+  created_at: string;
+}
+
+export interface ContainerFinding {
+  id: string;
+  scan_id: string;
+  image_id: string | null;
+  resource_id: string | null;
+  finding_type: ContainerFindingType;
+  severity: ContainerFindingSeverity;
+  title: string;
+  description: string;
+  cve_id: string | null;
+  cvss_score: number | null;
+  package_name: string | null;
+  installed_version: string | null;
+  fixed_version: string | null;
+  file_path: string | null;
+  line_number: number | null;
+  remediation: string | null;
+  references: string | null;
+  status: FindingStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ContainerScanSummary {
+  total_findings: number;
+  critical_count: number;
+  high_count: number;
+  medium_count: number;
+  low_count: number;
+  info_count: number;
+  images_scanned: number;
+  resources_scanned: number;
+  cve_count: number;
+  misconfig_count: number;
+  secret_count: number;
+}
+
+export interface ContainerScan {
+  id: string;
+  user_id: string;
+  name: string;
+  scan_type: ContainerScanType;
+  status: ContainerScanStatus;
+  target: string;
+  registry_url: string | null;
+  k8s_context: string | null;
+  k8s_namespace: string | null;
+  images_scanned: number;
+  resources_scanned: number;
+  finding_count: number;
+  critical_count: number;
+  high_count: number;
+  error_message: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+}
+
+export interface DockerfileIssue {
+  severity: ContainerFindingSeverity;
+  title: string;
+  description: string;
+  line_number: number | null;
+  instruction: string | null;
+  remediation: string;
+  references: string[];
+}
+
+export interface DockerfileAnalysis {
+  dockerfile_path: string | null;
+  base_image: string | null;
+  base_image_tag: string | null;
+  issues: DockerfileIssue[];
+  best_practices_score: number;
+  security_score: number;
+}
+
+export interface K8sManifestIssue {
+  severity: ContainerFindingSeverity;
+  finding_type: ContainerFindingType;
+  resource_type: string;
+  resource_name: string;
+  title: string;
+  description: string;
+  remediation: string;
+  references: string[];
+}
+
+export interface K8sManifestAnalysis {
+  resources_analyzed: number;
+  issues: K8sManifestIssue[];
+  security_score: number;
+  by_resource_type: Record<string, number>;
+}
+
+// Container Scan API Requests
+
+export interface CreateContainerScanRequest {
+  name: string;
+  scan_type: ContainerScanType;
+  target: string;
+  registry_url?: string;
+  registry_username?: string;
+  registry_password?: string;
+  k8s_context?: string;
+  k8s_namespace?: string;
+  demo_mode?: boolean;
+}
+
+export interface AnalyzeDockerfileRequest {
+  content: string;
+  filename?: string;
+}
+
+export interface AnalyzeK8sManifestRequest {
+  content: string;
+  filename?: string;
+}
+
+export interface UpdateContainerFindingStatusRequest {
+  status: FindingStatus;
+}
+
+// Container Scan API Responses
+
+export interface ContainerScanListResponse {
+  scans: ContainerScan[];
+  total: number;
+}
+
+export interface ContainerScanDetailResponse {
+  scan: ContainerScan;
+  summary: ContainerScanSummary;
+}
+
+export interface ContainerScanTypeInfo {
+  id: ContainerScanType;
+  name: string;
+  description: string;
+  requires_registry: boolean;
+  requires_k8s: boolean;
+}
+
+// ============================================================================
+// IaC (Infrastructure-as-Code) Security Scanning Types
+// ============================================================================
+
+export type IacPlatform = 'Terraform' | 'CloudFormation' | 'AzureArm' | 'Kubernetes' | 'Ansible';
+export type IacCloudProvider = 'Aws' | 'Azure' | 'Gcp' | 'Multi' | 'None';
+export type IacScanStatus = 'pending' | 'running' | 'completed' | 'failed';
+export type IacSeverity = 'critical' | 'high' | 'medium' | 'low' | 'info';
+export type IacFindingStatus = 'open' | 'resolved' | 'false_positive' | 'accepted' | 'suppressed';
+export type IacFindingCategory =
+  | 'hardcoded_secret'
+  | 'iam_misconfiguration'
+  | 'public_storage'
+  | 'missing_encryption'
+  | 'missing_logging'
+  | 'network_exposure'
+  | 'missing_tags'
+  | 'deprecated_resource'
+  | 'weak_cryptography'
+  | 'insecure_default'
+  | 'compliance_violation'
+  | 'best_practice';
+
+export interface IacScan {
+  id: string;
+  user_id: string;
+  name: string;
+  source_type: string;
+  source_url: string | null;
+  platforms: IacPlatform[];
+  providers: IacCloudProvider[];
+  status: IacScanStatus;
+  file_count: number;
+  resource_count: number;
+  finding_count: number;
+  critical_count: number;
+  high_count: number;
+  medium_count: number;
+  low_count: number;
+  info_count: number;
+  error_message: string | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  customer_id: string | null;
+  engagement_id: string | null;
+}
+
+export interface IacFile {
+  id: string;
+  scan_id: string;
+  filename: string;
+  path: string;
+  content: string | null;
+  platform: string;
+  provider: string;
+  size_bytes: number;
+  line_count: number;
+  resource_count: number;
+  finding_count: number;
+  created_at: string;
+}
+
+export interface IacFileInfo {
+  id: string;
+  filename: string;
+  path: string;
+  platform: string;
+  provider: string;
+  size_bytes: number;
+  line_count: number;
+  resource_count: number;
+  finding_count: number;
+}
+
+export interface IacFinding {
+  id: string;
+  scan_id: string;
+  file_id: string;
+  rule_id: string;
+  severity: IacSeverity;
+  category: IacFindingCategory;
+  title: string;
+  description: string;
+  resource_type: string | null;
+  resource_name: string | null;
+  line_start: number;
+  line_end: number;
+  code_snippet: string | null;
+  remediation: string;
+  documentation_url: string | null;
+  compliance_mappings: IacComplianceMapping[];
+  status: IacFindingStatus;
+  suppressed: boolean;
+  suppression_reason: string | null;
+  created_at: string;
+}
+
+export interface IacComplianceMapping {
+  framework: string;
+  control_id: string;
+  control_name: string;
+}
+
+export interface IacRule {
+  id: string;
+  name: string;
+  description: string;
+  severity: IacSeverity;
+  category: IacFindingCategory;
+  platforms: IacPlatform[];
+  providers: IacCloudProvider[];
+  resource_types: string[];
+  pattern: string;
+  pattern_type: string;
+  remediation: string;
+  documentation_url: string | null;
+  compliance_mappings: IacComplianceMapping[];
+  is_builtin: boolean;
+  is_enabled: boolean;
+  user_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface IacPlatformInfo {
+  id: string;
+  name: string;
+  description: string;
+  file_extensions: string[];
+  providers: string[];
+}
+
+export interface IacFindingSummary {
+  total: number;
+  critical: number;
+  high: number;
+  medium: number;
+  low: number;
+  info: number;
+  by_category: Record<string, number>;
+}
+
+export interface IacScanDetailResponse {
+  scan: IacScan;
+  files: IacFileInfo[];
+  finding_summary: IacFindingSummary;
+}
+
+export interface IacAnalyzeFileRequest {
+  filename: string;
+  content: string;
+  platform?: string;
+}
+
+export interface IacAnalyzeFileResponse {
+  platform: string;
+  provider: string;
+  findings: IacFindingInfo[];
+  resources: IacResourceInfo[];
+}
+
+export interface IacFindingInfo {
+  id: string;
+  rule_id: string;
+  severity: string;
+  category: string;
+  title: string;
+  description: string;
+  resource_type: string | null;
+  resource_name: string | null;
+  line_start: number;
+  line_end: number;
+  code_snippet: string | null;
+  remediation: string;
+  documentation_url: string | null;
+}
+
+export interface IacResourceInfo {
+  resource_type: string;
+  resource_name: string;
+  line_number: number | null;
+}
+
+export interface CreateIacRuleRequest {
+  name: string;
+  description: string;
+  severity: string;
+  category: string;
+  platforms?: string[];
+  providers?: string[];
+  resource_types?: string[];
+  pattern: string;
+  pattern_type?: string;
+  remediation: string;
+  documentation_url?: string;
+}
+
+export interface UpdateIacRuleRequest {
+  name?: string;
+  description?: string;
+  severity?: string;
+  category?: string;
+  pattern?: string;
+  remediation?: string;
+  is_enabled?: boolean;
+}
+
+export interface UpdateIacFindingStatusRequest {
+  status: string;
+  suppression_reason?: string;
+}
+
+// ============================================================================
+// Remediation Workflow Types
+// ============================================================================
+
+export type WorkflowStatus = 'active' | 'completed' | 'cancelled' | 'on_hold' | 'rejected';
+export type StageStatus = 'pending' | 'active' | 'completed' | 'skipped' | 'rejected';
+export type StageType = 'assignment' | 'work' | 'review' | 'verification' | 'cab_approval' | 'deployment' | 'closure';
+export type TransitionAction = 'started' | 'advanced' | 'approved' | 'rejected' | 'completed' | 'cancelled' | 'on_hold' | 'resumed' | 'sent_back';
+
+export interface WorkflowTemplate {
+  id: string;
+  name: string;
+  description: string | null;
+  is_system: boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  is_active: boolean;
+}
+
+export interface WorkflowStage {
+  id: string;
+  template_id: string;
+  name: string;
+  description: string | null;
+  stage_order: number;
+  stage_type: string;
+  required_approvals: number;
+  approver_role: string | null;
+  approver_user_ids: string | null;
+  sla_hours: number | null;
+  notify_on_enter: boolean;
+  notify_on_sla_breach: boolean;
+  auto_advance_conditions: string | null;
+}
+
+export interface WorkflowInstance {
+  id: string;
+  template_id: string;
+  vulnerability_id: string;
+  current_stage_id: string;
+  status: string;
+  started_by: string;
+  started_at: string;
+  completed_at: string | null;
+  notes: string | null;
+}
+
+export interface WorkflowStageInstance {
+  id: string;
+  instance_id: string;
+  stage_id: string;
+  status: string;
+  entered_at: string;
+  completed_at: string | null;
+  sla_deadline: string | null;
+  sla_breached: boolean;
+  approvals_received: number;
+  notes: string | null;
+}
+
+export interface WorkflowApproval {
+  id: string;
+  stage_instance_id: string;
+  user_id: string;
+  approved: boolean;
+  comment: string | null;
+  created_at: string;
+}
+
+export interface WorkflowTransition {
+  id: string;
+  instance_id: string;
+  from_stage_id: string | null;
+  to_stage_id: string;
+  action: string;
+  performed_by: string;
+  comment: string | null;
+  created_at: string;
+}
+
+export interface WorkflowTemplateWithStages {
+  id: string;
+  name: string;
+  description: string | null;
+  is_system: boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  is_active: boolean;
+  stages: WorkflowStage[];
+}
+
+export interface ApprovalWithUser {
+  id: string;
+  stage_instance_id: string;
+  user_id: string;
+  approved: boolean;
+  comment: string | null;
+  created_at: string;
+  username: string;
+}
+
+export interface StageInstanceWithDetails {
+  id: string;
+  instance_id: string;
+  stage_id: string;
+  status: string;
+  entered_at: string;
+  completed_at: string | null;
+  sla_deadline: string | null;
+  sla_breached: boolean;
+  approvals_received: number;
+  notes: string | null;
+  stage: WorkflowStage;
+  approvals: ApprovalWithUser[];
+}
+
+export interface WorkflowTransitionWithUser {
+  id: string;
+  instance_id: string;
+  from_stage_id: string | null;
+  to_stage_id: string;
+  action: string;
+  performed_by: string;
+  username: string;
+  comment: string | null;
+  created_at: string;
+}
+
+export interface WorkflowInstanceDetail {
+  id: string;
+  template_id: string;
+  vulnerability_id: string;
+  current_stage_id: string;
+  status: string;
+  started_by: string;
+  started_at: string;
+  completed_at: string | null;
+  notes: string | null;
+  template: WorkflowTemplate;
+  current_stage: WorkflowStage;
+  stage_instances: StageInstanceWithDetails[];
+  transitions: WorkflowTransitionWithUser[];
+}
+
+export interface PendingApproval {
+  instance_id: string;
+  stage_instance_id: string;
+  vulnerability_id: string;
+  vulnerability_title: string;
+  severity: string;
+  stage_name: string;
+  stage_type: string;
+  entered_at: string;
+  sla_deadline: string | null;
+  sla_breached: boolean;
+  required_approvals: number;
+  approvals_received: number;
+}
+
+export interface WorkflowStats {
+  active_workflows: number;
+  pending_approvals: number;
+  completed_today: number;
+  sla_breaches: number;
+  avg_completion_hours: number | null;
+}
+
+// Workflow Request Types
+export interface CreateWorkflowStageRequest {
+  name: string;
+  description?: string;
+  stage_type: string;
+  required_approvals: number;
+  approver_role?: string;
+  approver_user_ids?: string[];
+  sla_hours?: number;
+  notify_on_enter?: boolean;
+  notify_on_sla_breach?: boolean;
+  auto_advance_conditions?: Record<string, unknown>;
+}
+
+export interface CreateWorkflowTemplateRequest {
+  name: string;
+  description?: string;
+  stages: CreateWorkflowStageRequest[];
+}
+
+export interface UpdateWorkflowTemplateRequest {
+  name?: string;
+  description?: string;
+  is_active?: boolean;
+  stages?: CreateWorkflowStageRequest[];
+}
+
+export interface StartWorkflowRequest {
+  template_id: string;
+  notes?: string;
+}
+
+export interface ApproveWorkflowRequest {
+  comment?: string;
+}
+
+export interface RejectWorkflowRequest {
+  comment: string;
+  restart_from_stage?: string;
+}
+
+export interface UpdateWorkflowRequest {
+  status?: string;
+  notes?: string;
 }

@@ -17,16 +17,21 @@
 
 // Submodules
 pub mod ad_assessment;
+pub mod agents;
+pub mod ai;
 pub mod analytics;
 pub mod api_security;
 pub mod assets;
 pub mod attack_paths;
 pub mod auth;
+pub mod cicd;
 pub mod cloud;
+pub mod container;
 pub mod credential_audit;
 pub mod crm;
 pub mod exclusions;
 pub mod finding_templates;
+pub mod iac;
 pub mod manual_assessments;
 pub mod methodology;
 pub mod migrations;
@@ -42,6 +47,7 @@ pub mod users;
 pub mod vulnerabilities;
 pub mod vpn;
 pub mod webhooks;
+pub mod workflows;
 
 // Core imports used by this module
 use sqlx::sqlite::SqlitePool;
@@ -194,6 +200,7 @@ pub use users::{
     create_user,
     get_user_by_username,
     get_user_by_id,
+    get_user_by_email,
     update_user_profile,
     update_user_password,
     delete_user,
@@ -351,6 +358,8 @@ pub use auth::{
 
 pub use settings::{
     create_audit_log,
+    log_audit,
+    log_audit_full,
     get_audit_logs,
     get_audit_logs_filtered,
     get_audit_action_types,
@@ -359,6 +368,7 @@ pub use settings::{
     get_setting,
     update_setting,
     get_notification_settings,
+    get_system_notification_settings,
     update_notification_settings,
     create_api_key,
     get_user_api_keys,

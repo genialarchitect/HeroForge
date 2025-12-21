@@ -174,6 +174,7 @@ src/
 | `/manual-assessments` | Manual compliance rubric assessments |
 | `/manual-assessments/:id` | Assessment detail/edit view |
 | `/remediation` | Vulnerability remediation workflow board |
+| `/container-security` | Container and Kubernetes security scanning |
 | `/portal/login` | Customer portal login |
 | `/portal/dashboard` | Customer portal dashboard |
 | `/portal/engagements` | Customer engagement list |
@@ -198,6 +199,7 @@ Full API documentation available via Swagger UI at `/api/docs` (requires running
 - `/api/compliance/*` - Compliance framework analysis, reports, manual rubrics, assessments, campaigns
 - `/api/dns/*` - DNS reconnaissance
 - `/api/webapp/*` - Web application scanning
+- `/api/container/*` - Container and Kubernetes security scanning
 - `/api/integrations/jira/*` - JIRA ticket creation
 - `/api/integrations/siem/*` - SIEM export (Splunk, Elasticsearch, Syslog)
 - `/api/admin/*` - User management, audit logs (admin role required)
@@ -496,7 +498,7 @@ High complexity, significant new capabilities.
 | Feature | Effort | Status | Description |
 |---------|--------|--------|-------------|
 | ~~Credential Audit~~ | 1-2 weeks | **Done** | Password policy checking, breach detection |
-| Container/K8s Scanning | 2 weeks | Planned | Docker and Kubernetes security |
+| ~~Container/K8s Scanning~~ | 2 weeks | **Done** | Docker and Kubernetes security |
 | CI/CD Integration | 1 week | Planned | GitHub Actions, Jenkins plugins |
 | Custom Remediation Workflows | 1-2 weeks | Planned | Configurable approval chains |
 | Terraform/IaC Scanning | 2 weeks | Planned | Infrastructure-as-Code security |
@@ -575,3 +577,4 @@ Track active work here:
 | Secret Detection Scanner | 2 | 2025-12-20 |
 | Scan Profiles/Presets | 2 | 2025-12-20 |
 | Host/Port Exclusions | 2 | 2025-12-20 |
+| Container/K8s Scanning | 3 | 2025-12-20 |

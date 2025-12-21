@@ -4,6 +4,8 @@ use colored::*;
 use log::{error, info};
 use std::time::Duration;
 
+mod agents;
+mod ai;
 mod compliance;
 mod config;
 mod cve;
@@ -22,6 +24,7 @@ mod vpn;
 mod vuln;
 mod web;
 mod webhooks;
+mod workflows;
 
 use types::{OutputFormat, ScanConfig, ScanType};
 
@@ -130,6 +133,22 @@ enum Commands {
         /// Output file path
         #[arg(short, long)]
         output_file: Option<String>,
+
+        /// CI/CD mode: minimal output, exit codes based on severity
+        #[arg(long)]
+        ci: bool,
+
+        /// Fail scan if vulnerabilities at or above this severity are found (for --ci mode)
+        #[arg(long, value_enum, default_value = "high")]
+        fail_on: CliSeverity,
+
+        /// Output results in SARIF format (for GitHub Security)
+        #[arg(long)]
+        output_sarif: Option<String>,
+
+        /// Output results in JUnit XML format (for Jenkins/CI)
+        #[arg(long)]
+        output_junit: Option<String>,
     },
 
     /// Discover live hosts on the network
@@ -221,6 +240,25 @@ impl From<CliEnumDepth> for scanner::enumeration::types::EnumDepth {
     }
 }
 
+#[derive(Clone, Copy, clap::ValueEnum)]
+enum CliSeverity {
+    Low,
+    Medium,
+    High,
+    Critical,
+}
+
+impl From<CliSeverity> for types::Severity {
+    fn from(val: CliSeverity) -> Self {
+        match val {
+            CliSeverity::Low => types::Severity::Low,
+            CliSeverity::Medium => types::Severity::Medium,
+            CliSeverity::High => types::Severity::High,
+            CliSeverity::Critical => types::Severity::Critical,
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() {
     let cli = Cli::parse();
@@ -255,6 +293,10 @@ async fn main() {
             udp_retries,
             skip_discovery,
             output_file,
+            ci,
+            fail_on,
+            output_sarif,
+            output_junit,
         } => {
             let config = build_scan_config(
                 targets,
@@ -273,7 +315,7 @@ async fn main() {
                 skip_discovery,
                 cli.output,
             );
-            run_full_scan(config, output_file).await
+            run_full_scan(config, output_file, ci, fail_on, output_sarif, output_junit).await
         }
         Commands::Discover {
             targets,
@@ -413,6 +455,10 @@ fn parse_port_range(range: &str) -> Result<(u16, u16)> {
 async fn run_full_scan(
     config: ScanConfig,
     output_file: Option<String>,
+    ci_mode: bool,
+    fail_on: CliSeverity,
+    output_sarif: Option<String>,
+    output_junit: Option<String>,
 ) -> Result<()> {
     info!("Starting full network triage scan...");
     info!("Targets: {:?}", config.targets);
@@ -420,7 +466,81 @@ async fn run_full_scan(
 
     let results = scanner::run_scan(&config, None).await?;
 
-    output::display_results(&results, &config.output_format, output_file.as_deref())?;
+    // Display normal output unless in CI mode with report outputs
+    if !ci_mode || (output_sarif.is_none() && output_junit.is_none()) {
+        output::display_results(&results, &config.output_format, output_file.as_deref())?;
+    }
+
+    // Generate SARIF report if requested
+    if let Some(sarif_path) = output_sarif {
+        let sarif = integrations::cicd::github_actions::generate_sarif_report(
+            "cli-scan",
+            &results,
+            "HeroForge CLI Scan",
+        )?;
+        let sarif_json = serde_json::to_string_pretty(&sarif)?;
+        std::fs::write(&sarif_path, sarif_json)?;
+        if !ci_mode {
+            println!("{}", format!("SARIF report saved to: {}", sarif_path).green());
+        }
+    }
+
+    // Generate JUnit report if requested
+    if let Some(junit_path) = output_junit {
+        let junit = integrations::cicd::jenkins::generate_junit_report(
+            "cli-scan",
+            &results,
+            "HeroForge CLI Scan",
+            None,
+        )?;
+        std::fs::write(&junit_path, junit)?;
+        if !ci_mode {
+            println!("{}", format!("JUnit report saved to: {}", junit_path).green());
+        }
+    }
+
+    // In CI mode, check vulnerabilities against threshold and exit with appropriate code
+    if ci_mode {
+        let fail_severity: types::Severity = fail_on.into();
+        let mut should_fail = false;
+        let mut fail_reason = String::new();
+
+        for host in &results {
+            for vuln in &host.vulnerabilities {
+                if vuln.severity >= fail_severity {
+                    should_fail = true;
+                    fail_reason = format!(
+                        "Found {} severity vulnerability: {}",
+                        format!("{:?}", vuln.severity).to_uppercase(),
+                        vuln.title
+                    );
+                    break;
+                }
+            }
+            if should_fail {
+                break;
+            }
+        }
+
+        // Count vulnerabilities for summary
+        let counts = integrations::cicd::count_vulnerabilities(&results);
+
+        // Print CI summary
+        println!("\n{}", "=== CI/CD Scan Summary ===".bright_cyan().bold());
+        println!("  Critical: {}", if counts.critical > 0 { counts.critical.to_string().red() } else { counts.critical.to_string().normal() });
+        println!("  High:     {}", if counts.high > 0 { counts.high.to_string().yellow() } else { counts.high.to_string().normal() });
+        println!("  Medium:   {}", counts.medium);
+        println!("  Low:      {}", counts.low);
+        println!("  Total:    {}", counts.total);
+        println!();
+
+        if should_fail {
+            error!("{}", format!("FAILED: {}", fail_reason).red().bold());
+            std::process::exit(1);
+        } else {
+            println!("{}", "PASSED: No vulnerabilities above threshold".green().bold());
+        }
+    }
 
     Ok(())
 }

@@ -1,12 +1,14 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import { User, Lock, Shield, Key } from 'lucide-react';
 import { toast } from 'react-toastify';
-import { authAPI, mfaAPI } from '../../services/api';
+import { authAPI, mfaAPI, ssoAPI } from '../../services/api';
 import { useAuthStore } from '../../store/authStore';
+import { SsoProviderForLogin } from '../../types';
+import SsoProviderButton from './SsoProviderButton';
 
 const LoginForm: React.FC = () => {
   const [username, setUsername] = useState('');
@@ -17,8 +19,86 @@ const LoginForm: React.FC = () => {
   const [useRecoveryCode, setUseRecoveryCode] = useState(false);
   const { isLoading } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [ssoProviders, setSsoProviders] = useState<SsoProviderForLogin[]>([]);
+  const [ssoLoading, setSsoLoading] = useState(false);
+  const [ssoRedirecting, setSsoRedirecting] = useState<string | null>(null);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { login: setLogin } = useAuthStore();
+
+  // Fetch SSO providers on mount
+  useEffect(() => {
+    const fetchSsoProviders = async () => {
+      try {
+        const response = await ssoAPI.getProvidersForLogin();
+        setSsoProviders(response.data);
+      } catch (error) {
+        // Silently fail - SSO might not be configured
+        console.debug('SSO providers not available:', error);
+      }
+    };
+    fetchSsoProviders();
+  }, []);
+
+  // Handle SSO callback tokens
+  useEffect(() => {
+    const token = searchParams.get('token');
+    const error = searchParams.get('sso_error');
+
+    if (error) {
+      toast.error(decodeURIComponent(error));
+      // Clear the URL params
+      window.history.replaceState({}, document.title, window.location.pathname);
+      return;
+    }
+
+    if (token) {
+      // SSO login successful - validate the token and log in
+      handleSsoCallback(token);
+    }
+  }, [searchParams]);
+
+  const handleSsoCallback = async (token: string) => {
+    try {
+      setSsoLoading(true);
+      // Temporarily set the token in localStorage so the API can use it
+      localStorage.setItem('token', token);
+
+      // Validate the token by fetching user info
+      const response = await authAPI.me();
+      const user = response.data;
+
+      // Store the token and user info in auth store
+      setLogin(user, token);
+      toast.success('SSO login successful!');
+
+      // Clear the URL params and navigate
+      window.history.replaceState({}, document.title, window.location.pathname);
+      navigate('/dashboard');
+    } catch (error: unknown) {
+      // Remove the invalid token
+      localStorage.removeItem('token');
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || 'SSO login failed. Please try again.');
+      // Clear the URL params
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } finally {
+      setSsoLoading(false);
+    }
+  };
+
+  const handleSsoLogin = async (provider: SsoProviderForLogin) => {
+    try {
+      setSsoRedirecting(provider.id);
+      const response = await ssoAPI.initiateLogin(provider.id);
+      // Redirect to the SSO provider
+      window.location.href = response.data.redirect_url;
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      toast.error(axiosError.response?.data?.error || `Failed to initiate ${provider.display_name} login`);
+      setSsoRedirecting(null);
+    }
+  };
 
   const handleInitialLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -160,37 +240,87 @@ const LoginForm: React.FC = () => {
     );
   }
 
+  // Show loading state while processing SSO callback
+  if (ssoLoading) {
+    return (
+      <div className="space-y-4 w-full max-w-md text-center">
+        <div className="inline-flex items-center justify-center w-12 h-12 bg-primary/20 rounded-lg mb-3">
+          <svg className="animate-spin h-6 w-6 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+        </div>
+        <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Completing SSO Login</h3>
+        <p className="text-sm text-slate-500 dark:text-slate-400">
+          Please wait while we verify your credentials...
+        </p>
+      </div>
+    );
+  }
+
   return (
-    <form onSubmit={handleInitialLogin} className="space-y-4 w-full max-w-md">
-      <Input
-        type="text"
-        placeholder="Username"
-        value={username}
-        onChange={(e) => setUsername(e.target.value)}
-        icon={<User className="h-5 w-5" />}
-        required
-        autoComplete="username"
-      />
-      <Input
-        type="password"
-        placeholder="Password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        icon={<Lock className="h-5 w-5" />}
-        required
-        autoComplete="current-password"
-      />
-      <Button
-        type="submit"
-        variant="primary"
-        size="lg"
-        loading={loading || isLoading}
-        disabled={loading || isLoading}
-        className="w-full"
-      >
-        Sign In
-      </Button>
-    </form>
+    <div className="space-y-6 w-full max-w-md">
+      {/* SSO Providers */}
+      {ssoProviders.length > 0 && (
+        <div className="space-y-3">
+          {ssoProviders.map((provider) => (
+            <SsoProviderButton
+              key={provider.id}
+              provider={provider}
+              onClick={handleSsoLogin}
+              loading={ssoRedirecting === provider.id}
+              disabled={ssoRedirecting !== null && ssoRedirecting !== provider.id}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Divider - only show if we have SSO providers */}
+      {ssoProviders.length > 0 && (
+        <div className="relative">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-gray-300 dark:border-gray-600"></div>
+          </div>
+          <div className="relative flex justify-center text-sm">
+            <span className="px-3 bg-light-surface dark:bg-dark-surface text-slate-500 dark:text-slate-400">
+              or sign in with credentials
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Username/Password Form */}
+      <form onSubmit={handleInitialLogin} className="space-y-4">
+        <Input
+          type="text"
+          placeholder="Username"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          icon={<User className="h-5 w-5" />}
+          required
+          autoComplete="username"
+        />
+        <Input
+          type="password"
+          placeholder="Password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          icon={<Lock className="h-5 w-5" />}
+          required
+          autoComplete="current-password"
+        />
+        <Button
+          type="submit"
+          variant="primary"
+          size="lg"
+          loading={loading || isLoading}
+          disabled={loading || isLoading || ssoRedirecting !== null}
+          className="w-full"
+        >
+          Sign In
+        </Button>
+      </form>
+    </div>
   );
 };
 

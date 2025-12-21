@@ -16,11 +16,12 @@ import { ReportGenerator, ReportList } from '../reports';
 import { ComplianceAnalysis } from '../compliance';
 import NetworkMap from '../topology/NetworkMap';
 import SecretFindings from './SecretFindings';
-import { Server, Shield, AlertTriangle, Search, SlidersHorizontal, FileText, ClipboardCheck, List, Network, Database, Tag, Plus, X, Copy, Key } from 'lucide-react';
+import { Server, Shield, AlertTriangle, Search, SlidersHorizontal, FileText, ClipboardCheck, List, Network, Database, Tag, Plus, X, Copy, Key, Brain } from 'lucide-react';
+import { AIPrioritization } from '../ai';
 
 type SortOption = 'ip' | 'risk' | 'vulns' | 'ports';
 type FilterOption = 'all' | 'with-vulns' | 'critical' | 'high';
-type ViewTab = 'results' | 'topology' | 'secrets';
+type ViewTab = 'results' | 'topology' | 'secrets' | 'ai-priority';
 
 const ResultsViewer: React.FC = () => {
   const { activeScan, results } = useScanStore();
@@ -374,6 +375,17 @@ const ResultsViewer: React.FC = () => {
             <Key className="h-4 w-4" />
             Secrets
           </button>
+          <button
+            onClick={() => setActiveTab('ai-priority')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+              activeTab === 'ai-priority'
+                ? 'bg-dark-surface text-primary border-b-2 border-primary'
+                : 'text-slate-400 hover:text-white hover:bg-dark-hover'
+            }`}
+          >
+            <Brain className="h-4 w-4" />
+            AI Priority
+          </button>
         </div>
       </Card>
 
@@ -389,6 +401,12 @@ const ResultsViewer: React.FC = () => {
             Exposed Secrets
           </h3>
           <SecretFindings scanId={activeScan.id} />
+        </Card>
+      )}
+
+      {activeTab === 'ai-priority' && activeScan && (
+        <Card>
+          <AIPrioritization scanId={activeScan.id} />
         </Card>
       )}
 

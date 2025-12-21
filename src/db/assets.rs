@@ -295,6 +295,21 @@ pub async fn get_asset_by_id(
     Ok(asset)
 }
 
+/// Get asset by IP address (for AI prioritization)
+pub async fn get_asset_by_ip(
+    pool: &SqlitePool,
+    ip_address: &str,
+) -> Result<Option<models::Asset>> {
+    let asset = sqlx::query_as::<_, models::Asset>(
+        "SELECT * FROM assets WHERE ip_address = ?1 LIMIT 1",
+    )
+    .bind(ip_address)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(asset)
+}
+
 /// Get asset detail with ports and history
 pub async fn get_asset_detail(
     pool: &SqlitePool,
