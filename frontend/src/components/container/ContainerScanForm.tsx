@@ -278,7 +278,7 @@ export function ContainerScanForm({ onSubmit, isLoading, scanTypes = defaultScan
         <Checkbox
           id="demoMode"
           checked={demoMode}
-          onCheckedChange={(checked) => setDemoMode(checked === true)}
+          onChange={(checked: boolean) => setDemoMode(checked)}
         />
         <div>
           <label htmlFor="demoMode" className="text-sm font-medium text-yellow-400 cursor-pointer">

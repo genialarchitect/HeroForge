@@ -87,9 +87,10 @@ export default function IacScanResults({ scanId, onBack }: IacScanResultsProps) 
       const response = await iacAPI.getScan(scanId);
       return response.data;
     },
-    refetchInterval: (data) => {
+    refetchInterval: (query) => {
       // Poll while running
-      if (data?.scan?.status === 'running' || data?.scan?.status === 'pending') {
+      const status = query.state.data?.scan?.status;
+      if (status === 'running' || status === 'pending') {
         return 3000;
       }
       return false;

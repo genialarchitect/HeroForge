@@ -1,15 +1,148 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useAuthStore } from '../../store/authStore';
 import Button from '../ui/Button';
 import ThemeToggle from '../ui/ThemeToggle';
-import { Shield, LogOut, User, LayoutDashboard, Users, Settings, Server, Globe, Network, ShieldCheck, ClipboardCheck, Building2, BookOpenCheck, BarChart3, Zap, GitCompare, GitBranch, Box, FileCode } from 'lucide-react';
+import {
+  Shield,
+  LogOut,
+  User,
+  LayoutDashboard,
+  Users,
+  Settings,
+  Server,
+  Globe,
+  Network,
+  ShieldCheck,
+  ClipboardCheck,
+  Building2,
+  BookOpenCheck,
+  BarChart3,
+  Zap,
+  GitCompare,
+  GitBranch,
+  Box,
+  FileCode,
+  ChevronDown,
+  Search,
+  FileText,
+} from 'lucide-react';
+
+interface NavItem {
+  to: string;
+  icon: React.ReactNode;
+  label: string;
+  matchPaths?: string[];
+}
+
+interface DropdownMenuProps {
+  label: string;
+  icon: React.ReactNode;
+  items: NavItem[];
+  isActive: boolean;
+}
+
+const DropdownMenu: React.FC<DropdownMenuProps> = ({ label, icon, items, isActive }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const location = useLocation();
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const isItemActive = (item: NavItem) => {
+    if (item.matchPaths) {
+      return item.matchPaths.some(path => location.pathname.startsWith(path));
+    }
+    return location.pathname === item.to || location.pathname.startsWith(item.to);
+  };
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm transition-colors ${
+          isActive
+            ? 'bg-primary/10 text-primary font-medium'
+            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-light-hover dark:hover:bg-dark-hover'
+        }`}
+      >
+        {icon}
+        {label}
+        <ChevronDown className={`h-3 w-3 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+
+      {isOpen && (
+        <div className="absolute left-0 mt-1 w-48 bg-light-surface dark:bg-dark-surface border border-light-border dark:border-dark-border rounded-lg shadow-lg py-1 z-50">
+          {items.map((item) => (
+            <Link
+              key={item.to}
+              to={item.to}
+              onClick={() => setIsOpen(false)}
+              className={`flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
+                isItemActive(item)
+                  ? 'bg-primary/10 text-primary font-medium'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-light-hover dark:hover:bg-dark-hover'
+              }`}
+            >
+              {item.icon}
+              {item.label}
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 const Header: React.FC = () => {
   const { user, logout } = useAuth();
   const isAdmin = useAuthStore((state) => state.isAdmin);
   const location = useLocation();
+
+  // Define navigation categories
+  const scanningItems: NavItem[] = [
+    { to: '/dashboard', icon: <LayoutDashboard className="h-4 w-4" />, label: 'Scans' },
+    { to: '/compare', icon: <GitCompare className="h-4 w-4" />, label: 'Compare' },
+    { to: '/assets', icon: <Server className="h-4 w-4" />, label: 'Assets' },
+    { to: '/webapp-scan', icon: <Globe className="h-4 w-4" />, label: 'Web Scan' },
+    { to: '/dns-tools', icon: <Network className="h-4 w-4" />, label: 'DNS Tools' },
+    { to: '/api-security', icon: <Zap className="h-4 w-4" />, label: 'API Security' },
+    { to: '/container-security', icon: <Box className="h-4 w-4" />, label: 'Containers' },
+    { to: '/iac-security', icon: <FileCode className="h-4 w-4" />, label: 'IaC Security' },
+  ];
+
+  const complianceItems: NavItem[] = [
+    { to: '/compliance', icon: <ShieldCheck className="h-4 w-4" />, label: 'Compliance' },
+    { to: '/manual-assessments', icon: <ClipboardCheck className="h-4 w-4" />, label: 'Assessments' },
+    { to: '/methodology', icon: <BookOpenCheck className="h-4 w-4" />, label: 'Methodology' },
+  ];
+
+  const reportsItems: NavItem[] = [
+    { to: '/executive-dashboard', icon: <BarChart3 className="h-4 w-4" />, label: 'Executive Dashboard' },
+    { to: '/workflows', icon: <GitBranch className="h-4 w-4" />, label: 'Workflows' },
+    { to: '/remediation', icon: <FileText className="h-4 w-4" />, label: 'Remediation' },
+  ];
+
+  // Check if any item in a category is active
+  const isScanningActive = scanningItems.some(
+    item => location.pathname === item.to || location.pathname.startsWith(item.to)
+  );
+  const isComplianceActive = complianceItems.some(
+    item => location.pathname === item.to || location.pathname.startsWith(item.to)
+  );
+  const isReportsActive = reportsItems.some(
+    item => location.pathname === item.to || location.pathname.startsWith(item.to)
+  );
 
   return (
     <header className="bg-light-surface dark:bg-dark-surface border-b border-light-border dark:border-dark-border shadow-lg">
@@ -30,6 +163,7 @@ const Header: React.FC = () => {
             {/* Navigation */}
             {user && (
               <nav className="flex items-center space-x-1">
+                {/* CRM - Standalone */}
                 <Link
                   to="/crm"
                   className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
@@ -41,149 +175,32 @@ const Header: React.FC = () => {
                   <Building2 className="h-4 w-4" />
                   CRM
                 </Link>
-                <Link
-                  to="/dashboard"
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
-                    location.pathname.startsWith('/dashboard')
-                      ? 'bg-primary/10 text-primary font-medium'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-light-hover dark:hover:bg-dark-hover'
-                  }`}
-                >
-                  <LayoutDashboard className="h-4 w-4" />
-                  Scans
-                </Link>
-                <Link
-                  to="/compare"
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
-                    location.pathname === '/compare'
-                      ? 'bg-primary/10 text-primary font-medium'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-light-hover dark:hover:bg-dark-hover'
-                  }`}
-                >
-                  <GitCompare className="h-4 w-4" />
-                  Compare
-                </Link>
-                <Link
-                  to="/assets"
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
-                    location.pathname.startsWith('/assets')
-                      ? 'bg-primary/10 text-primary font-medium'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-light-hover dark:hover:bg-dark-hover'
-                  }`}
-                >
-                  <Server className="h-4 w-4" />
-                  Assets
-                </Link>
-                <Link
-                  to="/webapp-scan"
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
-                    location.pathname.startsWith('/webapp-scan')
-                      ? 'bg-primary/10 text-primary font-medium'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-light-hover dark:hover:bg-dark-hover'
-                  }`}
-                >
-                  <Globe className="h-4 w-4" />
-                  Web Scan
-                </Link>
-                <Link
-                  to="/dns-tools"
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
-                    location.pathname.startsWith('/dns-tools')
-                      ? 'bg-primary/10 text-primary font-medium'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-light-hover dark:hover:bg-dark-hover'
-                  }`}
-                >
-                  <Network className="h-4 w-4" />
-                  DNS Tools
-                </Link>
-                <Link
-                  to="/api-security"
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
-                    location.pathname.startsWith('/api-security')
-                      ? 'bg-primary/10 text-primary font-medium'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-light-hover dark:hover:bg-dark-hover'
-                  }`}
-                >
-                  <Zap className="h-4 w-4" />
-                  API Sec
-                </Link>
-                <Link
-                  to="/container-security"
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
-                    location.pathname.startsWith('/container-security')
-                      ? 'bg-primary/10 text-primary font-medium'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-light-hover dark:hover:bg-dark-hover'
-                  }`}
-                >
-                  <Box className="h-4 w-4" />
-                  Containers
-                </Link>
-                <Link
-                  to="/iac-security"
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
-                    location.pathname.startsWith('/iac-security')
-                      ? 'bg-primary/10 text-primary font-medium'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-light-hover dark:hover:bg-dark-hover'
-                  }`}
-                >
-                  <FileCode className="h-4 w-4" />
-                  IaC
-                </Link>
-                <Link
-                  to="/compliance"
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
-                    location.pathname === '/compliance'
-                      ? 'bg-primary/10 text-primary font-medium'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-light-hover dark:hover:bg-dark-hover'
-                  }`}
-                >
-                  <ShieldCheck className="h-4 w-4" />
-                  Compliance
-                </Link>
-                <Link
-                  to="/manual-assessments"
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
-                    location.pathname.startsWith('/manual-assessments')
-                      ? 'bg-primary/10 text-primary font-medium'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-light-hover dark:hover:bg-dark-hover'
-                  }`}
-                >
-                  <ClipboardCheck className="h-4 w-4" />
-                  Assessments
-                </Link>
-                <Link
-                  to="/methodology"
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
-                    location.pathname.startsWith('/methodology')
-                      ? 'bg-primary/10 text-primary font-medium'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-light-hover dark:hover:bg-dark-hover'
-                  }`}
-                >
-                  <BookOpenCheck className="h-4 w-4" />
-                  Methodology
-                </Link>
-                <Link
-                  to="/executive-dashboard"
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
-                    location.pathname === '/executive-dashboard'
-                      ? 'bg-primary/10 text-primary font-medium'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-light-hover dark:hover:bg-dark-hover'
-                  }`}
-                >
-                  <BarChart3 className="h-4 w-4" />
-                  Executive
-                </Link>
-                <Link
-                  to="/workflows"
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
-                    location.pathname.startsWith('/workflows')
-                      ? 'bg-primary/10 text-primary font-medium'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-light-hover dark:hover:bg-dark-hover'
-                  }`}
-                >
-                  <GitBranch className="h-4 w-4" />
-                  Workflows
-                </Link>
+
+                {/* Scanning Dropdown */}
+                <DropdownMenu
+                  label="Scanning"
+                  icon={<Search className="h-4 w-4" />}
+                  items={scanningItems}
+                  isActive={isScanningActive}
+                />
+
+                {/* Compliance Dropdown */}
+                <DropdownMenu
+                  label="Compliance"
+                  icon={<ShieldCheck className="h-4 w-4" />}
+                  items={complianceItems}
+                  isActive={isComplianceActive}
+                />
+
+                {/* Reports Dropdown */}
+                <DropdownMenu
+                  label="Reports"
+                  icon={<BarChart3 className="h-4 w-4" />}
+                  items={reportsItems}
+                  isActive={isReportsActive}
+                />
+
+                {/* Settings - Standalone */}
                 <Link
                   to="/settings"
                   className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
@@ -195,6 +212,8 @@ const Header: React.FC = () => {
                   <Settings className="h-4 w-4" />
                   Settings
                 </Link>
+
+                {/* Admin - Standalone (conditional) */}
                 {isAdmin() && (
                   <Link
                     to="/admin"
@@ -205,7 +224,7 @@ const Header: React.FC = () => {
                     }`}
                   >
                     <Users className="h-4 w-4" />
-                    Admin Console
+                    Admin
                   </Link>
                 )}
               </nav>

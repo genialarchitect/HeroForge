@@ -395,7 +395,7 @@ function ContactsTab({
               placeholder="First Name *"
               value={newContact.first_name}
               onChange={(e) => setNewContact({ ...newContact, first_name: e.target.value })}
-              className="rounded-md border-gray-300 text-sm"
+              className="rounded-md border-gray-300 text-sm text-gray-900 bg-white"
               required
             />
             <input
@@ -403,7 +403,7 @@ function ContactsTab({
               placeholder="Last Name *"
               value={newContact.last_name}
               onChange={(e) => setNewContact({ ...newContact, last_name: e.target.value })}
-              className="rounded-md border-gray-300 text-sm"
+              className="rounded-md border-gray-300 text-sm text-gray-900 bg-white"
               required
             />
             <input
@@ -411,21 +411,21 @@ function ContactsTab({
               placeholder="Email"
               value={newContact.email || ''}
               onChange={(e) => setNewContact({ ...newContact, email: e.target.value })}
-              className="rounded-md border-gray-300 text-sm"
+              className="rounded-md border-gray-300 text-sm text-gray-900 bg-white"
             />
             <input
               type="tel"
               placeholder="Phone"
               value={newContact.phone || ''}
               onChange={(e) => setNewContact({ ...newContact, phone: e.target.value })}
-              className="rounded-md border-gray-300 text-sm"
+              className="rounded-md border-gray-300 text-sm text-gray-900 bg-white"
             />
             <input
               type="text"
               placeholder="Title"
               value={newContact.title || ''}
               onChange={(e) => setNewContact({ ...newContact, title: e.target.value })}
-              className="rounded-md border-gray-300 text-sm"
+              className="rounded-md border-gray-300 text-sm text-gray-900 bg-white"
             />
             <label className="flex items-center space-x-2">
               <input
@@ -552,14 +552,14 @@ function EngagementsTab({
             placeholder="Engagement Name *"
             value={newEngagement.name}
             onChange={(e) => setNewEngagement({ ...newEngagement, name: e.target.value })}
-            className="w-full rounded-md border-gray-300 text-sm"
+            className="w-full rounded-md border-gray-300 text-sm text-gray-900 bg-white"
             required
           />
           <div className="grid grid-cols-2 gap-3">
             <select
               value={newEngagement.engagement_type}
               onChange={(e) => setNewEngagement({ ...newEngagement, engagement_type: e.target.value as CreateEngagementRequest['engagement_type'] })}
-              className="rounded-md border-gray-300 text-sm"
+              className="rounded-md border-gray-300 text-sm text-gray-900 bg-white"
             >
               <option value="pentest">Penetration Test</option>
               <option value="vuln_assessment">Vulnerability Assessment</option>
@@ -570,7 +570,7 @@ function EngagementsTab({
             <select
               value={newEngagement.status}
               onChange={(e) => setNewEngagement({ ...newEngagement, status: e.target.value as CreateEngagementRequest['status'] })}
-              className="rounded-md border-gray-300 text-sm"
+              className="rounded-md border-gray-300 text-sm text-gray-900 bg-white"
             >
               <option value="planning">Planning</option>
               <option value="in_progress">In Progress</option>
@@ -753,7 +753,7 @@ function CommunicationsTab({
             <select
               value={newComm.comm_type}
               onChange={(e) => setNewComm({ ...newComm, comm_type: e.target.value as CreateCommunicationRequest['comm_type'] })}
-              className="rounded-md border-gray-300 text-sm"
+              className="rounded-md border-gray-300 text-sm text-gray-900 bg-white"
             >
               <option value="note">Note</option>
               <option value="email">Email</option>
@@ -764,7 +764,7 @@ function CommunicationsTab({
               type="date"
               value={newComm.comm_date}
               onChange={(e) => setNewComm({ ...newComm, comm_date: e.target.value })}
-              className="rounded-md border-gray-300 text-sm"
+              className="rounded-md border-gray-300 text-sm text-gray-900 bg-white"
             />
           </div>
           <input
@@ -772,14 +772,14 @@ function CommunicationsTab({
             placeholder="Subject"
             value={newComm.subject || ''}
             onChange={(e) => setNewComm({ ...newComm, subject: e.target.value })}
-            className="w-full rounded-md border-gray-300 text-sm"
+            className="w-full rounded-md border-gray-300 text-sm text-gray-900 bg-white"
           />
           <textarea
             placeholder="Content"
             value={newComm.content || ''}
             onChange={(e) => setNewComm({ ...newComm, content: e.target.value })}
             rows={3}
-            className="w-full rounded-md border-gray-300 text-sm"
+            className="w-full rounded-md border-gray-300 text-sm text-gray-900 bg-white"
           />
           <div className="flex space-x-2">
             <button
@@ -1008,7 +1008,7 @@ function PortalUsersTab({
               placeholder="Email *"
               value={newUser.email}
               onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-              className="rounded-md border-gray-300 text-sm"
+              className="rounded-md border-gray-300 text-sm text-gray-900 bg-white"
               required
             />
             <input
@@ -1016,7 +1016,7 @@ function PortalUsersTab({
               placeholder="Password * (min 8 chars)"
               value={newUser.password}
               onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
-              className="rounded-md border-gray-300 text-sm"
+              className="rounded-md border-gray-300 text-sm text-gray-900 bg-white"
               required
               minLength={8}
             />
@@ -1024,7 +1024,7 @@ function PortalUsersTab({
           <select
             value={newUser.contact_id || ''}
             onChange={(e) => setNewUser({ ...newUser, contact_id: e.target.value || undefined })}
-            className="w-full rounded-md border-gray-300 text-sm"
+            className="w-full rounded-md border-gray-300 text-sm text-gray-900 bg-white"
           >
             <option value="">Link to contact (optional)</option>
             {contacts.map((contact) => (
@@ -1066,7 +1066,7 @@ function PortalUsersTab({
                 placeholder="New Password (min 8 chars)"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                className="w-full rounded-md border-gray-300 text-sm"
+                className="w-full rounded-md border-gray-300 text-sm text-gray-900 bg-white"
                 required
                 minLength={8}
               />

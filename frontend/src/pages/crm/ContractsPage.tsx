@@ -159,13 +159,13 @@ export default function ContractsPage() {
               placeholder="Search contracts..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
+              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 bg-white"
             />
           </div>
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
+            className="px-4 py-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 bg-white"
           >
             <option value="">All Statuses</option>
             <option value="draft">Draft</option>
@@ -177,7 +177,7 @@ export default function ContractsPage() {
           <select
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
+            className="px-4 py-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 bg-white"
           >
             <option value="">All Types</option>
             <option value="msa">MSA</option>
@@ -397,7 +397,7 @@ function CreateContractModal({
                 onChange={(e) =>
                   setFormData({ ...formData, customer_id: e.target.value, engagement_id: undefined })
                 }
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm text-gray-900 bg-white"
                 required
               >
                 <option value="">Select a customer</option>
@@ -415,7 +415,7 @@ function CreateContractModal({
                 type="text"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm text-gray-900 bg-white"
                 placeholder="e.g., Q1 2024 Pentest SOW"
                 required
               />
@@ -429,7 +429,7 @@ function CreateContractModal({
                   onChange={(e) =>
                     setFormData({ ...formData, contract_type: e.target.value as ContractType })
                   }
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm text-gray-900 bg-white"
                 >
                   <option value="msa">MSA - Master Service Agreement</option>
                   <option value="sow">SOW - Statement of Work</option>
@@ -444,7 +444,7 @@ function CreateContractModal({
                   onChange={(e) =>
                     setFormData({ ...formData, status: e.target.value as ContractStatus })
                   }
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm text-gray-900 bg-white"
                 >
                   <option value="draft">Draft</option>
                   <option value="pending_signature">Pending Signature</option>
@@ -465,7 +465,7 @@ function CreateContractModal({
                   onChange={(e) =>
                     setFormData({ ...formData, engagement_id: e.target.value || undefined })
                   }
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm text-gray-900 bg-white"
                 >
                   <option value="">No engagement</option>
                   {customerEngagements.map((engagement) => (
@@ -488,7 +488,7 @@ function CreateContractModal({
                     value: e.target.value ? parseFloat(e.target.value) : undefined,
                   })
                 }
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm text-gray-900 bg-white"
                 placeholder="0.00"
                 step="0.01"
               />
@@ -501,7 +501,7 @@ function CreateContractModal({
                   type="date"
                   value={formData.start_date || ''}
                   onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm text-gray-900 bg-white"
                 />
               </div>
               <div>
@@ -510,7 +510,7 @@ function CreateContractModal({
                   type="date"
                   value={formData.end_date || ''}
                   onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm text-gray-900 bg-white"
                 />
               </div>
             </div>
@@ -521,7 +521,7 @@ function CreateContractModal({
                 value={formData.notes || ''}
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                 rows={3}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm text-gray-900 bg-white"
                 placeholder="Additional contract notes..."
               />
             </div>

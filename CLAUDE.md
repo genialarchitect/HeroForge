@@ -500,7 +500,7 @@ High complexity, significant new capabilities.
 | ~~Credential Audit~~ | 1-2 weeks | **Done** | Password policy checking, breach detection |
 | ~~Container/K8s Scanning~~ | 2 weeks | **Done** | Docker and Kubernetes security |
 | ~~CI/CD Integration~~ | 1 week | **Done** | GitHub Actions, Jenkins, GitLab plugins |
-| Custom Remediation Workflows | 1-2 weeks | Planned | Configurable approval chains |
+| ~~Custom Remediation Workflows~~ | 1-2 weeks | **Done** | Configurable approval chains |
 | ~~Terraform/IaC Scanning~~ | 2 weeks | **Done** | Infrastructure-as-Code security |
 | ~~Cloud Security Posture~~ | 2-3 weeks | **Done** | AWS/Azure/GCP configuration audit |
 | ~~Agent-Based Scanning~~ | 2-3 weeks | **Done** | Lightweight agents for internal networks |
@@ -583,3 +583,4 @@ Track active work here:
 | Agent-Based Scanning | 3 | 2025-12-21 |
 | AI Vulnerability Prioritization | 3 | 2025-12-21 |
 | SAML/SSO Authentication | 3 | 2025-12-21 |
+| Custom Remediation Workflows | 3 | 2025-12-21 |

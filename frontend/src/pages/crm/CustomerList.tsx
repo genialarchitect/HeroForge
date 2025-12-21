@@ -86,13 +86,13 @@ export default function CustomerList() {
             placeholder="Search customers..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
+            className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 bg-white"
           />
         </div>
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="px-4 py-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
+          className="px-4 py-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 bg-white"
         >
           <option value="">All Statuses</option>
           <option value="active">Active</option>
@@ -258,7 +258,7 @@ function CreateCustomerModal({ onClose, onCreated }: CreateCustomerModalProps) {
                 type="text"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm text-gray-900 bg-white"
                 required
               />
             </div>
@@ -270,7 +270,7 @@ function CreateCustomerModal({ onClose, onCreated }: CreateCustomerModalProps) {
                   type="text"
                   value={formData.industry || ''}
                   onChange={(e) => setFormData({ ...formData, industry: e.target.value })}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm text-gray-900 bg-white"
                 />
               </div>
               <div>
@@ -278,7 +278,7 @@ function CreateCustomerModal({ onClose, onCreated }: CreateCustomerModalProps) {
                 <select
                   value={formData.company_size || ''}
                   onChange={(e) => setFormData({ ...formData, company_size: e.target.value as 'small' | 'medium' | 'enterprise' | undefined })}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm text-gray-900 bg-white"
                 >
                   <option value="">Select size</option>
                   <option value="small">Small</option>
@@ -294,7 +294,7 @@ function CreateCustomerModal({ onClose, onCreated }: CreateCustomerModalProps) {
                 type="url"
                 value={formData.website || ''}
                 onChange={(e) => setFormData({ ...formData, website: e.target.value })}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm text-gray-900 bg-white"
                 placeholder="https://"
               />
             </div>
@@ -304,7 +304,7 @@ function CreateCustomerModal({ onClose, onCreated }: CreateCustomerModalProps) {
               <select
                 value={formData.status || 'prospect'}
                 onChange={(e) => setFormData({ ...formData, status: e.target.value as CustomerStatus })}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm text-gray-900 bg-white"
               >
                 <option value="prospect">Prospect</option>
                 <option value="active">Active</option>
@@ -318,7 +318,7 @@ function CreateCustomerModal({ onClose, onCreated }: CreateCustomerModalProps) {
                 value={formData.notes || ''}
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                 rows={3}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm text-gray-900 bg-white"
               />
             </div>
 
