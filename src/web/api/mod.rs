@@ -50,6 +50,7 @@ pub mod webapp;
 pub mod webhooks;
 pub mod workflows;
 pub mod evidence;
+pub mod exploitation;
 
 #[cfg(test)]
 mod tests;

@@ -9,6 +9,7 @@ pub mod container;
 pub mod credential_audit;
 pub mod dns_recon;
 pub mod enumeration;
+pub mod exploitation;
 pub mod host_discovery;
 pub mod iac;
 pub mod os_fingerprint;

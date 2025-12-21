@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Activity,
@@ -30,7 +30,6 @@ import {
 import { toast } from 'react-toastify';
 import { Layout } from '../components/layout/Layout';
 import { Button } from '../components/ui/Button';
-import { Badge } from '../components/ui/Badge';
 import { siemFullAPI } from '../services/api';
 import type {
   SiemLogSource,
@@ -86,12 +85,12 @@ const Modal: React.FC<{
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
-      <div className="relative bg-dark-surface border border-dark-border rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-4 border-b border-dark-border">
+      <div className="relative bg-gray-800 border border-gray-700 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between p-4 border-b border-gray-700">
           <h2 className="text-lg font-semibold text-white">{title}</h2>
           <button
             onClick={onClose}
-            className="p-1 rounded-lg hover:bg-dark-hover text-gray-400 hover:text-white"
+            className="p-1 rounded-lg hover:bg-gray-700 text-gray-400 hover:text-white"
           >
             <X className="w-5 h-5" />
           </button>
@@ -148,7 +147,7 @@ const LogSourceForm: React.FC<{
             required
             value={formData.name}
             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-            className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-white focus:ring-2 focus:ring-primary focus:border-primary"
+            className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
             placeholder="e.g., Firewall Logs"
           />
         </div>
@@ -157,7 +156,7 @@ const LogSourceForm: React.FC<{
           <select
             value={formData.source_type}
             onChange={(e) => setFormData({ ...formData, source_type: e.target.value })}
-            className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-white focus:ring-2 focus:ring-primary focus:border-primary"
+            className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
           >
             <option value="syslog">Syslog</option>
             <option value="windows">Windows Event</option>
@@ -177,7 +176,7 @@ const LogSourceForm: React.FC<{
         <textarea
           value={formData.description}
           onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-          className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-white focus:ring-2 focus:ring-primary focus:border-primary"
+          className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
           rows={2}
           placeholder="Optional description of the log source"
         />
@@ -190,7 +189,7 @@ const LogSourceForm: React.FC<{
             type="text"
             value={formData.host}
             onChange={(e) => setFormData({ ...formData, host: e.target.value })}
-            className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-white focus:ring-2 focus:ring-primary focus:border-primary"
+            className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
             placeholder="e.g., 192.168.1.1"
           />
         </div>
@@ -199,7 +198,7 @@ const LogSourceForm: React.FC<{
           <select
             value={formData.protocol}
             onChange={(e) => setFormData({ ...formData, protocol: e.target.value })}
-            className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-white focus:ring-2 focus:ring-primary focus:border-primary"
+            className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
           >
             <option value="udp">UDP</option>
             <option value="tcp">TCP</option>
@@ -214,7 +213,7 @@ const LogSourceForm: React.FC<{
             type="number"
             value={formData.port}
             onChange={(e) => setFormData({ ...formData, port: e.target.value })}
-            className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-white focus:ring-2 focus:ring-primary focus:border-primary"
+            className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
             placeholder="514"
           />
         </div>
@@ -226,7 +225,7 @@ const LogSourceForm: React.FC<{
           <select
             value={formData.format}
             onChange={(e) => setFormData({ ...formData, format: e.target.value })}
-            className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-white focus:ring-2 focus:ring-primary focus:border-primary"
+            className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
           >
             <option value="syslog_rfc5424">Syslog RFC5424</option>
             <option value="syslog_rfc3164">Syslog RFC3164 (BSD)</option>
@@ -243,7 +242,7 @@ const LogSourceForm: React.FC<{
             type="number"
             value={formData.retention_days}
             onChange={(e) => setFormData({ ...formData, retention_days: e.target.value })}
-            className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-white focus:ring-2 focus:ring-primary focus:border-primary"
+            className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
             placeholder="90"
           />
         </div>
@@ -255,7 +254,7 @@ const LogSourceForm: React.FC<{
           type="text"
           value={formData.tags}
           onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
-          className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-white focus:ring-2 focus:ring-primary focus:border-primary"
+          className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
           placeholder="network, production, firewall"
         />
       </div>
@@ -266,14 +265,14 @@ const LogSourceForm: React.FC<{
           id="auto_enrich"
           checked={formData.auto_enrich}
           onChange={(e) => setFormData({ ...formData, auto_enrich: e.target.checked })}
-          className="w-4 h-4 rounded border-dark-border bg-dark-bg text-primary focus:ring-primary"
+          className="w-4 h-4 rounded border-gray-700 bg-gray-900 text-cyan-500 focus:ring-cyan-500"
         />
         <label htmlFor="auto_enrich" className="text-sm text-gray-300">
           Enable automatic enrichment (GeoIP, threat intelligence, etc.)
         </label>
       </div>
 
-      <div className="flex justify-end gap-3 pt-4 border-t border-dark-border">
+      <div className="flex justify-end gap-3 pt-4 border-t border-gray-700">
         <Button type="button" variant="ghost" onClick={onCancel} disabled={isLoading}>
           Cancel
         </Button>
@@ -351,7 +350,7 @@ const RuleForm: React.FC<{
             required
             value={formData.name}
             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-            className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-white focus:ring-2 focus:ring-primary focus:border-primary"
+            className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
             placeholder="e.g., Brute Force Detection"
           />
         </div>
@@ -360,7 +359,7 @@ const RuleForm: React.FC<{
           <select
             value={formData.rule_type}
             onChange={(e) => setFormData({ ...formData, rule_type: e.target.value })}
-            className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-white focus:ring-2 focus:ring-primary focus:border-primary"
+            className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
           >
             <option value="pattern">Pattern Match</option>
             <option value="regex">Regular Expression</option>
@@ -378,7 +377,7 @@ const RuleForm: React.FC<{
         <textarea
           value={formData.description}
           onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-          className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-white focus:ring-2 focus:ring-primary focus:border-primary"
+          className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
           rows={2}
           placeholder="What does this rule detect?"
         />
@@ -390,7 +389,7 @@ const RuleForm: React.FC<{
           <select
             value={formData.severity}
             onChange={(e) => setFormData({ ...formData, severity: e.target.value })}
-            className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-white focus:ring-2 focus:ring-primary focus:border-primary"
+            className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
           >
             <option value="debug">Debug</option>
             <option value="info">Info</option>
@@ -407,7 +406,7 @@ const RuleForm: React.FC<{
           <select
             value={formData.status}
             onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-            className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-white focus:ring-2 focus:ring-primary focus:border-primary"
+            className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
           >
             <option value="disabled">Disabled</option>
             <option value="testing">Testing</option>
@@ -421,7 +420,7 @@ const RuleForm: React.FC<{
         <textarea
           value={formData.definition}
           onChange={(e) => setFormData({ ...formData, definition: e.target.value })}
-          className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-white font-mono text-sm focus:ring-2 focus:ring-primary focus:border-primary"
+          className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white font-mono text-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
           rows={6}
           placeholder='{"pattern": "failed login", "field": "message"}'
         />
@@ -430,7 +429,7 @@ const RuleForm: React.FC<{
       {logSources && logSources.length > 0 && (
         <div>
           <label className="block text-sm font-medium text-gray-300 mb-1">Apply to Log Sources</label>
-          <div className="flex flex-wrap gap-2 p-3 bg-dark-bg border border-dark-border rounded-lg max-h-32 overflow-y-auto">
+          <div className="flex flex-wrap gap-2 p-3 bg-gray-900 border border-gray-700 rounded-lg max-h-32 overflow-y-auto">
             {logSources.map((source) => (
               <label key={source.id} className="flex items-center gap-2 text-sm text-gray-300">
                 <input
@@ -443,7 +442,7 @@ const RuleForm: React.FC<{
                       setFormData({ ...formData, source_ids: formData.source_ids.filter((id) => id !== source.id) });
                     }
                   }}
-                  className="w-4 h-4 rounded border-dark-border bg-dark-bg text-primary focus:ring-primary"
+                  className="w-4 h-4 rounded border-gray-700 bg-gray-900 text-cyan-500 focus:ring-cyan-500"
                 />
                 {source.name}
               </label>
@@ -459,7 +458,7 @@ const RuleForm: React.FC<{
             type="number"
             value={formData.time_window_seconds}
             onChange={(e) => setFormData({ ...formData, time_window_seconds: e.target.value })}
-            className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-white focus:ring-2 focus:ring-primary focus:border-primary"
+            className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
             placeholder="300"
           />
         </div>
@@ -469,7 +468,7 @@ const RuleForm: React.FC<{
             type="number"
             value={formData.threshold_count}
             onChange={(e) => setFormData({ ...formData, threshold_count: e.target.value })}
-            className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-white focus:ring-2 focus:ring-primary focus:border-primary"
+            className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
             placeholder="5"
           />
         </div>
@@ -482,7 +481,7 @@ const RuleForm: React.FC<{
             type="text"
             value={formData.mitre_tactics}
             onChange={(e) => setFormData({ ...formData, mitre_tactics: e.target.value })}
-            className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-white focus:ring-2 focus:ring-primary focus:border-primary"
+            className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
             placeholder="TA0001, TA0002"
           />
         </div>
@@ -492,13 +491,13 @@ const RuleForm: React.FC<{
             type="text"
             value={formData.tags}
             onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
-            className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-white focus:ring-2 focus:ring-primary focus:border-primary"
+            className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
             placeholder="brute-force, authentication"
           />
         </div>
       </div>
 
-      <div className="flex justify-end gap-3 pt-4 border-t border-dark-border">
+      <div className="flex justify-end gap-3 pt-4 border-t border-gray-700">
         <Button type="button" variant="ghost" onClick={onCancel} disabled={isLoading}>
           Cancel
         </Button>
@@ -531,10 +530,16 @@ export default function SiemPage() {
   const queryClient = useQueryClient();
 
   // Fetch SIEM stats
-  const { data: stats, isLoading: statsLoading } = useQuery({
+  const { data: stats, isLoading: statsLoading, isError: statsError } = useQuery({
     queryKey: ['siemStats'],
-    queryFn: () => siemFullAPI.getStats().then((res) => res.data),
-    refetchInterval: 30000, // Refresh every 30 seconds
+    queryFn: async () => {
+      console.log('Fetching SIEM stats...');
+      const res = await siemFullAPI.getStats();
+      console.log('SIEM stats response:', res.data);
+      return res.data;
+    },
+    refetchInterval: 30000,
+    retry: 1,
   });
 
   // Fetch log sources
@@ -671,18 +676,18 @@ export default function SiemPage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-3">
-              <Activity className="w-8 h-8 text-primary" />
+            <h1 className="text-2xl font-bold text-white flex items-center gap-3">
+              <Activity className="w-8 h-8 text-cyan-500" />
               SIEM Dashboard
             </h1>
-            <p className="text-slate-600 dark:text-gray-400 mt-1">
+            <p className="text-gray-400 mt-1">
               Security Information and Event Management - Log collection, detection, and alerting
             </p>
           </div>
         </div>
 
         {/* Tabs */}
-        <div className="border-b border-light-border dark:border-dark-border">
+        <div className="border-b border-gray-700">
           <nav className="flex gap-4">
             {tabs.map((tab) => (
               <button
@@ -690,8 +695,8 @@ export default function SiemPage() {
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
                   activeTab === tab.id
-                    ? 'border-primary text-primary'
-                    : 'border-transparent text-slate-600 dark:text-gray-400 hover:text-slate-900 dark:hover:text-gray-200'
+                    ? 'border-cyan-500 text-cyan-500'
+                    : 'border-transparent text-gray-400 hover:text-gray-200'
                 }`}
               >
                 {tab.icon}
@@ -713,59 +718,69 @@ export default function SiemPage() {
             <div className="space-y-6">
               {statsLoading ? (
                 <div className="flex items-center justify-center p-12">
-                  <RefreshCw className="w-8 h-8 text-primary animate-spin" />
+                  <RefreshCw className="w-8 h-8 text-cyan-500 animate-spin" />
+                </div>
+              ) : statsError ? (
+                <div className="text-center py-12 bg-gray-800 border border-gray-700 rounded-lg">
+                  <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold text-gray-300 mb-2">Failed to load SIEM statistics</h3>
+                  <p className="text-gray-400 mb-4">There was an error fetching the data. Please try again.</p>
+                  <Button onClick={() => queryClient.invalidateQueries({ queryKey: ['siemStats'] })}>
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Retry
+                  </Button>
                 </div>
               ) : stats ? (
                 <>
                   {/* Stats Cards */}
-                  <div className="grid grid-cols-4 gap-4">
-                    <div className="bg-light-surface dark:bg-dark-surface border border-light-border dark:border-dark-border rounded-lg p-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
                       <div className="flex items-center gap-3">
                         <div className="p-3 bg-blue-500/20 rounded-lg">
                           <Server className="w-6 h-6 text-blue-400" />
                         </div>
                         <div>
-                          <p className="text-sm text-slate-600 dark:text-gray-400">Log Sources</p>
-                          <p className="text-2xl font-bold text-slate-900 dark:text-white">{stats.total_sources}</p>
+                          <p className="text-sm text-gray-400">Log Sources</p>
+                          <p className="text-2xl font-bold text-white">{stats.total_sources}</p>
                           <p className="text-xs text-green-400">{stats.active_sources} active</p>
                         </div>
                       </div>
                     </div>
 
-                    <div className="bg-light-surface dark:bg-dark-surface border border-light-border dark:border-dark-border rounded-lg p-4">
+                    <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
                       <div className="flex items-center gap-3">
                         <div className="p-3 bg-purple-500/20 rounded-lg">
                           <Database className="w-6 h-6 text-purple-400" />
                         </div>
                         <div>
-                          <p className="text-sm text-slate-600 dark:text-gray-400">Logs Today</p>
-                          <p className="text-2xl font-bold text-slate-900 dark:text-white">{formatNumber(stats.total_logs_today)}</p>
-                          <p className="text-xs text-slate-500 dark:text-gray-500">{stats.ingestion_rate.toFixed(1)}/sec</p>
+                          <p className="text-sm text-gray-400">Logs Today</p>
+                          <p className="text-2xl font-bold text-white">{formatNumber(stats.total_logs_today)}</p>
+                          <p className="text-xs text-gray-500">{stats.ingestion_rate.toFixed(1)}/sec</p>
                         </div>
                       </div>
                     </div>
 
-                    <div className="bg-light-surface dark:bg-dark-surface border border-light-border dark:border-dark-border rounded-lg p-4">
+                    <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
                       <div className="flex items-center gap-3">
                         <div className="p-3 bg-cyan-500/20 rounded-lg">
                           <Shield className="w-6 h-6 text-cyan-400" />
                         </div>
                         <div>
-                          <p className="text-sm text-slate-600 dark:text-gray-400">Detection Rules</p>
-                          <p className="text-2xl font-bold text-slate-900 dark:text-white">{stats.total_rules}</p>
+                          <p className="text-sm text-gray-400">Detection Rules</p>
+                          <p className="text-2xl font-bold text-white">{stats.total_rules}</p>
                           <p className="text-xs text-green-400">{stats.enabled_rules} enabled</p>
                         </div>
                       </div>
                     </div>
 
-                    <div className="bg-light-surface dark:bg-dark-surface border border-light-border dark:border-dark-border rounded-lg p-4">
+                    <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
                       <div className="flex items-center gap-3">
                         <div className="p-3 bg-red-500/20 rounded-lg">
                           <Bell className="w-6 h-6 text-red-400" />
                         </div>
                         <div>
-                          <p className="text-sm text-slate-600 dark:text-gray-400">Open Alerts</p>
-                          <p className="text-2xl font-bold text-slate-900 dark:text-white">{stats.open_alerts}</p>
+                          <p className="text-sm text-gray-400">Open Alerts</p>
+                          <p className="text-2xl font-bold text-white">{stats.open_alerts}</p>
                           <p className="text-xs text-red-400">{stats.critical_alerts} critical</p>
                         </div>
                       </div>
@@ -773,10 +788,10 @@ export default function SiemPage() {
                   </div>
 
                   {/* Charts Row */}
-                  <div className="grid grid-cols-2 gap-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {/* Alerts by Status */}
-                    <div className="bg-light-surface dark:bg-dark-surface border border-light-border dark:border-dark-border rounded-lg p-4">
-                      <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Alerts by Status</h3>
+                    <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+                      <h3 className="text-lg font-semibold text-white mb-4">Alerts by Status</h3>
                       <div className="space-y-3">
                         {stats.alerts_by_status.map((item) => (
                           <div key={item.status} className="flex items-center justify-between">
@@ -785,18 +800,18 @@ export default function SiemPage() {
                                 {item.status.replace('_', ' ')}
                               </span>
                             </div>
-                            <span className="text-slate-600 dark:text-gray-400">{item.count}</span>
+                            <span className="text-gray-400">{item.count}</span>
                           </div>
                         ))}
                         {stats.alerts_by_status.length === 0 && (
-                          <p className="text-slate-500 dark:text-gray-500 text-sm">No alerts yet</p>
+                          <p className="text-gray-500 text-sm">No alerts yet</p>
                         )}
                       </div>
                     </div>
 
                     {/* Alerts by Severity */}
-                    <div className="bg-light-surface dark:bg-dark-surface border border-light-border dark:border-dark-border rounded-lg p-4">
-                      <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Alerts by Severity</h3>
+                    <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+                      <h3 className="text-lg font-semibold text-white mb-4">Alerts by Severity</h3>
                       <div className="space-y-3">
                         {stats.alerts_by_severity.map((item) => (
                           <div key={item.severity} className="flex items-center justify-between">
@@ -805,42 +820,42 @@ export default function SiemPage() {
                                 {item.severity}
                               </span>
                             </div>
-                            <span className="text-slate-600 dark:text-gray-400">{item.count}</span>
+                            <span className="text-gray-400">{item.count}</span>
                           </div>
                         ))}
                         {stats.alerts_by_severity.length === 0 && (
-                          <p className="text-slate-500 dark:text-gray-500 text-sm">No alerts yet</p>
+                          <p className="text-gray-500 text-sm">No alerts yet</p>
                         )}
                       </div>
                     </div>
                   </div>
 
                   {/* Top Log Sources */}
-                  <div className="bg-light-surface dark:bg-dark-surface border border-light-border dark:border-dark-border rounded-lg p-4">
-                    <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Top Log Sources</h3>
+                  <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+                    <h3 className="text-lg font-semibold text-white mb-4">Top Log Sources</h3>
                     <div className="space-y-3">
                       {stats.top_sources.map((source) => (
-                        <div key={source.id} className="flex items-center justify-between p-3 bg-light-bg dark:bg-dark-bg rounded-lg">
+                        <div key={source.id} className="flex items-center justify-between p-3 bg-gray-900 rounded-lg">
                           <div className="flex items-center gap-3">
-                            <Server className="w-5 h-5 text-slate-400 dark:text-gray-500" />
-                            <span className="text-slate-700 dark:text-gray-300">{source.name}</span>
+                            <Server className="w-5 h-5 text-gray-500" />
+                            <span className="text-gray-300">{source.name}</span>
                           </div>
                           <div className="text-right">
-                            <p className="text-slate-900 dark:text-white font-medium">{formatNumber(source.log_count)} logs</p>
-                            <p className="text-xs text-slate-500 dark:text-gray-500">{source.logs_per_hour}/hr</p>
+                            <p className="text-white font-medium">{formatNumber(source.log_count)} logs</p>
+                            <p className="text-xs text-gray-500">{source.logs_per_hour}/hr</p>
                           </div>
                         </div>
                       ))}
                       {stats.top_sources.length === 0 && (
-                        <p className="text-slate-500 dark:text-gray-500 text-sm text-center py-4">No log sources configured yet</p>
+                        <p className="text-gray-500 text-sm text-center py-4">No log sources configured yet</p>
                       )}
                     </div>
                   </div>
                 </>
               ) : (
                 <div className="text-center py-12">
-                  <AlertCircle className="w-16 h-16 text-slate-400 dark:text-gray-600 mx-auto mb-4" />
-                  <p className="text-slate-600 dark:text-gray-400">Failed to load statistics</p>
+                  <AlertCircle className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+                  <p className="text-gray-400">Failed to load statistics</p>
                 </div>
               )}
             </div>
@@ -858,49 +873,49 @@ export default function SiemPage() {
 
               {sourcesLoading ? (
                 <div className="flex items-center justify-center p-12">
-                  <RefreshCw className="w-8 h-8 text-primary animate-spin" />
+                  <RefreshCw className="w-8 h-8 text-cyan-500 animate-spin" />
                 </div>
               ) : logSources && logSources.length > 0 ? (
-                <div className="bg-light-surface dark:bg-dark-surface border border-light-border dark:border-dark-border rounded-lg overflow-hidden">
+                <div className="bg-gray-800 border border-gray-700 rounded-lg overflow-hidden">
                   <table className="w-full">
                     <thead>
-                      <tr className="border-b border-light-border dark:border-dark-border">
-                        <th className="text-left p-4 text-sm font-medium text-slate-600 dark:text-gray-400">Name</th>
-                        <th className="text-left p-4 text-sm font-medium text-slate-600 dark:text-gray-400">Type</th>
-                        <th className="text-left p-4 text-sm font-medium text-slate-600 dark:text-gray-400">Host</th>
-                        <th className="text-left p-4 text-sm font-medium text-slate-600 dark:text-gray-400">Status</th>
-                        <th className="text-left p-4 text-sm font-medium text-slate-600 dark:text-gray-400">Logs</th>
-                        <th className="text-left p-4 text-sm font-medium text-slate-600 dark:text-gray-400">Last Seen</th>
-                        <th className="text-right p-4 text-sm font-medium text-slate-600 dark:text-gray-400">Actions</th>
+                      <tr className="border-b border-gray-700">
+                        <th className="text-left p-4 text-sm font-medium text-gray-400">Name</th>
+                        <th className="text-left p-4 text-sm font-medium text-gray-400">Type</th>
+                        <th className="text-left p-4 text-sm font-medium text-gray-400">Host</th>
+                        <th className="text-left p-4 text-sm font-medium text-gray-400">Status</th>
+                        <th className="text-left p-4 text-sm font-medium text-gray-400">Logs</th>
+                        <th className="text-left p-4 text-sm font-medium text-gray-400">Last Seen</th>
+                        <th className="text-right p-4 text-sm font-medium text-gray-400">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
                       {logSources.map((source) => (
-                        <tr key={source.id} className="border-b border-light-border dark:border-dark-border hover:bg-light-hover dark:hover:bg-dark-hover">
+                        <tr key={source.id} className="border-b border-gray-700 hover:bg-gray-700/50">
                           <td className="p-4">
                             <div>
-                              <p className="font-medium text-slate-900 dark:text-white">{source.name}</p>
+                              <p className="font-medium text-white">{source.name}</p>
                               {source.description && (
-                                <p className="text-xs text-slate-500 dark:text-gray-500 truncate max-w-xs">{source.description}</p>
+                                <p className="text-xs text-gray-500 truncate max-w-xs">{source.description}</p>
                               )}
                             </div>
                           </td>
-                          <td className="p-4 text-slate-600 dark:text-gray-400">{source.source_type}</td>
-                          <td className="p-4 text-slate-600 dark:text-gray-400">{source.host || '-'}</td>
+                          <td className="p-4 text-gray-400">{source.source_type}</td>
+                          <td className="p-4 text-gray-400">{source.host || '-'}</td>
                           <td className="p-4">
                             <span className={`px-2 py-1 rounded text-xs ${statusColors[source.status]?.bg || 'bg-gray-500/20'} ${statusColors[source.status]?.text || 'text-gray-400'}`}>
                               {source.status}
                             </span>
                           </td>
-                          <td className="p-4 text-slate-600 dark:text-gray-400">{formatNumber(source.log_count)}</td>
-                          <td className="p-4 text-slate-500 dark:text-gray-500 text-sm">
+                          <td className="p-4 text-gray-400">{formatNumber(source.log_count)}</td>
+                          <td className="p-4 text-gray-500 text-sm">
                             {source.last_seen ? new Date(source.last_seen).toLocaleString() : 'Never'}
                           </td>
                           <td className="p-4 text-right">
                             <div className="flex items-center justify-end gap-2">
                               <button
                                 onClick={() => { setEditingSource(source); setShowSourceModal(true); }}
-                                className="p-2 hover:bg-light-hover dark:hover:bg-dark-hover rounded-lg text-slate-500 dark:text-gray-400 hover:text-slate-700 dark:hover:text-white"
+                                className="p-2 hover:bg-gray-700 rounded-lg text-gray-400 hover:text-white"
                               >
                                 <Edit className="w-4 h-4" />
                               </button>
@@ -910,7 +925,7 @@ export default function SiemPage() {
                                     deleteSourceMutation.mutate(source.id);
                                   }
                                 }}
-                                className="p-2 hover:bg-red-500/20 rounded-lg text-slate-500 dark:text-gray-400 hover:text-red-400"
+                                className="p-2 hover:bg-red-500/20 rounded-lg text-gray-400 hover:text-red-400"
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
@@ -922,10 +937,10 @@ export default function SiemPage() {
                   </table>
                 </div>
               ) : (
-                <div className="bg-light-surface dark:bg-dark-surface border border-light-border dark:border-dark-border rounded-lg p-12 text-center">
-                  <Server className="w-16 h-16 text-slate-400 dark:text-gray-600 mx-auto mb-4" />
-                  <h3 className="text-xl font-semibold text-slate-700 dark:text-gray-300 mb-2">No Log Sources Configured</h3>
-                  <p className="text-slate-500 dark:text-gray-400 mb-6">
+                <div className="bg-gray-800 border border-gray-700 rounded-lg p-12 text-center">
+                  <Server className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+                  <h3 className="text-xl font-semibold text-gray-300 mb-2">No Log Sources Configured</h3>
+                  <p className="text-gray-400 mb-6">
                     Add log sources to start collecting and analyzing security events
                   </p>
                   <Button onClick={() => setShowSourceModal(true)}>
@@ -941,24 +956,24 @@ export default function SiemPage() {
           {activeTab === 'logs' && (
             <div className="space-y-4">
               {/* Search Filters */}
-              <div className="bg-light-surface dark:bg-dark-surface border border-light-border dark:border-dark-border rounded-lg p-4">
-                <div className="grid grid-cols-4 gap-4">
+              <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-slate-600 dark:text-gray-400 mb-1">Search</label>
+                    <label className="block text-sm font-medium text-gray-400 mb-1">Search</label>
                     <input
                       type="text"
                       value={logSearchParams.query || ''}
                       onChange={(e) => setLogSearchParams({ ...logSearchParams, query: e.target.value || undefined })}
-                      className="w-full px-3 py-2 bg-light-bg dark:bg-dark-bg border border-light-border dark:border-dark-border rounded-lg text-slate-900 dark:text-white focus:ring-2 focus:ring-primary focus:border-primary"
+                      className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
                       placeholder="Search logs..."
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-600 dark:text-gray-400 mb-1">Min Severity</label>
+                    <label className="block text-sm font-medium text-gray-400 mb-1">Min Severity</label>
                     <select
                       value={logSearchParams.min_severity || ''}
                       onChange={(e) => setLogSearchParams({ ...logSearchParams, min_severity: e.target.value || undefined })}
-                      className="w-full px-3 py-2 bg-light-bg dark:bg-dark-bg border border-light-border dark:border-dark-border rounded-lg text-slate-900 dark:text-white focus:ring-2 focus:ring-primary focus:border-primary"
+                      className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
                     >
                       <option value="">All</option>
                       <option value="debug">Debug+</option>
@@ -969,22 +984,22 @@ export default function SiemPage() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-600 dark:text-gray-400 mb-1">Source IP</label>
+                    <label className="block text-sm font-medium text-gray-400 mb-1">Source IP</label>
                     <input
                       type="text"
                       value={logSearchParams.source_ip || ''}
                       onChange={(e) => setLogSearchParams({ ...logSearchParams, source_ip: e.target.value || undefined })}
-                      className="w-full px-3 py-2 bg-light-bg dark:bg-dark-bg border border-light-border dark:border-dark-border rounded-lg text-slate-900 dark:text-white focus:ring-2 focus:ring-primary focus:border-primary"
+                      className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
                       placeholder="192.168.1.1"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-600 dark:text-gray-400 mb-1">Hostname</label>
+                    <label className="block text-sm font-medium text-gray-400 mb-1">Hostname</label>
                     <input
                       type="text"
                       value={logSearchParams.hostname || ''}
                       onChange={(e) => setLogSearchParams({ ...logSearchParams, hostname: e.target.value || undefined })}
-                      className="w-full px-3 py-2 bg-light-bg dark:bg-dark-bg border border-light-border dark:border-dark-border rounded-lg text-slate-900 dark:text-white focus:ring-2 focus:ring-primary focus:border-primary"
+                      className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
                       placeholder="server01"
                     />
                   </div>
@@ -1003,20 +1018,20 @@ export default function SiemPage() {
               {/* Results */}
               {logsLoading ? (
                 <div className="flex items-center justify-center p-12">
-                  <RefreshCw className="w-8 h-8 text-primary animate-spin" />
+                  <RefreshCw className="w-8 h-8 text-cyan-500 animate-spin" />
                 </div>
               ) : logsData ? (
-                <div className="bg-light-surface dark:bg-dark-surface border border-light-border dark:border-dark-border rounded-lg overflow-hidden">
-                  <div className="p-4 border-b border-light-border dark:border-dark-border flex items-center justify-between">
-                    <p className="text-sm text-slate-600 dark:text-gray-400">
+                <div className="bg-gray-800 border border-gray-700 rounded-lg overflow-hidden">
+                  <div className="p-4 border-b border-gray-700 flex items-center justify-between">
+                    <p className="text-sm text-gray-400">
                       Showing {logsData.entries.length} of {logsData.total_count} logs ({logsData.query_time_ms}ms)
                     </p>
                   </div>
-                  <div className="divide-y divide-light-border dark:divide-dark-border max-h-[600px] overflow-y-auto">
+                  <div className="divide-y divide-gray-700 max-h-[600px] overflow-y-auto">
                     {logsData.entries.map((entry) => (
                       <div
                         key={entry.id}
-                        className="p-3 hover:bg-light-hover dark:hover:bg-dark-hover cursor-pointer"
+                        className="p-3 hover:bg-gray-700/50 cursor-pointer"
                         onClick={() => setSelectedLogEntry(entry)}
                       >
                         <div className="flex items-start gap-3">
@@ -1024,14 +1039,14 @@ export default function SiemPage() {
                             {entry.severity}
                           </span>
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-gray-500 mb-1">
+                            <div className="flex items-center gap-2 text-xs text-gray-500 mb-1">
                               <span>{new Date(entry.timestamp).toLocaleString()}</span>
-                              {entry.hostname && <span className="text-slate-400 dark:text-gray-600">|</span>}
+                              {entry.hostname && <span className="text-gray-600">|</span>}
                               {entry.hostname && <span>{entry.hostname}</span>}
-                              {entry.application && <span className="text-slate-400 dark:text-gray-600">|</span>}
+                              {entry.application && <span className="text-gray-600">|</span>}
                               {entry.application && <span>{entry.application}</span>}
                             </div>
-                            <p className="text-sm text-slate-700 dark:text-gray-300 truncate">{entry.message}</p>
+                            <p className="text-sm text-gray-300 truncate">{entry.message}</p>
                           </div>
                           {entry.alerted && (
                             <Bell className="w-4 h-4 text-red-400 flex-shrink-0" />
@@ -1041,8 +1056,8 @@ export default function SiemPage() {
                     ))}
                     {logsData.entries.length === 0 && (
                       <div className="p-12 text-center">
-                        <Search className="w-12 h-12 text-slate-400 dark:text-gray-600 mx-auto mb-4" />
-                        <p className="text-slate-500 dark:text-gray-400">No logs found matching your criteria</p>
+                        <Search className="w-12 h-12 text-gray-600 mx-auto mb-4" />
+                        <p className="text-gray-400">No logs found matching your criteria</p>
                       </div>
                     )}
                   </div>
@@ -1063,33 +1078,33 @@ export default function SiemPage() {
 
               {rulesLoading ? (
                 <div className="flex items-center justify-center p-12">
-                  <RefreshCw className="w-8 h-8 text-primary animate-spin" />
+                  <RefreshCw className="w-8 h-8 text-cyan-500 animate-spin" />
                 </div>
               ) : rules && rules.length > 0 ? (
                 <div className="space-y-3">
                   {rules.map((rule) => (
                     <div
                       key={rule.id}
-                      className="bg-light-surface dark:bg-dark-surface border border-light-border dark:border-dark-border rounded-lg p-4"
+                      className="bg-gray-800 border border-gray-700 rounded-lg p-4"
                     >
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
                           <div className="flex items-center gap-3 mb-2">
-                            <h3 className="font-medium text-slate-900 dark:text-white">{rule.name}</h3>
+                            <h3 className="font-medium text-white">{rule.name}</h3>
                             <span className={`px-2 py-0.5 rounded text-xs ${statusColors[rule.status]?.bg || 'bg-gray-500/20'} ${statusColors[rule.status]?.text || 'text-gray-400'}`}>
                               {rule.status}
                             </span>
                             <span className={`px-2 py-0.5 rounded text-xs ${severityColors[rule.severity]?.bg || 'bg-gray-500/20'} ${severityColors[rule.severity]?.text || 'text-gray-400'}`}>
                               {rule.severity}
                             </span>
-                            <span className="px-2 py-0.5 rounded text-xs bg-slate-500/20 text-slate-400">
+                            <span className="px-2 py-0.5 rounded text-xs bg-gray-600/20 text-gray-400">
                               {rule.rule_type}
                             </span>
                           </div>
                           {rule.description && (
-                            <p className="text-sm text-slate-500 dark:text-gray-400 mb-2">{rule.description}</p>
+                            <p className="text-sm text-gray-400 mb-2">{rule.description}</p>
                           )}
-                          <div className="flex items-center gap-4 text-xs text-slate-500 dark:text-gray-500">
+                          <div className="flex items-center gap-4 text-xs text-gray-500">
                             <span>Triggered: {rule.trigger_count} times</span>
                             {rule.last_triggered && (
                               <span>Last: {new Date(rule.last_triggered).toLocaleString()}</span>
@@ -1102,7 +1117,7 @@ export default function SiemPage() {
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => { setEditingRule(rule); setShowRuleModal(true); }}
-                            className="p-2 hover:bg-light-hover dark:hover:bg-dark-hover rounded-lg text-slate-500 dark:text-gray-400 hover:text-slate-700 dark:hover:text-white"
+                            className="p-2 hover:bg-gray-700 rounded-lg text-gray-400 hover:text-white"
                           >
                             <Edit className="w-4 h-4" />
                           </button>
@@ -1112,7 +1127,7 @@ export default function SiemPage() {
                                 deleteRuleMutation.mutate(rule.id);
                               }
                             }}
-                            className="p-2 hover:bg-red-500/20 rounded-lg text-slate-500 dark:text-gray-400 hover:text-red-400"
+                            className="p-2 hover:bg-red-500/20 rounded-lg text-gray-400 hover:text-red-400"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -1122,10 +1137,10 @@ export default function SiemPage() {
                   ))}
                 </div>
               ) : (
-                <div className="bg-light-surface dark:bg-dark-surface border border-light-border dark:border-dark-border rounded-lg p-12 text-center">
-                  <Shield className="w-16 h-16 text-slate-400 dark:text-gray-600 mx-auto mb-4" />
-                  <h3 className="text-xl font-semibold text-slate-700 dark:text-gray-300 mb-2">No Detection Rules</h3>
-                  <p className="text-slate-500 dark:text-gray-400 mb-6">
+                <div className="bg-gray-800 border border-gray-700 rounded-lg p-12 text-center">
+                  <Shield className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+                  <h3 className="text-xl font-semibold text-gray-300 mb-2">No Detection Rules</h3>
+                  <p className="text-gray-400 mb-6">
                     Create detection rules to automatically identify security threats
                   </p>
                   <Button onClick={() => setShowRuleModal(true)}>
@@ -1142,21 +1157,21 @@ export default function SiemPage() {
             <div className="space-y-4">
               {alertsLoading ? (
                 <div className="flex items-center justify-center p-12">
-                  <RefreshCw className="w-8 h-8 text-primary animate-spin" />
+                  <RefreshCw className="w-8 h-8 text-cyan-500 animate-spin" />
                 </div>
               ) : alerts && alerts.length > 0 ? (
                 <div className="space-y-3">
                   {alerts.map((alert) => (
                     <div
                       key={alert.id}
-                      className={`bg-light-surface dark:bg-dark-surface border rounded-lg p-4 ${
-                        severityColors[alert.severity]?.border ? `border-l-4 ${severityColors[alert.severity].border}` : 'border-dark-border'
+                      className={`bg-gray-800 border rounded-lg p-4 ${
+                        severityColors[alert.severity]?.border ? `border-l-4 ${severityColors[alert.severity].border}` : 'border-gray-700'
                       }`}
                     >
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
                           <div className="flex items-center gap-3 mb-2">
-                            <h3 className="font-medium text-slate-900 dark:text-white">{alert.title}</h3>
+                            <h3 className="font-medium text-white">{alert.title}</h3>
                             <span className={`px-2 py-0.5 rounded text-xs ${statusColors[alert.status]?.bg || 'bg-gray-500/20'} ${statusColors[alert.status]?.text || 'text-gray-400'}`}>
                               {alert.status.replace('_', ' ')}
                             </span>
@@ -1165,9 +1180,9 @@ export default function SiemPage() {
                             </span>
                           </div>
                           {alert.description && (
-                            <p className="text-sm text-slate-500 dark:text-gray-400 mb-2">{alert.description}</p>
+                            <p className="text-sm text-gray-400 mb-2">{alert.description}</p>
                           )}
-                          <div className="flex items-center gap-4 text-xs text-slate-500 dark:text-gray-500">
+                          <div className="flex items-center gap-4 text-xs text-gray-500">
                             <span>Rule: {alert.rule_name}</span>
                             <span>Events: {alert.event_count}</span>
                             <span>First: {new Date(alert.first_seen).toLocaleString()}</span>
@@ -1208,10 +1223,10 @@ export default function SiemPage() {
                   ))}
                 </div>
               ) : (
-                <div className="bg-light-surface dark:bg-dark-surface border border-light-border dark:border-dark-border rounded-lg p-12 text-center">
+                <div className="bg-gray-800 border border-gray-700 rounded-lg p-12 text-center">
                   <CheckCircle className="w-16 h-16 text-green-400 mx-auto mb-4" />
-                  <h3 className="text-xl font-semibold text-slate-700 dark:text-gray-300 mb-2">No Alerts</h3>
-                  <p className="text-slate-500 dark:text-gray-400">
+                  <h3 className="text-xl font-semibold text-gray-300 mb-2">No Alerts</h3>
+                  <p className="text-gray-400">
                     Your detection rules have not triggered any alerts yet
                   </p>
                 </div>
@@ -1270,11 +1285,11 @@ export default function SiemPage() {
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-sm text-slate-500 dark:text-gray-500">Timestamp</label>
-                  <p className="text-slate-900 dark:text-white">{new Date(selectedLogEntry.timestamp).toLocaleString()}</p>
+                  <label className="text-sm text-gray-500">Timestamp</label>
+                  <p className="text-white">{new Date(selectedLogEntry.timestamp).toLocaleString()}</p>
                 </div>
                 <div>
-                  <label className="text-sm text-slate-500 dark:text-gray-500">Severity</label>
+                  <label className="text-sm text-gray-500">Severity</label>
                   <p>
                     <span className={`px-2 py-0.5 rounded text-xs ${severityColors[selectedLogEntry.severity]?.bg || 'bg-gray-500/20'} ${severityColors[selectedLogEntry.severity]?.text || 'text-gray-400'}`}>
                       {selectedLogEntry.severity}
@@ -1282,34 +1297,34 @@ export default function SiemPage() {
                   </p>
                 </div>
                 <div>
-                  <label className="text-sm text-slate-500 dark:text-gray-500">Hostname</label>
-                  <p className="text-slate-900 dark:text-white">{selectedLogEntry.hostname || '-'}</p>
+                  <label className="text-sm text-gray-500">Hostname</label>
+                  <p className="text-white">{selectedLogEntry.hostname || '-'}</p>
                 </div>
                 <div>
-                  <label className="text-sm text-slate-500 dark:text-gray-500">Application</label>
-                  <p className="text-slate-900 dark:text-white">{selectedLogEntry.application || '-'}</p>
+                  <label className="text-sm text-gray-500">Application</label>
+                  <p className="text-white">{selectedLogEntry.application || '-'}</p>
                 </div>
                 <div>
-                  <label className="text-sm text-slate-500 dark:text-gray-500">Source IP</label>
-                  <p className="text-slate-900 dark:text-white">{selectedLogEntry.source_ip || '-'}</p>
+                  <label className="text-sm text-gray-500">Source IP</label>
+                  <p className="text-white">{selectedLogEntry.source_ip || '-'}</p>
                 </div>
                 <div>
-                  <label className="text-sm text-slate-500 dark:text-gray-500">Destination IP</label>
-                  <p className="text-slate-900 dark:text-white">{selectedLogEntry.destination_ip || '-'}</p>
+                  <label className="text-sm text-gray-500">Destination IP</label>
+                  <p className="text-white">{selectedLogEntry.destination_ip || '-'}</p>
                 </div>
               </div>
               <div>
-                <label className="text-sm text-slate-500 dark:text-gray-500">Message</label>
-                <p className="text-slate-900 dark:text-white bg-light-bg dark:bg-dark-bg p-3 rounded-lg mt-1">{selectedLogEntry.message}</p>
+                <label className="text-sm text-gray-500">Message</label>
+                <p className="text-white bg-gray-900 p-3 rounded-lg mt-1">{selectedLogEntry.message}</p>
               </div>
               <div>
-                <label className="text-sm text-slate-500 dark:text-gray-500">Raw Log</label>
-                <pre className="text-xs text-slate-700 dark:text-gray-300 bg-light-bg dark:bg-dark-bg p-3 rounded-lg mt-1 overflow-x-auto">{selectedLogEntry.raw}</pre>
+                <label className="text-sm text-gray-500">Raw Log</label>
+                <pre className="text-xs text-gray-300 bg-gray-900 p-3 rounded-lg mt-1 overflow-x-auto">{selectedLogEntry.raw}</pre>
               </div>
               {Object.keys(selectedLogEntry.structured_data).length > 0 && (
                 <div>
-                  <label className="text-sm text-slate-500 dark:text-gray-500">Structured Data</label>
-                  <pre className="text-xs text-slate-700 dark:text-gray-300 bg-light-bg dark:bg-dark-bg p-3 rounded-lg mt-1 overflow-x-auto">
+                  <label className="text-sm text-gray-500">Structured Data</label>
+                  <pre className="text-xs text-gray-300 bg-gray-900 p-3 rounded-lg mt-1 overflow-x-auto">
                     {JSON.stringify(selectedLogEntry.structured_data, null, 2)}
                   </pre>
                 </div>

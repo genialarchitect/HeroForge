@@ -126,6 +126,8 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     create_compliance_evidence_tables(pool).await?;
     // Breach & Attack Simulation (BAS) tables
     create_bas_tables(pool).await?;
+    // Exploitation framework tables
+    create_exploitation_tables(pool).await?;
     Ok(())
 }
 
@@ -5871,5 +5873,153 @@ async fn create_bas_tables(pool: &SqlitePool) -> Result<()> {
         .await?;
 
     log::info!("Created BAS tables (bas_scenarios, bas_simulations, bas_technique_executions, bas_detection_gaps)");
+    Ok(())
+}
+
+// ============================================================================
+// Exploitation Framework Migrations
+// ============================================================================
+
+/// Create exploitation framework tables
+async fn create_exploitation_tables(pool: &SqlitePool) -> Result<()> {
+    // Exploitation campaigns table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS exploitation_campaigns (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            attack_type TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            config TEXT NOT NULL,
+            targets TEXT NOT NULL,
+            results_count INTEGER DEFAULT 0,
+            successful_count INTEGER DEFAULT 0,
+            error_message TEXT,
+            created_at TEXT NOT NULL,
+            started_at TEXT,
+            completed_at TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_exploitation_campaigns_user_id ON exploitation_campaigns(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_exploitation_campaigns_status ON exploitation_campaigns(status)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_exploitation_campaigns_attack_type ON exploitation_campaigns(attack_type)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_exploitation_campaigns_created_at ON exploitation_campaigns(created_at)")
+        .execute(pool)
+        .await?;
+
+    // Exploitation results table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS exploitation_results (
+            id TEXT PRIMARY KEY,
+            campaign_id TEXT NOT NULL,
+            target TEXT NOT NULL,
+            result_type TEXT NOT NULL,
+            data TEXT NOT NULL,
+            severity TEXT,
+            created_at TEXT NOT NULL,
+            expires_at TEXT,
+            FOREIGN KEY (campaign_id) REFERENCES exploitation_campaigns(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_exploitation_results_campaign_id ON exploitation_results(campaign_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_exploitation_results_result_type ON exploitation_results(result_type)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_exploitation_results_expires_at ON exploitation_results(expires_at)")
+        .execute(pool)
+        .await?;
+
+    // Generated payloads table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS generated_payloads (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            payload_type TEXT NOT NULL,
+            platform TEXT NOT NULL,
+            format TEXT NOT NULL,
+            config TEXT NOT NULL,
+            payload_hash TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_generated_payloads_user_id ON generated_payloads(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_generated_payloads_payload_type ON generated_payloads(payload_type)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_generated_payloads_created_at ON generated_payloads(created_at)")
+        .execute(pool)
+        .await?;
+
+    // Exploitation audit log table (separate from main audit for security)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS exploitation_audit_logs (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            campaign_id TEXT,
+            action TEXT NOT NULL,
+            target TEXT,
+            details TEXT NOT NULL,
+            ip_address TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (campaign_id) REFERENCES exploitation_campaigns(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_exploitation_audit_logs_user_id ON exploitation_audit_logs(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_exploitation_audit_logs_campaign_id ON exploitation_audit_logs(campaign_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_exploitation_audit_logs_action ON exploitation_audit_logs(action)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_exploitation_audit_logs_created_at ON exploitation_audit_logs(created_at)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created exploitation tables (exploitation_campaigns, exploitation_results, generated_payloads, exploitation_audit_logs)");
     Ok(())
 }

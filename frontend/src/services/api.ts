@@ -2488,4 +2488,137 @@ export const siemFullAPI = {
     api.get<SiemStatsResponse>('/siem/stats'),
 };
 
+// ============================================================================
+// Exploitation Framework API
+// ============================================================================
+
+export interface ExploitationStatus {
+  msfvenom_available: boolean;
+  active_campaigns: number;
+  total_campaigns: number;
+  credentials_stored: number;
+  payloads_generated: number;
+}
+
+export interface ExploitationCampaign {
+  id: string;
+  name: string;
+  attack_type: string;
+  status: string;
+  targets: string[];
+  results_count: number;
+  successful_count: number;
+  created_at: string;
+  started_at?: string;
+  completed_at?: string;
+}
+
+export interface ShellTemplate {
+  format: string;
+  platform: string;
+  name: string;
+  description: string;
+  requires_msfvenom: boolean;
+}
+
+export interface PostExploitModule {
+  module: string;
+  name: string;
+  description: string;
+  category: string;
+  platforms: string[];
+}
+
+export interface GeneratedPayload {
+  id: string;
+  payload_type: string;
+  platform: string;
+  format: string;
+  payload_hash: string;
+  created_at: string;
+}
+
+export interface GenerateShellResponse {
+  id: string;
+  payload: string;
+  payload_hash: string;
+  format: string;
+  platform: string;
+  listener_command: string;
+  one_liner?: string;
+  created_at: string;
+}
+
+export interface CreateCampaignExploitRequest {
+  name: string;
+  attack_type: string;
+  config: Record<string, unknown>;
+  targets: string[];
+}
+
+export interface GenerateShellRequest {
+  shell_type: string;
+  platform: string;
+  format: string;
+  lhost: string;
+  lport: number;
+  encoding?: string;
+  obfuscation_level?: number;
+  staged?: boolean;
+  xor_key?: string;
+}
+
+export const exploitationAPI = {
+  // Get exploitation status
+  getStatus: () =>
+    api.get<ExploitationStatus>('/exploitation/status'),
+
+  // Campaigns
+  listCampaigns: () =>
+    api.get<ExploitationCampaign[]>('/exploitation/campaigns'),
+
+  createCampaign: (data: CreateCampaignExploitRequest) =>
+    api.post<{ id: string; status: string; message: string }>('/exploitation/campaigns', data),
+
+  getCampaign: (id: string) =>
+    api.get<ExploitationCampaign & { config?: Record<string, unknown>; error_message?: string }>(`/exploitation/campaigns/${id}`),
+
+  startCampaign: (id: string, authorized: boolean) =>
+    api.post<{ id: string; status: string; message: string }>(`/exploitation/campaigns/${id}/start`, { authorized }),
+
+  stopCampaign: (id: string) =>
+    api.post<{ id: string; status: string; message: string }>(`/exploitation/campaigns/${id}/stop`),
+
+  deleteCampaign: (id: string) =>
+    api.delete<{ message: string }>(`/exploitation/campaigns/${id}`),
+
+  getCampaignResults: (id: string) =>
+    api.get<Array<{
+      id: string;
+      target: string;
+      result_type: string;
+      data: Record<string, unknown>;
+      severity?: string;
+      created_at: string;
+      success?: boolean;
+    }>>(`/exploitation/campaigns/${id}/results`),
+
+  exportResults: (id: string, format: 'json' | 'csv') =>
+    api.post<string>(`/exploitation/campaigns/${id}/export`, { format }),
+
+  // Shell Generation
+  generateShell: (data: GenerateShellRequest) =>
+    api.post<GenerateShellResponse>('/exploitation/shells/generate', data),
+
+  listShellTemplates: () =>
+    api.get<ShellTemplate[]>('/exploitation/shells/templates'),
+
+  listPayloads: () =>
+    api.get<GeneratedPayload[]>('/exploitation/shells'),
+
+  // Post-Exploitation Modules
+  listModules: () =>
+    api.get<PostExploitModule[]>('/exploitation/modules'),
+};
+
 export default api;

@@ -415,10 +415,11 @@ const AssetsPage: React.FC = () => {
   };
 
   const filteredAssets = assets.filter(assetWithTags => {
-    const asset = assetWithTags.asset;
+    const asset = assetWithTags?.asset;
+    if (!asset) return false;
     const searchLower = searchTerm.toLowerCase();
     return (
-      asset.ip_address.includes(searchLower) ||
+      (asset.ip_address && asset.ip_address.toLowerCase().includes(searchLower)) ||
       (asset.hostname && asset.hostname.toLowerCase().includes(searchLower)) ||
       (asset.os_family && asset.os_family.toLowerCase().includes(searchLower))
     );

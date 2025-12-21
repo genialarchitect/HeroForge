@@ -16,6 +16,7 @@ import {
   Pause,
   Eye,
 } from 'lucide-react';
+import { Layout } from '../components/layout/Layout';
 import Button from '../components/ui/Button';
 import Badge from '../components/ui/Badge';
 import EvidenceCard from '../components/evidence/EvidenceCard';
@@ -272,8 +273,8 @@ const EvidencePage: React.FC = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-light-bg dark:bg-dark-bg p-6">
-      <div className="max-w-7xl mx-auto">
+    <Layout>
+      <div>
         {/* Header */}
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
@@ -654,7 +655,7 @@ const EvidencePage: React.FC = () => {
           </div>
         )}
       </div>
-    </div>
+    </Layout>
   );
 };
 

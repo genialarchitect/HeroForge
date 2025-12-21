@@ -32,6 +32,10 @@ import {
   Activity,
   Crosshair,
   Share2,
+  Target,
+  Key,
+  Terminal,
+  Layers,
 } from 'lucide-react';
 
 interface NavItem {
@@ -124,9 +128,22 @@ const Header: React.FC = () => {
     { to: '/webapp-scan', icon: <Globe className="h-4 w-4" />, label: 'Web Scan' },
     { to: '/dns-tools', icon: <Network className="h-4 w-4" />, label: 'DNS Tools' },
     { to: '/api-security', icon: <Zap className="h-4 w-4" />, label: 'API Security' },
+  ];
+
+  const securityItems: NavItem[] = [
+    { to: '/siem', icon: <Activity className="h-4 w-4" />, label: 'SIEM' },
+    { to: '/attack-paths', icon: <GitBranch className="h-4 w-4" />, label: 'Attack Paths' },
+    { to: '/attack-simulation', icon: <Crosshair className="h-4 w-4" />, label: 'Attack Simulation' },
     { to: '/container-security', icon: <Box className="h-4 w-4" />, label: 'Containers' },
     { to: '/iac-security', icon: <FileCode className="h-4 w-4" />, label: 'IaC Security' },
-    { to: '/attack-simulation', icon: <Crosshair className="h-4 w-4" />, label: 'BAS' },
+  ];
+
+  const exploitationItems: NavItem[] = [
+    { to: '/exploitation', icon: <Target className="h-4 w-4" />, label: 'Dashboard' },
+    { to: '/exploitation/password-spray', icon: <Key className="h-4 w-4" />, label: 'Password Spray' },
+    { to: '/exploitation/kerberos', icon: <Shield className="h-4 w-4" />, label: 'Kerberos Attacks' },
+    { to: '/exploitation/shells', icon: <Terminal className="h-4 w-4" />, label: 'Shell Generator' },
+    { to: '/exploitation/post-exploit', icon: <Layers className="h-4 w-4" />, label: 'Post-Exploitation' },
   ];
 
   const complianceItems: NavItem[] = [
@@ -142,14 +159,29 @@ const Header: React.FC = () => {
     { to: '/remediation', icon: <FileText className="h-4 w-4" />, label: 'Remediation' },
   ];
 
+  const systemItems: NavItem[] = [
+    { to: '/settings', icon: <Settings className="h-4 w-4" />, label: 'Settings' },
+    { to: '/plugins', icon: <Puzzle className="h-4 w-4" />, label: 'Plugins' },
+    ...(isAdmin() ? [{ to: '/admin', icon: <Users className="h-4 w-4" />, label: 'Admin' }] : []),
+  ];
+
   // Check if any item in a category is active
   const isScanningActive = scanningItems.some(
+    item => location.pathname === item.to || location.pathname.startsWith(item.to)
+  );
+  const isSecurityActive = securityItems.some(
+    item => location.pathname === item.to || location.pathname.startsWith(item.to)
+  );
+  const isExploitationActive = exploitationItems.some(
     item => location.pathname === item.to || location.pathname.startsWith(item.to)
   );
   const isComplianceActive = complianceItems.some(
     item => location.pathname === item.to || location.pathname.startsWith(item.to)
   );
   const isReportsActive = reportsItems.some(
+    item => location.pathname === item.to || location.pathname.startsWith(item.to)
+  );
+  const isSystemActive = systemItems.some(
     item => location.pathname === item.to || location.pathname.startsWith(item.to)
   );
 
@@ -209,59 +241,29 @@ const Header: React.FC = () => {
                   isActive={isReportsActive}
                 />
 
-                {/* SIEM - Standalone */}
-                <Link
-                  to="/siem"
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
-                    location.pathname.startsWith('/siem')
-                      ? 'bg-primary/10 text-primary font-medium'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-light-hover dark:hover:bg-dark-hover'
-                  }`}
-                >
-                  <Activity className="h-4 w-4" />
-                  SIEM
-                </Link>
+                {/* Security Dropdown */}
+                <DropdownMenu
+                  label="Security"
+                  icon={<Shield className="h-4 w-4" />}
+                  items={securityItems}
+                  isActive={isSecurityActive}
+                />
 
-                {/* Settings - Standalone */}
-                <Link
-                  to="/settings"
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
-                    location.pathname.startsWith('/settings')
-                      ? 'bg-primary/10 text-primary font-medium'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-light-hover dark:hover:bg-dark-hover'
-                  }`}
-                >
-                  <Settings className="h-4 w-4" />
-                  Settings
-                </Link>
+                {/* Exploitation Dropdown */}
+                <DropdownMenu
+                  label="Exploitation"
+                  icon={<Target className="h-4 w-4" />}
+                  items={exploitationItems}
+                  isActive={isExploitationActive}
+                />
 
-                {/* Plugins - Standalone */}
-                <Link
-                  to="/plugins"
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
-                    location.pathname.startsWith('/plugins')
-                      ? 'bg-primary/10 text-primary font-medium'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-light-hover dark:hover:bg-dark-hover'
-                  }`}
-                >
-                  <Puzzle className="h-4 w-4" />
-                  Plugins
-                </Link>
-
-                {/* Admin - Standalone (conditional) */}
-                {isAdmin() && (
-                  <Link
-                    to="/admin"
-                    className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
-                      location.pathname.startsWith('/admin')
-                        ? 'bg-primary/10 text-primary font-medium'
-                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-light-hover dark:hover:bg-dark-hover'
-                    }`}
-                  >
-                    <Users className="h-4 w-4" />
-                    Admin
-                  </Link>
-                )}
+                {/* System Dropdown */}
+                <DropdownMenu
+                  label="System"
+                  icon={<Settings className="h-4 w-4" />}
+                  items={systemItems}
+                  isActive={isSystemActive}
+                />
               </nav>
             )}
           </div>

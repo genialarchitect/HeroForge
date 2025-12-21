@@ -19,6 +19,7 @@ import IacScanForm from '../components/iac/IacScanForm';
 import IacScanResults from '../components/iac/IacScanResults';
 import IacRulesManager from '../components/iac/IacRulesManager';
 import Button from '../components/ui/Button';
+import { Layout } from '../components/layout/Layout';
 
 type TabType = 'scans' | 'rules';
 
@@ -82,21 +83,21 @@ export default function IacSecurityPage() {
   // If viewing a specific scan
   if (selectedScanId) {
     return (
-      <div className="p-6">
+      <Layout>
         <IacScanResults
           scanId={selectedScanId}
           onBack={() => setSelectedScanId(null)}
         />
-      </div>
+      </Layout>
     );
   }
 
   return (
-    <div className="p-6">
+    <Layout>
       {/* Header */}
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-white">IaC Security Scanning</h1>
-        <p className="text-gray-400 mt-1">
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-white">IaC Security Scanning</h1>
+        <p className="text-slate-600 dark:text-slate-400 mt-1">
           Scan Terraform, CloudFormation, and Azure ARM templates for security issues
         </p>
       </div>
@@ -197,7 +198,7 @@ export default function IacSecurityPage() {
       ) : (
         <IacRulesManager />
       )}
-    </div>
+    </Layout>
   );
 }
 

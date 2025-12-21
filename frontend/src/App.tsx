@@ -1,10 +1,21 @@
 import React, { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { useAuthStore } from './store/authStore';
 import { portalAuthAPI } from './services/portalApi';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
+
+// Create a client for React Query
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 1000 * 60 * 5, // 5 minutes
+      retry: 1,
+    },
+  },
+});
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 
@@ -33,6 +44,7 @@ const MeshAgentsPage = lazy(() => import('./pages/MeshAgentsPage'));
 const EvidencePage = lazy(() => import('./pages/EvidencePage'));
 const SiemPage = lazy(() => import('./pages/SiemPage'));
 const AttackSimulationPage = lazy(() => import('./pages/AttackSimulationPage'));
+const ExploitationPage = lazy(() => import('./pages/ExploitationPage'));
 
 // CRM pages
 const CrmDashboard = lazy(() => import('./pages/crm/CrmDashboard'));
@@ -121,10 +133,11 @@ const ThemedToastContainer: React.FC = () => {
 
 function App() {
   return (
-    <ThemeProvider defaultTheme="system">
-      <BrowserRouter>
-        <Suspense fallback={<PageLoader />}>
-          <Routes>
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider defaultTheme="system">
+        <BrowserRouter>
+          <Suspense fallback={<PageLoader />}>
+            <Routes>
           <Route path="/" element={<LoginPage />} />
           <Route path="/sales" element={<SalesPage />} />
           <Route
@@ -303,6 +316,23 @@ function App() {
               </ProtectedRoute>
             }
           />
+          {/* Exploitation Framework Routes */}
+          <Route
+            path="/exploitation"
+            element={
+              <ProtectedRoute>
+                <ExploitationPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/exploitation/:tab"
+            element={
+              <ProtectedRoute>
+                <ExploitationPage />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/plugins"
             element={
@@ -448,9 +478,10 @@ function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>
-        <ThemedToastContainer />
-      </BrowserRouter>
-    </ThemeProvider>
+          <ThemedToastContainer />
+        </BrowserRouter>
+      </ThemeProvider>
+    </QueryClientProvider>
   );
 }
 

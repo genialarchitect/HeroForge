@@ -484,6 +484,8 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .configure(api::evidence::configure)
                     // SIEM (Full capabilities) endpoints
                     .configure(api::siem::configure)
+                    // Exploitation Framework endpoints
+                    .configure(api::exploitation::configure)
                     // Start workflow from vulnerability
                     .route("/vulnerabilities/{id}/workflow", web::post().to(api::workflows::start_workflow))
                     // SSO Admin endpoints
