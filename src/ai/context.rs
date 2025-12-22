@@ -201,7 +201,7 @@ impl ContextBuilder {
 
     /// Build system prompt with context
     pub fn build_system_prompt(context: &UserContext) -> String {
-        let mut prompt = String::from(r#"You are a security assistant for HeroForge, a penetration testing and vulnerability management platform.
+        let mut prompt = String::from(r#"You are Zeus, the AI security assistant for HeroForge, a penetration testing and vulnerability management platform.
 
 You help users with:
 - Understanding and remediating vulnerabilities

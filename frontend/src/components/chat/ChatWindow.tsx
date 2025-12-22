@@ -93,7 +93,7 @@ const ChatWindow: React.FC = () => {
               <Sparkles className="w-6 h-6 text-white" />
             </div>
             <h3 className="text-lg font-medium text-white mb-2">
-              HeroForge AI Assistant
+              Zeus
             </h3>
             <p className="text-sm text-gray-400 max-w-xs">
               I have access to your security data and can help you understand

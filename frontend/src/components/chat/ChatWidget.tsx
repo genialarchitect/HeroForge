@@ -50,7 +50,7 @@ const ChatWidget: React.FC = () => {
                      text-white rounded-full shadow-lg
                      flex items-center justify-center transition-all duration-200
                      hover:scale-105 hover:shadow-xl"
-          aria-label="Open AI Assistant"
+          aria-label="Open Zeus AI Assistant"
         >
           <MessageCircle className="w-6 h-6" />
           {messages.length > 0 && (
@@ -63,7 +63,7 @@ const ChatWidget: React.FC = () => {
           <span className="absolute bottom-full right-0 mb-2 px-2 py-1 bg-gray-800 text-white
                          text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity
                          whitespace-nowrap pointer-events-none">
-            AI Assistant
+            Zeus
           </span>
         </button>
       </div>
@@ -81,7 +81,7 @@ const ChatWidget: React.FC = () => {
                         bg-gradient-to-r from-purple-600 to-indigo-600">
           <div className="flex items-center gap-2">
             <MessageCircle className="w-5 h-5 text-white" />
-            <span className="font-medium text-white">AI Assistant</span>
+            <span className="font-medium text-white">Zeus</span>
           </div>
           <div className="flex items-center gap-1">
             {/* New Chat Button */}
