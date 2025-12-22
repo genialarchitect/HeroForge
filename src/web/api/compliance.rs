@@ -83,16 +83,7 @@ pub struct OverrideFindingRequest {
 pub async fn list_frameworks(
     _claims: web::ReqData<auth::Claims>,
 ) -> Result<HttpResponse> {
-    let all_frameworks = vec![
-        ComplianceFramework::PciDss4,
-        ComplianceFramework::Nist80053,
-        ComplianceFramework::NistCsf,
-        ComplianceFramework::CisBenchmarks,
-        ComplianceFramework::Hipaa,
-        ComplianceFramework::Soc2,
-        ComplianceFramework::Ferpa,
-        ComplianceFramework::OwaspTop10,
-    ];
+    let all_frameworks = ComplianceFramework::all();
 
     let frameworks: Vec<FrameworkInfo> = all_frameworks
         .iter()
@@ -248,7 +239,7 @@ pub async fn analyze_scan_compliance(
     if frameworks.is_empty() {
         return Ok(HttpResponse::BadRequest().json(serde_json::json!({
             "error": "No valid frameworks specified",
-            "valid_frameworks": ["pci_dss", "nist_800_53", "nist_csf", "cis", "hipaa", "soc2", "ferpa", "owasp", "owasp_top10"]
+            "valid_frameworks": ["pci_dss", "nist_800_53", "nist_csf", "cis", "hipaa", "soc2", "ferpa", "owasp", "owasp_top10", "hitrust", "hitrust_csf"]
         })));
     }
 
@@ -403,7 +394,7 @@ pub async fn generate_compliance_report(
     if frameworks.is_empty() {
         return Ok(HttpResponse::BadRequest().json(serde_json::json!({
             "error": "No valid frameworks specified",
-            "valid_frameworks": ["pci_dss", "nist_800_53", "nist_csf", "cis", "hipaa", "soc2", "ferpa", "owasp", "owasp_top10"]
+            "valid_frameworks": ["pci_dss", "nist_800_53", "nist_csf", "cis", "hipaa", "soc2", "ferpa", "owasp", "owasp_top10", "hitrust", "hitrust_csf"]
         })));
     }
 

@@ -132,6 +132,34 @@ pub fn get_all_checks() -> Vec<Box<dyn ComplianceCheck>> {
         // Network security checks
         Box::new(ExcessiveOpenPortsCheck),
         Box::new(SnmpV1V2Check),
+
+        // SSL/TLS checks - NEW
+        Box::new(WeakTlsProtocolCheck),
+        Box::new(ExpiredCertificateCheck),
+        Box::new(SelfSignedCertificateCheck),
+        Box::new(CertificateExpiringSoonCheck),
+        Box::new(WeakCipherSuitesCheck),
+        Box::new(MissingHstsCheck),
+        Box::new(SslGradeFailingCheck),
+        Box::new(HostnameMismatchCheck),
+        Box::new(IncompleteCertChainCheck),
+        Box::new(NoPerfectForwardSecrecyCheck),
+
+        // Authentication & Access checks - NEW
+        Box::new(VncExposedCheck),
+        Box::new(LdapUnencryptedCheck),
+        Box::new(IkeWeakCheck),
+        Box::new(RsyncExposedCheck),
+        Box::new(NfsExposedCheck),
+        Box::new(IpmiExposedCheck),
+
+        // Healthcare/HIPAA specific checks - NEW
+        Box::new(Hl7ExposedCheck),
+        Box::new(DicomExposedCheck),
+
+        // Web security checks - NEW
+        Box::new(AdminInterfaceExposedCheck),
+        Box::new(DebugEndpointsCheck),
     ]
 }
 
@@ -500,6 +528,737 @@ impl ComplianceCheck for SnmpV1V2Check {
             }
         }
         None
+    }
+}
+
+// ============================================================================
+// SSL/TLS Compliance Checks
+// ============================================================================
+
+/// Helper to get SSL info from any SSL-enabled port
+fn get_ssl_info(host: &HostInfo) -> Option<&crate::types::SslInfo> {
+    host.ports.iter()
+        .filter_map(|p| p.service.as_ref().and_then(|s| s.ssl_info.as_ref()))
+        .next()
+}
+
+/// Check for weak TLS protocols (TLS 1.0, TLS 1.1, SSL 2.0, SSL 3.0)
+struct WeakTlsProtocolCheck;
+
+impl ComplianceCheck for WeakTlsProtocolCheck {
+    fn check_id(&self) -> &str { "weak-tls-protocol" }
+    fn name(&self) -> &str { "Weak TLS/SSL Protocol Enabled" }
+    fn control_id(&self) -> &str { "PCI-DSS-4.1" }
+    fn framework(&self) -> ComplianceFramework { ComplianceFramework::PciDss4 }
+
+    fn check(&self, host: &HostInfo) -> Option<CheckResult> {
+        let ssl_info = get_ssl_info(host)?;
+
+        let weak_protocols: Vec<&String> = ssl_info.protocols.iter()
+            .filter(|p| {
+                let lower = p.to_lowercase();
+                lower.contains("ssl") || lower.contains("tls 1.0") || lower.contains("tls 1.1")
+            })
+            .collect();
+
+        if !weak_protocols.is_empty() {
+            let severity = if weak_protocols.iter().any(|p| p.to_lowercase().contains("ssl")) {
+                Severity::Critical
+            } else {
+                Severity::High
+            };
+
+            Some(CheckResult {
+                control_id: self.control_id().to_string(),
+                framework: self.framework(),
+                check_name: self.name().to_string(),
+                status: ControlStatus::NonCompliant,
+                severity,
+                evidence: vec![format!("Weak protocols enabled: {}", weak_protocols.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", "))],
+                remediation: "Disable SSL 2.0, SSL 3.0, TLS 1.0, and TLS 1.1. Use only TLS 1.2 or TLS 1.3.".to_string(),
+            })
+        } else {
+            None
+        }
+    }
+}
+
+/// Check for expired SSL/TLS certificate
+struct ExpiredCertificateCheck;
+
+impl ComplianceCheck for ExpiredCertificateCheck {
+    fn check_id(&self) -> &str { "expired-certificate" }
+    fn name(&self) -> &str { "Expired SSL/TLS Certificate" }
+    fn control_id(&self) -> &str { "HIPAA-164.312(e)(1)" }
+    fn framework(&self) -> ComplianceFramework { ComplianceFramework::Hipaa }
+
+    fn check(&self, host: &HostInfo) -> Option<CheckResult> {
+        let ssl_info = get_ssl_info(host)?;
+
+        if ssl_info.cert_expired {
+            Some(CheckResult {
+                control_id: self.control_id().to_string(),
+                framework: self.framework(),
+                check_name: self.name().to_string(),
+                status: ControlStatus::NonCompliant,
+                severity: Severity::Critical,
+                evidence: vec![format!("Certificate expired. Valid until: {}", ssl_info.valid_until)],
+                remediation: "Renew the SSL/TLS certificate immediately.".to_string(),
+            })
+        } else {
+            None
+        }
+    }
+}
+
+/// Check for self-signed certificate
+struct SelfSignedCertificateCheck;
+
+impl ComplianceCheck for SelfSignedCertificateCheck {
+    fn check_id(&self) -> &str { "self-signed-cert" }
+    fn name(&self) -> &str { "Self-Signed Certificate" }
+    fn control_id(&self) -> &str { "NIST-SC-17" }
+    fn framework(&self) -> ComplianceFramework { ComplianceFramework::Nist80053 }
+
+    fn check(&self, host: &HostInfo) -> Option<CheckResult> {
+        let ssl_info = get_ssl_info(host)?;
+
+        if ssl_info.self_signed {
+            Some(CheckResult {
+                control_id: self.control_id().to_string(),
+                framework: self.framework(),
+                check_name: self.name().to_string(),
+                status: ControlStatus::NonCompliant,
+                severity: Severity::High,
+                evidence: vec!["Certificate is self-signed and not trusted by public CAs".to_string()],
+                remediation: "Use a certificate from a trusted Certificate Authority.".to_string(),
+            })
+        } else {
+            None
+        }
+    }
+}
+
+/// Check for certificate expiring soon (within 30 days)
+struct CertificateExpiringSoonCheck;
+
+impl ComplianceCheck for CertificateExpiringSoonCheck {
+    fn check_id(&self) -> &str { "cert-expiring-soon" }
+    fn name(&self) -> &str { "Certificate Expiring Soon" }
+    fn control_id(&self) -> &str { "CIS-4.5" }
+    fn framework(&self) -> ComplianceFramework { ComplianceFramework::CisBenchmarks }
+
+    fn check(&self, host: &HostInfo) -> Option<CheckResult> {
+        let ssl_info = get_ssl_info(host)?;
+
+        if let Some(days) = ssl_info.days_until_expiry {
+            if days > 0 && days <= 30 {
+                let severity = if days <= 7 { Severity::High } else { Severity::Medium };
+                Some(CheckResult {
+                    control_id: self.control_id().to_string(),
+                    framework: self.framework(),
+                    check_name: self.name().to_string(),
+                    status: ControlStatus::PartiallyCompliant,
+                    severity,
+                    evidence: vec![format!("Certificate expires in {} days (on {})", days, ssl_info.valid_until)],
+                    remediation: "Renew the SSL/TLS certificate before expiration.".to_string(),
+                })
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+}
+
+/// Check for weak cipher suites
+struct WeakCipherSuitesCheck;
+
+impl ComplianceCheck for WeakCipherSuitesCheck {
+    fn check_id(&self) -> &str { "weak-ciphers" }
+    fn name(&self) -> &str { "Weak Cipher Suites Enabled" }
+    fn control_id(&self) -> &str { "PCI-DSS-4.2.1" }
+    fn framework(&self) -> ComplianceFramework { ComplianceFramework::PciDss4 }
+
+    fn check(&self, host: &HostInfo) -> Option<CheckResult> {
+        let ssl_info = get_ssl_info(host)?;
+
+        if !ssl_info.weak_ciphers.is_empty() {
+            let has_critical = ssl_info.weak_ciphers.iter()
+                .any(|c| {
+                    let upper = c.to_uppercase();
+                    upper.contains("NULL") || upper.contains("EXPORT") || upper.contains("DES")
+                });
+
+            Some(CheckResult {
+                control_id: self.control_id().to_string(),
+                framework: self.framework(),
+                check_name: self.name().to_string(),
+                status: ControlStatus::NonCompliant,
+                severity: if has_critical { Severity::Critical } else { Severity::High },
+                evidence: vec![format!("Weak ciphers detected: {}", ssl_info.weak_ciphers.join(", "))],
+                remediation: "Disable weak cipher suites. Use only modern AEAD ciphers (AES-GCM, ChaCha20-Poly1305).".to_string(),
+            })
+        } else {
+            None
+        }
+    }
+}
+
+/// Check for missing HSTS header
+struct MissingHstsCheck;
+
+impl ComplianceCheck for MissingHstsCheck {
+    fn check_id(&self) -> &str { "missing-hsts" }
+    fn name(&self) -> &str { "Missing HSTS Header" }
+    fn control_id(&self) -> &str { "OWASP-A05" }
+    fn framework(&self) -> ComplianceFramework { ComplianceFramework::OwaspTop10 }
+
+    fn check(&self, host: &HostInfo) -> Option<CheckResult> {
+        // Only check if we have HTTPS
+        let has_https = host.ports.iter().any(|p| p.port == 443);
+        if !has_https {
+            return None;
+        }
+
+        let ssl_info = get_ssl_info(host)?;
+
+        if !ssl_info.hsts_enabled {
+            Some(CheckResult {
+                control_id: self.control_id().to_string(),
+                framework: self.framework(),
+                check_name: self.name().to_string(),
+                status: ControlStatus::NonCompliant,
+                severity: Severity::Medium,
+                evidence: vec!["HTTP Strict Transport Security (HSTS) is not enabled".to_string()],
+                remediation: "Enable HSTS with Strict-Transport-Security header and max-age of at least 31536000 (1 year).".to_string(),
+            })
+        } else {
+            // Check if max-age is sufficient
+            if let Some(max_age) = ssl_info.hsts_max_age {
+                if max_age < 31536000 {
+                    return Some(CheckResult {
+                        control_id: self.control_id().to_string(),
+                        framework: self.framework(),
+                        check_name: self.name().to_string(),
+                        status: ControlStatus::PartiallyCompliant,
+                        severity: Severity::Low,
+                        evidence: vec![format!("HSTS max-age is {} seconds (less than 1 year)", max_age)],
+                        remediation: "Increase HSTS max-age to at least 31536000 (1 year).".to_string(),
+                    });
+                }
+            }
+            None
+        }
+    }
+}
+
+/// Check for failing SSL grade (D or F)
+struct SslGradeFailingCheck;
+
+impl ComplianceCheck for SslGradeFailingCheck {
+    fn check_id(&self) -> &str { "ssl-grade-failing" }
+    fn name(&self) -> &str { "Failing SSL/TLS Configuration Grade" }
+    fn control_id(&self) -> &str { "SOC2-CC6.1" }
+    fn framework(&self) -> ComplianceFramework { ComplianceFramework::Soc2 }
+
+    fn check(&self, host: &HostInfo) -> Option<CheckResult> {
+        let ssl_info = get_ssl_info(host)?;
+        let grade = ssl_info.ssl_grade.as_ref()?;
+
+        use crate::scanner::ssl_scanner::SslGradeLevel;
+        match grade.grade {
+            SslGradeLevel::F => Some(CheckResult {
+                control_id: self.control_id().to_string(),
+                framework: self.framework(),
+                check_name: self.name().to_string(),
+                status: ControlStatus::NonCompliant,
+                severity: Severity::Critical,
+                evidence: vec![format!("SSL/TLS grade is F (score: {}/100). {}",
+                    grade.overall_score,
+                    grade.cap_reason.as_deref().unwrap_or("Critical security issues detected"))],
+                remediation: format!("Address the following issues: {}",
+                    grade.recommendations.join("; ")).to_string(),
+            }),
+            SslGradeLevel::D => Some(CheckResult {
+                control_id: self.control_id().to_string(),
+                framework: self.framework(),
+                check_name: self.name().to_string(),
+                status: ControlStatus::NonCompliant,
+                severity: Severity::High,
+                evidence: vec![format!("SSL/TLS grade is D (score: {}/100)", grade.overall_score)],
+                remediation: format!("Address the following issues: {}",
+                    grade.recommendations.join("; ")).to_string(),
+            }),
+            SslGradeLevel::T => Some(CheckResult {
+                control_id: self.control_id().to_string(),
+                framework: self.framework(),
+                check_name: self.name().to_string(),
+                status: ControlStatus::NonCompliant,
+                severity: Severity::High,
+                evidence: vec!["SSL/TLS grade is T (trust issues with certificate)".to_string()],
+                remediation: "Use a certificate from a trusted Certificate Authority.".to_string(),
+            }),
+            SslGradeLevel::M => Some(CheckResult {
+                control_id: self.control_id().to_string(),
+                framework: self.framework(),
+                check_name: self.name().to_string(),
+                status: ControlStatus::NonCompliant,
+                severity: Severity::Critical,
+                evidence: vec!["SSL/TLS grade is M (hostname mismatch)".to_string()],
+                remediation: "Ensure certificate Subject Alternative Names (SANs) match the hostname.".to_string(),
+            }),
+            _ => None,
+        }
+    }
+}
+
+/// Check for certificate hostname mismatch
+struct HostnameMismatchCheck;
+
+impl ComplianceCheck for HostnameMismatchCheck {
+    fn check_id(&self) -> &str { "hostname-mismatch" }
+    fn name(&self) -> &str { "Certificate Hostname Mismatch" }
+    fn control_id(&self) -> &str { "NIST-IA-5" }
+    fn framework(&self) -> ComplianceFramework { ComplianceFramework::Nist80053 }
+
+    fn check(&self, host: &HostInfo) -> Option<CheckResult> {
+        let ssl_info = get_ssl_info(host)?;
+
+        if ssl_info.hostname_mismatch {
+            Some(CheckResult {
+                control_id: self.control_id().to_string(),
+                framework: self.framework(),
+                check_name: self.name().to_string(),
+                status: ControlStatus::NonCompliant,
+                severity: Severity::Critical,
+                evidence: vec![format!("Certificate subject '{}' does not match hostname", ssl_info.subject)],
+                remediation: "Ensure certificate includes the correct hostname in Subject Alternative Names (SANs).".to_string(),
+            })
+        } else {
+            None
+        }
+    }
+}
+
+/// Check for incomplete certificate chain
+struct IncompleteCertChainCheck;
+
+impl ComplianceCheck for IncompleteCertChainCheck {
+    fn check_id(&self) -> &str { "incomplete-cert-chain" }
+    fn name(&self) -> &str { "Incomplete Certificate Chain" }
+    fn control_id(&self) -> &str { "CIS-4.4" }
+    fn framework(&self) -> ComplianceFramework { ComplianceFramework::CisBenchmarks }
+
+    fn check(&self, host: &HostInfo) -> Option<CheckResult> {
+        let ssl_info = get_ssl_info(host)?;
+
+        let has_chain_issues = ssl_info.chain_issues.iter()
+            .any(|issue| issue.to_lowercase().contains("incomplete"));
+
+        if has_chain_issues {
+            Some(CheckResult {
+                control_id: self.control_id().to_string(),
+                framework: self.framework(),
+                check_name: self.name().to_string(),
+                status: ControlStatus::NonCompliant,
+                severity: Severity::Medium,
+                evidence: vec!["Certificate chain is incomplete. Some clients may not be able to verify the certificate.".to_string()],
+                remediation: "Include all intermediate certificates in the certificate chain.".to_string(),
+            })
+        } else {
+            None
+        }
+    }
+}
+
+/// Check for lack of Perfect Forward Secrecy
+struct NoPerfectForwardSecrecyCheck;
+
+impl ComplianceCheck for NoPerfectForwardSecrecyCheck {
+    fn check_id(&self) -> &str { "no-pfs" }
+    fn name(&self) -> &str { "No Perfect Forward Secrecy" }
+    fn control_id(&self) -> &str { "NIST-SC-12" }
+    fn framework(&self) -> ComplianceFramework { ComplianceFramework::Nist80053 }
+
+    fn check(&self, host: &HostInfo) -> Option<CheckResult> {
+        let ssl_info = get_ssl_info(host)?;
+
+        // Check if any cipher supports PFS (ECDHE or DHE)
+        let has_pfs = ssl_info.cipher_suites.iter()
+            .any(|c| {
+                let upper = c.to_uppercase();
+                upper.contains("ECDHE") || upper.contains("DHE")
+            });
+
+        if !has_pfs && !ssl_info.cipher_suites.is_empty() {
+            Some(CheckResult {
+                control_id: self.control_id().to_string(),
+                framework: self.framework(),
+                check_name: self.name().to_string(),
+                status: ControlStatus::NonCompliant,
+                severity: Severity::Medium,
+                evidence: vec!["No cipher suites with Perfect Forward Secrecy (ECDHE/DHE) enabled".to_string()],
+                remediation: "Enable ECDHE or DHE key exchange cipher suites for Perfect Forward Secrecy.".to_string(),
+            })
+        } else {
+            None
+        }
+    }
+}
+
+// ============================================================================
+// Authentication & Access Checks
+// ============================================================================
+
+/// Check for exposed VNC service
+struct VncExposedCheck;
+
+impl ComplianceCheck for VncExposedCheck {
+    fn check_id(&self) -> &str { "vnc-exposed" }
+    fn name(&self) -> &str { "VNC Service Exposed" }
+    fn control_id(&self) -> &str { "CIS-6.5" }
+    fn framework(&self) -> ComplianceFramework { ComplianceFramework::CisBenchmarks }
+
+    fn check(&self, host: &HostInfo) -> Option<CheckResult> {
+        let vnc_ports = [5900, 5901, 5902, 5903, 5904, 5905];
+        let exposed: Vec<_> = host.ports.iter()
+            .filter(|p| vnc_ports.contains(&p.port) || get_service_name(p) == Some("vnc"))
+            .map(|p| p.port)
+            .collect();
+
+        if !exposed.is_empty() {
+            Some(CheckResult {
+                control_id: self.control_id().to_string(),
+                framework: self.framework(),
+                check_name: self.name().to_string(),
+                status: ControlStatus::NonCompliant,
+                severity: Severity::High,
+                evidence: vec![format!("VNC service exposed on ports: {:?}", exposed)],
+                remediation: "Restrict VNC access via VPN or SSH tunneling. Disable direct remote access.".to_string(),
+            })
+        } else {
+            None
+        }
+    }
+}
+
+/// Check for unencrypted LDAP
+struct LdapUnencryptedCheck;
+
+impl ComplianceCheck for LdapUnencryptedCheck {
+    fn check_id(&self) -> &str { "ldap-unencrypted" }
+    fn name(&self) -> &str { "Unencrypted LDAP Service" }
+    fn control_id(&self) -> &str { "NIST-AC-17" }
+    fn framework(&self) -> ComplianceFramework { ComplianceFramework::Nist80053 }
+
+    fn check(&self, host: &HostInfo) -> Option<CheckResult> {
+        let has_ldap = host.ports.iter().any(|p| p.port == 389);
+        let has_ldaps = host.ports.iter().any(|p| p.port == 636);
+
+        if has_ldap && !has_ldaps {
+            Some(CheckResult {
+                control_id: self.control_id().to_string(),
+                framework: self.framework(),
+                check_name: self.name().to_string(),
+                status: ControlStatus::NonCompliant,
+                severity: Severity::High,
+                evidence: vec!["Unencrypted LDAP (port 389) detected without LDAPS (port 636)".to_string()],
+                remediation: "Disable unencrypted LDAP and use LDAPS (port 636) with TLS.".to_string(),
+            })
+        } else {
+            None
+        }
+    }
+}
+
+/// Check for weak IKE (VPN) configuration
+struct IkeWeakCheck;
+
+impl ComplianceCheck for IkeWeakCheck {
+    fn check_id(&self) -> &str { "ike-weak" }
+    fn name(&self) -> &str { "IPsec/IKE VPN Exposed" }
+    fn control_id(&self) -> &str { "PCI-DSS-2.2.4" }
+    fn framework(&self) -> ComplianceFramework { ComplianceFramework::PciDss4 }
+
+    fn check(&self, host: &HostInfo) -> Option<CheckResult> {
+        let ike_port = host.ports.iter().find(|p| p.port == 500 || p.port == 4500);
+
+        if let Some(port) = ike_port {
+            // Check for weak configuration in service info
+            if let Some(banner) = get_service_banner(port) {
+                let banner_lower = banner.to_lowercase();
+                if banner_lower.contains("ikev1") || banner_lower.contains("aggressive") {
+                    return Some(CheckResult {
+                        control_id: self.control_id().to_string(),
+                        framework: self.framework(),
+                        check_name: self.name().to_string(),
+                        status: ControlStatus::NonCompliant,
+                        severity: Severity::High,
+                        evidence: vec!["IKEv1 or aggressive mode detected - vulnerable to offline attacks".to_string()],
+                        remediation: "Use IKEv2 with strong encryption. Disable aggressive mode.".to_string(),
+                    });
+                }
+            }
+        }
+        None
+    }
+}
+
+/// Check for exposed Rsync service
+struct RsyncExposedCheck;
+
+impl ComplianceCheck for RsyncExposedCheck {
+    fn check_id(&self) -> &str { "rsync-exposed" }
+    fn name(&self) -> &str { "Rsync Service Exposed" }
+    fn control_id(&self) -> &str { "CIS-5.3" }
+    fn framework(&self) -> ComplianceFramework { ComplianceFramework::CisBenchmarks }
+
+    fn check(&self, host: &HostInfo) -> Option<CheckResult> {
+        let rsync_port = host.ports.iter().find(|p| {
+            p.port == 873 || get_service_name(p) == Some("rsync")
+        });
+
+        if rsync_port.is_some() {
+            Some(CheckResult {
+                control_id: self.control_id().to_string(),
+                framework: self.framework(),
+                check_name: self.name().to_string(),
+                status: ControlStatus::NonCompliant,
+                severity: Severity::High,
+                evidence: vec!["Rsync service (port 873) is exposed. May allow anonymous access.".to_string()],
+                remediation: "Restrict rsync access. Use SSH-based rsync instead.".to_string(),
+            })
+        } else {
+            None
+        }
+    }
+}
+
+/// Check for exposed NFS service
+struct NfsExposedCheck;
+
+impl ComplianceCheck for NfsExposedCheck {
+    fn check_id(&self) -> &str { "nfs-exposed" }
+    fn name(&self) -> &str { "NFS Service Exposed" }
+    fn control_id(&self) -> &str { "PCI-DSS-1.3.1" }
+    fn framework(&self) -> ComplianceFramework { ComplianceFramework::PciDss4 }
+
+    fn check(&self, host: &HostInfo) -> Option<CheckResult> {
+        let nfs_ports = [111, 2049]; // portmapper and NFS
+        let exposed: Vec<_> = host.ports.iter()
+            .filter(|p| nfs_ports.contains(&p.port) || get_service_name(p) == Some("nfs"))
+            .map(|p| p.port)
+            .collect();
+
+        if !exposed.is_empty() {
+            Some(CheckResult {
+                control_id: self.control_id().to_string(),
+                framework: self.framework(),
+                check_name: self.name().to_string(),
+                status: ControlStatus::NonCompliant,
+                severity: Severity::High,
+                evidence: vec![format!("NFS service exposed on ports: {:?}", exposed)],
+                remediation: "Restrict NFS access to authorized hosts only. Use NFSv4 with Kerberos authentication.".to_string(),
+            })
+        } else {
+            None
+        }
+    }
+}
+
+/// Check for exposed IPMI service
+struct IpmiExposedCheck;
+
+impl ComplianceCheck for IpmiExposedCheck {
+    fn check_id(&self) -> &str { "ipmi-exposed" }
+    fn name(&self) -> &str { "IPMI Service Exposed" }
+    fn control_id(&self) -> &str { "NIST-CM-7" }
+    fn framework(&self) -> ComplianceFramework { ComplianceFramework::Nist80053 }
+
+    fn check(&self, host: &HostInfo) -> Option<CheckResult> {
+        let ipmi_port = host.ports.iter().find(|p| {
+            p.port == 623 || get_service_name(p) == Some("ipmi")
+        });
+
+        if ipmi_port.is_some() {
+            Some(CheckResult {
+                control_id: self.control_id().to_string(),
+                framework: self.framework(),
+                check_name: self.name().to_string(),
+                status: ControlStatus::NonCompliant,
+                severity: Severity::Critical,
+                evidence: vec!["IPMI service (port 623) is exposed. Vulnerable to cipher zero attack.".to_string()],
+                remediation: "Restrict IPMI access to management network only. Disable IPMI if not needed.".to_string(),
+            })
+        } else {
+            None
+        }
+    }
+}
+
+// ============================================================================
+// Healthcare/HIPAA Specific Checks
+// ============================================================================
+
+/// Check for exposed HL7 service (healthcare data)
+struct Hl7ExposedCheck;
+
+impl ComplianceCheck for Hl7ExposedCheck {
+    fn check_id(&self) -> &str { "hl7-exposed" }
+    fn name(&self) -> &str { "HL7 Service Exposed" }
+    fn control_id(&self) -> &str { "HIPAA-164.312(e)(1)" }
+    fn framework(&self) -> ComplianceFramework { ComplianceFramework::Hipaa }
+
+    fn check(&self, host: &HostInfo) -> Option<CheckResult> {
+        // Common HL7 MLLP ports
+        let hl7_ports = [2575, 2576, 6661, 6662, 7777];
+        let exposed: Vec<_> = host.ports.iter()
+            .filter(|p| hl7_ports.contains(&p.port) || {
+                if let Some(banner) = get_service_banner(p) {
+                    banner.to_lowercase().contains("hl7") || banner.contains("MSH|")
+                } else {
+                    false
+                }
+            })
+            .map(|p| p.port)
+            .collect();
+
+        if !exposed.is_empty() {
+            Some(CheckResult {
+                control_id: self.control_id().to_string(),
+                framework: self.framework(),
+                check_name: self.name().to_string(),
+                status: ControlStatus::NonCompliant,
+                severity: Severity::Critical,
+                evidence: vec![format!("HL7 healthcare data interface exposed on ports: {:?}", exposed)],
+                remediation: "Encrypt HL7 traffic with TLS. Restrict access to authorized healthcare systems only.".to_string(),
+            })
+        } else {
+            None
+        }
+    }
+}
+
+/// Check for exposed DICOM service (medical imaging)
+struct DicomExposedCheck;
+
+impl ComplianceCheck for DicomExposedCheck {
+    fn check_id(&self) -> &str { "dicom-exposed" }
+    fn name(&self) -> &str { "DICOM Service Exposed" }
+    fn control_id(&self) -> &str { "HIPAA-164.312(a)(2)(iv)" }
+    fn framework(&self) -> ComplianceFramework { ComplianceFramework::Hipaa }
+
+    fn check(&self, host: &HostInfo) -> Option<CheckResult> {
+        let dicom_port = host.ports.iter().find(|p| {
+            p.port == 104 || p.port == 11112 || get_service_name(p) == Some("dicom")
+        });
+
+        if dicom_port.is_some() {
+            Some(CheckResult {
+                control_id: self.control_id().to_string(),
+                framework: self.framework(),
+                check_name: self.name().to_string(),
+                status: ControlStatus::NonCompliant,
+                severity: Severity::Critical,
+                evidence: vec!["DICOM medical imaging service exposed. Contains protected health information (PHI).".to_string()],
+                remediation: "Use DICOM TLS. Restrict access to authorized PACS systems only. Implement application-level authentication.".to_string(),
+            })
+        } else {
+            None
+        }
+    }
+}
+
+// ============================================================================
+// Web Security Checks
+// ============================================================================
+
+/// Check for exposed admin interfaces
+struct AdminInterfaceExposedCheck;
+
+impl ComplianceCheck for AdminInterfaceExposedCheck {
+    fn check_id(&self) -> &str { "admin-exposed" }
+    fn name(&self) -> &str { "Administrative Interface Exposed" }
+    fn control_id(&self) -> &str { "OWASP-A01" }
+    fn framework(&self) -> ComplianceFramework { ComplianceFramework::OwaspTop10 }
+
+    fn check(&self, host: &HostInfo) -> Option<CheckResult> {
+        let admin_ports = [
+            (8080, "Tomcat Manager"),
+            (8443, "Tomcat SSL"),
+            (9090, "Prometheus/Webmin"),
+            (9200, "Elasticsearch"),
+            (10000, "Webmin"),
+            (8888, "OWASP ZAP/Jupyter"),
+            (8000, "Django Debug"),
+            (4848, "GlassFish Admin"),
+            (7001, "WebLogic Admin"),
+            (9043, "WebSphere Admin"),
+            (8161, "ActiveMQ Web"),
+        ];
+
+        let exposed: Vec<_> = host.ports.iter()
+            .filter_map(|p| {
+                admin_ports.iter()
+                    .find(|(port, _)| *port == p.port)
+                    .map(|(port, name)| format!("{} ({})", port, name))
+            })
+            .collect();
+
+        if !exposed.is_empty() {
+            Some(CheckResult {
+                control_id: self.control_id().to_string(),
+                framework: self.framework(),
+                check_name: self.name().to_string(),
+                status: ControlStatus::NonCompliant,
+                severity: Severity::High,
+                evidence: vec![format!("Administrative interfaces exposed: {}", exposed.join(", "))],
+                remediation: "Restrict admin interfaces to internal network. Use VPN or bastion host for access.".to_string(),
+            })
+        } else {
+            None
+        }
+    }
+}
+
+/// Check for debug endpoints
+struct DebugEndpointsCheck;
+
+impl ComplianceCheck for DebugEndpointsCheck {
+    fn check_id(&self) -> &str { "debug-endpoints" }
+    fn name(&self) -> &str { "Debug Endpoints Exposed" }
+    fn control_id(&self) -> &str { "OWASP-A05" }
+    fn framework(&self) -> ComplianceFramework { ComplianceFramework::OwaspTop10 }
+
+    fn check(&self, host: &HostInfo) -> Option<CheckResult> {
+        // Check vulnerability list for debug-related findings
+        let debug_vulns: Vec<_> = host.vulnerabilities.iter()
+            .filter(|v| {
+                let title_lower = v.title.to_lowercase();
+                title_lower.contains("debug")
+                    || title_lower.contains("development mode")
+                    || title_lower.contains("stack trace")
+                    || title_lower.contains("error page disclosure")
+                    || title_lower.contains("verbose error")
+            })
+            .map(|v| v.title.clone())
+            .collect();
+
+        if !debug_vulns.is_empty() {
+            Some(CheckResult {
+                control_id: self.control_id().to_string(),
+                framework: self.framework(),
+                check_name: self.name().to_string(),
+                status: ControlStatus::NonCompliant,
+                severity: Severity::Medium,
+                evidence: vec![format!("Debug features detected: {}", debug_vulns.join(", "))],
+                remediation: "Disable debug mode in production. Configure proper error handling.".to_string(),
+            })
+        } else {
+            None
+        }
     }
 }
 

@@ -168,6 +168,9 @@ impl VulnerabilityMapper {
             ComplianceFramework::OwaspTop10 => {
                 frameworks::owasp::map_vulnerability(vuln_title, cve_id, port, service)
             }
+            ComplianceFramework::HitrustCsf => {
+                frameworks::hitrust::map_vulnerability(vuln_title, cve_id, port, service)
+            }
         }
     }
 }
@@ -192,6 +195,7 @@ pub fn get_common_mappings(
             mappings.push((ComplianceFramework::PciDss4, "PCI-DSS-4.1".to_string(), Severity::High));
             mappings.push((ComplianceFramework::Hipaa, "HIPAA-164.312(e)(2)(ii)".to_string(), Severity::High));
             mappings.push((ComplianceFramework::Nist80053, "NIST-SC-8".to_string(), Severity::High));
+            mappings.push((ComplianceFramework::HitrustCsf, "HITRUST-14.d".to_string(), Severity::High));
         }
     }
 
@@ -200,6 +204,7 @@ pub fn get_common_mappings(
         mappings.push((ComplianceFramework::PciDss4, "PCI-DSS-2.1".to_string(), Severity::Critical));
         mappings.push((ComplianceFramework::CisBenchmarks, "CIS-4.7".to_string(), Severity::Critical));
         mappings.push((ComplianceFramework::Nist80053, "NIST-IA-5".to_string(), Severity::Critical));
+        mappings.push((ComplianceFramework::HitrustCsf, "HITRUST-01.g".to_string(), Severity::Critical));
     }
 
     // Telnet and other insecure protocols
@@ -207,12 +212,14 @@ pub fn get_common_mappings(
         mappings.push((ComplianceFramework::PciDss4, "PCI-DSS-2.2.7".to_string(), Severity::High));
         mappings.push((ComplianceFramework::CisBenchmarks, "CIS-4.6".to_string(), Severity::High));
         mappings.push((ComplianceFramework::Nist80053, "NIST-SC-8".to_string(), Severity::High));
+        mappings.push((ComplianceFramework::HitrustCsf, "HITRUST-14.d".to_string(), Severity::High));
     }
 
     // FTP (unencrypted)
     if port == Some(21) && !title_lower.contains("sftp") && !title_lower.contains("ftps") {
         mappings.push((ComplianceFramework::PciDss4, "PCI-DSS-4.2".to_string(), Severity::Medium));
         mappings.push((ComplianceFramework::CisBenchmarks, "CIS-4.6".to_string(), Severity::Medium));
+        mappings.push((ComplianceFramework::HitrustCsf, "HITRUST-09.q".to_string(), Severity::Medium));
     }
 
     // Remote code execution / command injection
@@ -223,6 +230,7 @@ pub fn get_common_mappings(
         mappings.push((ComplianceFramework::PciDss4, "PCI-DSS-6.5.1".to_string(), Severity::Critical));
         mappings.push((ComplianceFramework::Nist80053, "NIST-SI-10".to_string(), Severity::Critical));
         mappings.push((ComplianceFramework::Soc2, "SOC2-PI1.2".to_string(), Severity::Critical));
+        mappings.push((ComplianceFramework::HitrustCsf, "HITRUST-10.b".to_string(), Severity::Critical));
     }
 
     // SQL injection
@@ -230,12 +238,27 @@ pub fn get_common_mappings(
         mappings.push((ComplianceFramework::PciDss4, "PCI-DSS-6.5.1".to_string(), Severity::Critical));
         mappings.push((ComplianceFramework::Nist80053, "NIST-SI-10".to_string(), Severity::Critical));
         mappings.push((ComplianceFramework::Soc2, "SOC2-PI1.2".to_string(), Severity::Critical));
+        mappings.push((ComplianceFramework::HitrustCsf, "HITRUST-10.b".to_string(), Severity::Critical));
     }
 
     // Cross-site scripting
     if title_lower.contains("xss") || title_lower.contains("cross-site scripting") {
         mappings.push((ComplianceFramework::PciDss4, "PCI-DSS-6.5.7".to_string(), Severity::High));
         mappings.push((ComplianceFramework::Nist80053, "NIST-SI-10".to_string(), Severity::High));
+        mappings.push((ComplianceFramework::HitrustCsf, "HITRUST-10.b".to_string(), Severity::High));
+    }
+
+    // Healthcare-specific: PHI/ePHI exposure
+    if title_lower.contains("phi") || title_lower.contains("ephi") || title_lower.contains("patient data") {
+        mappings.push((ComplianceFramework::Hipaa, "HIPAA-164.312(a)(1)".to_string(), Severity::Critical));
+        mappings.push((ComplianceFramework::HitrustCsf, "HITRUST-06.d".to_string(), Severity::Critical));
+        mappings.push((ComplianceFramework::HitrustCsf, "HITRUST-13.b".to_string(), Severity::Critical));
+    }
+
+    // Healthcare protocols (HL7, DICOM)
+    if title_lower.contains("hl7") || title_lower.contains("dicom") || port == Some(2575) || port == Some(104) {
+        mappings.push((ComplianceFramework::Hipaa, "HIPAA-164.312(e)(1)".to_string(), Severity::Critical));
+        mappings.push((ComplianceFramework::HitrustCsf, "HITRUST-14.d".to_string(), Severity::Critical));
     }
 
     mappings

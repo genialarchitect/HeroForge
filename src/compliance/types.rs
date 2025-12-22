@@ -29,6 +29,8 @@ pub enum ComplianceFramework {
     Soc2,
     /// OWASP Top 10 2021 - Web Application Security Risks
     OwaspTop10,
+    /// HITRUST CSF - Health Information Trust Alliance Common Security Framework
+    HitrustCsf,
 }
 
 impl ComplianceFramework {
@@ -43,6 +45,7 @@ impl ComplianceFramework {
             Self::Ferpa,
             Self::Soc2,
             Self::OwaspTop10,
+            Self::HitrustCsf,
         ]
     }
 
@@ -57,6 +60,7 @@ impl ComplianceFramework {
             Self::Ferpa => "ferpa",
             Self::Soc2 => "soc2",
             Self::OwaspTop10 => "owasp_top10",
+            Self::HitrustCsf => "hitrust_csf",
         }
     }
 
@@ -71,6 +75,7 @@ impl ComplianceFramework {
             Self::Ferpa => "FERPA",
             Self::Soc2 => "SOC 2",
             Self::OwaspTop10 => "OWASP Top 10",
+            Self::HitrustCsf => "HITRUST CSF",
         }
     }
 
@@ -85,6 +90,7 @@ impl ComplianceFramework {
             Self::Ferpa => "2023",
             Self::Soc2 => "2017",
             Self::OwaspTop10 => "2021",
+            Self::HitrustCsf => "v11.3",
         }
     }
 
@@ -99,6 +105,7 @@ impl ComplianceFramework {
             Self::Ferpa => "Federal law protecting student education records and privacy",
             Self::Soc2 => "Trust Services Criteria for service organization security, availability, and confidentiality",
             Self::OwaspTop10 => "Top 10 web application security risks identified by OWASP",
+            Self::HitrustCsf => "Comprehensive healthcare security framework integrating HIPAA, NIST, PCI-DSS, and ISO 27001 controls",
         }
     }
 
@@ -113,6 +120,7 @@ impl ComplianceFramework {
             "ferpa" => Some(Self::Ferpa),
             "soc2" | "soc_2" => Some(Self::Soc2),
             "owasp" | "owasp_top10" | "owasp_top_10" => Some(Self::OwaspTop10),
+            "hitrust" | "hitrust_csf" | "hitrustcsf" => Some(Self::HitrustCsf),
             _ => None,
         }
     }
