@@ -1393,6 +1393,11 @@ pub async fn bulk_export_scans(
                     let findings = FindingDetail::from_vulnerabilities(&hosts);
                     let remediation = RemediationRecommendation::from_findings(&findings);
 
+                    // Fetch secret findings for this scan
+                    let secrets = crate::db::secret_findings::get_findings_by_scan(&pool, &scan.id)
+                        .await
+                        .unwrap_or_default();
+
                     let report_data = ReportData {
                         id: report_id.clone(),
                         name: scan.name.clone(),
@@ -1407,6 +1412,7 @@ pub async fn bulk_export_scans(
                         hosts: hosts.clone(),
                         summary,
                         findings,
+                        secrets,
                         remediation,
                     };
 

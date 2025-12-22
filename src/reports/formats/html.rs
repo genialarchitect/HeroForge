@@ -57,6 +57,7 @@ pub fn generate_html(data: &ReportData) -> String {
             ReportSection::HostInventory => html.push_str(&generate_host_inventory(data)),
             ReportSection::PortAnalysis => html.push_str(&generate_port_analysis(data)),
             ReportSection::VulnerabilityFindings => html.push_str(&generate_vulnerability_findings(data)),
+            ReportSection::SecretFindings => html.push_str(&generate_secret_findings(data)),
             ReportSection::ServiceEnumeration => html.push_str(&generate_service_enumeration(data)),
             ReportSection::RemediationRecommendations => html.push_str(&generate_remediation(data)),
             ReportSection::Appendix => html.push_str(&generate_appendix(data)),
@@ -389,6 +390,182 @@ fn generate_vulnerability_findings(data: &ReportData) -> String {
     html
 }
 
+fn generate_secret_findings(data: &ReportData) -> String {
+    let mut html = String::from(
+        r#"<div class="section" id="secret-findings"><h2>Secret Findings</h2>"#
+    );
+
+    if data.secrets.is_empty() {
+        html.push_str("<p>No exposed secrets were identified during this assessment.</p>");
+    } else {
+        // Summary statistics
+        let critical_count = data.secrets.iter().filter(|s| s.severity == "critical").count();
+        let high_count = data.secrets.iter().filter(|s| s.severity == "high").count();
+        let medium_count = data.secrets.iter().filter(|s| s.severity == "medium").count();
+        let low_count = data.secrets.iter().filter(|s| s.severity == "low").count();
+
+        html.push_str(&format!(
+            r#"
+    <div class="secret-summary">
+        <p><strong>Total Exposed Secrets:</strong> {} findings requiring immediate attention.</p>
+        <div class="vuln-breakdown">
+            <div class="vuln-count critical"><span>{}</span> Critical</div>
+            <div class="vuln-count high"><span>{}</span> High</div>
+            <div class="vuln-count medium"><span>{}</span> Medium</div>
+            <div class="vuln-count low"><span>{}</span> Low</div>
+        </div>
+    </div>
+    <div class="alert-box critical">
+        <strong>SECURITY ALERT:</strong> Exposed credentials and secrets represent an immediate security risk.
+        All findings below should be rotated/revoked immediately, even if marked as potentially false positive.
+    </div>
+"#,
+            data.secrets.len(),
+            critical_count,
+            high_count,
+            medium_count,
+            low_count
+        ));
+
+        // Group secrets by severity for organized display
+        let severity_order = ["critical", "high", "medium", "low"];
+
+        for severity in &severity_order {
+            let secrets_at_severity: Vec<_> = data.secrets.iter()
+                .filter(|s| s.severity.to_lowercase() == *severity)
+                .collect();
+
+            if secrets_at_severity.is_empty() {
+                continue;
+            }
+
+            html.push_str(&format!(
+                r#"<h3 class="severity-header {}">{} Severity ({} findings)</h3>"#,
+                severity,
+                capitalize(severity),
+                secrets_at_severity.len()
+            ));
+
+            for secret in secrets_at_severity {
+                let status_badge = match secret.status.as_str() {
+                    "resolved" => r#"<span class="status-badge resolved">Resolved</span>"#,
+                    "acknowledged" => r#"<span class="status-badge acknowledged">Acknowledged</span>"#,
+                    _ => r#"<span class="status-badge open">Open</span>"#,
+                };
+
+                let false_positive_indicator = if secret.false_positive {
+                    r#"<span class="fp-badge">Potential False Positive</span>"#
+                } else {
+                    ""
+                };
+
+                html.push_str(&format!(
+                    r#"
+<div class="secret-card">
+    <div class="secret-header">
+        <span class="severity-badge {}">{}</span>
+        <h4>{}</h4>
+        {}
+        {}
+    </div>
+    <div class="secret-body">
+        <table class="secret-details">
+            <tr><th>Host</th><td>{}{}</td></tr>
+            <tr><th>Redacted Value</th><td class="monospace">{}</td></tr>
+            <tr><th>Source</th><td>{}: {}</td></tr>
+            {}
+            <tr><th>Confidence</th><td>{}%</td></tr>
+            <tr><th>Detected</th><td>{}</td></tr>
+        </table>
+        {}
+        <div class="secret-remediation">
+            <strong>Recommended Action:</strong> {}
+        </div>
+    </div>
+</div>
+"#,
+                    secret.severity,
+                    capitalize(&secret.severity),
+                    html_escape(&format_secret_type(&secret.secret_type)),
+                    status_badge,
+                    false_positive_indicator,
+                    html_escape(&secret.host_ip),
+                    secret.port.map(|p| format!(":{}", p)).unwrap_or_default(),
+                    html_escape(&secret.redacted_value),
+                    html_escape(&secret.source_type),
+                    html_escape(&secret.source_location),
+                    secret.line_number.map(|ln| format!("<tr><th>Line Number</th><td>{}</td></tr>", ln)).unwrap_or_default(),
+                    (secret.confidence * 100.0) as i32,
+                    secret.created_at.format("%Y-%m-%d %H:%M UTC"),
+                    secret.context.as_ref().map(|c| format!(
+                        r#"<div class="secret-context"><strong>Context:</strong><pre>{}</pre></div>"#,
+                        html_escape(c)
+                    )).unwrap_or_default(),
+                    get_secret_remediation(&secret.secret_type)
+                ));
+            }
+        }
+    }
+
+    html.push_str("</div>");
+    html
+}
+
+fn capitalize(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        None => String::new(),
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+    }
+}
+
+fn format_secret_type(secret_type: &str) -> String {
+    secret_type
+        .replace('_', " ")
+        .split_whitespace()
+        .map(|word| {
+            let mut chars = word.chars();
+            match chars.next() {
+                None => String::new(),
+                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str().to_lowercase().as_str(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn get_secret_remediation(secret_type: &str) -> &'static str {
+    match secret_type.to_lowercase().as_str() {
+        "aws_access_key" | "aws_secret_key" => {
+            "Immediately rotate this AWS credential in the IAM console. Delete the exposed key and generate new credentials. Review CloudTrail logs for unauthorized access."
+        }
+        "github_token" | "github_oauth" | "gitlab_token" => {
+            "Revoke this token immediately in your Git provider settings. Generate a new token with minimal required scopes. Review repository access logs."
+        }
+        "rsa_private_key" | "ssh_private_key" | "ssh_private_key_openssh" | "ec_private_key" | "dsa_private_key" | "pkcs8_private_key" => {
+            "This private key is compromised. Remove it from all authorized_keys files and certificate authorities. Generate new key pairs immediately."
+        }
+        "password_in_url" | "password_in_config" | "basic_auth_credentials" | "hardcoded_password" => {
+            "Remove hardcoded credentials immediately. Use environment variables or a secrets management system (Vault, AWS Secrets Manager)."
+        }
+        "mongodb_uri" | "postgres_uri" | "mysql_uri" | "redis_uri" | "mssql_connection_string" => {
+            "Database credentials are exposed. Change passwords immediately and rotate connection strings. Ensure databases are not publicly accessible."
+        }
+        "stripe_key" => {
+            "Roll this Stripe key immediately in the Stripe Dashboard. Review recent API activity for unauthorized transactions."
+        }
+        "jwt_token" => {
+            "If this is a long-lived token, invalidate it. Implement token refresh mechanisms and use short-lived tokens."
+        }
+        "kubernetes_token" | "vault_token" | "consul_token" => {
+            "Infrastructure tokens provide privileged access. Rotate immediately and audit all recent cluster activity."
+        }
+        _ => {
+            "Rotate this credential immediately. Store secrets using environment variables or a secrets management solution. Never commit credentials to source code."
+        }
+    }
+}
+
 fn generate_service_enumeration(data: &ReportData) -> String {
     let mut html = String::from(
         r#"<div class="section" id="service-enumeration"><h2>Service Enumeration</h2>"#
@@ -614,6 +791,7 @@ fn section_id(section: &ReportSection) -> &'static str {
         ReportSection::HostInventory => "host-inventory",
         ReportSection::PortAnalysis => "port-analysis",
         ReportSection::VulnerabilityFindings => "vulnerability-findings",
+        ReportSection::SecretFindings => "secret-findings",
         ReportSection::ServiceEnumeration => "service-enumeration",
         ReportSection::RemediationRecommendations => "remediation-recommendations",
         ReportSection::Appendix => "appendix",
@@ -991,6 +1169,117 @@ body {
     font-size: 0.9rem;
 }
 
+/* Secret findings section */
+.secret-summary {
+    background: #f8fafc;
+    padding: 20px;
+    border-radius: 8px;
+    margin: 20px 0;
+}
+.alert-box {
+    padding: 15px 20px;
+    border-radius: 4px;
+    margin: 20px 0;
+    font-size: 0.95rem;
+}
+.alert-box.critical {
+    background: #fef2f2;
+    border-left: 4px solid #ef4444;
+    color: #991b1b;
+}
+.severity-header {
+    margin-top: 30px;
+    padding: 10px 15px;
+    border-radius: 4px;
+    color: white;
+}
+.severity-header.critical { background: #ef4444; }
+.severity-header.high { background: #f97316; }
+.severity-header.medium { background: #eab308; }
+.severity-header.low { background: #3b82f6; }
+.secret-card {
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    margin: 15px 0;
+    overflow: hidden;
+}
+.secret-header {
+    background: #f8fafc;
+    padding: 15px 20px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    flex-wrap: wrap;
+}
+.secret-header h4 {
+    margin: 0;
+    flex-grow: 1;
+    font-size: 1.1rem;
+}
+.secret-body {
+    padding: 20px;
+}
+.secret-details {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 15px;
+}
+.secret-details th {
+    text-align: left;
+    padding: 8px 12px;
+    background: #f1f5f9;
+    width: 150px;
+    font-weight: 600;
+    border-bottom: 1px solid #e2e8f0;
+}
+.secret-details td {
+    padding: 8px 12px;
+    border-bottom: 1px solid #e2e8f0;
+}
+.secret-details td.monospace {
+    font-family: 'Courier New', monospace;
+    background: #f8fafc;
+    letter-spacing: 1px;
+}
+.secret-context {
+    background: #f1f5f9;
+    padding: 15px;
+    border-radius: 4px;
+    margin: 15px 0;
+}
+.secret-context pre {
+    margin: 10px 0 0 0;
+    font-size: 0.85rem;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+.secret-remediation {
+    background: #fef3c7;
+    border: 1px solid #fcd34d;
+    padding: 15px;
+    border-radius: 4px;
+    margin-top: 15px;
+}
+.status-badge {
+    padding: 3px 10px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    font-weight: bold;
+}
+.status-badge.open { background: #fee2e2; color: #dc2626; }
+.status-badge.acknowledged { background: #fef3c7; color: #b45309; }
+.status-badge.resolved { background: #dcfce7; color: #16a34a; }
+.fp-badge {
+    background: #f3e8ff;
+    color: #7c3aed;
+    padding: 3px 10px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: bold;
+}
+
 /* Appendix */
 .disclaimer {
     background: #fef3c7;
@@ -1015,7 +1304,7 @@ body {
     body { padding: 0; }
     .cover-page { min-height: auto; page-break-after: always; }
     .section { page-break-inside: avoid; }
-    .finding-card { break-inside: avoid; }
+    .finding-card, .secret-card { break-inside: avoid; }
     .data-table { font-size: 0.85rem; }
 }
 "#

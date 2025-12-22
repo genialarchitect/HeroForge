@@ -43,6 +43,33 @@ lazy_static::lazy_static! {
         Arc::new(RwLock::new(HashMap::new()));
 }
 
+/// Represents a change to a user profile field
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ProfileChange {
+    pub field: String,
+    pub old_value: Option<String>,
+    pub new_value: Option<String>,
+}
+
+/// Result of syncing group memberships
+#[derive(Debug, Clone)]
+pub struct GroupSyncResult {
+    pub added: Vec<String>,
+    pub removed: Vec<String>,
+}
+
+/// SSO profile sync audit log entry
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SsoProfileSyncLog {
+    pub id: String,
+    pub user_id: String,
+    pub provider_id: String,
+    pub field_changes: Vec<ProfileChange>,
+    pub groups_added: Vec<String>,
+    pub groups_removed: Vec<String>,
+    pub synced_at: chrono::DateTime<Utc>,
+}
+
 /// SSO Manager - Coordinates SSO authentication
 pub struct SsoManager {
     pool: SqlitePool,
@@ -253,10 +280,16 @@ impl SsoManager {
             Some(user) => {
                 // User exists
                 if provider.update_on_login {
-                    // Update user info if configured
-                    // TODO: Implement user profile update
+                    // Update user profile from SSO attributes
+                    let updated_user = self.sync_user_profile(
+                        &user,
+                        provider,
+                        &mapped_info,
+                    ).await?;
+                    (updated_user, false)
+                } else {
+                    (user, false)
                 }
-                (user, false)
             }
             None => {
                 // User doesn't exist
@@ -368,6 +401,216 @@ impl SsoManager {
         }
 
         best_match.map(|(m, _)| m.role.clone())
+    }
+
+    /// Sync user profile from SSO attributes
+    async fn sync_user_profile(
+        &self,
+        user: &crate::db::models::User,
+        provider: &SsoProvider,
+        sso_info: &SsoUserInfo,
+    ) -> Result<crate::db::models::User> {
+        let mut changes: Vec<ProfileChange> = Vec::new();
+
+        // Compare and collect changes for profile fields
+        if let Some(ref new_display_name) = sso_info.display_name {
+            let current = get_user_display_name(&self.pool, &user.id).await.ok().flatten();
+            if current.as_ref() != Some(new_display_name) {
+                changes.push(ProfileChange {
+                    field: "display_name".to_string(),
+                    old_value: current,
+                    new_value: Some(new_display_name.clone()),
+                });
+            }
+        }
+
+        if let Some(ref new_first_name) = sso_info.first_name {
+            let current = get_user_first_name(&self.pool, &user.id).await.ok().flatten();
+            if current.as_ref() != Some(new_first_name) {
+                changes.push(ProfileChange {
+                    field: "first_name".to_string(),
+                    old_value: current,
+                    new_value: Some(new_first_name.clone()),
+                });
+            }
+        }
+
+        if let Some(ref new_last_name) = sso_info.last_name {
+            let current = get_user_last_name(&self.pool, &user.id).await.ok().flatten();
+            if current.as_ref() != Some(new_last_name) {
+                changes.push(ProfileChange {
+                    field: "last_name".to_string(),
+                    old_value: current,
+                    new_value: Some(new_last_name.clone()),
+                });
+            }
+        }
+
+        // Sync group memberships
+        let group_changes = self.sync_group_memberships(
+            &user.id,
+            &provider.id,
+            &sso_info.groups,
+        ).await?;
+
+        // Re-evaluate roles based on new group memberships
+        let role_change = self.reevaluate_roles(user, provider, &sso_info.groups).await?;
+        if let Some(change) = role_change {
+            changes.push(change);
+        }
+
+        // Apply profile field updates if there are changes
+        if !changes.is_empty() || !group_changes.added.is_empty() || !group_changes.removed.is_empty() {
+            // Update profile fields in database
+            update_sso_profile_fields(
+                &self.pool,
+                &user.id,
+                sso_info.display_name.as_deref(),
+                sso_info.first_name.as_deref(),
+                sso_info.last_name.as_deref(),
+                &provider.id,
+            ).await?;
+
+            // Log the sync with all changes
+            let sync_log = SsoProfileSyncLog {
+                id: uuid::Uuid::new_v4().to_string(),
+                user_id: user.id.clone(),
+                provider_id: provider.id.clone(),
+                field_changes: changes.clone(),
+                groups_added: group_changes.added,
+                groups_removed: group_changes.removed,
+                synced_at: Utc::now(),
+            };
+
+            log_profile_sync(&self.pool, &sync_log).await?;
+
+            log::info!(
+                "Synced SSO profile for user {} from provider {}: {} field changes",
+                user.username,
+                provider.name,
+                changes.len()
+            );
+        }
+
+        // Return the updated user
+        crate::db::get_user_by_id(&self.pool, &user.id)
+            .await?
+            .ok_or_else(|| anyhow!("User not found after update"))
+    }
+
+    /// Sync group memberships from SSO provider
+    async fn sync_group_memberships(
+        &self,
+        user_id: &str,
+        provider_id: &str,
+        new_groups: &[String],
+    ) -> Result<GroupSyncResult> {
+        let now = Utc::now();
+
+        // Get current group memberships for this provider
+        let current_groups = get_user_sso_groups(&self.pool, user_id, provider_id).await?;
+        let current_set: std::collections::HashSet<_> = current_groups.iter().collect();
+        let new_set: std::collections::HashSet<_> = new_groups.iter().collect();
+
+        // Calculate added and removed groups
+        let added: Vec<String> = new_groups
+            .iter()
+            .filter(|g| !current_set.contains(g))
+            .cloned()
+            .collect();
+
+        let removed: Vec<String> = current_groups
+            .iter()
+            .filter(|g| !new_set.contains(g))
+            .cloned()
+            .collect();
+
+        // Add new group memberships
+        for group in &added {
+            let membership_id = uuid::Uuid::new_v4().to_string();
+            sqlx::query(
+                r#"
+                INSERT OR IGNORE INTO sso_group_memberships (id, user_id, provider_id, group_name, synced_at)
+                VALUES (?, ?, ?, ?, ?)
+                "#,
+            )
+            .bind(&membership_id)
+            .bind(user_id)
+            .bind(provider_id)
+            .bind(group)
+            .bind(now)
+            .execute(&self.pool)
+            .await?;
+        }
+
+        // Remove old group memberships
+        for group in &removed {
+            sqlx::query(
+                "DELETE FROM sso_group_memberships WHERE user_id = ? AND provider_id = ? AND group_name = ?",
+            )
+            .bind(user_id)
+            .bind(provider_id)
+            .bind(group)
+            .execute(&self.pool)
+            .await?;
+        }
+
+        // Update synced_at for existing groups
+        sqlx::query(
+            "UPDATE sso_group_memberships SET synced_at = ? WHERE user_id = ? AND provider_id = ?",
+        )
+        .bind(now)
+        .bind(user_id)
+        .bind(provider_id)
+        .execute(&self.pool)
+        .await?;
+
+        if !added.is_empty() || !removed.is_empty() {
+            log::info!(
+                "Synced groups for user {}: added {:?}, removed {:?}",
+                user_id, added, removed
+            );
+        }
+
+        Ok(GroupSyncResult { added, removed })
+    }
+
+    /// Re-evaluate user roles based on updated group memberships
+    async fn reevaluate_roles(
+        &self,
+        user: &crate::db::models::User,
+        provider: &SsoProvider,
+        groups: &[String],
+    ) -> Result<Option<ProfileChange>> {
+        // Determine what role should be assigned based on current groups
+        let new_role = self.determine_role(provider, groups).await;
+
+        if let Some(ref role_name) = new_role {
+            // Get current roles
+            let current_roles = crate::db::get_user_roles(&self.pool, &user.id)
+                .await
+                .unwrap_or_default();
+
+            let current_role_names: Vec<String> = current_roles.iter().map(|r| r.name.clone()).collect();
+
+            // Check if the determined role is already assigned
+            if !current_role_names.contains(role_name) {
+                // Assign the new role
+                if let Err(e) = crate::db::assign_role_to_user(&self.pool, &user.id, role_name, "sso-sync").await {
+                    log::warn!("Failed to assign role {} to user {}: {}", role_name, user.id, e);
+                } else {
+                    log::info!("Assigned role '{}' to user {} based on SSO group membership", role_name, user.username);
+
+                    return Ok(Some(ProfileChange {
+                        field: "role".to_string(),
+                        old_value: current_role_names.first().cloned(),
+                        new_value: Some(role_name.clone()),
+                    }));
+                }
+            }
+        }
+
+        Ok(None)
     }
 
     /// Generate SP metadata for a provider
@@ -686,4 +929,177 @@ async fn mark_session_logged_out(pool: &SqlitePool, session_id: &str) -> Result<
         .await?;
 
     Ok(())
+}
+
+// ============================================================================
+// SSO Profile Sync Database Functions
+// ============================================================================
+
+/// Get user display_name
+async fn get_user_display_name(pool: &SqlitePool, user_id: &str) -> Result<Option<String>> {
+    let result: Option<(Option<String>,)> = sqlx::query_as(
+        "SELECT display_name FROM users WHERE id = ?",
+    )
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(result.and_then(|(v,)| v))
+}
+
+/// Get user first_name
+async fn get_user_first_name(pool: &SqlitePool, user_id: &str) -> Result<Option<String>> {
+    let result: Option<(Option<String>,)> = sqlx::query_as(
+        "SELECT first_name FROM users WHERE id = ?",
+    )
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(result.and_then(|(v,)| v))
+}
+
+/// Get user last_name
+async fn get_user_last_name(pool: &SqlitePool, user_id: &str) -> Result<Option<String>> {
+    let result: Option<(Option<String>,)> = sqlx::query_as(
+        "SELECT last_name FROM users WHERE id = ?",
+    )
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(result.and_then(|(v,)| v))
+}
+
+/// Get SSO group memberships for a user from a specific provider
+async fn get_user_sso_groups(pool: &SqlitePool, user_id: &str, provider_id: &str) -> Result<Vec<String>> {
+    let groups: Vec<(String,)> = sqlx::query_as(
+        "SELECT group_name FROM sso_group_memberships WHERE user_id = ? AND provider_id = ?",
+    )
+    .bind(user_id)
+    .bind(provider_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(groups.into_iter().map(|(g,)| g).collect())
+}
+
+/// Update SSO profile fields for a user
+async fn update_sso_profile_fields(
+    pool: &SqlitePool,
+    user_id: &str,
+    display_name: Option<&str>,
+    first_name: Option<&str>,
+    last_name: Option<&str>,
+    provider_id: &str,
+) -> Result<()> {
+    let now = Utc::now();
+
+    sqlx::query(
+        r#"
+        UPDATE users SET
+            display_name = COALESCE(?, display_name),
+            first_name = COALESCE(?, first_name),
+            last_name = COALESCE(?, last_name),
+            sso_provider_id = ?,
+            last_sso_sync = ?
+        WHERE id = ?
+        "#,
+    )
+    .bind(display_name)
+    .bind(first_name)
+    .bind(last_name)
+    .bind(provider_id)
+    .bind(now)
+    .bind(user_id)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Log a profile sync operation
+async fn log_profile_sync(pool: &SqlitePool, log: &SsoProfileSyncLog) -> Result<()> {
+    let changes_json = serde_json::json!({
+        "field_changes": log.field_changes,
+        "groups_added": log.groups_added,
+        "groups_removed": log.groups_removed,
+    });
+
+    sqlx::query(
+        r#"
+        INSERT INTO sso_profile_sync_log (id, user_id, provider_id, changes, synced_at)
+        VALUES (?, ?, ?, ?, ?)
+        "#,
+    )
+    .bind(&log.id)
+    .bind(&log.user_id)
+    .bind(&log.provider_id)
+    .bind(changes_json.to_string())
+    .bind(log.synced_at)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Get profile sync history for a user
+pub async fn get_profile_sync_history(
+    pool: &SqlitePool,
+    user_id: &str,
+    limit: i32,
+) -> Result<Vec<SsoProfileSyncLog>> {
+    let rows: Vec<(String, String, String, String, chrono::DateTime<Utc>)> = sqlx::query_as(
+        r#"
+        SELECT id, user_id, provider_id, changes, synced_at
+        FROM sso_profile_sync_log
+        WHERE user_id = ?
+        ORDER BY synced_at DESC
+        LIMIT ?
+        "#,
+    )
+    .bind(user_id)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+
+    let mut logs = Vec::new();
+    for (id, user_id, provider_id, changes_json, synced_at) in rows {
+        let changes: serde_json::Value = serde_json::from_str(&changes_json).unwrap_or_default();
+
+        logs.push(SsoProfileSyncLog {
+            id,
+            user_id,
+            provider_id,
+            field_changes: serde_json::from_value(
+                changes.get("field_changes").cloned().unwrap_or_default()
+            ).unwrap_or_default(),
+            groups_added: serde_json::from_value(
+                changes.get("groups_added").cloned().unwrap_or_default()
+            ).unwrap_or_default(),
+            groups_removed: serde_json::from_value(
+                changes.get("groups_removed").cloned().unwrap_or_default()
+            ).unwrap_or_default(),
+            synced_at,
+        });
+    }
+
+    Ok(logs)
+}
+
+/// Get all SSO group memberships for a user (across all providers)
+pub async fn get_all_user_sso_groups(pool: &SqlitePool, user_id: &str) -> Result<Vec<(String, String, chrono::DateTime<Utc>)>> {
+    let groups: Vec<(String, String, chrono::DateTime<Utc>)> = sqlx::query_as(
+        r#"
+        SELECT provider_id, group_name, synced_at
+        FROM sso_group_memberships
+        WHERE user_id = ?
+        ORDER BY provider_id, group_name
+        "#,
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(groups)
 }

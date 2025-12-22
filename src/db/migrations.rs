@@ -155,6 +155,110 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     super::purple_team::init_purple_team_tables(pool).await?;
     // AI Chat tables
     create_chat_tables(pool).await?;
+    // SSO user profile sync tables
+    add_sso_profile_fields(pool).await?;
+    Ok(())
+}
+
+/// Add SSO profile fields to users table and create SSO group membership tracking
+async fn add_sso_profile_fields(pool: &SqlitePool) -> Result<()> {
+    // Add display_name column
+    let _ = sqlx::query(
+        "ALTER TABLE users ADD COLUMN display_name TEXT"
+    )
+    .execute(pool)
+    .await;
+
+    // Add first_name column
+    let _ = sqlx::query(
+        "ALTER TABLE users ADD COLUMN first_name TEXT"
+    )
+    .execute(pool)
+    .await;
+
+    // Add last_name column
+    let _ = sqlx::query(
+        "ALTER TABLE users ADD COLUMN last_name TEXT"
+    )
+    .execute(pool)
+    .await;
+
+    // Add sso_provider_id to track which SSO provider the user authenticated with
+    let _ = sqlx::query(
+        "ALTER TABLE users ADD COLUMN sso_provider_id TEXT REFERENCES sso_providers(id)"
+    )
+    .execute(pool)
+    .await;
+
+    // Add sso_subject to store the unique identifier from the IdP
+    let _ = sqlx::query(
+        "ALTER TABLE users ADD COLUMN sso_subject TEXT"
+    )
+    .execute(pool)
+    .await;
+
+    // Add last_sso_sync to track when profile was last synced
+    let _ = sqlx::query(
+        "ALTER TABLE users ADD COLUMN last_sso_sync TEXT"
+    )
+    .execute(pool)
+    .await;
+
+    // Create SSO group memberships table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS sso_group_memberships (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            provider_id TEXT NOT NULL,
+            group_name TEXT NOT NULL,
+            synced_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (provider_id) REFERENCES sso_providers(id) ON DELETE CASCADE,
+            UNIQUE(user_id, provider_id, group_name)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create index for efficient group queries
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_sso_group_memberships_user ON sso_group_memberships(user_id)"
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_sso_group_memberships_provider ON sso_group_memberships(provider_id)"
+    )
+    .execute(pool)
+    .await?;
+
+    // Create SSO profile sync audit log table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS sso_profile_sync_log (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            provider_id TEXT NOT NULL,
+            changes TEXT NOT NULL,
+            synced_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (provider_id) REFERENCES sso_providers(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_sso_profile_sync_log_user ON sso_profile_sync_log(user_id)"
+    )
+    .execute(pool)
+    .await?;
+
+    log::info!("Added SSO profile fields and group membership tracking");
     Ok(())
 }
 

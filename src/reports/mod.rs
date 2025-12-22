@@ -79,6 +79,11 @@ impl ReportGenerator {
         let findings = FindingDetail::from_vulnerabilities(&hosts);
         let remediation = RemediationRecommendation::from_findings(&findings);
 
+        // Fetch secret findings for this scan
+        let secrets = db::secret_findings::get_findings_by_scan(&self.pool, scan_id)
+            .await
+            .unwrap_or_default();
+
         let report_data = ReportData {
             id: report_id.to_string(),
             name: name.to_string(),
@@ -93,6 +98,7 @@ impl ReportGenerator {
             hosts,
             summary,
             findings,
+            secrets,
             remediation,
         };
 

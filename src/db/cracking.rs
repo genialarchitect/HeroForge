@@ -575,14 +575,73 @@ pub async fn get_cracking_stats(pool: &SqlitePool, user_id: &str) -> Result<Crac
         0.0
     };
 
+    // Get top hash types from cracked credentials
+    let top_hash_types_raw: Vec<(i32, i64)> = sqlx::query_as(
+        r#"
+        SELECT c.hash_type, COUNT(*) as count
+        FROM cracked_credentials c
+        JOIN cracking_jobs j ON c.job_id = j.id
+        WHERE j.user_id = ?1
+        GROUP BY c.hash_type
+        ORDER BY count DESC
+        LIMIT 5
+        "#
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+
+    // Convert hash type codes to names
+    let top_hash_types: Vec<(String, i64)> = top_hash_types_raw
+        .into_iter()
+        .map(|(hash_type, count)| {
+            let hash_name = match hash_type {
+                0 => "MD5",
+                100 => "SHA-1",
+                1400 => "SHA-256",
+                1700 => "SHA-512",
+                1000 => "NTLM",
+                3000 => "LM",
+                5500 => "NetNTLMv1",
+                5600 => "NetNTLMv2",
+                13100 => "Kerberos TGS",
+                18200 => "Kerberos AS-REP",
+                3200 => "bcrypt",
+                500 => "md5crypt",
+                1800 => "sha512crypt",
+                7400 => "sha256crypt",
+                _ => "Other",
+            };
+            (hash_name.to_string(), count)
+        })
+        .collect();
+
+    // Get top passwords from cracked credentials
+    let top_passwords: Vec<(String, i64)> = sqlx::query_as(
+        r#"
+        SELECT c.plaintext, COUNT(*) as count
+        FROM cracked_credentials c
+        JOIN cracking_jobs j ON c.job_id = j.id
+        WHERE j.user_id = ?1 AND c.plaintext IS NOT NULL AND c.plaintext != ''
+        GROUP BY c.plaintext
+        ORDER BY count DESC
+        LIMIT 10
+        "#
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+
     Ok(CrackingStats {
         total_jobs: total_jobs.0,
         running_jobs: running_jobs.0,
         total_hashes,
         total_cracked,
         success_rate,
-        top_hash_types: vec![],  // TODO: implement
-        top_passwords: vec![],   // TODO: implement
+        top_hash_types,
+        top_passwords,
     })
 }
 

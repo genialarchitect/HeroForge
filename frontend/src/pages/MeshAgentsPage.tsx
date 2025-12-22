@@ -43,6 +43,7 @@ export default function MeshAgentsPage() {
   const [showCreateCluster, setShowCreateCluster] = useState(false);
   const [showAgentConfig, setShowAgentConfig] = useState<string | null>(null);
   const [selectedCluster, setSelectedCluster] = useState<ClusterWithDetails | null>(null);
+  const [editingCluster, setEditingCluster] = useState<ClusterWithDetails | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const queryClient = useQueryClient();
 
@@ -174,6 +175,36 @@ export default function MeshAgentsPage() {
     },
     onError: () => {
       toast.error('Failed to trigger leader election');
+    },
+  });
+
+  // Update agent mesh config mutation
+  const updateAgentConfigMutation = useMutation({
+    mutationFn: ({ agentId, config }: { agentId: string; config: UpdateMeshConfigRequest }) =>
+      agentsAPI.updateMeshConfig(agentId, config),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['meshAgents'] });
+      queryClient.invalidateQueries({ queryKey: ['meshDashboardStats'] });
+      toast.success('Agent configuration saved');
+      setShowAgentConfig(null);
+    },
+    onError: () => {
+      toast.error('Failed to save agent configuration');
+    },
+  });
+
+  // Update cluster mutation
+  const updateClusterMutation = useMutation({
+    mutationFn: ({ clusterId, data }: { clusterId: string; data: { name: string; description?: string } }) =>
+      agentsAPI.updateCluster(clusterId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['meshClusters'] });
+      queryClient.invalidateQueries({ queryKey: ['meshDashboardStats'] });
+      toast.success('Cluster updated');
+      setEditingCluster(null);
+    },
+    onError: () => {
+      toast.error('Failed to update cluster');
     },
   });
 
@@ -482,11 +513,13 @@ export default function MeshAgentsPage() {
                     agentId={showAgentConfig}
                     existingConfig={undefined}
                     onSave={(config) => {
-                      // TODO: Implement save
-                      toast.success('Configuration saved');
-                      setShowAgentConfig(null);
+                      updateAgentConfigMutation.mutate({
+                        agentId: showAgentConfig,
+                        config: config as UpdateMeshConfigRequest,
+                      });
                     }}
                     onCancel={() => setShowAgentConfig(null)}
+                    isLoading={updateAgentConfigMutation.isPending}
                   />
                 </div>
               </div>
@@ -538,9 +571,7 @@ export default function MeshAgentsPage() {
                     key={cluster.id}
                     cluster={cluster as ClusterWithDetails}
                     onViewDetails={() => setSelectedCluster(cluster as ClusterWithDetails)}
-                    onEditConfig={() => {
-                      // TODO: Open edit modal
-                    }}
+                    onEditConfig={() => setEditingCluster(cluster as ClusterWithDetails)}
                     onDelete={() => {
                       if (confirm(`Delete cluster "${cluster.name}"? Agents will be removed from the cluster.`)) {
                         deleteClusterMutation.mutate(cluster.id);
@@ -590,6 +621,29 @@ export default function MeshAgentsPage() {
                 onSubmit={(data) => createClusterMutation.mutate(data)}
                 onCancel={() => setShowCreateCluster(false)}
                 isLoading={createClusterMutation.isPending}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Edit Cluster Modal */}
+        {editingCluster && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+              <CreateClusterForm
+                existingCluster={{
+                  name: editingCluster.name,
+                  description: editingCluster.description,
+                  config: editingCluster.config,
+                }}
+                onSubmit={(data) => {
+                  updateClusterMutation.mutate({
+                    clusterId: editingCluster.id,
+                    data: { name: data.name, description: data.description },
+                  });
+                }}
+                onCancel={() => setEditingCluster(null)}
+                isLoading={updateClusterMutation.isPending}
               />
             </div>
           </div>

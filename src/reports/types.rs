@@ -2,6 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+use crate::db::models::SecretFindingRecord;
 use crate::types::{HostInfo, Severity, Vulnerability};
 
 /// Report format options
@@ -53,6 +54,7 @@ pub enum ReportSection {
     HostInventory,
     PortAnalysis,
     VulnerabilityFindings,
+    SecretFindings,
     ServiceEnumeration,
     RemediationRecommendations,
     Appendix,
@@ -67,6 +69,7 @@ impl ReportSection {
             "hostinventory" | "hosts" => Some(ReportSection::HostInventory),
             "portanalysis" | "ports" => Some(ReportSection::PortAnalysis),
             "vulnerabilityfindings" | "vulnerabilities" | "vulns" => Some(ReportSection::VulnerabilityFindings),
+            "secretfindings" | "secrets" => Some(ReportSection::SecretFindings),
             "serviceenumeration" | "enumeration" => Some(ReportSection::ServiceEnumeration),
             "remediationrecommendations" | "remediation" => Some(ReportSection::RemediationRecommendations),
             "appendix" => Some(ReportSection::Appendix),
@@ -82,6 +85,7 @@ impl ReportSection {
             ReportSection::HostInventory => "Host Inventory",
             ReportSection::PortAnalysis => "Port Analysis",
             ReportSection::VulnerabilityFindings => "Vulnerability Findings",
+            ReportSection::SecretFindings => "Secret Findings",
             ReportSection::ServiceEnumeration => "Service Enumeration",
             ReportSection::RemediationRecommendations => "Remediation Recommendations",
             ReportSection::Appendix => "Appendix",
@@ -128,6 +132,7 @@ impl ReportTemplate {
                 ReportSection::HostInventory,
                 ReportSection::PortAnalysis,
                 ReportSection::VulnerabilityFindings,
+                ReportSection::SecretFindings,
                 ReportSection::ServiceEnumeration,
                 ReportSection::RemediationRecommendations,
                 ReportSection::Appendix,
@@ -199,6 +204,7 @@ pub struct ReportData {
     pub hosts: Vec<HostInfo>,
     pub summary: ReportSummary,
     pub findings: Vec<FindingDetail>,
+    pub secrets: Vec<SecretFindingRecord>,
     pub remediation: Vec<RemediationRecommendation>,
 }
 
