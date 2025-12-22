@@ -16,6 +16,8 @@ mod integrations;
 mod notifications;
 mod output;
 mod password_validation;
+mod phishing;
+mod c2;
 mod plugins;
 mod reports;
 mod scanner;

@@ -59,6 +59,12 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
     log::info!("  - API endpoints: 100 requests/minute per IP");
 
     let engine_clone = exploitation_engine.clone();
+    let nuclei_state = Arc::new(api::nuclei::NucleiState::new());
+    let nuclei_state_clone = nuclei_state.clone();
+    let discovery_state = Arc::new(api::asset_discovery::DiscoveryState::default());
+    let discovery_state_clone = discovery_state.clone();
+    let privesc_state = Arc::new(api::privesc::PrivescState::default());
+    let privesc_state_clone = privesc_state.clone();
 
     HttpServer::new(move || {
         // Configure CORS origins from environment variable or use defaults
@@ -103,6 +109,9 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
         App::new()
             .app_data(web::Data::new(pool.clone()))
             .app_data(web::Data::from(engine_clone.clone()))
+            .app_data(web::Data::from(nuclei_state_clone.clone()))
+            .app_data(web::Data::from(discovery_state_clone.clone()))
+            .app_data(web::Data::from(privesc_state_clone.clone()))
             .wrap(cors)
             .wrap(Logger::default())
             // Security headers per OWASP guidelines
@@ -146,6 +155,8 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .route("/callback/saml", web::post().to(api::sso::saml_callback))
                     .route("/callback/oidc", web::get().to(api::sso::oidc_callback))
             )
+            // Phishing tracking routes (public, no auth required)
+            .configure(api::phishing::configure_tracking)
             // Customer Portal routes (separate auth from main app) - at /api/portal/*
             .service(
                 web::scope("/api/portal")
@@ -496,6 +507,20 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .configure(api::siem::configure)
                     // Exploitation Framework endpoints
                     .configure(api::exploitation::configure)
+                    // Nuclei scanner endpoints
+                    .configure(api::nuclei::configure)
+                    // Asset discovery endpoints
+                    .configure(api::asset_discovery::configure)
+                    // Privilege escalation scanner endpoints
+                    .configure(api::privesc::configure)
+                    // BloodHound integration endpoints
+                    .configure(api::bloodhound::configure)
+                    // Phishing campaign endpoints
+                    .configure(api::phishing::configure)
+                    // C2 framework integration endpoints
+                    .configure(api::c2::configure)
+                    // Wireless security endpoints
+                    .configure(api::wireless::configure)
                     // Start workflow from vulnerability
                     .route("/vulnerabilities/{id}/workflow", web::post().to(api::workflows::start_workflow))
                     // SSO Admin endpoints

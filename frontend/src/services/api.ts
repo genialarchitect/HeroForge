@@ -2621,4 +2621,280 @@ export const exploitationAPI = {
     api.get<PostExploitModule[]>('/exploitation/modules'),
 };
 
+// Privilege Escalation types
+export interface PrivescScanSummary {
+  id: string;
+  target: string;
+  os_type: string;
+  status: string;
+  findings_count: number;
+  critical_count: number;
+  high_count: number;
+  created_at: string;
+  completed_at?: string;
+}
+
+export interface PrivescFinding {
+  id: string;
+  severity: string;
+  title: string;
+  description: string;
+  os_type: string;
+  linux_vector?: Record<string, unknown>;
+  windows_vector?: Record<string, unknown>;
+  exploitation_steps: string[];
+  references: string[];
+  mitre_techniques: string[];
+  raw_output?: string;
+  discovered_at: string;
+}
+
+export interface PrivescResult {
+  id: string;
+  target: string;
+  os_type: string;
+  status: string;
+  config: Record<string, unknown>;
+  findings: PrivescFinding[];
+  statistics: {
+    total_findings: number;
+    critical_findings: number;
+    high_findings: number;
+    medium_findings: number;
+    low_findings: number;
+    info_findings: number;
+    exploitable_count: number;
+    suid_binaries: number;
+    sudo_rules: number;
+    cron_jobs: number;
+    kernel_exploits: number;
+    service_issues: number;
+    credential_findings: number;
+  };
+  system_info: {
+    hostname?: string;
+    os_name?: string;
+    os_version?: string;
+    kernel_version?: string;
+    architecture?: string;
+    current_user?: string;
+    current_groups: string[];
+  };
+  peas_output?: string;
+  errors: string[];
+  started_at: string;
+  completed_at?: string;
+}
+
+export interface StartPrivescRequest {
+  target: string;
+  os_type: string;
+  ssh_username?: string;
+  ssh_password?: string;
+  ssh_key_path?: string;
+  ssh_port?: number;
+  winrm_username?: string;
+  winrm_password?: string;
+  winrm_port?: number;
+  winrm_https?: boolean;
+  run_peas?: boolean;
+  timeout_secs?: number;
+}
+
+export interface GtfobinsEntry {
+  binary: string;
+  functions: Array<{
+    name: string;
+    description: string;
+    code: string;
+  }>;
+}
+
+export interface LolbasEntry {
+  name: string;
+  description: string;
+  author?: string;
+  commands: Array<{
+    command: string;
+    description: string;
+    usecase: string;
+    category: string;
+    privileges: string;
+    mitre_id?: string;
+  }>;
+}
+
+export const privescAPI = {
+  // Start a new privesc scan
+  startScan: (data: StartPrivescRequest) =>
+    api.post<{ id: string; target: string; os_type: string; status: string; message: string }>('/privesc', data),
+
+  // List all privesc scans
+  listScans: (limit?: number, offset?: number) =>
+    api.get<{ scans: PrivescScanSummary[]; total: number }>('/privesc/scans', { params: { limit, offset } }),
+
+  // Get a specific scan with findings
+  getScan: (id: string) =>
+    api.get<PrivescResult>(`/privesc/scans/${id}`),
+
+  // Get findings for a scan
+  getFindings: (id: string) =>
+    api.get<PrivescFinding[]>(`/privesc/scans/${id}/findings`),
+
+  // Cancel a running scan
+  cancelScan: (id: string) =>
+    api.post<{ message: string; id: string }>(`/privesc/scans/${id}/cancel`),
+
+  // Delete a scan
+  deleteScan: (id: string) =>
+    api.delete<{ message: string; id: string }>(`/privesc/scans/${id}`),
+
+  // Get GTFOBins information for a binary
+  getGtfobins: (binary: string) =>
+    api.get<GtfobinsEntry>(`/privesc/gtfobins/${encodeURIComponent(binary)}`),
+
+  // Get LOLBAS information for a binary
+  getLolbas: (binary: string) =>
+    api.get<LolbasEntry>(`/privesc/lolbas/${encodeURIComponent(binary)}`),
+};
+
+// ==================== BloodHound API ====================
+
+export interface BloodHoundImportStatistics {
+  total_computers: number;
+  total_users: number;
+  total_groups: number;
+  total_domains: number;
+  total_gpos: number;
+  total_ous: number;
+  total_containers: number;
+  total_sessions: number;
+  total_relationships: number;
+  domain_admins: number;
+  enterprise_admins: number;
+  attack_paths_found: number;
+}
+
+export interface BloodHoundImportSummary {
+  id: string;
+  domain: string;
+  status: string;
+  statistics: BloodHoundImportStatistics;
+  created_at: string;
+  completed_at?: string;
+}
+
+export interface PathNode {
+  object_id: string;
+  name: string;
+  object_type: string;
+  domain: string;
+  is_high_value: boolean;
+}
+
+export interface PathStep {
+  from_node: PathNode;
+  to_node: PathNode;
+  relationship: string;
+  abuse_info: string;
+  opsec_considerations?: string;
+}
+
+export interface BloodHoundAttackPath {
+  id: string;
+  start_node: PathNode;
+  end_node: PathNode;
+  path: PathStep[];
+  length: number;
+  risk_score: number;
+  techniques: string[];
+  description: string;
+}
+
+export interface HighValueTarget {
+  object_id: string;
+  name: string;
+  object_type: string;
+  domain: string;
+  reason: string;
+  paths_to_target: number;
+}
+
+export interface KerberoastableUser {
+  object_id: string;
+  name: string;
+  domain: string;
+  service_principal_names: string[];
+  is_admin: boolean;
+  password_last_set?: string;
+  description?: string;
+}
+
+export interface AsrepRoastableUser {
+  object_id: string;
+  name: string;
+  domain: string;
+  is_enabled: boolean;
+  is_admin: boolean;
+  description?: string;
+}
+
+export interface UnconstrainedDelegation {
+  object_id: string;
+  name: string;
+  object_type: string;
+  domain: string;
+  is_dc: boolean;
+  description?: string;
+}
+
+export interface BloodHoundImportDetail {
+  id: string;
+  domain: string;
+  status: string;
+  statistics: BloodHoundImportStatistics;
+  attack_paths: BloodHoundAttackPath[];
+  high_value_targets: HighValueTarget[];
+  kerberoastable_users: KerberoastableUser[];
+  asrep_roastable_users: AsrepRoastableUser[];
+  unconstrained_delegation: UnconstrainedDelegation[];
+  created_at: string;
+  completed_at?: string;
+}
+
+export const bloodhoundAPI = {
+  // Upload SharpHound data (ZIP or JSON)
+  uploadData: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post<{ id: string; status: string; message: string }>('/bloodhound/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+
+  // List all imports
+  listImports: (limit?: number, offset?: number) =>
+    api.get<{ imports: BloodHoundImportSummary[]; total: number }>('/bloodhound/imports', { params: { limit, offset } }),
+
+  // Get a specific import with full details
+  getImport: (id: string) =>
+    api.get<BloodHoundImportDetail>(`/bloodhound/imports/${id}`),
+
+  // Delete an import
+  deleteImport: (id: string) =>
+    api.delete<{ message: string; id: string }>(`/bloodhound/imports/${id}`),
+
+  // Get attack paths for an import
+  getAttackPaths: (id: string) =>
+    api.get<AttackPath[]>(`/bloodhound/imports/${id}/paths`),
+
+  // Get Kerberoastable users for an import
+  getKerberoastable: (id: string) =>
+    api.get<KerberoastableUser[]>(`/bloodhound/imports/${id}/kerberoastable`),
+
+  // Get AS-REP roastable users for an import
+  getAsrepRoastable: (id: string) =>
+    api.get<AsrepRoastableUser[]>(`/bloodhound/imports/${id}/asrep-roastable`),
+};
+
 export default api;

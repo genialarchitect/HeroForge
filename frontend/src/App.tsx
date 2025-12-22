@@ -45,6 +45,14 @@ const EvidencePage = lazy(() => import('./pages/EvidencePage'));
 const SiemPage = lazy(() => import('./pages/SiemPage'));
 const AttackSimulationPage = lazy(() => import('./pages/AttackSimulationPage'));
 const ExploitationPage = lazy(() => import('./pages/ExploitationPage'));
+const NucleiPage = lazy(() => import('./pages/NucleiPage'));
+const ReportsPage = lazy(() => import('./pages/ReportsPage'));
+const AssetDiscoveryPage = lazy(() => import('./pages/AssetDiscoveryPage'));
+const PrivescPage = lazy(() => import('./pages/PrivescPage'));
+const BloodHoundPage = lazy(() => import('./pages/BloodHoundPage'));
+const PhishingPage = lazy(() => import('./pages/PhishingPage'));
+const C2Page = lazy(() => import('./pages/C2Page'));
+const WirelessPage = lazy(() => import('./pages/WirelessPage'));
 
 // CRM pages
 const CrmDashboard = lazy(() => import('./pages/crm/CrmDashboard'));
@@ -221,6 +229,14 @@ function App() {
             }
           />
           <Route
+            path="/reports"
+            element={
+              <ProtectedRoute>
+                <ReportsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/workflows"
             element={
               <ProtectedRoute>
@@ -330,6 +346,77 @@ function App() {
             element={
               <ProtectedRoute>
                 <ExploitationPage />
+              </ProtectedRoute>
+            }
+          />
+          {/* Nuclei Scanner Routes */}
+          <Route
+            path="/nuclei"
+            element={
+              <ProtectedRoute>
+                <NucleiPage />
+              </ProtectedRoute>
+            }
+          />
+          {/* Asset Discovery Routes */}
+          <Route
+            path="/discovery"
+            element={
+              <ProtectedRoute>
+                <AssetDiscoveryPage />
+              </ProtectedRoute>
+            }
+          />
+          {/* Privilege Escalation Routes */}
+          <Route
+            path="/privesc"
+            element={
+              <ProtectedRoute>
+                <PrivescPage />
+              </ProtectedRoute>
+            }
+          />
+          {/* BloodHound Routes */}
+          <Route
+            path="/bloodhound"
+            element={
+              <ProtectedRoute>
+                <BloodHoundPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/bloodhound/:importId"
+            element={
+              <ProtectedRoute>
+                <BloodHoundPage />
+              </ProtectedRoute>
+            }
+          />
+          {/* Phishing Campaign Routes */}
+          <Route
+            path="/phishing"
+            element={
+              <ProtectedRoute>
+                <PhishingPage />
+              </ProtectedRoute>
+            }
+          />
+          {/* C2 Framework Routes */}
+          <Route
+            path="/c2"
+            element={
+              <ProtectedRoute>
+                <C2Page />
+              </ProtectedRoute>
+            }
+          />
+          {/* Wireless Security Routes */}
+          <Route
+            path="/wireless"
+            element={
+              <ProtectedRoute>
+                <WirelessPage />
               </ProtectedRoute>
             }
           />

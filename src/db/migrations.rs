@@ -128,6 +128,20 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     create_bas_tables(pool).await?;
     // Exploitation framework tables
     create_exploitation_tables(pool).await?;
+    // Nuclei scanner tables
+    create_nuclei_tables(pool).await?;
+    // Asset discovery tables
+    create_asset_discovery_tables(pool).await?;
+    // Privilege escalation scanner tables
+    create_privesc_tables(pool).await?;
+    // BloodHound integration tables
+    create_bloodhound_tables(pool).await?;
+    // Phishing campaign tables
+    create_phishing_tables(pool).await?;
+    // C2 framework integration tables
+    create_c2_tables(pool).await?;
+    // Wireless security tables
+    create_wireless_tables(pool).await?;
     Ok(())
 }
 
@@ -6021,5 +6035,963 @@ async fn create_exploitation_tables(pool: &SqlitePool) -> Result<()> {
         .await?;
 
     log::info!("Created exploitation tables (exploitation_campaigns, exploitation_results, generated_payloads, exploitation_audit_logs)");
+    Ok(())
+}
+
+/// Create Nuclei scanner tables
+async fn create_nuclei_tables(pool: &SqlitePool) -> Result<()> {
+    // Nuclei scans table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS nuclei_scans (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT,
+            targets TEXT NOT NULL,
+            config TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            results_count INTEGER DEFAULT 0,
+            critical_count INTEGER DEFAULT 0,
+            high_count INTEGER DEFAULT 0,
+            medium_count INTEGER DEFAULT 0,
+            low_count INTEGER DEFAULT 0,
+            info_count INTEGER DEFAULT 0,
+            error_message TEXT,
+            created_at TEXT NOT NULL,
+            started_at TEXT,
+            completed_at TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_nuclei_scans_user_id ON nuclei_scans(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_nuclei_scans_status ON nuclei_scans(status)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_nuclei_scans_created_at ON nuclei_scans(created_at)")
+        .execute(pool)
+        .await?;
+
+    // Nuclei results table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS nuclei_results (
+            id TEXT PRIMARY KEY,
+            scan_id TEXT NOT NULL,
+            template_id TEXT NOT NULL,
+            template_name TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            host TEXT NOT NULL,
+            matched_at TEXT,
+            check_type TEXT NOT NULL,
+            extracted_results TEXT,
+            request TEXT,
+            response TEXT,
+            curl_command TEXT,
+            ip TEXT,
+            matcher_name TEXT,
+            cve_id TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (scan_id) REFERENCES nuclei_scans(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_nuclei_results_scan_id ON nuclei_results(scan_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_nuclei_results_template_id ON nuclei_results(template_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_nuclei_results_severity ON nuclei_results(severity)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_nuclei_results_host ON nuclei_results(host)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_nuclei_results_cve_id ON nuclei_results(cve_id)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created Nuclei scanner tables (nuclei_scans, nuclei_results)");
+    Ok(())
+}
+
+/// Create Asset Discovery tables
+async fn create_asset_discovery_tables(pool: &SqlitePool) -> Result<()> {
+    // Asset discovery scans table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS asset_discovery_scans (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            domain TEXT NOT NULL,
+            config TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            whois_data TEXT,
+            statistics TEXT NOT NULL,
+            errors TEXT NOT NULL DEFAULT '[]',
+            started_at TEXT NOT NULL,
+            completed_at TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_asset_discovery_scans_user_id ON asset_discovery_scans(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_asset_discovery_scans_domain ON asset_discovery_scans(domain)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_asset_discovery_scans_status ON asset_discovery_scans(status)")
+        .execute(pool)
+        .await?;
+
+    // Discovered assets table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS discovered_assets (
+            id TEXT PRIMARY KEY,
+            scan_id TEXT NOT NULL,
+            hostname TEXT NOT NULL,
+            ip_addresses TEXT NOT NULL DEFAULT '[]',
+            sources TEXT NOT NULL DEFAULT '[]',
+            ports TEXT NOT NULL DEFAULT '[]',
+            technologies TEXT NOT NULL DEFAULT '[]',
+            certificates TEXT NOT NULL DEFAULT '[]',
+            dns_records TEXT NOT NULL DEFAULT '{}',
+            asn TEXT,
+            asn_org TEXT,
+            country TEXT,
+            city TEXT,
+            tags TEXT NOT NULL DEFAULT '[]',
+            first_seen TEXT NOT NULL,
+            last_seen TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (scan_id) REFERENCES asset_discovery_scans(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_discovered_assets_scan_id ON discovered_assets(scan_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_discovered_assets_hostname ON discovered_assets(hostname)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_discovered_assets_last_seen ON discovered_assets(last_seen)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created Asset Discovery tables (asset_discovery_scans, discovered_assets)");
+    Ok(())
+}
+
+
+/// Create Privilege Escalation scanner tables
+async fn create_privesc_tables(pool: &SqlitePool) -> Result<()> {
+    // Privesc scans table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS privesc_scans (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            target TEXT NOT NULL,
+            os_type TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            config TEXT NOT NULL,
+            statistics TEXT NOT NULL DEFAULT '{}',
+            system_info TEXT NOT NULL DEFAULT '{}',
+            peas_output TEXT,
+            errors TEXT NOT NULL DEFAULT '[]',
+            created_at TEXT NOT NULL,
+            completed_at TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_privesc_scans_user_id ON privesc_scans(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_privesc_scans_status ON privesc_scans(status)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_privesc_scans_target ON privesc_scans(target)")
+        .execute(pool)
+        .await?;
+
+    // Privesc findings table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS privesc_findings (
+            id TEXT PRIMARY KEY,
+            scan_id TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT NOT NULL,
+            os_type TEXT NOT NULL,
+            vector_data TEXT NOT NULL,
+            exploitation_steps TEXT NOT NULL DEFAULT '[]',
+            "references" TEXT NOT NULL DEFAULT '[]',
+            mitre_techniques TEXT NOT NULL DEFAULT '[]',
+            raw_output TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (scan_id) REFERENCES privesc_scans(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_privesc_findings_scan_id ON privesc_findings(scan_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_privesc_findings_severity ON privesc_findings(severity)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created Privilege Escalation tables (privesc_scans, privesc_findings)");
+    Ok(())
+}
+
+/// Create BloodHound integration tables
+async fn create_bloodhound_tables(pool: &SqlitePool) -> Result<()> {
+    // Main imports table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS bloodhound_imports (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            domain TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            statistics TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL,
+            completed_at TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_bloodhound_imports_user_id ON bloodhound_imports(user_id)")
+        .execute(pool)
+        .await?;
+
+    // Attack paths table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS bloodhound_attack_paths (
+            id TEXT PRIMARY KEY,
+            import_id TEXT NOT NULL,
+            start_node TEXT NOT NULL,
+            end_node TEXT NOT NULL,
+            path_json TEXT NOT NULL,
+            path_length INTEGER NOT NULL,
+            risk_score INTEGER NOT NULL,
+            techniques TEXT NOT NULL DEFAULT '[]',
+            description TEXT,
+            FOREIGN KEY (import_id) REFERENCES bloodhound_imports(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_bloodhound_paths_import_id ON bloodhound_attack_paths(import_id)")
+        .execute(pool)
+        .await?;
+
+    // High-value targets table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS bloodhound_high_value_targets (
+            id TEXT PRIMARY KEY,
+            import_id TEXT NOT NULL,
+            object_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            object_type TEXT NOT NULL,
+            domain TEXT NOT NULL,
+            reason TEXT NOT NULL,
+            paths_to_target INTEGER DEFAULT 0,
+            FOREIGN KEY (import_id) REFERENCES bloodhound_imports(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Kerberoastable users table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS bloodhound_kerberoastable (
+            id TEXT PRIMARY KEY,
+            import_id TEXT NOT NULL,
+            object_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            domain TEXT NOT NULL,
+            spns TEXT NOT NULL DEFAULT '[]',
+            is_admin INTEGER DEFAULT 0,
+            password_last_set TEXT,
+            description TEXT,
+            FOREIGN KEY (import_id) REFERENCES bloodhound_imports(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // AS-REP roastable users table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS bloodhound_asrep_roastable (
+            id TEXT PRIMARY KEY,
+            import_id TEXT NOT NULL,
+            object_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            domain TEXT NOT NULL,
+            is_enabled INTEGER DEFAULT 1,
+            is_admin INTEGER DEFAULT 0,
+            description TEXT,
+            FOREIGN KEY (import_id) REFERENCES bloodhound_imports(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Unconstrained delegation table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS bloodhound_unconstrained_delegation (
+            id TEXT PRIMARY KEY,
+            import_id TEXT NOT NULL,
+            object_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            object_type TEXT NOT NULL,
+            domain TEXT NOT NULL,
+            is_dc INTEGER DEFAULT 0,
+            description TEXT,
+            FOREIGN KEY (import_id) REFERENCES bloodhound_imports(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    log::info!("Created BloodHound integration tables");
+    Ok(())
+}
+
+/// Create phishing campaign tables
+async fn create_phishing_tables(pool: &SqlitePool) -> Result<()> {
+    // Phishing campaigns table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS phishing_campaigns (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            status TEXT NOT NULL DEFAULT 'draft',
+            email_template_id TEXT NOT NULL,
+            landing_page_id TEXT,
+            smtp_profile_id TEXT NOT NULL,
+            tracking_domain TEXT NOT NULL,
+            awareness_training INTEGER DEFAULT 0,
+            training_url TEXT,
+            launch_date TEXT,
+            end_date TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Email templates table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS phishing_email_templates (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            subject TEXT NOT NULL,
+            html_body TEXT NOT NULL,
+            text_body TEXT,
+            from_name TEXT NOT NULL,
+            from_email TEXT NOT NULL,
+            envelope_sender TEXT,
+            attachments TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Landing pages table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS phishing_landing_pages (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            html_content TEXT NOT NULL,
+            capture_credentials INTEGER DEFAULT 0,
+            capture_fields TEXT NOT NULL DEFAULT '[]',
+            redirect_url TEXT,
+            redirect_delay INTEGER DEFAULT 0,
+            cloned_from TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // SMTP profiles table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS phishing_smtp_profiles (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            host TEXT NOT NULL,
+            port INTEGER NOT NULL,
+            username TEXT,
+            password TEXT,
+            use_tls INTEGER DEFAULT 0,
+            use_starttls INTEGER DEFAULT 1,
+            from_address TEXT NOT NULL,
+            ignore_cert_errors INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Phishing targets table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS phishing_targets (
+            id TEXT PRIMARY KEY,
+            campaign_id TEXT NOT NULL,
+            email TEXT NOT NULL,
+            first_name TEXT,
+            last_name TEXT,
+            position TEXT,
+            department TEXT,
+            tracking_id TEXT UNIQUE NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            email_sent_at TEXT,
+            email_opened_at TEXT,
+            link_clicked_at TEXT,
+            credentials_submitted_at TEXT,
+            reported_at TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (campaign_id) REFERENCES phishing_campaigns(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create index on tracking_id for fast lookups
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_phishing_targets_tracking_id ON phishing_targets(tracking_id)"
+    )
+    .execute(pool)
+    .await?;
+
+    // Target events table (timeline)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS phishing_target_events (
+            id TEXT PRIMARY KEY,
+            target_id TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            ip_address TEXT,
+            user_agent TEXT,
+            details TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (target_id) REFERENCES phishing_targets(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Captured credentials table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS phishing_captured_credentials (
+            id TEXT PRIMARY KEY,
+            campaign_id TEXT NOT NULL,
+            target_id TEXT NOT NULL,
+            landing_page_id TEXT,
+            fields TEXT NOT NULL,
+            ip_address TEXT NOT NULL,
+            user_agent TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (campaign_id) REFERENCES phishing_campaigns(id) ON DELETE CASCADE,
+            FOREIGN KEY (target_id) REFERENCES phishing_targets(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Target groups table (for bulk imports)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS phishing_target_groups (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            targets TEXT NOT NULL DEFAULT '[]',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    log::info!("Created phishing campaign tables");
+    Ok(())
+}
+
+/// Create C2 framework integration tables
+async fn create_c2_tables(pool: &SqlitePool) -> Result<()> {
+    // C2 server configurations
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS c2_configs (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            framework TEXT NOT NULL,
+            host TEXT NOT NULL,
+            port INTEGER NOT NULL,
+            api_token TEXT,
+            mtls_cert TEXT,
+            mtls_key TEXT,
+            ca_cert TEXT,
+            verify_ssl INTEGER NOT NULL DEFAULT 1,
+            user_id TEXT NOT NULL,
+            connected INTEGER NOT NULL DEFAULT 0,
+            last_connected TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // C2 listeners
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS c2_listeners (
+            id TEXT PRIMARY KEY,
+            c2_config_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            protocol TEXT NOT NULL,
+            host TEXT NOT NULL,
+            port INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'stopped',
+            domains TEXT,
+            website TEXT,
+            config TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (c2_config_id) REFERENCES c2_configs(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // C2 implants
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS c2_implants (
+            id TEXT PRIMARY KEY,
+            c2_config_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            platform TEXT NOT NULL,
+            arch TEXT NOT NULL,
+            format TEXT NOT NULL,
+            implant_type TEXT NOT NULL DEFAULT 'beacon',
+            listener_id TEXT,
+            file_path TEXT,
+            file_hash TEXT,
+            file_size INTEGER,
+            download_count INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (c2_config_id) REFERENCES c2_configs(id) ON DELETE CASCADE,
+            FOREIGN KEY (listener_id) REFERENCES c2_listeners(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // C2 sessions/beacons
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS c2_sessions (
+            id TEXT PRIMARY KEY,
+            c2_config_id TEXT NOT NULL,
+            c2_session_id TEXT NOT NULL,
+            implant_id TEXT,
+            name TEXT NOT NULL,
+            hostname TEXT NOT NULL,
+            username TEXT NOT NULL,
+            domain TEXT,
+            ip_address TEXT NOT NULL,
+            external_ip TEXT,
+            os TEXT NOT NULL,
+            os_version TEXT,
+            arch TEXT NOT NULL,
+            pid INTEGER NOT NULL,
+            process_name TEXT NOT NULL,
+            integrity TEXT,
+            status TEXT NOT NULL DEFAULT 'active',
+            is_elevated INTEGER NOT NULL DEFAULT 0,
+            locale TEXT,
+            first_seen TEXT NOT NULL,
+            last_checkin TEXT NOT NULL,
+            next_checkin TEXT,
+            notes TEXT,
+            FOREIGN KEY (c2_config_id) REFERENCES c2_configs(id) ON DELETE CASCADE,
+            FOREIGN KEY (implant_id) REFERENCES c2_implants(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create index on session status for quick lookups
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_c2_sessions_status ON c2_sessions(status)"
+    )
+    .execute(pool)
+    .await?;
+
+    // C2 tasks
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS c2_tasks (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            c2_task_id TEXT,
+            task_type TEXT NOT NULL,
+            command TEXT NOT NULL,
+            args TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            output TEXT,
+            error TEXT,
+            created_at TEXT NOT NULL,
+            sent_at TEXT,
+            completed_at TEXT,
+            FOREIGN KEY (session_id) REFERENCES c2_sessions(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create index on task status
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_c2_tasks_status ON c2_tasks(status)"
+    )
+    .execute(pool)
+    .await?;
+
+    // C2 credentials
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS c2_credentials (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            credential_type TEXT NOT NULL,
+            username TEXT NOT NULL,
+            domain TEXT,
+            secret TEXT NOT NULL,
+            source TEXT NOT NULL,
+            target TEXT,
+            notes TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (session_id) REFERENCES c2_sessions(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // C2 downloaded files
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS c2_downloaded_files (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            remote_path TEXT NOT NULL,
+            local_path TEXT NOT NULL,
+            file_name TEXT NOT NULL,
+            file_size INTEGER NOT NULL,
+            file_hash TEXT NOT NULL,
+            downloaded_at TEXT NOT NULL,
+            FOREIGN KEY (session_id) REFERENCES c2_sessions(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // C2 screenshots
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS c2_screenshots (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            width INTEGER NOT NULL,
+            height INTEGER NOT NULL,
+            captured_at TEXT NOT NULL,
+            FOREIGN KEY (session_id) REFERENCES c2_sessions(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    log::info!("Created C2 framework integration tables");
+    Ok(())
+}
+
+/// Create wireless security tables
+async fn create_wireless_tables(pool: &SqlitePool) -> Result<()> {
+    // Wireless scans
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS wireless_scans (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            interface TEXT NOT NULL,
+            config TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            networks_found INTEGER NOT NULL DEFAULT 0,
+            clients_found INTEGER NOT NULL DEFAULT 0,
+            handshakes_captured INTEGER NOT NULL DEFAULT 0,
+            started_at TEXT NOT NULL,
+            completed_at TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create index on status
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_wireless_scans_status ON wireless_scans(status)"
+    )
+    .execute(pool)
+    .await?;
+
+    // Wireless networks
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS wireless_networks (
+            bssid TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            ssid TEXT NOT NULL,
+            channel INTEGER NOT NULL,
+            frequency INTEGER NOT NULL,
+            signal_strength INTEGER NOT NULL,
+            encryption TEXT NOT NULL,
+            cipher TEXT,
+            auth TEXT,
+            wps_enabled INTEGER NOT NULL DEFAULT 0,
+            first_seen TEXT NOT NULL,
+            last_seen TEXT NOT NULL,
+            PRIMARY KEY (bssid, user_id),
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create index on encryption for vulnerability queries
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_wireless_networks_encryption ON wireless_networks(encryption)"
+    )
+    .execute(pool)
+    .await?;
+
+    // Wireless clients
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS wireless_clients (
+            mac_address TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            associated_bssid TEXT,
+            signal_strength INTEGER NOT NULL,
+            packets INTEGER NOT NULL DEFAULT 0,
+            probes TEXT,
+            first_seen TEXT NOT NULL,
+            last_seen TEXT NOT NULL,
+            PRIMARY KEY (mac_address, user_id),
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Wireless handshakes
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS wireless_handshakes (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            bssid TEXT NOT NULL,
+            ssid TEXT NOT NULL,
+            client_mac TEXT NOT NULL,
+            capture_file TEXT NOT NULL,
+            eapol_messages INTEGER NOT NULL,
+            is_complete INTEGER NOT NULL DEFAULT 0,
+            cracked INTEGER NOT NULL DEFAULT 0,
+            password TEXT,
+            captured_at TEXT NOT NULL,
+            cracked_at TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for handshakes
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_wireless_handshakes_cracked ON wireless_handshakes(cracked)"
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_wireless_handshakes_bssid ON wireless_handshakes(bssid)"
+    )
+    .execute(pool)
+    .await?;
+
+    // Wireless PMKIDs
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS wireless_pmkids (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            bssid TEXT NOT NULL,
+            ssid TEXT NOT NULL,
+            pmkid TEXT NOT NULL,
+            capture_file TEXT NOT NULL,
+            cracked INTEGER NOT NULL DEFAULT 0,
+            password TEXT,
+            captured_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Wireless attacks
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS wireless_attacks (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            attack_type TEXT NOT NULL,
+            target_bssid TEXT NOT NULL,
+            target_ssid TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            result TEXT,
+            capture_file TEXT,
+            started_at TEXT NOT NULL,
+            completed_at TEXT,
+            error TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Wireless crack jobs
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS wireless_crack_jobs (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            capture_id TEXT NOT NULL,
+            capture_type TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            wordlist TEXT NOT NULL,
+            keys_tested INTEGER NOT NULL DEFAULT 0,
+            keys_per_second REAL NOT NULL DEFAULT 0,
+            password TEXT,
+            started_at TEXT NOT NULL,
+            completed_at TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    log::info!("Created wireless security tables");
     Ok(())
 }

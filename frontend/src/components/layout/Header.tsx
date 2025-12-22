@@ -24,6 +24,7 @@ import {
   GitBranch,
   Box,
   FileCode,
+  FileSearch,
   ChevronDown,
   Search,
   FileText,
@@ -41,6 +42,8 @@ import {
   UserCheck,
   Lock,
   ArrowRight,
+  TrendingUp,
+  Wifi,
 } from 'lucide-react';
 
 interface NavItem {
@@ -126,18 +129,25 @@ const Header: React.FC = () => {
   // Define navigation categories
   const scanningItems: NavItem[] = [
     { to: '/dashboard', icon: <LayoutDashboard className="h-4 w-4" />, label: 'Scans' },
+    { to: '/discovery', icon: <Globe className="h-4 w-4" />, label: 'Asset Discovery' },
+    { to: '/nuclei', icon: <Zap className="h-4 w-4" />, label: 'Nuclei' },
     { to: '/compare', icon: <GitCompare className="h-4 w-4" />, label: 'Compare' },
     { to: '/assets', icon: <Server className="h-4 w-4" />, label: 'Assets' },
     { to: '/agents', icon: <Radio className="h-4 w-4" />, label: 'Agents' },
     { to: '/agents/mesh', icon: <Share2 className="h-4 w-4" />, label: 'Mesh Network' },
-    { to: '/webapp-scan', icon: <Globe className="h-4 w-4" />, label: 'Web Scan' },
+    { to: '/webapp-scan', icon: <Search className="h-4 w-4" />, label: 'Web Scan' },
     { to: '/dns-tools', icon: <Network className="h-4 w-4" />, label: 'DNS Tools' },
-    { to: '/api-security', icon: <Zap className="h-4 w-4" />, label: 'API Security' },
+    { to: '/api-security', icon: <FileSearch className="h-4 w-4" />, label: 'API Security' },
   ];
 
   const securityItems: NavItem[] = [
     { to: '/siem', icon: <Activity className="h-4 w-4" />, label: 'SIEM' },
-    { to: '/attack-paths', icon: <GitBranch className="h-4 w-4" />, label: 'Attack Paths' },
+    { to: '/privesc', icon: <TrendingUp className="h-4 w-4" />, label: 'Privesc Scanner' },
+    { to: '/bloodhound', icon: <GitBranch className="h-4 w-4" />, label: 'BloodHound' },
+    { to: '/phishing', icon: <Target className="h-4 w-4" />, label: 'Phishing' },
+    { to: '/c2', icon: <Radio className="h-4 w-4" />, label: 'C2 Management' },
+    { to: '/wireless', icon: <Wifi className="h-4 w-4" />, label: 'Wireless Security' },
+    { to: '/attack-paths', icon: <Network className="h-4 w-4" />, label: 'Attack Paths' },
     { to: '/attack-simulation', icon: <Crosshair className="h-4 w-4" />, label: 'Attack Simulation' },
     { to: '/container-security', icon: <Box className="h-4 w-4" />, label: 'Containers' },
     { to: '/iac-security', icon: <FileCode className="h-4 w-4" />, label: 'IaC Security' },
@@ -165,8 +175,9 @@ const Header: React.FC = () => {
 
   const reportsItems: NavItem[] = [
     { to: '/executive-dashboard', icon: <BarChart3 className="h-4 w-4" />, label: 'Executive Dashboard' },
+    { to: '/reports', icon: <FileText className="h-4 w-4" />, label: 'Reports' },
     { to: '/workflows', icon: <GitBranch className="h-4 w-4" />, label: 'Workflows' },
-    { to: '/remediation', icon: <FileText className="h-4 w-4" />, label: 'Remediation' },
+    { to: '/remediation', icon: <Layers className="h-4 w-4" />, label: 'Remediation' },
   ];
 
   const systemItems: NavItem[] = [
