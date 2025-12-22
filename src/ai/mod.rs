@@ -11,7 +11,10 @@
 //! - Integrates with threat intelligence and attack path analysis
 //! - Provides remediation effort estimates
 //! - Supports feedback learning for score adjustment
+//! - AI Chat assistant with Claude API integration
 
+pub mod chat;
+pub mod context;
 pub mod features;
 pub mod models;
 pub mod prioritization;

@@ -504,6 +504,8 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .configure(api::secret_findings::configure)
                     // AI Prioritization endpoints
                     .configure(api::ai::configure)
+                    // AI Chat endpoints
+                    .configure(api::chat::configure)
                     // CI/CD integration endpoints
                     .configure(api::cicd::configure)
                     // IaC Security scanning endpoints

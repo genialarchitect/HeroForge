@@ -153,6 +153,8 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     create_asm_tables(pool).await?;
     // Purple Team Mode tables
     super::purple_team::init_purple_team_tables(pool).await?;
+    // AI Chat tables
+    create_chat_tables(pool).await?;
     Ok(())
 }
 
@@ -7799,5 +7801,58 @@ async fn create_asm_tables(pool: &SqlitePool) -> Result<()> {
         .await?;
 
     log::info!("Created ASM tables");
+    Ok(())
+}
+
+/// Create AI chat tables
+async fn create_chat_tables(pool: &SqlitePool) -> Result<()> {
+    // Chat conversations table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS chat_conversations (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            title TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Chat messages table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS chat_messages (
+            id TEXT PRIMARY KEY,
+            conversation_id TEXT NOT NULL,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            context_summary TEXT,
+            tokens_used INTEGER,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (conversation_id) REFERENCES chat_conversations(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_chat_conversations_user ON chat_conversations(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation ON chat_messages(conversation_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_chat_messages_created_at ON chat_messages(created_at)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created AI chat tables");
     Ok(())
 }

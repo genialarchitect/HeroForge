@@ -29,6 +29,7 @@ pub mod attack_paths;
 pub mod auth;
 pub mod bas;
 pub mod bloodhound;
+pub mod chat;
 pub mod cicd;
 pub mod cloud;
 pub mod container;
