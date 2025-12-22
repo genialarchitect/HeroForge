@@ -2511,6 +2511,11 @@ export interface ExploitationCampaign {
   created_at: string;
   started_at?: string;
   completed_at?: string;
+  // Safeguard fields - customer/asset binding
+  customer_id?: string;
+  customer_name?: string;
+  asset_ids: string[];
+  engagement_id?: string;
 }
 
 export interface ShellTemplate {
@@ -2554,6 +2559,28 @@ export interface CreateCampaignExploitRequest {
   attack_type: string;
   config: Record<string, unknown>;
   targets: string[];
+  // Required safeguard fields
+  customer_id: string;
+  asset_ids: string[];
+  engagement_id?: string;
+}
+
+// Relevance filtering types
+export interface RelevantModule {
+  module: string;
+  name: string;
+  description: string;
+  category: string;
+  platforms: string[];
+  relevance_reason: string;
+}
+
+export interface RelevantAttack {
+  attack_type: string;
+  name: string;
+  description: string;
+  applicable: boolean;
+  relevance_reason: string;
 }
 
 export interface GenerateShellRequest {
@@ -2619,6 +2646,13 @@ export const exploitationAPI = {
   // Post-Exploitation Modules
   listModules: () =>
     api.get<PostExploitModule[]>('/exploitation/modules'),
+
+  // Relevance filtering (SAFEGUARD)
+  getRelevantModules: (assetIds: string[]) =>
+    api.post<RelevantModule[]>('/exploitation/modules/relevant', { asset_ids: assetIds }),
+
+  getRelevantAttacks: (assetIds: string[]) =>
+    api.post<RelevantAttack[]>('/exploitation/attacks/relevant', { asset_ids: assetIds }),
 };
 
 // Privilege Escalation types

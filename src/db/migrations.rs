@@ -142,6 +142,62 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     create_c2_tables(pool).await?;
     // Wireless security tables
     create_wireless_tables(pool).await?;
+    // Exploitation safeguards - customer/asset binding
+    add_exploitation_safeguards(pool).await?;
+    Ok(())
+}
+
+/// Add customer_id and asset_ids columns to exploitation_campaigns for safety
+async fn add_exploitation_safeguards(pool: &SqlitePool) -> Result<()> {
+    // Add customer_id column (required for all exploitation campaigns)
+    let _ = sqlx::query(
+        "ALTER TABLE exploitation_campaigns ADD COLUMN customer_id TEXT REFERENCES customers(id)"
+    )
+    .execute(pool)
+    .await;
+
+    // Add asset_ids column (JSON array of asset IDs that are targets)
+    let _ = sqlx::query(
+        "ALTER TABLE exploitation_campaigns ADD COLUMN asset_ids TEXT DEFAULT '[]'"
+    )
+    .execute(pool)
+    .await;
+
+    // Add engagement_id column (optional - tie to specific engagement)
+    let _ = sqlx::query(
+        "ALTER TABLE exploitation_campaigns ADD COLUMN engagement_id TEXT REFERENCES engagements(id)"
+    )
+    .execute(pool)
+    .await;
+
+    // Create index for customer lookups
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_exploitation_campaigns_customer ON exploitation_campaigns(customer_id)"
+    )
+    .execute(pool)
+    .await?;
+
+    // Create index for engagement lookups
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_exploitation_campaigns_engagement ON exploitation_campaigns(engagement_id)"
+    )
+    .execute(pool)
+    .await?;
+
+    // Add customer_id to generated_payloads for tracking
+    let _ = sqlx::query(
+        "ALTER TABLE generated_payloads ADD COLUMN customer_id TEXT REFERENCES customers(id)"
+    )
+    .execute(pool)
+    .await;
+
+    let _ = sqlx::query(
+        "ALTER TABLE generated_payloads ADD COLUMN asset_id TEXT REFERENCES assets(id)"
+    )
+    .execute(pool)
+    .await;
+
+    log::info!("Added exploitation safeguards (customer/asset binding)");
     Ok(())
 }
 
