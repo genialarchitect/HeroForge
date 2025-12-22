@@ -17,6 +17,7 @@ use std::sync::Arc;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 use crate::scanner::exploitation::ExploitationEngine;
+use crate::cracking::CrackingEngine;
 
 /// Fallback handler for SPA - serves index.html for any unmatched non-API routes
 async fn spa_fallback(req: HttpRequest) -> HttpResponse {
@@ -48,6 +49,10 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
     let exploitation_engine = Arc::new(ExploitationEngine::with_default_safety());
     log::info!("Exploitation engine initialized");
 
+    // Initialize the shared cracking engine
+    let cracking_engine = Arc::new(tokio::sync::RwLock::new(CrackingEngine::new(pool.clone())));
+    log::info!("Cracking engine initialized");
+
     // Start the background scheduler daemon
     scheduler::start_scheduler(Arc::new(pool.clone()));
 
@@ -59,6 +64,7 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
     log::info!("  - API endpoints: 100 requests/minute per IP");
 
     let engine_clone = exploitation_engine.clone();
+    let cracking_engine_clone = cracking_engine.clone();
     let nuclei_state = Arc::new(api::nuclei::NucleiState::new());
     let nuclei_state_clone = nuclei_state.clone();
     let discovery_state = Arc::new(api::asset_discovery::DiscoveryState::default());
@@ -109,6 +115,7 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
         App::new()
             .app_data(web::Data::new(pool.clone()))
             .app_data(web::Data::from(engine_clone.clone()))
+            .app_data(web::Data::from(cracking_engine_clone.clone()))
             .app_data(web::Data::from(nuclei_state_clone.clone()))
             .app_data(web::Data::from(discovery_state_clone.clone()))
             .app_data(web::Data::from(privesc_state_clone.clone()))
@@ -438,10 +445,18 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .route("/finding-templates", web::get().to(api::finding_templates::list_templates))
                     .route("/finding-templates", web::post().to(api::finding_templates::create_template))
                     .route("/finding-templates/categories", web::get().to(api::finding_templates::get_categories))
+                    .route("/finding-templates/categories/all", web::get().to(api::finding_templates::list_all_categories))
+                    .route("/finding-templates/popular", web::get().to(api::finding_templates::get_popular_templates))
+                    .route("/finding-templates/search", web::get().to(api::finding_templates::search_templates))
+                    .route("/finding-templates/import", web::post().to(api::finding_templates::import_templates))
+                    .route("/finding-templates/export", web::get().to(api::finding_templates::export_templates))
+                    .route("/finding-templates/owasp/{category}", web::get().to(api::finding_templates::get_templates_by_owasp))
+                    .route("/finding-templates/mitre/{technique_id}", web::get().to(api::finding_templates::get_templates_by_mitre))
                     .route("/finding-templates/{id}", web::get().to(api::finding_templates::get_template))
                     .route("/finding-templates/{id}", web::put().to(api::finding_templates::update_template))
                     .route("/finding-templates/{id}", web::delete().to(api::finding_templates::delete_template))
                     .route("/finding-templates/{id}/clone", web::post().to(api::finding_templates::clone_template))
+                    .route("/finding-templates/{id}/apply", web::post().to(api::finding_templates::apply_template))
                     // Methodology checklists endpoints
                     .route("/methodology/templates", web::get().to(api::methodology::list_templates))
                     .route("/methodology/templates/{id}", web::get().to(api::methodology::get_template))
@@ -481,6 +496,8 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .configure(api::ad_assessment::configure)
                     // Credential Audit endpoints
                     .configure(api::credential_audit::configure)
+                    // Password Cracking endpoints
+                    .configure(api::cracking::configure)
                     // Scan Exclusions endpoints
                     .configure(api::exclusions::configure)
                     // Secret Findings endpoints
@@ -521,6 +538,10 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .configure(api::c2::configure)
                     // Wireless security endpoints
                     .configure(api::wireless::configure)
+                    // Attack Surface Management endpoints
+                    .configure(api::asm::configure)
+                    // Purple Team Mode endpoints
+                    .configure(api::purple_team::configure)
                     // Start workflow from vulnerability
                     .route("/vulnerabilities/{id}/workflow", web::post().to(api::workflows::start_workflow))
                     // SSO Admin endpoints

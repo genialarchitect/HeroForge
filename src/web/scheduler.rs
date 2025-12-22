@@ -71,6 +71,11 @@ pub fn start_scheduler(pool: Arc<SqlitePool>) {
             if let Err(e) = check_and_execute_due_reports(&pool, email_service.clone()).await {
                 log::error!("Scheduler error (reports): {}", e);
             }
+
+            // Check and execute due ASM monitors
+            if let Err(e) = check_and_execute_due_asm_monitors(&pool).await {
+                log::error!("Scheduler error (ASM monitors): {}", e);
+            }
         }
     });
 }
@@ -1131,6 +1136,138 @@ async fn send_report_email(
         .await??;
 
     log::info!("Sent report email to {}", recipient);
+    Ok(())
+}
+
+// ============================================================================
+// ASM Monitor Scheduler
+// ============================================================================
+
+/// Check for due ASM monitors and execute them
+async fn check_and_execute_due_asm_monitors(pool: &SqlitePool) -> Result<()> {
+    use crate::asm::monitor::AsmMonitorEngine;
+
+    // Get all due ASM monitors
+    let due_monitors = crate::db::asm::get_due_monitors(pool).await?;
+
+    if due_monitors.is_empty() {
+        log::debug!("No ASM monitors due for execution");
+        return Ok(());
+    }
+
+    log::info!(
+        "Found {} ASM monitor(s) due for execution",
+        due_monitors.len()
+    );
+
+    let engine = AsmMonitorEngine::new(pool.clone());
+
+    for monitor in due_monitors {
+        log::info!(
+            "Executing ASM monitor '{}' ({})",
+            monitor.name,
+            monitor.id
+        );
+
+        // Run the monitor
+        match engine.run_monitor(&monitor.id).await {
+            Ok(result) => {
+                log::info!(
+                    "ASM monitor '{}' completed - discovered {} assets, detected {} changes in {}s",
+                    monitor.name,
+                    result.assets_discovered,
+                    result.changes_detected,
+                    result.duration_secs
+                );
+
+                // Calculate next run time based on cron schedule
+                if let Some(next_run) = calculate_next_asm_run(&monitor.schedule) {
+                    if let Err(e) = update_asm_next_run(pool, &monitor.id, next_run).await {
+                        log::error!(
+                            "Failed to update next run time for ASM monitor '{}': {}",
+                            monitor.id,
+                            e
+                        );
+                    }
+                }
+            }
+            Err(e) => {
+                log::error!(
+                    "Failed to execute ASM monitor '{}' ({}): {}",
+                    monitor.name,
+                    monitor.id,
+                    e
+                );
+
+                // Still update next run time on failure to avoid retry loops
+                if let Some(next_run) = calculate_next_asm_run(&monitor.schedule) {
+                    let _ = update_asm_next_run(pool, &monitor.id, next_run).await;
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Calculate the next run time based on a cron expression
+fn calculate_next_asm_run(schedule: &str) -> Option<chrono::DateTime<chrono::Utc>> {
+    use chrono::Utc;
+
+    // Simple cron parsing for common patterns
+    // Full cron: minute hour day month weekday
+    let parts: Vec<&str> = schedule.split_whitespace().collect();
+
+    if parts.len() < 5 {
+        // Default to daily if invalid
+        return Some(Utc::now() + chrono::Duration::hours(24));
+    }
+
+    // For now, use a simple approach:
+    // - If schedule is "0 0 * * *" (daily at midnight), add 24 hours
+    // - If schedule is "0 * * * *" (hourly), add 1 hour
+    // - If schedule is "*/15 * * * *" (every 15 min), add 15 minutes
+    // - Default to 24 hours
+
+    let minute = parts[0];
+    let hour = parts[1];
+
+    if minute.starts_with("*/") {
+        // Every N minutes
+        let interval: i64 = minute.trim_start_matches("*/").parse().unwrap_or(60);
+        return Some(Utc::now() + chrono::Duration::minutes(interval));
+    }
+
+    if hour == "*" && minute != "*" {
+        // Hourly at specific minute
+        return Some(Utc::now() + chrono::Duration::hours(1));
+    }
+
+    if hour != "*" && minute != "*" {
+        // Daily at specific time
+        return Some(Utc::now() + chrono::Duration::hours(24));
+    }
+
+    // Default to daily
+    Some(Utc::now() + chrono::Duration::hours(24))
+}
+
+/// Update ASM monitor's next run time
+async fn update_asm_next_run(
+    pool: &SqlitePool,
+    monitor_id: &str,
+    next_run: chrono::DateTime<chrono::Utc>,
+) -> Result<()> {
+    let next_run_str = next_run.to_rfc3339();
+    let now = chrono::Utc::now().to_rfc3339();
+
+    sqlx::query("UPDATE asm_monitors SET next_run_at = ?, updated_at = ? WHERE id = ?")
+        .bind(&next_run_str)
+        .bind(&now)
+        .bind(monitor_id)
+        .execute(pool)
+        .await?;
+
     Ok(())
 }
 

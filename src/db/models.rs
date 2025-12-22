@@ -1330,6 +1330,57 @@ pub struct FindingTemplate {
     pub is_system: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    // Enhanced fields for findings template library
+    pub evidence_placeholders: Option<String>,  // JSON array of EvidencePlaceholder
+    pub testing_steps: Option<String>,          // Markdown testing steps
+    pub owasp_category: Option<String>,         // OWASP Top 10 category
+    pub mitre_attack_ids: Option<String>,       // JSON array of MITRE ATT&CK IDs
+    pub compliance_mappings: Option<String>,    // JSON object mapping frameworks to controls
+    pub use_count: Option<i32>,                 // Usage count for popularity sorting
+    pub last_used_at: Option<DateTime<Utc>>,    // Last time template was applied
+    pub affected_components: Option<String>,    // JSON array of affected components
+}
+
+/// Finding template category for organizing templates
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow, utoipa::ToSchema)]
+pub struct FindingTemplateCategory {
+    pub id: String,
+    pub name: String,
+    pub parent_id: Option<String>,
+    pub description: Option<String>,
+    pub icon: Option<String>,
+    pub color: Option<String>,
+    pub sort_order: i32,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Evidence placeholder type
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum EvidencePlaceholderType {
+    Screenshot,
+    CodeSnippet,
+    RequestResponse,
+    CommandOutput,
+    File,
+    Text,
+}
+
+/// Evidence placeholder definition for templates
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct EvidencePlaceholder {
+    pub id: String,
+    pub label: String,
+    pub placeholder_type: EvidencePlaceholderType,
+    pub description: Option<String>,
+    pub required: bool,
+}
+
+/// Compliance framework mapping for templates
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct ComplianceMapping {
+    pub framework: String,  // e.g., "PCI-DSS", "NIST 800-53"
+    pub controls: Vec<String>,  // e.g., ["6.5.1", "6.5.7"]
 }
 
 /// Request to create a new finding template
@@ -1346,6 +1397,13 @@ pub struct CreateFindingTemplateRequest {
     pub cvss_vector: Option<String>,
     pub cvss_score: Option<f64>,
     pub tags: Option<Vec<String>>,
+    // Enhanced fields
+    pub evidence_placeholders: Option<Vec<EvidencePlaceholder>>,
+    pub testing_steps: Option<String>,
+    pub owasp_category: Option<String>,
+    pub mitre_attack_ids: Option<Vec<String>>,
+    pub compliance_mappings: Option<Vec<ComplianceMapping>>,
+    pub affected_components: Option<Vec<String>>,
 }
 
 /// Request to update a finding template
@@ -1362,6 +1420,50 @@ pub struct UpdateFindingTemplateRequest {
     pub cvss_vector: Option<String>,
     pub cvss_score: Option<f64>,
     pub tags: Option<Vec<String>>,
+    // Enhanced fields
+    pub evidence_placeholders: Option<Vec<EvidencePlaceholder>>,
+    pub testing_steps: Option<String>,
+    pub owasp_category: Option<String>,
+    pub mitre_attack_ids: Option<Vec<String>>,
+    pub compliance_mappings: Option<Vec<ComplianceMapping>>,
+    pub affected_components: Option<Vec<String>>,
+}
+
+/// Request to apply a template to a vulnerability
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct ApplyTemplateRequest {
+    pub template_id: String,
+    pub vulnerability_id: String,
+    pub evidence: Option<Vec<AppliedEvidence>>,
+}
+
+/// Evidence provided when applying a template
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct AppliedEvidence {
+    pub placeholder_id: String,
+    pub content: String,
+    pub content_type: Option<String>,  // MIME type for file uploads
+}
+
+/// Request to import templates from JSON
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct ImportTemplatesRequest {
+    pub templates: Vec<CreateFindingTemplateRequest>,
+    pub overwrite_existing: Option<bool>,
+}
+
+/// Response from template import
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct ImportTemplatesResponse {
+    pub imported: usize,
+    pub skipped: usize,
+    pub errors: Vec<String>,
+}
+
+/// Request to clone a template
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct CloneFindingTemplateRequest {
+    pub new_title: Option<String>,
 }
 
 // ============================================================================

@@ -142,6 +142,7 @@ const Header: React.FC = () => {
 
   const securityItems: NavItem[] = [
     { to: '/siem', icon: <Activity className="h-4 w-4" />, label: 'SIEM' },
+    { to: '/attack-surface', icon: <Shield className="h-4 w-4" />, label: 'Attack Surface' },
     { to: '/privesc', icon: <TrendingUp className="h-4 w-4" />, label: 'Privesc Scanner' },
     { to: '/bloodhound', icon: <GitBranch className="h-4 w-4" />, label: 'BloodHound' },
     { to: '/phishing', icon: <Target className="h-4 w-4" />, label: 'Phishing' },
@@ -149,6 +150,7 @@ const Header: React.FC = () => {
     { to: '/wireless', icon: <Wifi className="h-4 w-4" />, label: 'Wireless Security' },
     { to: '/attack-paths', icon: <Network className="h-4 w-4" />, label: 'Attack Paths' },
     { to: '/attack-simulation', icon: <Crosshair className="h-4 w-4" />, label: 'Attack Simulation' },
+    { to: '/purple-team', icon: <Shield className="h-4 w-4" />, label: 'Purple Team' },
     { to: '/container-security', icon: <Box className="h-4 w-4" />, label: 'Containers' },
     { to: '/iac-security', icon: <FileCode className="h-4 w-4" />, label: 'IaC Security' },
   ];
@@ -161,6 +163,7 @@ const Header: React.FC = () => {
     { to: '/exploitation/smb-relay', icon: <Network className="h-4 w-4" />, label: 'SMB Relay' },
     { to: '/exploitation/shells', icon: <Terminal className="h-4 w-4" />, label: 'Shell Generator' },
     { to: '/exploitation/credential-dump', icon: <Database className="h-4 w-4" />, label: 'Credential Dump' },
+    { to: '/cracking', icon: <Key className="h-4 w-4" />, label: 'Password Cracking' },
     { to: '/exploitation/priv-esc', icon: <UserCheck className="h-4 w-4" />, label: 'Privilege Escalation' },
     { to: '/exploitation/persistence', icon: <Lock className="h-4 w-4" />, label: 'Persistence' },
     { to: '/exploitation/lateral-movement', icon: <ArrowRight className="h-4 w-4" />, label: 'Lateral Movement' },
@@ -171,6 +174,7 @@ const Header: React.FC = () => {
     { to: '/evidence', icon: <FileText className="h-4 w-4" />, label: 'Evidence' },
     { to: '/manual-assessments', icon: <ClipboardCheck className="h-4 w-4" />, label: 'Assessments' },
     { to: '/methodology', icon: <BookOpenCheck className="h-4 w-4" />, label: 'Methodology' },
+    { to: '/finding-templates', icon: <FileText className="h-4 w-4" />, label: 'Finding Templates' },
   ];
 
   const reportsItems: NavItem[] = [

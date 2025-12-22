@@ -22,6 +22,7 @@ pub mod agents;
 pub mod ai;
 pub mod analytics;
 pub mod api_security;
+pub mod asm;
 pub mod asset_discovery;
 pub mod assets;
 pub mod attack_paths;
@@ -31,6 +32,7 @@ pub mod bloodhound;
 pub mod cicd;
 pub mod cloud;
 pub mod container;
+pub mod cracking;
 pub mod credential_audit;
 pub mod crm;
 pub mod evidence;
@@ -45,6 +47,7 @@ pub mod models_dashboard;
 pub mod nuclei;
 pub mod plugins;
 pub mod privesc;
+pub mod purple_team;
 pub mod push_tokens;
 pub mod scans;
 pub mod scheduled_reports;
@@ -330,6 +333,16 @@ pub use finding_templates::{
     delete_finding_template,
     clone_finding_template,
     get_template_categories,
+    // New enhanced finding template functions
+    list_finding_template_categories,
+    get_finding_template_category,
+    create_finding_template_category,
+    delete_finding_template_category,
+    increment_template_use_count as increment_finding_template_use_count,
+    get_popular_templates,
+    search_templates,
+    get_templates_by_owasp,
+    get_templates_by_mitre,
 };
 
 // ============================================================================

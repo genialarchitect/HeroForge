@@ -119,6 +119,11 @@ import type {
   UpdateFindingTemplateRequest,
   CloneTemplateRequest,
   FindingTemplateCategory,
+  FindingTemplateCategoryFull,
+  ApplyTemplateRequest,
+  ImportTemplatesRequest,
+  ImportTemplatesResponse,
+  TemplateSearchQuery,
   MethodologyTemplate,
   MethodologyTemplateWithItems,
   MethodologyChecklist,
@@ -1338,6 +1343,48 @@ export const findingTemplatesAPI = {
 
   // Get categories with counts
   getCategories: () => api.get<FindingTemplateCategory[]>('/finding-templates/categories'),
+
+  // Enhanced Template Library Methods
+
+  // Get all categories (hierarchical)
+  getAllCategories: () => api.get<FindingTemplateCategoryFull[]>('/finding-templates/categories/all'),
+
+  // Get popular templates
+  getPopular: (limit = 10) => api.get<FindingTemplate[]>('/finding-templates/popular', { params: { limit } }),
+
+  // Search templates with advanced filters
+  search: (params: TemplateSearchQuery) => {
+    const queryParams = new URLSearchParams();
+    if (params.query) queryParams.append('q', params.query);
+    if (params.category) queryParams.append('category', params.category);
+    if (params.severity) queryParams.append('severity', params.severity);
+    if (params.owasp) queryParams.append('owasp', params.owasp);
+    if (params.mitre) queryParams.append('mitre', params.mitre);
+    if (params.limit) queryParams.append('limit', params.limit.toString());
+    if (params.offset) queryParams.append('offset', params.offset.toString());
+    const query = queryParams.toString();
+    return api.get<FindingTemplate[]>(`/finding-templates/search${query ? `?${query}` : ''}`);
+  },
+
+  // Get templates by OWASP category
+  getByOwasp: (category: string) => api.get<FindingTemplate[]>(`/finding-templates/owasp/${encodeURIComponent(category)}`),
+
+  // Get templates by MITRE ATT&CK technique
+  getByMitre: (techniqueId: string) => api.get<FindingTemplate[]>(`/finding-templates/mitre/${encodeURIComponent(techniqueId)}`),
+
+  // Import templates from JSON
+  importTemplates: (data: ImportTemplatesRequest) =>
+    api.post<ImportTemplatesResponse>('/finding-templates/import', data),
+
+  // Export templates to JSON
+  exportTemplates: (ids?: string[]) => {
+    const params = ids?.length ? { ids: ids.join(',') } : {};
+    return api.get<FindingTemplate[]>('/finding-templates/export', { params });
+  },
+
+  // Apply template to a vulnerability
+  applyToVulnerability: (templateId: string, data: ApplyTemplateRequest) =>
+    api.post<{ success: boolean; message: string }>(`/finding-templates/${templateId}/apply`, data),
 };
 
 // Methodology Checklists API
@@ -2929,6 +2976,244 @@ export const bloodhoundAPI = {
   // Get AS-REP roastable users for an import
   getAsrepRoastable: (id: string) =>
     api.get<AsrepRoastableUser[]>(`/bloodhound/imports/${id}/asrep-roastable`),
+};
+
+// =============================================================================
+// Password Cracking API
+// =============================================================================
+
+import type {
+  CrackingJob,
+  CrackedCredential,
+  Wordlist,
+  RuleFile,
+  HashTypeInfo,
+  CreateCrackingJobRequest,
+  DetectHashRequest,
+  DetectHashResponse,
+  CrackingStats,
+} from '../types';
+
+export const crackingAPI = {
+  // Jobs
+  createJob: (data: CreateCrackingJobRequest) =>
+    api.post<CrackingJob>('/cracking/jobs', data),
+
+  listJobs: (limit?: number, offset?: number) =>
+    api.get<CrackingJob[]>('/cracking/jobs', { params: { limit, offset } }),
+
+  getJob: (id: string) =>
+    api.get<CrackingJob>(`/cracking/jobs/${id}`),
+
+  deleteJob: (id: string) =>
+    api.delete<void>(`/cracking/jobs/${id}`),
+
+  startJob: (id: string) =>
+    api.post<{ success: boolean; message: string }>(`/cracking/jobs/${id}/start`),
+
+  stopJob: (id: string) =>
+    api.post<{ success: boolean; message: string }>(`/cracking/jobs/${id}/stop`),
+
+  getJobResults: (id: string) =>
+    api.get<CrackedCredential[]>(`/cracking/jobs/${id}/results`),
+
+  // Wordlists
+  listWordlists: () =>
+    api.get<Wordlist[]>('/cracking/wordlists'),
+
+  deleteWordlist: (id: string) =>
+    api.delete<void>(`/cracking/wordlists/${id}`),
+
+  // Rules
+  listRules: (crackerType?: 'hashcat' | 'john') =>
+    api.get<RuleFile[]>('/cracking/rules', { params: { cracker_type: crackerType } }),
+
+  deleteRule: (id: string) =>
+    api.delete<void>(`/cracking/rules/${id}`),
+
+  // Utilities
+  detectHashType: (data: DetectHashRequest) =>
+    api.post<DetectHashResponse>('/cracking/detect-hash', data),
+
+  listHashTypes: () =>
+    api.get<HashTypeInfo[]>('/cracking/hash-types'),
+
+  getStats: () =>
+    api.get<CrackingStats>('/cracking/stats'),
+};
+
+// =============================================================================
+// Attack Surface Management (ASM) API
+// =============================================================================
+
+import type {
+  AsmMonitor,
+  AsmBaseline,
+  AsmChange,
+  AsmAuthorizedAsset,
+  AsmAssetRiskScore,
+  AsmDashboard,
+  AsmTimelineEvent,
+  AsmMonitorRunResult,
+  CreateAsmMonitorRequest,
+  UpdateAsmMonitorRequest,
+  CreateAsmAuthorizedAssetRequest,
+  AsmAcknowledgeChangeRequest,
+  AsmChangesQuery,
+  // Purple Team types
+  PurpleTeamExercise,
+  PurpleTeamDashboard,
+  PurpleAttackResult,
+  DetectionCoverage,
+  PurpleDetectionGap,
+  AttackMatrix,
+  PurpleMitreTechnique,
+  CreateExerciseRequest,
+  UpdateGapStatusRequest,
+  AttackTypeMapping,
+  PurpleTeamReport,
+} from '../types';
+
+export const asmAPI = {
+  // Dashboard
+  getDashboard: () =>
+    api.get<AsmDashboard>('/asm/dashboard'),
+
+  // Monitors
+  createMonitor: (data: CreateAsmMonitorRequest) =>
+    api.post<AsmMonitor>('/asm/monitors', data),
+
+  listMonitors: () =>
+    api.get<AsmMonitor[]>('/asm/monitors'),
+
+  getMonitor: (id: string) =>
+    api.get<AsmMonitor>(`/asm/monitors/${id}`),
+
+  updateMonitor: (id: string, data: UpdateAsmMonitorRequest) =>
+    api.put<AsmMonitor>(`/asm/monitors/${id}`, data),
+
+  deleteMonitor: (id: string) =>
+    api.delete<void>(`/asm/monitors/${id}`),
+
+  runMonitor: (id: string) =>
+    api.post<AsmMonitorRunResult>(`/asm/monitors/${id}/run`),
+
+  enableMonitor: (id: string) =>
+    api.post<AsmMonitor>(`/asm/monitors/${id}/enable`),
+
+  disableMonitor: (id: string) =>
+    api.post<AsmMonitor>(`/asm/monitors/${id}/disable`),
+
+  // Baselines
+  getMonitorBaselines: (monitorId: string) =>
+    api.get<AsmBaseline[]>(`/asm/monitors/${monitorId}/baselines`),
+
+  createBaseline: (monitorId: string) =>
+    api.post<AsmBaseline>(`/asm/monitors/${monitorId}/baselines`),
+
+  activateBaseline: (monitorId: string, baselineId: string) =>
+    api.post<AsmBaseline>(`/asm/monitors/${monitorId}/baselines/${baselineId}/activate`),
+
+  // Changes
+  listChanges: (params?: AsmChangesQuery) =>
+    api.get<AsmChange[]>('/asm/changes', { params }),
+
+  getMonitorChanges: (monitorId: string, params?: AsmChangesQuery) =>
+    api.get<AsmChange[]>(`/asm/monitors/${monitorId}/changes`, { params }),
+
+  acknowledgeChange: (changeId: string, data?: AsmAcknowledgeChangeRequest) =>
+    api.post<AsmChange>(`/asm/changes/${changeId}/acknowledge`, data),
+
+  // Risk Scores
+  listRiskScores: (limit?: number) =>
+    api.get<AsmAssetRiskScore[]>('/asm/risk-scores', { params: { limit } }),
+
+  getAssetRiskScore: (hostname: string) =>
+    api.get<AsmAssetRiskScore>(`/asm/risk-scores/${encodeURIComponent(hostname)}`),
+
+  // Authorized Assets (for Shadow IT detection)
+  listAuthorizedAssets: () =>
+    api.get<AsmAuthorizedAsset[]>('/asm/authorized-assets'),
+
+  createAuthorizedAsset: (data: CreateAsmAuthorizedAssetRequest) =>
+    api.post<AsmAuthorizedAsset>('/asm/authorized-assets', data),
+
+  deleteAuthorizedAsset: (id: string) =>
+    api.delete<void>(`/asm/authorized-assets/${id}`),
+
+  // Timeline
+  getTimeline: (monitorId?: string, days?: number) =>
+    api.get<AsmTimelineEvent[]>('/asm/timeline', { params: { monitor_id: monitorId, days } }),
+};
+
+// Purple Team API
+export const purpleTeamAPI = {
+  // Dashboard
+  getDashboard: () =>
+    api.get<PurpleTeamDashboard>('/purple-team/dashboard'),
+
+  // Exercises
+  createExercise: (data: CreateExerciseRequest) =>
+    api.post<PurpleTeamExercise>('/purple-team/exercises', data),
+
+  listExercises: () =>
+    api.get<PurpleTeamExercise[]>('/purple-team/exercises'),
+
+  getExercise: (id: string) =>
+    api.get<PurpleTeamExercise>(`/purple-team/exercises/${id}`),
+
+  updateExercise: (id: string, data: Partial<CreateExerciseRequest>) =>
+    api.put<PurpleTeamExercise>(`/purple-team/exercises/${id}`, data),
+
+  deleteExercise: (id: string) =>
+    api.delete<void>(`/purple-team/exercises/${id}`),
+
+  startExercise: (id: string) =>
+    api.post<PurpleTeamExercise>(`/purple-team/exercises/${id}/start`),
+
+  stopExercise: (id: string) =>
+    api.post<PurpleTeamExercise>(`/purple-team/exercises/${id}/stop`),
+
+  // Results
+  getExerciseResults: (id: string) =>
+    api.get<PurpleAttackResult[]>(`/purple-team/exercises/${id}/results`),
+
+  recheckDetection: (resultId: string) =>
+    api.post<PurpleAttackResult>(`/purple-team/results/${resultId}/recheck`),
+
+  // Coverage
+  getExerciseCoverage: (id: string) =>
+    api.get<DetectionCoverage>(`/purple-team/exercises/${id}/coverage`),
+
+  getCoverageMatrix: () =>
+    api.get<AttackMatrix>('/purple-team/coverage/matrix'),
+
+  // Gaps
+  listGaps: (status?: string) =>
+    api.get<PurpleDetectionGap[]>('/purple-team/gaps', { params: { status } }),
+
+  getExerciseGaps: (id: string) =>
+    api.get<PurpleDetectionGap[]>(`/purple-team/exercises/${id}/gaps`),
+
+  updateGapStatus: (id: string, data: UpdateGapStatusRequest) =>
+    api.put<PurpleDetectionGap>(`/purple-team/gaps/${id}/status`, data),
+
+  getGapRecommendations: (id: string) =>
+    api.get<PurpleDetectionGap>(`/purple-team/gaps/${id}/recommendations`),
+
+  // MITRE ATT&CK
+  getMitreTechniques: () =>
+    api.get<PurpleMitreTechnique[]>('/purple-team/mitre/techniques'),
+
+  getMitreTactics: () =>
+    api.get<string[]>('/purple-team/mitre/tactics'),
+
+  getAttackTypeMappings: () =>
+    api.get<AttackTypeMapping[]>('/purple-team/mitre/attacks'),
+
+  // Reports
+  generateExerciseReport: (id: string) =>
+    api.get<PurpleTeamReport>(`/purple-team/exercises/${id}/report`),
 };
 
 export default api;

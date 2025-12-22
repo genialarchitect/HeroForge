@@ -1873,6 +1873,31 @@ export interface FindingTemplate {
   is_system: boolean;
   created_at: string;
   updated_at: string;
+  // Enhanced fields for template library
+  evidence_placeholders: string | null;  // JSON array of EvidencePlaceholder
+  testing_steps: string | null;
+  owasp_category: string | null;
+  mitre_attack_ids: string | null;  // JSON array
+  compliance_mappings: string | null;  // JSON object
+  use_count: number | null;
+  last_used_at: string | null;
+  affected_components: string | null;
+}
+
+export interface EvidencePlaceholder {
+  id: string;
+  label: string;
+  placeholder_type: 'screenshot' | 'code_snippet' | 'request_response' | 'command_output' | 'file' | 'text';
+  description?: string;
+  required: boolean;
+}
+
+export interface ComplianceMapping {
+  owasp_top_10?: string[];
+  pci_dss?: string[];
+  nist_800_53?: string[];
+  cis?: string[];
+  hipaa?: string[];
 }
 
 export interface CreateFindingTemplateRequest {
@@ -1887,6 +1912,13 @@ export interface CreateFindingTemplateRequest {
   cvss_vector?: string;
   cvss_score?: number;
   tags?: string[];
+  // Enhanced fields
+  evidence_placeholders?: EvidencePlaceholder[];
+  testing_steps?: string;
+  owasp_category?: string;
+  mitre_attack_ids?: string[];
+  compliance_mappings?: ComplianceMapping;
+  affected_components?: string[];
 }
 
 export interface UpdateFindingTemplateRequest {
@@ -1901,6 +1933,13 @@ export interface UpdateFindingTemplateRequest {
   cvss_vector?: string;
   cvss_score?: number;
   tags?: string[];
+  // Enhanced fields
+  evidence_placeholders?: EvidencePlaceholder[];
+  testing_steps?: string;
+  owasp_category?: string;
+  mitre_attack_ids?: string[];
+  compliance_mappings?: ComplianceMapping;
+  affected_components?: string[];
 }
 
 export interface CloneTemplateRequest {
@@ -1910,6 +1949,50 @@ export interface CloneTemplateRequest {
 export interface FindingTemplateCategory {
   category: string;
   count: number;
+}
+
+// Enhanced Finding Template Library Types
+export interface FindingTemplateCategoryFull {
+  id: string;
+  name: string;
+  parent_id: string | null;
+  description: string | null;
+  icon: string | null;
+  color: string | null;
+  sort_order: number;
+  created_at: string;
+}
+
+export interface ApplyTemplateRequest {
+  vulnerability_id: string;
+  evidence?: AppliedEvidence[];
+}
+
+export interface AppliedEvidence {
+  placeholder_id: string;
+  content: string;
+  content_type?: string;
+}
+
+export interface ImportTemplatesRequest {
+  templates: FindingTemplate[];
+  overwrite_existing?: boolean;
+}
+
+export interface ImportTemplatesResponse {
+  imported: number;
+  skipped: number;
+  errors: string[];
+}
+
+export interface TemplateSearchQuery {
+  query?: string;
+  category?: string;
+  severity?: string;
+  owasp?: string;
+  mitre?: string;
+  limit?: number;
+  offset?: number;
 }
 
 // ============================================================================
@@ -4486,4 +4569,677 @@ export interface SiemStatsResponse {
   alerts_by_severity: SiemAlertSeverityCount[];
   top_sources: SiemTopSourceStats[];
   ingestion_rate: number;
+}
+
+// =============================================================================
+// Password Cracking Types
+// =============================================================================
+
+/** Hash type enum matching backend modes */
+export type HashTypeMode =
+  | 0      // MD5
+  | 100    // SHA-1
+  | 1000   // NTLM
+  | 1400   // SHA-256
+  | 1700   // SHA-512
+  | 1800   // sha512crypt
+  | 3000   // LM
+  | 3200   // bcrypt
+  | 5600   // NetNTLMv2
+  | 13100  // Kerberos 5 TGS
+  | 18200  // Kerberos 5 AS-REP
+  | 22000; // WPA-PMKID-PBKDF2
+
+/** Hash type information */
+export interface HashTypeInfo {
+  mode: number;
+  name: string;
+  example?: string;
+}
+
+/** Cracker type */
+export type CrackerType = 'hashcat' | 'john';
+
+/** Cracking job status */
+export type CrackingJobStatus = 'pending' | 'running' | 'completed' | 'failed' | 'stopped';
+
+/** Hash entry in a cracking job */
+export interface HashEntry {
+  hash: string;
+  username?: string;
+  source?: string;
+}
+
+/** Cracking job progress */
+export interface CrackingProgress {
+  total_hashes: number;
+  cracked: number;
+  speed: string;
+  estimated_time: string;
+  progress_percent: number;
+}
+
+/** Cracking job */
+export interface CrackingJob {
+  id: string;
+  user_id: string;
+  name: string;
+  status: CrackingJobStatus;
+  hash_type: number;
+  hash_type_name: string;
+  cracker_type: CrackerType;
+  hashes_count: number;
+  wordlist_ids: string[];
+  rule_ids: string[];
+  config: CrackingConfig;
+  progress: CrackingProgress;
+  cracked_count: number;
+  source_campaign_id?: string;
+  customer_id?: string;
+  created_at: string;
+  started_at?: string;
+  completed_at?: string;
+  error_message?: string;
+}
+
+/** Cracking job configuration */
+export interface CrackingConfig {
+  attack_mode?: number;
+  workload_profile?: number;
+  optimized_kernel?: boolean;
+  custom_args?: string[];
+}
+
+/** Cracked credential */
+export interface CrackedCredential {
+  id: string;
+  job_id: string;
+  hash: string;
+  plaintext: string;
+  hash_type: number;
+  username?: string;
+  asset_id?: string;
+  cracked_at: string;
+}
+
+/** Wordlist entry */
+export interface Wordlist {
+  id: string;
+  user_id?: string;
+  name: string;
+  description?: string;
+  file_path: string;
+  size_bytes?: number;
+  line_count?: number;
+  is_builtin: boolean;
+  category?: string;
+  created_at: string;
+}
+
+/** Rule file entry */
+export interface RuleFile {
+  id: string;
+  user_id?: string;
+  name: string;
+  description?: string;
+  file_path: string;
+  rule_count?: number;
+  cracker_type: CrackerType;
+  is_builtin: boolean;
+  created_at: string;
+}
+
+/** Create cracking job request */
+export interface CreateCrackingJobRequest {
+  name: string;
+  hash_type: number;
+  cracker_type: CrackerType;
+  hashes: HashEntry[];
+  wordlist_ids?: string[];
+  rule_ids?: string[];
+  config?: CrackingConfig;
+  source_campaign_id?: string;
+  customer_id?: string;
+  auto_start?: boolean;
+}
+
+/** Detect hash type request */
+export interface DetectHashRequest {
+  hashes: string[];
+}
+
+/** Detect hash type response */
+export interface DetectHashResponse {
+  hash_type?: number;
+  hash_type_name?: string;
+  confidence: 'high' | 'medium' | 'low' | 'none';
+  alternatives: HashTypeInfo[];
+}
+
+/** Cracking statistics */
+export interface CrackingStats {
+  total_jobs: number;
+  running_jobs: number;
+  completed_jobs: number;
+  total_hashes: number;
+  total_cracked: number;
+  success_rate: number;
+  total_wordlists: number;
+  total_rules: number;
+}
+
+/** WebSocket progress message */
+export interface CrackingProgressMessage {
+  message_type: 'job_started' | 'progress_update' | 'hash_cracked' | 'job_completed' | 'job_failed';
+  job_id: string;
+  data: {
+    total_hashes?: number;
+    cracked?: number;
+    speed?: string;
+    eta?: string;
+    hash?: string;
+    plaintext?: string;
+    total_cracked?: number;
+    error?: string;
+  };
+}
+
+// ============================================================================
+// Attack Surface Management (ASM) Types
+// ============================================================================
+
+export type AsmAlertSeverity = 'critical' | 'high' | 'medium' | 'low' | 'info';
+
+export type AsmChangeType =
+  | 'new_subdomain'
+  | 'new_port'
+  | 'port_closed'
+  | 'certificate_change'
+  | 'certificate_expiring'
+  | 'technology_change'
+  | 'ip_address_change'
+  | 'asset_removed'
+  | 'service_change'
+  | 'shadow_it_detected';
+
+export type AsmTimelineEventType =
+  | 'monitor_run'
+  | 'baseline_created'
+  | 'change_detected'
+  | 'change_acknowledged'
+  | 'monitor_enabled'
+  | 'monitor_disabled';
+
+export type AsmRiskFactorType =
+  | 'exposed_ports'
+  | 'technology_stack'
+  | 'ssl_tls'
+  | 'internet_exposure'
+  | 'visibility'
+  | 'authorization'
+  | 'vulnerability_presence'
+  | 'service_age';
+
+/** Asset discovery configuration for ASM */
+export interface AsmDiscoveryConfig {
+  enable_subdomain_enum: boolean;
+  enable_port_scan: boolean;
+  enable_service_detection: boolean;
+  enable_ssl_analysis: boolean;
+  enable_tech_detection: boolean;
+  port_range?: string;
+  threads?: number;
+  dns_resolvers: string[];
+}
+
+/** Alert configuration for change detection */
+export interface AsmAlertConfig {
+  alert_on_new_subdomain: boolean;
+  alert_on_new_port: boolean;
+  alert_on_cert_change: boolean;
+  alert_on_tech_change: boolean;
+  alert_on_ip_change: boolean;
+  alert_on_asset_removed: boolean;
+  alert_on_shadow_it: boolean;
+  min_severity: AsmAlertSeverity;
+  notification_channels: string[];
+}
+
+/** ASM Monitor configuration */
+export interface AsmMonitor {
+  id: string;
+  user_id: string;
+  name: string;
+  description?: string;
+  domains: string[];
+  discovery_config: AsmDiscoveryConfig;
+  schedule: string;
+  alert_config: AsmAlertConfig;
+  enabled: boolean;
+  last_run_at?: string;
+  next_run_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Port information in baseline */
+export interface AsmBaselinePort {
+  port: number;
+  protocol: string;
+  service?: string;
+  version?: string;
+}
+
+/** SSL information in baseline */
+export interface AsmBaselineSslInfo {
+  issuer: string;
+  subject: string;
+  valid_from: string;
+  valid_until: string;
+  fingerprint: string;
+}
+
+/** Individual asset in a baseline */
+export interface AsmBaselineAsset {
+  hostname: string;
+  ip_addresses: string[];
+  ports: AsmBaselinePort[];
+  technologies: string[];
+  ssl_info?: AsmBaselineSslInfo;
+  first_seen: string;
+  last_seen: string;
+}
+
+/** Summary statistics for a baseline */
+export interface AsmBaselineSummary {
+  total_assets: number;
+  total_ports: number;
+  total_services: number;
+  assets_with_ssl: number;
+  unique_technologies: number;
+}
+
+/** Baseline snapshot of discovered assets */
+export interface AsmBaseline {
+  id: string;
+  monitor_id: string;
+  assets: AsmBaselineAsset[];
+  summary: AsmBaselineSummary;
+  is_active: boolean;
+  created_at: string;
+}
+
+/** Detailed information about a change */
+export interface AsmChangeDetails {
+  description: string;
+  old_value?: string;
+  new_value?: string;
+  affected_ports: number[];
+  metadata: Record<string, string>;
+}
+
+/** A detected change in the attack surface */
+export interface AsmChange {
+  id: string;
+  monitor_id: string;
+  baseline_id: string;
+  change_type: AsmChangeType;
+  severity: AsmAlertSeverity;
+  hostname: string;
+  details: AsmChangeDetails;
+  detected_at: string;
+  acknowledged: boolean;
+  acknowledged_by?: string;
+  acknowledged_at?: string;
+}
+
+/** Authorized asset pattern for shadow IT detection */
+export interface AsmAuthorizedAsset {
+  id: string;
+  user_id: string;
+  hostname_pattern: string;
+  ip_ranges: string[];
+  description?: string;
+  created_at: string;
+}
+
+/** Individual risk factor contributing to overall score */
+export interface AsmRiskFactor {
+  factor_type: AsmRiskFactorType;
+  weight: number;
+  score: number;
+  description: string;
+  details?: string;
+}
+
+/** Risk score for an asset */
+export interface AsmAssetRiskScore {
+  id: string;
+  asset_id?: string;
+  hostname: string;
+  overall_score: number;
+  factors: AsmRiskFactor[];
+  calculated_at: string;
+}
+
+/** ASM Dashboard statistics */
+export interface AsmDashboard {
+  total_monitors: number;
+  active_monitors: number;
+  total_assets: number;
+  total_changes_24h: number;
+  total_changes_7d: number;
+  critical_changes: number;
+  unacknowledged_changes: number;
+  average_risk_score: number;
+  high_risk_assets: number;
+  shadow_it_count: number;
+  next_scan_at?: string;
+  last_scan_at?: string;
+}
+
+/** Timeline event for visualization */
+export interface AsmTimelineEvent {
+  timestamp: string;
+  event_type: AsmTimelineEventType;
+  monitor_id: string;
+  monitor_name: string;
+  description: string;
+  severity?: AsmAlertSeverity;
+  change_id?: string;
+}
+
+/** Monitor execution result */
+export interface AsmMonitorRunResult {
+  monitor_id: string;
+  baseline_id: string;
+  assets_discovered: number;
+  changes_detected: number;
+  duration_secs: number;
+  started_at: string;
+  completed_at: string;
+  error?: string;
+}
+
+/** Create monitor request */
+export interface CreateAsmMonitorRequest {
+  name: string;
+  description?: string;
+  domains: string[];
+  discovery_config?: Partial<AsmDiscoveryConfig>;
+  schedule: string;
+  alert_config?: Partial<AsmAlertConfig>;
+}
+
+/** Update monitor request */
+export interface UpdateAsmMonitorRequest {
+  name?: string;
+  description?: string;
+  domains?: string[];
+  discovery_config?: Partial<AsmDiscoveryConfig>;
+  schedule?: string;
+  alert_config?: Partial<AsmAlertConfig>;
+  enabled?: boolean;
+}
+
+/** Create authorized asset request */
+export interface CreateAsmAuthorizedAssetRequest {
+  hostname_pattern: string;
+  ip_ranges?: string[];
+  description?: string;
+}
+
+/** Acknowledge change request */
+export interface AsmAcknowledgeChangeRequest {
+  notes?: string;
+}
+
+/** Changes query parameters */
+export interface AsmChangesQuery {
+  change_type?: AsmChangeType;
+  severity?: AsmAlertSeverity;
+  acknowledged?: boolean;
+  limit?: number;
+  offset?: number;
+}
+
+// =============================================================================
+// Purple Team Types
+// =============================================================================
+
+export type ExerciseStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+export type AttackStatus = 'executed' | 'blocked' | 'failed' | 'skipped';
+export type PurpleDetectionStatus = 'detected' | 'partially_detected' | 'not_detected' | 'pending';
+export type GapSeverity = 'critical' | 'high' | 'medium' | 'low';
+export type GapStatus = 'open' | 'in_progress' | 'remediated' | 'accepted';
+export type RecommendationType = 'new_rule' | 'rule_tuning' | 'data_source' | 'log_enhancement' | 'integration';
+
+// Purple Team specific tactic type (string union for ease of use)
+export type PurpleTactic =
+  | 'Reconnaissance'
+  | 'ResourceDevelopment'
+  | 'InitialAccess'
+  | 'Execution'
+  | 'Persistence'
+  | 'PrivilegeEscalation'
+  | 'DefenseEvasion'
+  | 'CredentialAccess'
+  | 'Discovery'
+  | 'LateralMovement'
+  | 'Collection'
+  | 'CommandAndControl'
+  | 'Exfiltration'
+  | 'Impact';
+
+export interface PurpleMitreTechnique {
+  id: string;
+  name: string;
+  tactic: PurpleTactic;
+  description: string;
+  data_sources: string[];
+  is_subtechnique: boolean;
+  parent_id?: string;
+}
+
+export interface PurpleAttackConfig {
+  technique_id: string;
+  technique_name: string;
+  tactic: PurpleTactic;
+  attack_type: string;
+  target: string;
+  parameters: Record<string, string>;
+  enabled: boolean;
+}
+
+export interface PurpleTeamExercise {
+  id: string;
+  user_id: string;
+  name: string;
+  description?: string;
+  siem_integration_id?: string;
+  attack_configs: PurpleAttackConfig[];
+  detection_timeout_secs: number;
+  status: ExerciseStatus;
+  created_at: string;
+  started_at?: string;
+  completed_at?: string;
+}
+
+export interface MatchedAlert {
+  alert_id: string;
+  rule_name: string;
+  severity: string;
+  timestamp: string;
+  description: string;
+}
+
+export interface DetectionDetails {
+  alerts_matched: MatchedAlert[];
+  log_sources: string[];
+  detection_time?: string;
+  confidence: number;
+}
+
+export interface PurpleAttackResult {
+  id: string;
+  exercise_id: string;
+  technique_id: string;
+  technique_name: string;
+  tactic: string;
+  attack_type: string;
+  target: string;
+  attack_status: AttackStatus;
+  detection_status: PurpleDetectionStatus;
+  detection_details?: DetectionDetails;
+  time_to_detect_ms?: number;
+  executed_at: string;
+  error_message?: string;
+}
+
+export interface TacticCoverage {
+  tactic_id: string;
+  tactic_name: string;
+  total_techniques: number;
+  detected: number;
+  partially_detected: number;
+  not_detected: number;
+  coverage_percent: number;
+}
+
+export interface TechniqueCoverage {
+  technique_id: string;
+  technique_name: string;
+  tactic: string;
+  tests_run: number;
+  detected: number;
+  partially_detected: number;
+  not_detected: number;
+  coverage_percent: number;
+  avg_time_to_detect_ms?: number;
+}
+
+export interface DetectionCoverage {
+  id: string;
+  exercise_id: string;
+  by_tactic: Record<string, TacticCoverage>;
+  by_technique: Record<string, TechniqueCoverage>;
+  overall_score: number;
+  calculated_at: string;
+}
+
+export interface DetectionRecommendation {
+  recommendation_type: RecommendationType;
+  title: string;
+  description: string;
+  sigma_rule?: string;
+  splunk_query?: string;
+  elastic_query?: string;
+  data_sources_required: string[];
+  priority: number;
+}
+
+export interface PurpleDetectionGap {
+  id: string;
+  exercise_id: string;
+  technique_id: string;
+  technique_name: string;
+  tactic: string;
+  severity: GapSeverity;
+  recommendations: DetectionRecommendation[];
+  status: GapStatus;
+  created_at: string;
+  remediated_at?: string;
+}
+
+export interface MatrixCell {
+  technique_id: string;
+  technique_name: string;
+  tactic: string;
+  tested: boolean;
+  detection_status?: PurpleDetectionStatus;
+  coverage_percent: number;
+  gap_severity?: GapSeverity;
+}
+
+export interface AttackMatrix {
+  tactics: string[];
+  cells: Record<string, MatrixCell[]>;
+  overall_coverage: number;
+  tested_techniques: number;
+  total_techniques: number;
+}
+
+export interface ExerciseSummary {
+  id: string;
+  name: string;
+  status: ExerciseStatus;
+  attacks_run: number;
+  detection_rate: number;
+  gaps_found: number;
+  created_at: string;
+  completed_at?: string;
+}
+
+export interface PurpleTeamDashboard {
+  total_exercises: number;
+  running_exercises: number;
+  completed_exercises: number;
+  total_attacks_run: number;
+  detection_rate: number;
+  overall_coverage: number;
+  avg_time_to_detect_ms: number;
+  open_gaps: number;
+  critical_gaps: number;
+  coverage_by_tactic: TacticCoverage[];
+  recent_exercises: ExerciseSummary[];
+}
+
+export interface TacticInfo {
+  id: string;
+  name: string;
+}
+
+export interface AttackParameterInfo {
+  name: string;
+  param_type: string;
+  required: boolean;
+  description: string;
+  default_value?: string;
+}
+
+export interface AvailableAttack {
+  technique_id: string;
+  technique_name: string;
+  tactic: string;
+  attack_type: string;
+  description: string;
+  parameters: AttackParameterInfo[];
+}
+
+export interface PurpleTeamReport {
+  exercise: PurpleTeamExercise;
+  results: PurpleAttackResult[];
+  coverage?: DetectionCoverage;
+  gaps: PurpleDetectionGap[];
+  generated_at: string;
+}
+
+export interface AttackTypeMapping {
+  attack_type: string;
+  technique_id: string;
+  technique_name: string;
+  tactic: string;
+}
+
+export interface CreateExerciseRequest {
+  name: string;
+  description?: string;
+  siem_integration_id?: string;
+  attack_configs: PurpleAttackConfig[];
+  detection_timeout_secs?: number;
+}
+
+export interface UpdateGapStatusRequest {
+  status: GapStatus;
+  notes?: string;
 }

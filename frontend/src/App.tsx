@@ -53,6 +53,10 @@ const BloodHoundPage = lazy(() => import('./pages/BloodHoundPage'));
 const PhishingPage = lazy(() => import('./pages/PhishingPage'));
 const C2Page = lazy(() => import('./pages/C2Page'));
 const WirelessPage = lazy(() => import('./pages/WirelessPage'));
+const FindingTemplatesPage = lazy(() => import('./pages/FindingTemplatesPage'));
+const CrackingPage = lazy(() => import('./pages/CrackingPage'));
+const AttackSurfacePage = lazy(() => import('./pages/AttackSurfacePage'));
+const PurpleTeamPage = lazy(() => import('./pages/PurpleTeamPage'));
 
 // CRM pages
 const CrmDashboard = lazy(() => import('./pages/crm/CrmDashboard'));
@@ -277,6 +281,22 @@ function App() {
             }
           />
           <Route
+            path="/finding-templates"
+            element={
+              <ProtectedRoute>
+                <FindingTemplatesPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/cracking"
+            element={
+              <ProtectedRoute>
+                <CrackingPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/executive-dashboard"
             element={
               <ProtectedRoute>
@@ -417,6 +437,24 @@ function App() {
             element={
               <ProtectedRoute>
                 <WirelessPage />
+              </ProtectedRoute>
+            }
+          />
+          {/* Attack Surface Management Routes */}
+          <Route
+            path="/attack-surface"
+            element={
+              <ProtectedRoute>
+                <AttackSurfacePage />
+              </ProtectedRoute>
+            }
+          />
+          {/* Purple Team Routes */}
+          <Route
+            path="/purple-team"
+            element={
+              <ProtectedRoute>
+                <PurpleTeamPage />
               </ProtectedRoute>
             }
           />

@@ -144,6 +144,15 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     create_wireless_tables(pool).await?;
     // Exploitation safeguards - customer/asset binding
     add_exploitation_safeguards(pool).await?;
+    // Enhanced finding templates with categories, evidence placeholders, and seed data
+    enhance_finding_templates(pool).await?;
+    seed_enhanced_finding_templates(pool).await?;
+    // Password cracking tables
+    create_cracking_tables(pool).await?;
+    // Attack Surface Management tables
+    create_asm_tables(pool).await?;
+    // Purple Team Mode tables
+    super::purple_team::init_purple_team_tables(pool).await?;
     Ok(())
 }
 
@@ -7049,5 +7058,746 @@ async fn create_wireless_tables(pool: &SqlitePool) -> Result<()> {
     .await?;
 
     log::info!("Created wireless security tables");
+    Ok(())
+}
+
+/// Enhance finding templates with additional fields for evidence, OWASP, MITRE, compliance
+async fn enhance_finding_templates(pool: &SqlitePool) -> Result<()> {
+    // Add evidence_placeholders column (JSON array)
+    let _ = sqlx::query(
+        "ALTER TABLE finding_templates ADD COLUMN evidence_placeholders TEXT"
+    ).execute(pool).await;
+
+    // Add testing_steps column (markdown text)
+    let _ = sqlx::query(
+        "ALTER TABLE finding_templates ADD COLUMN testing_steps TEXT"
+    ).execute(pool).await;
+
+    // Add owasp_category column
+    let _ = sqlx::query(
+        "ALTER TABLE finding_templates ADD COLUMN owasp_category TEXT"
+    ).execute(pool).await;
+
+    // Add mitre_attack_ids column (JSON array)
+    let _ = sqlx::query(
+        "ALTER TABLE finding_templates ADD COLUMN mitre_attack_ids TEXT"
+    ).execute(pool).await;
+
+    // Add compliance_mappings column (JSON object)
+    let _ = sqlx::query(
+        "ALTER TABLE finding_templates ADD COLUMN compliance_mappings TEXT"
+    ).execute(pool).await;
+
+    // Add use_count column for tracking template usage
+    let _ = sqlx::query(
+        "ALTER TABLE finding_templates ADD COLUMN use_count INTEGER DEFAULT 0"
+    ).execute(pool).await;
+
+    // Add last_used_at column
+    let _ = sqlx::query(
+        "ALTER TABLE finding_templates ADD COLUMN last_used_at TEXT"
+    ).execute(pool).await;
+
+    // Add affected_components column (JSON array)
+    let _ = sqlx::query(
+        "ALTER TABLE finding_templates ADD COLUMN affected_components TEXT"
+    ).execute(pool).await;
+
+    // Create finding_template_categories table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS finding_template_categories (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            parent_id TEXT REFERENCES finding_template_categories(id),
+            description TEXT,
+            icon TEXT,
+            color TEXT,
+            sort_order INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        "#
+    ).execute(pool).await?;
+
+    // Seed default categories
+    let categories = [
+        ("web", "Web Application", None::<&str>, "Web application vulnerabilities including OWASP Top 10", "globe", "#3b82f6"),
+        ("injection", "Injection", Some("web"), "SQL, Command, LDAP, and other injection attacks", "terminal", "#ef4444"),
+        ("xss", "Cross-Site Scripting", Some("web"), "Reflected, Stored, and DOM-based XSS", "code", "#f97316"),
+        ("auth", "Authentication", Some("web"), "Authentication and session management flaws", "lock", "#8b5cf6"),
+        ("network", "Network", None, "Network infrastructure vulnerabilities", "network", "#22c55e"),
+        ("ad", "Active Directory", None, "Windows Active Directory and Kerberos issues", "server", "#6366f1"),
+        ("cloud", "Cloud Security", None, "AWS, Azure, GCP misconfigurations", "cloud", "#0ea5e9"),
+        ("api", "API Security", None, "REST, GraphQL, and API-specific vulnerabilities", "code-2", "#14b8a6"),
+        ("mobile", "Mobile", None, "iOS and Android application security", "smartphone", "#a855f7"),
+        ("configuration", "Configuration", None, "Misconfigurations and hardening issues", "settings", "#64748b"),
+        ("cryptography", "Cryptography", None, "Weak encryption and certificate issues", "key", "#eab308"),
+        ("access-control", "Access Control", None, "Authorization and privilege escalation", "shield", "#ec4899"),
+    ];
+
+    for (id, name, parent_id, description, icon, color) in categories {
+        let _ = sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO finding_template_categories (id, name, parent_id, description, icon, color, sort_order)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            "#
+        )
+        .bind(id)
+        .bind(name)
+        .bind(parent_id)
+        .bind(description)
+        .bind(icon)
+        .bind(color)
+        .bind(0)
+        .execute(pool)
+        .await;
+    }
+
+    // Create index for template usage tracking
+    let _ = sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_finding_templates_use_count ON finding_templates(use_count DESC)"
+    ).execute(pool).await;
+
+    log::info!("Enhanced finding templates table with additional fields");
+    Ok(())
+}
+
+/// Seed enhanced built-in finding templates with full metadata
+async fn seed_enhanced_finding_templates(pool: &SqlitePool) -> Result<()> {
+    use chrono::Utc;
+    use uuid::Uuid;
+
+    // Check if we already have system templates
+    let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM finding_templates WHERE is_system = 1")
+        .fetch_one(pool)
+        .await
+        .unwrap_or((0,));
+
+    if count.0 > 10 {
+        log::info!("System finding templates already seeded");
+        return Ok(());
+    }
+
+    let now = Utc::now();
+
+    // Define built-in templates
+    let templates = vec![
+        // SQL Injection
+        (
+            "sql-injection", "injection", "SQL Injection", "critical",
+            r#"A SQL injection vulnerability was identified that allows an attacker to inject malicious SQL statements into application queries. This vulnerability occurs when user-supplied input is incorporated into SQL queries without proper sanitization or parameterization.
+
+The application constructs SQL queries by concatenating user input directly into the query string, enabling attackers to modify the query logic, bypass authentication, access unauthorized data, or execute administrative operations on the database."#,
+            "An attacker can exploit this vulnerability to:\n- Extract sensitive data from the database including user credentials, personal information, and business data\n- Modify or delete data, causing data integrity issues\n- Bypass authentication mechanisms\n- Execute administrative operations on the database\n- In some cases, execute operating system commands on the database server",
+            r#"1. **Use Parameterized Queries**: Replace dynamic SQL with parameterized queries (prepared statements) that separate SQL code from data.
+
+2. **Input Validation**: Implement strict input validation using allowlists for expected data formats.
+
+3. **Least Privilege**: Ensure database accounts used by the application have minimum necessary privileges.
+
+4. **Error Handling**: Implement generic error messages that don't expose database structure.
+
+Example of secure parameterized query:
+```python
+# Instead of:
+cursor.execute(f"SELECT * FROM users WHERE id = {user_id}")
+
+# Use:
+cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+```"#,
+            r#"["https://owasp.org/www-community/attacks/SQL_Injection", "https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html", "https://cwe.mitre.org/data/definitions/89.html"]"#,
+            r#"[89]"#,
+            "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", 9.8,
+            "A03:2021-Injection",
+            r#"["T1190"]"#,
+            r#"{"pci_dss": ["6.5.1"], "owasp_top_10": ["A03:2021"], "cis": ["18.9"]}"#,
+            r#"[{"id": "request", "label": "Vulnerable Request", "placeholder_type": "request_response", "description": "HTTP request showing the SQL injection payload", "required": true}, {"id": "response", "label": "Response Evidence", "placeholder_type": "request_response", "description": "Response showing successful injection", "required": true}, {"id": "screenshot", "label": "Screenshot", "placeholder_type": "screenshot", "description": "Visual proof of exploitation", "required": false}]"#,
+        ),
+        // XSS Reflected
+        (
+            "xss-reflected", "xss", "Cross-Site Scripting (XSS) - Reflected", "high",
+            r#"A reflected cross-site scripting (XSS) vulnerability was identified where user-supplied input is returned in the HTTP response without proper encoding or validation. This allows an attacker to inject malicious JavaScript code that executes in the context of the victim's browser session.
+
+Reflected XSS occurs when the malicious script is part of the victim's request and is immediately reflected back in the response. The attack typically requires social engineering to trick users into clicking a malicious link."#,
+            "An attacker can exploit this vulnerability to:\n- Steal session cookies and hijack user accounts\n- Capture user credentials through fake login forms\n- Redirect users to malicious websites\n- Deface the web application for the victim\n- Perform actions on behalf of the authenticated user\n- Install browser-based keyloggers or cryptominers",
+            r#"1. **Output Encoding**: Encode all user-supplied data before rendering in HTML, JavaScript, CSS, or URL contexts.
+
+2. **Content Security Policy**: Implement a strict CSP header to prevent inline script execution.
+
+3. **Input Validation**: Validate and sanitize input on the server side.
+
+4. **HTTPOnly Cookies**: Set the HTTPOnly flag on session cookies to prevent JavaScript access.
+
+5. **Use Security Libraries**: Leverage framework-provided encoding functions.
+
+Example CSP header:
+```
+Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'
+```"#,
+            r#"["https://owasp.org/www-community/attacks/xss/", "https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html", "https://cwe.mitre.org/data/definitions/79.html"]"#,
+            r#"[79]"#,
+            "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N", 6.1,
+            "A03:2021-Injection",
+            r#"["T1189"]"#,
+            r#"{"pci_dss": ["6.5.7"], "owasp_top_10": ["A03:2021"]}"#,
+            r#"[{"id": "payload", "label": "XSS Payload", "placeholder_type": "code_snippet", "description": "The XSS payload used", "required": true}, {"id": "screenshot", "label": "Alert Box Screenshot", "placeholder_type": "screenshot", "description": "Screenshot showing JavaScript execution", "required": true}]"#,
+        ),
+        // Kerberoasting
+        (
+            "kerberoasting", "ad", "Kerberoastable Service Account", "high",
+            r#"A service account with a Service Principal Name (SPN) was identified that is vulnerable to Kerberoasting. Any authenticated domain user can request a Kerberos TGS ticket for this service, which is encrypted with the service account's NTLM hash. The ticket can then be cracked offline to recover the plaintext password.
+
+Service accounts with weak passwords are particularly vulnerable as they can be cracked quickly using dictionary attacks or brute force."#,
+            "An attacker with any valid domain credentials can:\n- Request TGS tickets for the vulnerable service account\n- Crack the ticket offline without generating additional authentication events\n- Obtain the service account's plaintext password\n- Use the compromised account for lateral movement\n- If the service account has elevated privileges, gain domain admin access",
+            r#"1. **Use Strong Passwords**: Ensure service account passwords are at least 25 characters with high complexity.
+
+2. **Use Group Managed Service Accounts (gMSA)**: Implement gMSA which automatically rotates passwords.
+
+3. **Limit SPN Assignments**: Only assign SPNs to accounts that require them.
+
+4. **Monitor Kerberos Events**: Enable auditing for Kerberos ticket requests (Event ID 4769).
+
+5. **Implement AES Encryption**: Configure accounts to use AES-256 encryption instead of RC4.
+
+PowerShell to find Kerberoastable accounts:
+```powershell
+Get-ADUser -Filter {ServicePrincipalName -ne "$null"} -Properties ServicePrincipalName
+```"#,
+            r#"["https://attack.mitre.org/techniques/T1558/003/", "https://adsecurity.org/?p=2293", "https://www.harmj0y.net/blog/powershell/kerberoasting-without-mimikatz/"]"#,
+            r#"[522]"#,
+            "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N", 8.1,
+            "",
+            r#"["T1558.003"]"#,
+            r#"{"mitre_attack": ["T1558.003"], "nist_800_53": ["IA-5", "AC-2"]}"#,
+            r#"[{"id": "spn", "label": "Service Principal Name", "placeholder_type": "code_snippet", "description": "The vulnerable SPN", "required": true}, {"id": "hash", "label": "TGS Hash", "placeholder_type": "code_snippet", "description": "The extracted Kerberos ticket hash", "required": true}]"#,
+        ),
+        // Weak SSL/TLS
+        (
+            "weak-ssl-tls", "cryptography", "Weak SSL/TLS Configuration", "medium",
+            r#"The server's SSL/TLS configuration supports outdated protocols or weak cipher suites that are vulnerable to known attacks. This includes support for SSLv3, TLS 1.0, TLS 1.1, or weak ciphers such as RC4, DES, or export-grade cryptography.
+
+Modern security standards require TLS 1.2 or higher with strong cipher suites to protect data in transit from eavesdropping and man-in-the-middle attacks."#,
+            "The weak SSL/TLS configuration exposes the application to:\n- BEAST, POODLE, and other protocol downgrade attacks\n- Cipher suite vulnerabilities allowing traffic decryption\n- Man-in-the-middle attacks compromising data confidentiality\n- Non-compliance with PCI DSS and other security standards\n- Potential data breaches exposing sensitive information",
+            r#"1. **Disable Legacy Protocols**: Remove support for SSLv2, SSLv3, TLS 1.0, and TLS 1.1.
+
+2. **Use Strong Cipher Suites**: Configure the server to use only strong ciphers with Perfect Forward Secrecy (PFS).
+
+3. **Enable HSTS**: Implement HTTP Strict Transport Security to prevent protocol downgrade attacks.
+
+4. **Regular Updates**: Keep SSL/TLS libraries updated to patch vulnerabilities.
+
+Recommended Nginx configuration:
+```nginx
+ssl_protocols TLSv1.2 TLSv1.3;
+ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256;
+ssl_prefer_server_ciphers on;
+add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+```"#,
+            r#"["https://wiki.mozilla.org/Security/Server_Side_TLS", "https://cheatsheetseries.owasp.org/cheatsheets/Transport_Layer_Protection_Cheat_Sheet.html"]"#,
+            r#"[326, 327]"#,
+            "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:N", 5.9,
+            "A02:2021-Cryptographic Failures",
+            r#"["T1557"]"#,
+            r#"{"pci_dss": ["4.1"], "nist_800_53": ["SC-8", "SC-13"]}"#,
+            r#"[{"id": "scan_output", "label": "SSL Scan Output", "placeholder_type": "code_snippet", "description": "Output from SSL scanner (testssl.sh, sslyze)", "required": true}]"#,
+        ),
+        // Missing Security Headers
+        (
+            "missing-security-headers", "configuration", "Missing Security Headers", "low",
+            r#"The web application is missing important HTTP security headers that help protect against common web attacks. Security headers instruct the browser to enable built-in security features and restrict potentially dangerous behaviors.
+
+Missing headers leave the application vulnerable to various client-side attacks that could otherwise be mitigated through proper header configuration."#,
+            "Missing security headers increase exposure to:\n- Cross-site scripting (XSS) attacks without CSP\n- Clickjacking attacks without X-Frame-Options\n- MIME type confusion attacks without X-Content-Type-Options\n- Information disclosure through Referrer header\n- Protocol downgrade attacks without HSTS",
+            r#"Implement the following security headers:
+
+1. **Content-Security-Policy (CSP)**
+```
+Content-Security-Policy: default-src 'self'; script-src 'self'
+```
+
+2. **X-Frame-Options**
+```
+X-Frame-Options: DENY
+```
+
+3. **X-Content-Type-Options**
+```
+X-Content-Type-Options: nosniff
+```
+
+4. **Strict-Transport-Security (HSTS)**
+```
+Strict-Transport-Security: max-age=31536000; includeSubDomains
+```
+
+5. **Referrer-Policy**
+```
+Referrer-Policy: strict-origin-when-cross-origin
+```
+
+6. **Permissions-Policy**
+```
+Permissions-Policy: geolocation=(), microphone=(), camera=()
+```"#,
+            r#"["https://owasp.org/www-project-secure-headers/", "https://securityheaders.com/"]"#,
+            r#"[693, 1021]"#,
+            "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:L/A:N", 4.3,
+            "A05:2021-Security Misconfiguration",
+            r#"[]"#,
+            r#"{"owasp_top_10": ["A05:2021"], "pci_dss": ["6.5.10"]}"#,
+            r#"[{"id": "headers", "label": "Response Headers", "placeholder_type": "code_snippet", "description": "HTTP response headers showing missing security headers", "required": true}]"#,
+        ),
+        // IDOR
+        (
+            "idor", "access-control", "Insecure Direct Object Reference (IDOR)", "high",
+            r#"An Insecure Direct Object Reference (IDOR) vulnerability was identified where the application exposes internal object identifiers (such as database IDs) and does not properly verify that the requesting user is authorized to access the referenced object.
+
+By manipulating the object identifier in requests, an attacker can access or modify resources belonging to other users without proper authorization checks."#,
+            "An attacker can exploit this vulnerability to:\n- Access other users' personal information and data\n- Modify or delete resources belonging to other users\n- Escalate privileges by accessing admin functionality\n- Exfiltrate sensitive business data\n- Compromise the integrity of the application",
+            r#"1. **Implement Proper Authorization**: Verify user permissions before granting access to any resource.
+
+2. **Use Indirect References**: Map internal IDs to per-user indirect references.
+
+3. **Access Control Checks**: Implement server-side access control for every function.
+
+4. **Logging and Monitoring**: Log access attempts and monitor for suspicious patterns.
+
+Example authorization check:
+```python
+def get_document(document_id, current_user):
+    document = Document.query.get(document_id)
+    if document.owner_id != current_user.id:
+        raise PermissionDenied("Access denied")
+    return document
+```"#,
+            r#"["https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/05-Authorization_Testing/04-Testing_for_Insecure_Direct_Object_References", "https://cheatsheetseries.owasp.org/cheatsheets/Insecure_Direct_Object_Reference_Prevention_Cheat_Sheet.html"]"#,
+            r#"[639]"#,
+            "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N", 8.1,
+            "A01:2021-Broken Access Control",
+            r#"["T1087"]"#,
+            r#"{"owasp_top_10": ["A01:2021"], "pci_dss": ["7.1", "7.2"]}"#,
+            r#"[{"id": "original", "label": "Original Request", "placeholder_type": "request_response", "description": "Legitimate request with authorized ID", "required": true}, {"id": "modified", "label": "Modified Request", "placeholder_type": "request_response", "description": "Request with another user's ID", "required": true}]"#,
+        ),
+        // Default Credentials
+        (
+            "default-credentials", "auth", "Default Credentials", "critical",
+            r#"The system is accessible using default, well-known, or easily guessable credentials. These credentials are often documented in product manuals or widely known, allowing attackers to gain unauthorized access without sophisticated attack techniques.
+
+Default credentials are a common attack vector for initial access and often provide administrative-level access to systems."#,
+            "Access with default credentials can allow an attacker to:\n- Gain complete administrative control of the system\n- Access, modify, or delete sensitive data\n- Use the compromised system as a pivot point for further attacks\n- Deploy malware or establish persistence\n- Disrupt business operations",
+            r#"1. **Change Default Credentials**: Immediately change all default passwords upon deployment.
+
+2. **Force Password Change**: Require users to change passwords on first login.
+
+3. **Password Policy**: Implement strong password requirements.
+
+4. **Account Lockout**: Enable account lockout after failed attempts.
+
+5. **Credential Scanning**: Regularly scan for default credentials in the environment.
+
+6. **Inventory Management**: Maintain an inventory of all systems and their credential status."#,
+            r#"["https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/04-Authentication_Testing/02-Testing_for_Default_Credentials", "https://cwe.mitre.org/data/definitions/798.html"]"#,
+            r#"[798, 1392]"#,
+            "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", 9.8,
+            "A07:2021-Identification and Authentication Failures",
+            r#"["T1078.001"]"#,
+            r#"{"owasp_top_10": ["A07:2021"], "pci_dss": ["2.1", "8.2.3"]}"#,
+            r#"[{"id": "credentials", "label": "Default Credentials Used", "placeholder_type": "code_snippet", "description": "The default username/password combination", "required": true}, {"id": "screenshot", "label": "Access Screenshot", "placeholder_type": "screenshot", "description": "Screenshot showing successful access", "required": true}]"#,
+        ),
+        // Open S3 Bucket
+        (
+            "open-s3-bucket", "cloud", "Publicly Accessible S3 Bucket", "critical",
+            r#"An Amazon S3 bucket was identified with overly permissive access control settings, allowing public read and/or write access. This misconfiguration exposes stored objects to unauthorized access and potential data breaches.
+
+S3 buckets often contain sensitive data including backups, configuration files, user uploads, and application data that should not be publicly accessible."#,
+            "A publicly accessible S3 bucket can lead to:\n- Exposure of sensitive customer data and PII\n- Unauthorized access to internal documents and backups\n- Compliance violations (GDPR, HIPAA, PCI DSS)\n- Reputational damage from data breaches\n- Data manipulation or deletion if write access is allowed\n- Cryptocurrency mining or malware distribution",
+            r#"1. **Block Public Access**: Enable S3 Block Public Access settings at the account level.
+
+2. **Review Bucket Policies**: Audit and restrict bucket policies to necessary principals.
+
+3. **Use IAM Policies**: Implement least-privilege IAM policies for access.
+
+4. **Enable Logging**: Enable S3 access logging for audit trails.
+
+5. **Encryption**: Enable server-side encryption for all objects.
+
+AWS CLI to check bucket ACL:
+```bash
+aws s3api get-bucket-acl --bucket bucket-name
+aws s3api get-bucket-policy --bucket bucket-name
+```
+
+Block public access:
+```bash
+aws s3api put-public-access-block --bucket bucket-name \
+  --public-access-block-configuration "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"
+```"#,
+            r#"["https://docs.aws.amazon.com/AmazonS3/latest/userguide/access-control-block-public-access.html", "https://aws.amazon.com/premiumsupport/knowledge-center/secure-s3-resources/"]"#,
+            r#"[732, 200]"#,
+            "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N", 9.1,
+            "A01:2021-Broken Access Control",
+            r#"["T1530"]"#,
+            r#"{"aws_cis": ["2.1.1", "2.1.2"], "pci_dss": ["7.1"], "nist_800_53": ["AC-3", "AC-6"]}"#,
+            r#"[{"id": "bucket", "label": "Bucket Name", "placeholder_type": "code_snippet", "description": "The S3 bucket identifier", "required": true}, {"id": "listing", "label": "Directory Listing", "placeholder_type": "screenshot", "description": "Screenshot showing public bucket contents", "required": false}]"#,
+        ),
+        // Hardcoded Secrets
+        (
+            "hardcoded-secrets", "configuration", "Hardcoded Secrets in Source Code", "high",
+            r#"Sensitive credentials, API keys, or secrets were found hardcoded in the application source code or configuration files. This practice violates security best practices and exposes secrets to anyone with access to the codebase, including version control history.
+
+Hardcoded secrets are often accidentally committed to public repositories or exposed through source code leaks, leading to unauthorized access to external services and systems."#,
+            "Hardcoded secrets can lead to:\n- Unauthorized access to third-party services and APIs\n- Compromise of cloud infrastructure and databases\n- Financial losses from abuse of paid services\n- Data breaches through compromised integrations\n- Difficulty rotating credentials after exposure\n- Supply chain attacks",
+            r#"1. **Use Environment Variables**: Store secrets in environment variables, not code.
+
+2. **Secrets Management**: Implement a secrets manager (HashiCorp Vault, AWS Secrets Manager).
+
+3. **Git Pre-commit Hooks**: Use tools like git-secrets to prevent committing secrets.
+
+4. **Secret Scanning**: Regularly scan repositories for exposed secrets.
+
+5. **Rotate Credentials**: Immediately rotate any exposed credentials.
+
+Example using environment variables:
+```python
+# Instead of:
+API_KEY = "sk-1234567890abcdef"
+
+# Use:
+import os
+API_KEY = os.environ.get('API_KEY')
+```"#,
+            r#"["https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html", "https://cwe.mitre.org/data/definitions/798.html"]"#,
+            r#"[798, 259]"#,
+            "CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N", 7.1,
+            "A02:2021-Cryptographic Failures",
+            r#"["T1552.001"]"#,
+            r#"{"owasp_top_10": ["A02:2021"], "soc2": ["CC6.1"]}"#,
+            r#"[{"id": "secret", "label": "Secret Location", "placeholder_type": "code_snippet", "description": "File and line where secret was found (redact actual value)", "required": true}]"#,
+        ),
+        // Path Traversal
+        (
+            "path-traversal", "web", "Path Traversal", "high",
+            r#"A path traversal vulnerability was identified that allows an attacker to access files and directories outside the intended web root. By manipulating file path parameters with sequences like "../", an attacker can read sensitive files from the server filesystem.
+
+This vulnerability can expose configuration files, source code, system files, and other sensitive data that should not be accessible through the web application."#,
+            "An attacker can exploit path traversal to:\n- Read sensitive system files (/etc/passwd, /etc/shadow)\n- Access application configuration and credentials\n- View source code and discover additional vulnerabilities\n- Read database files and backups\n- Access other users' files in multi-tenant environments",
+            r#"1. **Input Validation**: Validate and sanitize all file path inputs.
+
+2. **Use Allowlists**: Only allow access to specific, known files or directories.
+
+3. **Canonicalization**: Resolve the full path and verify it's within allowed directories.
+
+4. **Chroot/Jail**: Run the application in a restricted directory environment.
+
+5. **Least Privilege**: Run the application with minimal filesystem permissions.
+
+Example secure file access:
+```python
+import os
+
+ALLOWED_DIR = '/var/www/files'
+
+def get_file(filename):
+    # Remove path traversal sequences
+    safe_name = os.path.basename(filename)
+    full_path = os.path.join(ALLOWED_DIR, safe_name)
+
+    # Verify the resolved path is within allowed directory
+    if not os.path.realpath(full_path).startswith(os.path.realpath(ALLOWED_DIR)):
+        raise SecurityError("Path traversal detected")
+
+    return open(full_path, 'rb').read()
+```"#,
+            r#"["https://owasp.org/www-community/attacks/Path_Traversal", "https://cwe.mitre.org/data/definitions/22.html"]"#,
+            r#"[22, 23]"#,
+            "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N", 7.5,
+            "A01:2021-Broken Access Control",
+            r#"["T1083"]"#,
+            r#"{"owasp_top_10": ["A01:2021"], "pci_dss": ["6.5.8"]}"#,
+            r#"[{"id": "request", "label": "Traversal Request", "placeholder_type": "request_response", "description": "HTTP request with path traversal payload", "required": true}, {"id": "response", "label": "File Contents", "placeholder_type": "code_snippet", "description": "Contents of accessed file", "required": true}]"#,
+        ),
+    ];
+
+    let template_count = templates.len();
+    for (id, category, title, severity, description, impact, remediation, references, cwe_ids, cvss_vector, cvss_score, owasp_category, mitre_attack_ids, compliance_mappings, evidence_placeholders) in templates {
+        let template_id = format!("system-{}", id);
+        let _ = sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO finding_templates (
+                id, user_id, category, title, severity, description, impact, remediation,
+                "references", cwe_ids, cvss_vector, cvss_score, tags, is_system,
+                owasp_category, mitre_attack_ids, compliance_mappings, evidence_placeholders,
+                created_at, updated_at
+            )
+            VALUES (?1, NULL, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, '[]', 1, ?12, ?13, ?14, ?15, ?16, ?16)
+            "#
+        )
+        .bind(&template_id)
+        .bind(category)
+        .bind(title)
+        .bind(severity)
+        .bind(description)
+        .bind(impact)
+        .bind(remediation)
+        .bind(references)
+        .bind(cwe_ids)
+        .bind(cvss_vector)
+        .bind(cvss_score)
+        .bind(owasp_category)
+        .bind(mitre_attack_ids)
+        .bind(compliance_mappings)
+        .bind(evidence_placeholders)
+        .bind(now)
+        .execute(pool)
+        .await;
+    }
+
+    log::info!("Seeded {} built-in finding templates", template_count);
+    Ok(())
+}
+
+/// Create password cracking tables
+async fn create_cracking_tables(pool: &SqlitePool) -> Result<()> {
+    // Cracking jobs table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS cracking_jobs (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            hash_type INTEGER NOT NULL,
+            cracker_type TEXT NOT NULL DEFAULT 'hashcat',
+            hashes_json TEXT NOT NULL,
+            config_json TEXT NOT NULL DEFAULT '{}',
+            progress_json TEXT,
+            results_json TEXT,
+            error_message TEXT,
+            source_campaign_id TEXT,
+            customer_id TEXT,
+            engagement_id TEXT,
+            created_at TEXT NOT NULL,
+            started_at TEXT,
+            completed_at TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            FOREIGN KEY (customer_id) REFERENCES customers(id),
+            FOREIGN KEY (engagement_id) REFERENCES engagements(id)
+        )
+        "#
+    )
+    .execute(pool)
+    .await?;
+
+    // Indexes for cracking_jobs
+    let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_cracking_jobs_user ON cracking_jobs(user_id)")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_cracking_jobs_status ON cracking_jobs(status)")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_cracking_jobs_customer ON cracking_jobs(customer_id)")
+        .execute(pool)
+        .await;
+
+    // Cracked credentials table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS cracked_credentials (
+            id TEXT PRIMARY KEY,
+            job_id TEXT NOT NULL,
+            hash TEXT NOT NULL,
+            plaintext TEXT NOT NULL,
+            hash_type INTEGER,
+            username TEXT,
+            domain TEXT,
+            asset_id TEXT,
+            cracked_at TEXT NOT NULL,
+            FOREIGN KEY (job_id) REFERENCES cracking_jobs(id) ON DELETE CASCADE,
+            FOREIGN KEY (asset_id) REFERENCES assets(id),
+            UNIQUE(hash, job_id)
+        )
+        "#
+    )
+    .execute(pool)
+    .await?;
+
+    // Indexes for cracked_credentials
+    let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_cracked_creds_job ON cracked_credentials(job_id)")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_cracked_creds_asset ON cracked_credentials(asset_id)")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_cracked_creds_hash ON cracked_credentials(hash)")
+        .execute(pool)
+        .await;
+
+    // Wordlists table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS cracking_wordlists (
+            id TEXT PRIMARY KEY,
+            user_id TEXT,
+            name TEXT NOT NULL,
+            description TEXT,
+            file_path TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL DEFAULT 0,
+            line_count INTEGER NOT NULL DEFAULT 0,
+            is_builtin INTEGER NOT NULL DEFAULT 0,
+            category TEXT NOT NULL DEFAULT 'custom',
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+        "#
+    )
+    .execute(pool)
+    .await?;
+
+    // Rule files table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS cracking_rules (
+            id TEXT PRIMARY KEY,
+            user_id TEXT,
+            name TEXT NOT NULL,
+            description TEXT,
+            file_path TEXT NOT NULL,
+            rule_count INTEGER NOT NULL DEFAULT 0,
+            cracker_type TEXT NOT NULL DEFAULT 'hashcat',
+            is_builtin INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+        "#
+    )
+    .execute(pool)
+    .await?;
+
+    log::info!("Created password cracking tables");
+    Ok(())
+}
+
+/// Create Attack Surface Management tables
+async fn create_asm_tables(pool: &SqlitePool) -> Result<()> {
+    // ASM monitors table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS asm_monitors (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            domains TEXT NOT NULL,
+            discovery_config TEXT NOT NULL,
+            schedule TEXT NOT NULL,
+            alert_config TEXT NOT NULL,
+            enabled INTEGER DEFAULT 1,
+            last_run_at TEXT,
+            next_run_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // ASM baselines table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS asm_baselines (
+            id TEXT PRIMARY KEY,
+            monitor_id TEXT NOT NULL,
+            assets TEXT NOT NULL,
+            summary TEXT NOT NULL,
+            is_active INTEGER DEFAULT 1,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (monitor_id) REFERENCES asm_monitors(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // ASM changes table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS asm_changes (
+            id TEXT PRIMARY KEY,
+            monitor_id TEXT NOT NULL,
+            baseline_id TEXT NOT NULL,
+            change_type TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            hostname TEXT NOT NULL,
+            details TEXT NOT NULL,
+            detected_at TEXT NOT NULL,
+            acknowledged INTEGER DEFAULT 0,
+            acknowledged_by TEXT,
+            acknowledged_at TEXT,
+            FOREIGN KEY (monitor_id) REFERENCES asm_monitors(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // ASM authorized assets table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS asm_authorized_assets (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            hostname_pattern TEXT NOT NULL,
+            ip_ranges TEXT,
+            description TEXT,
+            created_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // ASM risk scores table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS asm_risk_scores (
+            id TEXT PRIMARY KEY,
+            asset_id TEXT,
+            hostname TEXT NOT NULL,
+            overall_score INTEGER NOT NULL,
+            factors TEXT NOT NULL,
+            calculated_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_asm_monitors_user_id ON asm_monitors(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_asm_baselines_monitor_id ON asm_baselines(monitor_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_asm_changes_monitor_id ON asm_changes(monitor_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_asm_changes_detected_at ON asm_changes(detected_at)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_asm_changes_acknowledged ON asm_changes(acknowledged)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_asm_risk_scores_hostname ON asm_risk_scores(hostname)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created ASM tables");
     Ok(())
 }

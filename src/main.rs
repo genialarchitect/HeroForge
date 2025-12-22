@@ -6,8 +6,10 @@ use std::time::Duration;
 
 mod agents;
 mod ai;
+mod asm;
 mod compliance;
 mod config;
+mod cracking;
 mod cve;
 mod db;
 mod email;
@@ -19,6 +21,7 @@ mod password_validation;
 mod phishing;
 mod c2;
 mod plugins;
+mod purple_team;
 mod reports;
 mod scanner;
 mod siem;
