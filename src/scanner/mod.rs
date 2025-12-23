@@ -5,6 +5,7 @@ pub mod asset_discovery;
 pub mod attack_paths;
 pub mod bas;
 pub mod bloodhound;
+pub mod cicd;
 pub mod cloud;
 pub mod comparison;
 pub mod container;

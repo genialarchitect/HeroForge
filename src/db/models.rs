@@ -2167,3 +2167,171 @@ pub struct UpdateSecretFindingRequest {
     pub false_positive: Option<bool>,
     pub notes: Option<String>,
 }
+
+// ============================================================================
+// CI/CD Pipeline Security Scanning Models
+// ============================================================================
+
+/// CI/CD Pipeline scan record
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow, utoipa::ToSchema)]
+pub struct CiCdPipelineScanRecord {
+    pub id: String,
+    pub user_id: String,
+    pub organization_id: Option<String>,
+    pub scan_type: String,
+    pub repository_url: Option<String>,
+    pub branch: Option<String>,
+    pub commit_sha: Option<String>,
+    pub status: String,
+    pub finding_count: Option<i32>,
+    pub critical_count: Option<i32>,
+    pub high_count: Option<i32>,
+    pub medium_count: Option<i32>,
+    pub low_count: Option<i32>,
+    pub info_count: Option<i32>,
+    pub files_scanned: Option<i32>,
+    pub duration_ms: Option<i64>,
+    pub error_message: Option<String>,
+    pub started_at: Option<DateTime<Utc>>,
+    pub completed_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// CI/CD Pipeline finding record
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow, utoipa::ToSchema)]
+pub struct CiCdPipelineFindingRecord {
+    pub id: String,
+    pub scan_id: String,
+    pub rule_id: String,
+    pub platform: String,
+    pub severity: String,
+    pub category: String,
+    pub title: String,
+    pub description: String,
+    pub workflow_file: String,
+    pub job_name: Option<String>,
+    pub step_name: Option<String>,
+    pub line_number: Option<i32>,
+    pub column_number: Option<i32>,
+    pub code_snippet: Option<String>,
+    pub remediation: String,
+    pub cwe_id: Option<String>,
+    pub status: String,
+    pub false_positive: bool,
+    pub suppressed: bool,
+    pub suppressed_by: Option<String>,
+    pub suppressed_at: Option<DateTime<Utc>>,
+    pub suppression_reason: Option<String>,
+    pub metadata: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Request to start a CI/CD pipeline scan
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct StartCiCdScanRequest {
+    /// Type of scan: github_actions, gitlab_ci, jenkins, or auto (detect automatically)
+    pub scan_type: String,
+    /// Repository URL (optional - can use uploaded files instead)
+    pub repository_url: Option<String>,
+    /// Branch to scan (defaults to main/master)
+    pub branch: Option<String>,
+    /// Pipeline configuration files (for direct file scanning)
+    pub files: Option<Vec<CiCdFileContent>>,
+}
+
+/// CI/CD file content for direct scanning
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct CiCdFileContent {
+    /// File path (e.g., .github/workflows/ci.yml)
+    pub path: String,
+    /// File content
+    pub content: String,
+}
+
+/// Request to analyze a single CI/CD file
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct AnalyzeCiCdFileRequest {
+    /// Pipeline type: github_actions, gitlab_ci, jenkins
+    pub platform: String,
+    /// File content to analyze
+    pub content: String,
+    /// Optional file path for context
+    pub file_path: Option<String>,
+}
+
+/// Response from immediate file analysis
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct CiCdAnalysisResponse {
+    pub platform: String,
+    pub findings: Vec<CiCdFindingResponse>,
+    pub critical_count: usize,
+    pub high_count: usize,
+    pub medium_count: usize,
+    pub low_count: usize,
+    pub info_count: usize,
+    pub duration_ms: u64,
+}
+
+/// CI/CD finding response (simplified for API)
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct CiCdFindingResponse {
+    pub rule_id: String,
+    pub platform: String,
+    pub severity: String,
+    pub category: String,
+    pub title: String,
+    pub description: String,
+    pub file_path: String,
+    pub line_number: Option<usize>,
+    pub job_name: Option<String>,
+    pub step_name: Option<String>,
+    pub code_snippet: Option<String>,
+    pub remediation: String,
+    pub cwe_id: Option<String>,
+}
+
+/// Request to suppress a finding
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct SuppressCiCdFindingRequest {
+    pub reason: String,
+}
+
+/// Request to update finding status
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct UpdateCiCdFindingRequest {
+    pub status: Option<String>,
+    pub false_positive: Option<bool>,
+}
+
+/// CI/CD scan statistics
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct CiCdScanStats {
+    pub total_scans: i64,
+    pub total_findings: i64,
+    pub critical_count: i64,
+    pub high_count: i64,
+    pub medium_count: i64,
+    pub low_count: i64,
+    pub info_count: i64,
+    pub open_findings: i64,
+    pub resolved_findings: i64,
+    pub false_positives: i64,
+    pub by_platform: Vec<CiCdPlatformCount>,
+    pub by_category: Vec<CiCdCategoryCount>,
+}
+
+/// Count by platform
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct CiCdPlatformCount {
+    pub platform: String,
+    pub count: i64,
+}
+
+/// Count by category
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct CiCdCategoryCount {
+    pub category: String,
+    pub count: i64,
+}

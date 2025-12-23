@@ -165,6 +165,8 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     create_organization_quotas_tables(pool).await?;
     // Enhanced secret scanning tables (git, filesystem, entropy)
     create_enhanced_secret_scanning_tables(pool).await?;
+    // CI/CD Pipeline Security scanning tables
+    create_cicd_pipeline_scan_tables(pool).await?;
     Ok(())
 }
 
@@ -9079,5 +9081,152 @@ async fn create_enhanced_secret_scanning_tables(pool: &SqlitePool) -> Result<()>
         .await?;
 
     log::info!("Created enhanced secret scanning tables");
+    Ok(())
+}
+
+/// Create CI/CD Pipeline Security scanning tables
+async fn create_cicd_pipeline_scan_tables(pool: &SqlitePool) -> Result<()> {
+    // Create cicd_pipeline_scans table for tracking pipeline scan jobs
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS cicd_pipeline_scans (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            organization_id TEXT,
+            scan_type TEXT NOT NULL,
+            repository_url TEXT,
+            branch TEXT,
+            commit_sha TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            finding_count INTEGER DEFAULT 0,
+            critical_count INTEGER DEFAULT 0,
+            high_count INTEGER DEFAULT 0,
+            medium_count INTEGER DEFAULT 0,
+            low_count INTEGER DEFAULT 0,
+            info_count INTEGER DEFAULT 0,
+            files_scanned INTEGER DEFAULT 0,
+            duration_ms INTEGER DEFAULT 0,
+            error_message TEXT,
+            started_at TEXT,
+            completed_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create cicd_pipeline_findings table for individual findings
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS cicd_pipeline_findings (
+            id TEXT PRIMARY KEY,
+            scan_id TEXT NOT NULL,
+            rule_id TEXT NOT NULL,
+            platform TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            category TEXT NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT NOT NULL,
+            workflow_file TEXT NOT NULL,
+            job_name TEXT,
+            step_name TEXT,
+            line_number INTEGER,
+            column_number INTEGER,
+            code_snippet TEXT,
+            remediation TEXT NOT NULL,
+            cwe_id TEXT,
+            status TEXT DEFAULT 'open',
+            false_positive INTEGER DEFAULT 0,
+            suppressed INTEGER DEFAULT 0,
+            suppressed_by TEXT,
+            suppressed_at TEXT,
+            suppression_reason TEXT,
+            metadata TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (scan_id) REFERENCES cicd_pipeline_scans(id) ON DELETE CASCADE,
+            FOREIGN KEY (suppressed_by) REFERENCES users(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create cicd_pipeline_rules table for custom rules and rule metadata
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS cicd_pipeline_rules (
+            id TEXT PRIMARY KEY,
+            platform TEXT NOT NULL,
+            category TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT NOT NULL,
+            remediation TEXT NOT NULL,
+            cwe_id TEXT,
+            reference_urls TEXT,
+            is_enabled INTEGER DEFAULT 1,
+            is_custom INTEGER DEFAULT 0,
+            created_by TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create cicd_rule_suppressions table for global rule suppressions
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS cicd_rule_suppressions (
+            id TEXT PRIMARY KEY,
+            organization_id TEXT,
+            rule_id TEXT NOT NULL,
+            repository_pattern TEXT,
+            reason TEXT NOT NULL,
+            expires_at TEXT,
+            created_by TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
+            FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_cicd_scans_user ON cicd_pipeline_scans(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_cicd_scans_org ON cicd_pipeline_scans(organization_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_cicd_scans_status ON cicd_pipeline_scans(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_cicd_scans_type ON cicd_pipeline_scans(scan_type)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_cicd_findings_scan ON cicd_pipeline_findings(scan_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_cicd_findings_severity ON cicd_pipeline_findings(severity)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_cicd_findings_status ON cicd_pipeline_findings(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_cicd_findings_rule ON cicd_pipeline_findings(rule_id)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created CI/CD Pipeline Security scanning tables");
     Ok(())
 }

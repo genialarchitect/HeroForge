@@ -15,6 +15,7 @@ pub mod bloodhound;
 pub mod c2;
 pub mod chat;
 pub mod cicd;
+pub mod cicd_pipeline;
 pub mod cloud;
 pub mod container;
 pub mod credential_audit;
