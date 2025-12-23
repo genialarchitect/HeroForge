@@ -257,6 +257,32 @@ import type {
   UpdateSiemAlertStatusRequest,
   ResolveSiemAlertRequest,
   SiemStatsResponse,
+  // Organization & Multi-tenancy types
+  Organization,
+  OrganizationSummary,
+  CreateOrganizationRequest,
+  UpdateOrganizationRequest,
+  Department,
+  CreateDepartmentRequest,
+  UpdateDepartmentRequest,
+  Team,
+  CreateTeamRequest,
+  UpdateTeamRequest,
+  TeamMember,
+  OrgMember,
+  AddOrgMemberRequest,
+  AddTeamMemberRequest,
+  RoleTemplate,
+  CustomRole,
+  CreateCustomRoleRequest,
+  UpdateCustomRoleRequest,
+  UserRoleAssignment,
+  AssignRoleRequest,
+  Permission,
+  EffectivePermissions,
+  OrganizationQuotas,
+  UpdateQuotasRequest,
+  OrganizationQuotaUsage,
 } from '../types';
 
 const api = axios.create({
@@ -3214,6 +3240,185 @@ export const purpleTeamAPI = {
   // Reports
   generateExerciseReport: (id: string) =>
     api.get<PurpleTeamReport>(`/purple-team/exercises/${id}/report`),
+};
+
+// =============================================================================
+// Organization & Multi-tenancy API
+// =============================================================================
+
+export const organizationAPI = {
+  // Organizations
+  list: () =>
+    api.get<OrganizationSummary[]>('/organizations'),
+
+  get: (id: string) =>
+    api.get<Organization>(`/organizations/${id}`),
+
+  create: (data: CreateOrganizationRequest) =>
+    api.post<Organization>('/organizations', data),
+
+  update: (id: string, data: UpdateOrganizationRequest) =>
+    api.put<Organization>(`/organizations/${id}`, data),
+
+  delete: (id: string) =>
+    api.delete<void>(`/organizations/${id}`),
+
+  // Members
+  listMembers: (orgId: string) =>
+    api.get<OrgMember[]>(`/organizations/${orgId}/members`),
+
+  addMember: (orgId: string, data: AddOrgMemberRequest) =>
+    api.post<{ message: string }>(`/organizations/${orgId}/members`, data),
+
+  removeMember: (orgId: string, userId: string) =>
+    api.delete<void>(`/organizations/${orgId}/members/${userId}`),
+
+  // Departments
+  listDepartments: (orgId: string) =>
+    api.get<Department[]>(`/organizations/${orgId}/departments`),
+
+  getDepartment: (id: string) =>
+    api.get<Department>(`/departments/${id}`),
+
+  createDepartment: (orgId: string, data: CreateDepartmentRequest) =>
+    api.post<Department>(`/organizations/${orgId}/departments`, data),
+
+  updateDepartment: (id: string, data: UpdateDepartmentRequest) =>
+    api.put<Department>(`/departments/${id}`, data),
+
+  deleteDepartment: (id: string) =>
+    api.delete<void>(`/departments/${id}`),
+
+  // Teams
+  listTeams: (orgId: string) =>
+    api.get<Team[]>(`/organizations/${orgId}/teams`),
+
+  listTeamsInDepartment: (deptId: string) =>
+    api.get<Team[]>(`/departments/${deptId}/teams`),
+
+  getTeam: (id: string) =>
+    api.get<Team>(`/teams/${id}`),
+
+  createTeam: (deptId: string, data: CreateTeamRequest) =>
+    api.post<Team>(`/departments/${deptId}/teams`, data),
+
+  updateTeam: (id: string, data: UpdateTeamRequest) =>
+    api.put<Team>(`/teams/${id}`, data),
+
+  deleteTeam: (id: string) =>
+    api.delete<void>(`/teams/${id}`),
+
+  // Team Members
+  listTeamMembers: (teamId: string) =>
+    api.get<TeamMember[]>(`/teams/${teamId}/members`),
+
+  addTeamMember: (teamId: string, data: AddTeamMemberRequest) =>
+    api.post<{ message: string }>(`/teams/${teamId}/members`, data),
+
+  removeTeamMember: (teamId: string, userId: string) =>
+    api.delete<void>(`/teams/${teamId}/members/${userId}`),
+};
+
+export const rolesAPI = {
+  // Role Templates (system-wide)
+  listRoleTemplates: () =>
+    api.get<RoleTemplate[]>('/role-templates'),
+
+  getRoleTemplate: (id: string) =>
+    api.get<RoleTemplate>(`/role-templates/${id}`),
+
+  getRoleTemplatePermissions: (id: string) =>
+    api.get<string[]>(`/role-templates/${id}/permissions`),
+
+  // Custom Roles (org-specific)
+  listCustomRoles: (orgId: string) =>
+    api.get<CustomRole[]>(`/organizations/${orgId}/roles`),
+
+  getCustomRole: (orgId: string, roleId: string) =>
+    api.get<CustomRole>(`/organizations/${orgId}/roles/${roleId}`),
+
+  createCustomRole: (orgId: string, data: CreateCustomRoleRequest) =>
+    api.post<CustomRole>(`/organizations/${orgId}/roles`, data),
+
+  updateCustomRole: (orgId: string, roleId: string, data: UpdateCustomRoleRequest) =>
+    api.put<CustomRole>(`/organizations/${orgId}/roles/${roleId}`, data),
+
+  deleteCustomRole: (orgId: string, roleId: string) =>
+    api.delete<void>(`/organizations/${orgId}/roles/${roleId}`),
+
+  cloneCustomRole: (orgId: string, roleId: string, name: string) =>
+    api.post<CustomRole>(`/organizations/${orgId}/roles/${roleId}/clone`, { name }),
+
+  // User Role Assignments
+  listUserRoles: (userId: string) =>
+    api.get<UserRoleAssignment[]>(`/users/${userId}/roles`),
+
+  assignRole: (userId: string, data: AssignRoleRequest) =>
+    api.post<UserRoleAssignment>(`/users/${userId}/roles`, data),
+
+  removeRoleAssignment: (userId: string, assignmentId: string) =>
+    api.delete<void>(`/users/${userId}/roles/${assignmentId}`),
+};
+
+export const permissionsAPI = {
+  // Available Permissions
+  listPermissions: () =>
+    api.get<Permission[]>('/permissions'),
+
+  listResourceTypes: () =>
+    api.get<string[]>('/permissions/resource-types'),
+
+  listActions: () =>
+    api.get<string[]>('/permissions/actions'),
+
+  // User Permissions
+  getEffectivePermissions: (userId: string) =>
+    api.get<EffectivePermissions>(`/users/${userId}/permissions`),
+
+  checkPermission: (userId: string, permission: string, resourceType?: string, resourceId?: string) =>
+    api.get<{ granted: boolean }>(`/users/${userId}/permissions/check`, {
+      params: { permission, resource_type: resourceType, resource_id: resourceId }
+    }),
+
+  // Permission Overrides
+  listPermissionOverrides: (userId: string) =>
+    api.get<{ id: string; permission: string; granted: boolean }[]>(`/users/${userId}/permissions/overrides`),
+
+  addPermissionOverride: (userId: string, permission: string, granted: boolean) =>
+    api.post<{ id: string }>(`/users/${userId}/permissions`, { permission, granted }),
+
+  removePermissionOverride: (userId: string, overrideId: string) =>
+    api.delete<void>(`/users/${userId}/permissions/${overrideId}`),
+
+  // Resource Sharing
+  shareResource: (resourceType: string, resourceId: string, userId: string, permissions: string[]) =>
+    api.post<{ id: string }>(`/resources/${resourceType}/${resourceId}/shares`, {
+      user_id: userId,
+      permissions,
+    }),
+
+  listResourceShares: (resourceType: string, resourceId: string) =>
+    api.get<{ user_id: string; permissions: string[] }[]>(`/resources/${resourceType}/${resourceId}/shares`),
+
+  removeResourceShare: (resourceType: string, resourceId: string, userId: string) =>
+    api.delete<void>(`/resources/${resourceType}/${resourceId}/shares`, {
+      data: { user_id: userId },
+    }),
+
+  // Policies
+  listPolicies: () =>
+    api.get<{ id: string; name: string; description: string }[]>('/policies'),
+};
+
+export const quotasAPI = {
+  getQuotas: (orgId: string) =>
+    api.get<OrganizationQuotas>(`/organizations/${orgId}/quotas`),
+
+  updateQuotas: (orgId: string, data: UpdateQuotasRequest) =>
+    api.put<OrganizationQuotas>(`/organizations/${orgId}/quotas`, data),
+
+  getUsage: (orgId: string) =>
+    api.get<OrganizationQuotaUsage>(`/organizations/${orgId}/quotas/usage`),
 };
 
 export default api;

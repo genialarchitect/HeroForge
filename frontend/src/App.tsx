@@ -57,6 +57,7 @@ const FindingTemplatesPage = lazy(() => import('./pages/FindingTemplatesPage'));
 const CrackingPage = lazy(() => import('./pages/CrackingPage'));
 const AttackSurfacePage = lazy(() => import('./pages/AttackSurfacePage'));
 const PurpleTeamPage = lazy(() => import('./pages/PurpleTeamPage'));
+const OrganizationPage = lazy(() => import('./pages/OrganizationPage'));
 
 // CRM pages
 const CrmDashboard = lazy(() => import('./pages/crm/CrmDashboard'));
@@ -458,6 +459,17 @@ function App() {
               </ProtectedRoute>
             }
           />
+
+          {/* Organization Routes */}
+          <Route
+            path="/organization/:id"
+            element={
+              <ProtectedRoute>
+                <OrganizationPage />
+              </ProtectedRoute>
+            }
+          />
+
           <Route
             path="/plugins"
             element={

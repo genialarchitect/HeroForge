@@ -5243,3 +5243,251 @@ export interface UpdateGapStatusRequest {
   status: GapStatus;
   notes?: string;
 }
+
+// =============================================================================
+// Organization & Multi-tenancy Types
+// =============================================================================
+
+export type OrgRole = 'owner' | 'admin' | 'member';
+export type TeamRole = 'lead' | 'member';
+export type ScopeType = 'organization' | 'department' | 'team' | 'global';
+
+export interface Organization {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OrganizationSummary {
+  id: string;
+  name: string;
+  slug: string;
+  role: OrgRole;
+  member_count: number;
+  team_count: number;
+}
+
+export interface CreateOrganizationRequest {
+  name: string;
+  slug: string;
+  description?: string;
+}
+
+export interface UpdateOrganizationRequest {
+  name?: string;
+  description?: string;
+  is_active?: boolean;
+}
+
+export interface Department {
+  id: string;
+  organization_id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  parent_department_id?: string;
+  manager_user_id?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateDepartmentRequest {
+  name: string;
+  slug: string;
+  description?: string;
+  parent_department_id?: string;
+  manager_user_id?: string;
+}
+
+export interface UpdateDepartmentRequest {
+  name?: string;
+  description?: string;
+  parent_department_id?: string;
+  manager_user_id?: string;
+}
+
+export interface Team {
+  id: string;
+  department_id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  team_lead_user_id?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateTeamRequest {
+  name: string;
+  slug: string;
+  description?: string;
+  team_lead_user_id?: string;
+}
+
+export interface UpdateTeamRequest {
+  name?: string;
+  description?: string;
+  team_lead_user_id?: string;
+}
+
+export interface TeamMember {
+  user_id: string;
+  username: string;
+  email: string;
+  role: TeamRole;
+  joined_at: string;
+}
+
+export interface OrgMember {
+  user_id: string;
+  username: string;
+  email: string;
+  role: OrgRole;
+  joined_at: string;
+}
+
+export interface AddOrgMemberRequest {
+  user_id?: string;
+  email?: string;
+  role: OrgRole;
+}
+
+export interface AddTeamMemberRequest {
+  user_id: string;
+  role: TeamRole;
+}
+
+export interface RoleTemplate {
+  id: string;
+  name: string;
+  display_name: string;
+  description?: string;
+  icon?: string;
+  color?: string;
+  is_system: boolean;
+  permissions: string[];
+  created_at: string;
+}
+
+export interface CustomRole {
+  id: string;
+  organization_id: string;
+  name: string;
+  display_name: string;
+  description?: string;
+  is_active: boolean;
+  based_on_template_id?: string;
+  permissions: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateCustomRoleRequest {
+  name: string;
+  display_name: string;
+  description?: string;
+  based_on_template_id?: string;
+  permissions: string[];
+}
+
+export interface UpdateCustomRoleRequest {
+  display_name?: string;
+  description?: string;
+  is_active?: boolean;
+  permissions?: string[];
+}
+
+export interface UserRoleAssignment {
+  id: string;
+  user_id: string;
+  role_type: 'template' | 'custom';
+  role_id: string;
+  role_name: string;
+  scope_type?: ScopeType;
+  scope_id?: string;
+  scope_name?: string;
+  assigned_at: string;
+  assigned_by?: string;
+  expires_at?: string;
+  is_active: boolean;
+}
+
+export interface AssignRoleRequest {
+  user_id: string;
+  role_type: 'template' | 'custom';
+  role_id: string;
+  scope_type?: ScopeType;
+  scope_id?: string;
+  expires_at?: string;
+}
+
+export interface Permission {
+  id: string;
+  name: string;
+  display_name: string;
+  description?: string;
+  category: string;
+  resource_type?: string;
+}
+
+export interface EffectivePermissions {
+  user_id: string;
+  permissions: string[];
+  roles: UserRoleAssignment[];
+  is_org_owner: boolean;
+  is_org_admin: boolean;
+}
+
+export interface PermissionCheck {
+  permission: string;
+  granted: boolean;
+  source?: string;
+}
+
+// Organization Quotas
+export interface OrganizationQuotas {
+  id: string;
+  organization_id: string;
+  max_users: number;
+  max_scans_per_day: number;
+  max_concurrent_scans: number;
+  max_assets: number;
+  max_reports_per_month: number;
+  max_storage_mb: number;
+  max_api_requests_per_hour: number;
+  max_scheduled_scans: number;
+  max_teams: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UpdateQuotasRequest {
+  max_users?: number;
+  max_scans_per_day?: number;
+  max_concurrent_scans?: number;
+  max_assets?: number;
+  max_reports_per_month?: number;
+  max_storage_mb?: number;
+  max_api_requests_per_hour?: number;
+  max_scheduled_scans?: number;
+  max_teams?: number;
+}
+
+export interface QuotaUsage {
+  quota_type: string;
+  current_value: number;
+  max_value: number;
+  percentage: number;
+  period_start?: string;
+  period_end?: string;
+}
+
+export interface OrganizationQuotaUsage {
+  organization_id: string;
+  usages: QuotaUsage[];
+  updated_at: string;
+}

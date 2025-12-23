@@ -4,6 +4,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useAuthStore } from '../../store/authStore';
 import Button from '../ui/Button';
 import ThemeToggle from '../ui/ThemeToggle';
+import { OrgSwitcher } from '../organization';
 import {
   Shield,
   LogOut,
@@ -296,24 +297,29 @@ const Header: React.FC = () => {
           {/* User Info, Theme Toggle, and Logout */}
           <div className="flex items-center space-x-4">
             {user && (
-              <div className="flex items-center space-x-3 text-sm">
-                <div className="flex items-center space-x-2">
-                  <User className="h-5 w-5 text-slate-600 dark:text-slate-400" />
-                  <span className="text-slate-700 dark:text-slate-300">{user.username}</span>
-                </div>
-                {user.roles && user.roles.length > 0 && (
-                  <div className="flex gap-1">
-                    {user.roles.map((role) => (
-                      <span
-                        key={role}
-                        className="inline-flex items-center px-2 py-1 text-xs font-medium rounded border bg-slate-500/20 text-slate-700 dark:text-slate-300 border-slate-500/30 capitalize"
-                      >
-                        {role}
-                      </span>
-                    ))}
+              <>
+                {/* Organization Switcher */}
+                <OrgSwitcher />
+
+                <div className="flex items-center space-x-3 text-sm">
+                  <div className="flex items-center space-x-2">
+                    <User className="h-5 w-5 text-slate-600 dark:text-slate-400" />
+                    <span className="text-slate-700 dark:text-slate-300">{user.username}</span>
                   </div>
-                )}
-              </div>
+                  {user.roles && user.roles.length > 0 && (
+                    <div className="flex gap-1">
+                      {user.roles.map((role) => (
+                        <span
+                          key={role}
+                          className="inline-flex items-center px-2 py-1 text-xs font-medium rounded border bg-slate-500/20 text-slate-700 dark:text-slate-300 border-slate-500/30 capitalize"
+                        >
+                          {role}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </>
             )}
             <ThemeToggle />
             <Button
