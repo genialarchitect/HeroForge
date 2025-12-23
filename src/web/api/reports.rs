@@ -1,14 +1,16 @@
 use actix_web::{web, HttpMessage, HttpRequest, HttpResponse};
-use log::{error, info};
+use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 
 use crate::db;
 use crate::db::models::CreateReportRequest;
+use crate::db::quotas::{self, QuotaType};
 use crate::reports::storage;
 use crate::reports::types::{ReportFormat, ReportTemplate};
 use crate::reports::ReportGenerator;
 use crate::web::auth::Claims;
+use crate::web::auth::org_context::OrganizationContext;
 
 /// Default directory for generated reports
 const REPORTS_DIR: &str = "./reports";
@@ -17,6 +19,7 @@ const REPORTS_DIR: &str = "./reports";
 pub async fn create_report(
     req: HttpRequest,
     pool: web::Data<SqlitePool>,
+    org_context: OrganizationContext,
     body: web::Json<CreateReportRequest>,
 ) -> HttpResponse {
     let claims = match req.extensions().get::<Claims>() {
@@ -37,6 +40,26 @@ pub async fn create_report(
         return HttpResponse::BadRequest().json(serde_json::json!({
             "error": "Invalid template_id. Must be 'executive', 'technical', or 'compliance'"
         }));
+    }
+
+    // Check organization quota for reports per month
+    if let Some(org_id) = org_context.org_id() {
+        match quotas::check_quota(&pool, org_id, QuotaType::ReportsPerMonth).await {
+            Ok(quota_check) => {
+                if !quota_check.allowed {
+                    return HttpResponse::TooManyRequests().json(serde_json::json!({
+                        "error": "Monthly report limit reached for your organization",
+                        "quota_type": "reports_per_month",
+                        "current": quota_check.current,
+                        "limit": quota_check.limit
+                    }));
+                }
+            }
+            Err(e) => {
+                warn!("Failed to check report quota for org {}: {}", org_id, e);
+                // Continue anyway - don't block reports on quota check failures
+            }
+        }
     }
 
     // Check if scan exists and belongs to user
@@ -75,6 +98,14 @@ pub async fn create_report(
             return HttpResponse::InternalServerError().json(serde_json::json!({"error": "Failed to create report"}));
         }
     };
+
+    // Increment organization quota usage for reports
+    if let Some(org_id) = org_context.org_id() {
+        if let Err(e) = quotas::increment_quota_usage(&pool, org_id, QuotaType::ReportsPerMonth, 1).await {
+            warn!("Failed to increment report quota for org {}: {}", org_id, e);
+            // Don't fail the report if quota tracking fails
+        }
+    }
 
     // Spawn async task to generate the report
     let report_id = report.id.clone();

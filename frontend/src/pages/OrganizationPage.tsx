@@ -16,8 +16,10 @@ import {
   Crown,
   UserCog,
   User,
+  Gauge,
 } from 'lucide-react';
 import Button from '../components/ui/Button';
+import { QuotaUsageCard, QuotaManagement } from '../components/organization';
 import type {
   Organization,
   OrgMember,
@@ -465,7 +467,7 @@ const SettingsTab: React.FC<{ organization: Organization; isOwner: boolean }> = 
 };
 
 // Main Page Component
-type TabId = 'overview' | 'members' | 'departments' | 'teams' | 'roles' | 'settings';
+type TabId = 'overview' | 'members' | 'departments' | 'teams' | 'roles' | 'quotas' | 'settings';
 
 interface Tab {
   id: TabId;
@@ -515,6 +517,7 @@ const OrganizationPage: React.FC = () => {
     { id: 'departments', label: 'Departments', icon: <Layers className="h-4 w-4" /> },
     { id: 'teams', label: 'Teams', icon: <UsersRound className="h-4 w-4" /> },
     { id: 'roles', label: 'Roles', icon: <Shield className="h-4 w-4" /> },
+    { id: 'quotas', label: 'Quotas', icon: <Gauge className="h-4 w-4" /> },
     { id: 'settings', label: 'Settings', icon: <Settings className="h-4 w-4" /> },
   ];
 
@@ -560,6 +563,13 @@ const OrganizationPage: React.FC = () => {
         return <TeamsTab orgId={id!} isAdmin={isOrgAdmin()} />;
       case 'roles':
         return <RolesTab orgId={id!} isAdmin={isOrgAdmin()} />;
+      case 'quotas':
+        return (
+          <div className="space-y-6">
+            <QuotaUsageCard orgId={id!} />
+            <QuotaManagement orgId={id!} isOwner={isOrgOwner()} />
+          </div>
+        );
       case 'settings':
         return <SettingsTab organization={organization} isOwner={isOrgOwner()} />;
       default:

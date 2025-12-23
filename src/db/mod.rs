@@ -51,6 +51,7 @@ pub mod plugins;
 pub mod privesc;
 pub mod purple_team;
 pub mod push_tokens;
+pub mod quotas;
 pub mod scans;
 pub mod scheduled_reports;
 pub mod secret_findings;

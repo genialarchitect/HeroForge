@@ -925,6 +925,129 @@ pub async fn get_my_teams(
     Ok(HttpResponse::Ok().json(response))
 }
 
+// ============================================================================
+// Organization Quotas
+// ============================================================================
+
+/// Get quotas for an organization
+#[get("/organizations/{org_id}/quotas")]
+pub async fn get_organization_quotas(
+    pool: web::Data<SqlitePool>,
+    claims: Claims,
+    path: web::Path<String>,
+) -> Result<HttpResponse, ApiError> {
+    let org_id = path.into_inner();
+
+    // Verify user is member of org
+    let user_role = db::permissions::organizations::get_user_org_role(pool.get_ref(), &claims.sub, &org_id)
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?;
+
+    if user_role.is_none() {
+        return Err(ApiError::not_found("Organization not found".to_string()));
+    }
+
+    let quotas = db::quotas::get_org_quotas(pool.get_ref(), &org_id)
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?
+        .ok_or_else(|| ApiError::not_found("Organization quotas not found".to_string()))?;
+
+    Ok(HttpResponse::Ok().json(quotas))
+}
+
+/// Update quotas for an organization (owner only)
+#[put("/organizations/{org_id}/quotas")]
+pub async fn update_organization_quotas(
+    pool: web::Data<SqlitePool>,
+    claims: Claims,
+    path: web::Path<String>,
+    req: web::Json<db::quotas::UpdateQuotasRequest>,
+) -> Result<HttpResponse, ApiError> {
+    let org_id = path.into_inner();
+
+    // Verify user is owner (only owners can change quotas)
+    let user_role = db::permissions::organizations::get_user_org_role(pool.get_ref(), &claims.sub, &org_id)
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?;
+
+    match user_role {
+        Some(OrgRole::Owner) => {}
+        _ => return Err(ApiError::forbidden("Only organization owners can modify quotas".to_string())),
+    }
+
+    let quotas = db::quotas::update_org_quotas(pool.get_ref(), &org_id, &req.into_inner())
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?;
+
+    db::log_audit(
+        pool.get_ref(),
+        &claims.sub,
+        "organization.quotas.update",
+        Some("organization"),
+        Some(&org_id),
+        Some("Updated organization quotas"),
+        None,
+    )
+    .await
+    .ok();
+
+    Ok(HttpResponse::Ok().json(quotas))
+}
+
+/// Get quota usage summary for an organization
+#[get("/organizations/{org_id}/quotas/usage")]
+pub async fn get_organization_quota_usage(
+    pool: web::Data<SqlitePool>,
+    claims: Claims,
+    path: web::Path<String>,
+) -> Result<HttpResponse, ApiError> {
+    let org_id = path.into_inner();
+
+    // Verify user is member of org
+    let user_role = db::permissions::organizations::get_user_org_role(pool.get_ref(), &claims.sub, &org_id)
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?;
+
+    if user_role.is_none() {
+        return Err(ApiError::not_found("Organization not found".to_string()));
+    }
+
+    let usage = db::quotas::get_quota_usage_summary(pool.get_ref(), &org_id)
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?;
+
+    Ok(HttpResponse::Ok().json(usage))
+}
+
+/// Check a specific quota for an organization
+#[get("/organizations/{org_id}/quotas/check/{quota_type}")]
+pub async fn check_organization_quota(
+    pool: web::Data<SqlitePool>,
+    claims: Claims,
+    path: web::Path<(String, String)>,
+) -> Result<HttpResponse, ApiError> {
+    let (org_id, quota_type_str) = path.into_inner();
+
+    // Verify user is member of org
+    let user_role = db::permissions::organizations::get_user_org_role(pool.get_ref(), &claims.sub, &org_id)
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?;
+
+    if user_role.is_none() {
+        return Err(ApiError::not_found("Organization not found".to_string()));
+    }
+
+    let quota_type: db::quotas::QuotaType = quota_type_str
+        .parse()
+        .map_err(|e: anyhow::Error| ApiError::bad_request(e.to_string()))?;
+
+    let result = db::quotas::check_quota(pool.get_ref(), &org_id, quota_type)
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?;
+
+    Ok(HttpResponse::Ok().json(result))
+}
+
 /// Configure organization routes
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(create_organization)
@@ -950,5 +1073,10 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .service(add_team_member)
         .service(update_team_member)
         .service(remove_team_member)
-        .service(get_my_teams);
+        .service(get_my_teams)
+        // Quota endpoints
+        .service(get_organization_quotas)
+        .service(update_organization_quotas)
+        .service(get_organization_quota_usage)
+        .service(check_organization_quota);
 }

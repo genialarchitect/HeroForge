@@ -161,6 +161,8 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     create_permissions_system(pool).await?;
     // Multi-tenant data isolation - add organization_id to data tables
     add_organization_id_to_data_tables(pool).await?;
+    // Organization quotas and usage tracking
+    create_organization_quotas_tables(pool).await?;
     Ok(())
 }
 
@@ -8841,5 +8843,91 @@ async fn add_organization_id_to_data_tables(pool: &SqlitePool) -> Result<()> {
     ).execute(pool).await;
 
     log::info!("Added organization_id to data tables for multi-tenant isolation");
+    Ok(())
+}
+
+/// Create organization quotas and usage tracking tables
+async fn create_organization_quotas_tables(pool: &SqlitePool) -> Result<()> {
+    // Organization quotas table - defines limits for each organization
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS organization_quotas (
+            id TEXT PRIMARY KEY,
+            organization_id TEXT NOT NULL UNIQUE,
+            max_users INTEGER NOT NULL DEFAULT 10,
+            max_scans_per_day INTEGER NOT NULL DEFAULT 50,
+            max_concurrent_scans INTEGER NOT NULL DEFAULT 5,
+            max_assets INTEGER NOT NULL DEFAULT 1000,
+            max_reports_per_month INTEGER NOT NULL DEFAULT 100,
+            max_storage_mb INTEGER NOT NULL DEFAULT 5120,
+            max_api_requests_per_hour INTEGER NOT NULL DEFAULT 1000,
+            max_scheduled_scans INTEGER NOT NULL DEFAULT 20,
+            max_teams INTEGER NOT NULL DEFAULT 10,
+            max_departments INTEGER NOT NULL DEFAULT 5,
+            max_custom_roles INTEGER NOT NULL DEFAULT 10,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Quota usage tracking table - tracks actual usage per period
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS organization_quota_usage (
+            id TEXT PRIMARY KEY,
+            organization_id TEXT NOT NULL,
+            quota_type TEXT NOT NULL,
+            current_value INTEGER NOT NULL DEFAULT 0,
+            period_start TEXT NOT NULL,
+            period_end TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
+            UNIQUE(organization_id, quota_type, period_start)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for efficient lookups
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_org_quotas_org_id ON organization_quotas(organization_id)"
+    ).execute(pool).await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_quota_usage_org_type ON organization_quota_usage(organization_id, quota_type)"
+    ).execute(pool).await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_quota_usage_period ON organization_quota_usage(period_start, period_end)"
+    ).execute(pool).await?;
+
+    // Create default quotas for existing organizations that don't have quotas
+    let _ = sqlx::query(
+        r#"
+        INSERT OR IGNORE INTO organization_quotas (
+            id, organization_id, max_users, max_scans_per_day, max_concurrent_scans,
+            max_assets, max_reports_per_month, max_storage_mb, max_api_requests_per_hour,
+            max_scheduled_scans, max_teams, max_departments, max_custom_roles,
+            created_at, updated_at
+        )
+        SELECT
+            hex(randomblob(16)),
+            id,
+            10, 50, 5, 1000, 100, 5120, 1000, 20, 10, 5, 10,
+            datetime('now'),
+            datetime('now')
+        FROM organizations
+        WHERE id NOT IN (SELECT organization_id FROM organization_quotas)
+        "#,
+    )
+    .execute(pool)
+    .await;
+
+    log::info!("Created organization quotas tables");
     Ok(())
 }

@@ -4,9 +4,10 @@ use std::net::IpAddr;
 use ipnetwork::IpNetwork;
 use std::io::Write;
 
-use crate::db::{self, models};
+use crate::db::{self, models, quotas::{self, QuotaType}};
 use crate::types::{ScanConfig, HostInfo, ScanProgressMessage};
 use crate::web::auth;
+use crate::web::auth::org_context::OrganizationContext;
 use crate::scanner;
 use crate::vpn::{VpnManager, ConnectionMode, VpnType};
 
@@ -327,6 +328,7 @@ fn validate_scan_name(name: &str) -> Result<(), String> {
 pub async fn create_scan(
     pool: web::Data<SqlitePool>,
     claims: web::ReqData<auth::Claims>,
+    org_context: OrganizationContext,
     scan_request: web::Json<models::CreateScanRequest>,
 ) -> Result<HttpResponse> {
     // Validate scan name
@@ -367,6 +369,26 @@ pub async fn create_scan(
         })));
     }
 
+    // Check organization quota for scans per day
+    if let Some(org_id) = org_context.org_id() {
+        match quotas::check_quota(&pool, org_id, QuotaType::ScansPerDay).await {
+            Ok(quota_check) => {
+                if !quota_check.allowed {
+                    return Ok(HttpResponse::TooManyRequests().json(serde_json::json!({
+                        "error": "Daily scan limit reached for your organization",
+                        "quota_type": "scans_per_day",
+                        "current": quota_check.current,
+                        "limit": quota_check.limit
+                    })));
+                }
+            }
+            Err(e) => {
+                log::warn!("Failed to check scan quota for org {}: {}", org_id, e);
+                // Continue anyway - don't block scans on quota check failures
+            }
+        }
+    }
+
     // Create scan record in database
     let scan = db::create_scan(
         &pool,
@@ -378,6 +400,14 @@ pub async fn create_scan(
     )
     .await
     .map_err(|_| actix_web::error::ErrorInternalServerError("Failed to create scan"))?;
+
+    // Increment organization quota usage for scans
+    if let Some(org_id) = org_context.org_id() {
+        if let Err(e) = quotas::increment_quota_usage(&pool, org_id, QuotaType::ScansPerDay, 1).await {
+            log::warn!("Failed to increment scan quota for org {}: {}", org_id, e);
+            // Don't fail the scan if quota tracking fails
+        }
+    }
 
     // Add tags to scan if provided
     if !scan_request.tag_ids.is_empty() {
