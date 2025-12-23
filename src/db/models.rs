@@ -32,6 +32,8 @@ pub struct ScanResult {
     // CRM integration fields
     pub customer_id: Option<String>,
     pub engagement_id: Option<String>,
+    // Multi-tenant organization field
+    pub organization_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -298,6 +300,8 @@ pub struct Report {
     pub created_at: DateTime<Utc>,
     pub completed_at: Option<DateTime<Utc>>,
     pub expires_at: Option<DateTime<Utc>>,
+    // Multi-tenant organization field
+    pub organization_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -1486,6 +1490,8 @@ pub struct Asset {
     pub status: String, // "active", "inactive"
     pub tags: String,   // JSON array of tags
     pub notes: Option<String>,
+    // Multi-tenant organization field
+    pub organization_id: Option<String>,
 }
 
 /// Port associated with an asset

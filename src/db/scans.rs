@@ -20,14 +20,27 @@ pub async fn create_scan(
     customer_id: Option<&str>,
     engagement_id: Option<&str>,
 ) -> Result<models::ScanResult> {
+    create_scan_with_org(pool, user_id, name, targets, customer_id, engagement_id, None).await
+}
+
+/// Create a scan with organization context for multi-tenant isolation
+pub async fn create_scan_with_org(
+    pool: &SqlitePool,
+    user_id: &str,
+    name: &str,
+    targets: &[String],
+    customer_id: Option<&str>,
+    engagement_id: Option<&str>,
+    organization_id: Option<&str>,
+) -> Result<models::ScanResult> {
     let id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now();
     let targets_str = serde_json::to_string(targets)?;
 
     let scan = sqlx::query_as::<_, models::ScanResult>(
         r#"
-        INSERT INTO scan_results (id, user_id, name, targets, status, created_at, customer_id, engagement_id)
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+        INSERT INTO scan_results (id, user_id, name, targets, status, created_at, customer_id, engagement_id, organization_id)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
         RETURNING *
         "#,
     )
@@ -39,6 +52,7 @@ pub async fn create_scan(
     .bind(now)
     .bind(customer_id)
     .bind(engagement_id)
+    .bind(organization_id)
     .fetch_one(pool)
     .await?;
 
@@ -49,10 +63,47 @@ pub async fn get_user_scans(
     pool: &SqlitePool,
     user_id: &str,
 ) -> Result<Vec<models::ScanResult>> {
+    get_user_scans_with_org(pool, user_id, None).await
+}
+
+/// Get user scans filtered by organization for multi-tenant isolation
+pub async fn get_user_scans_with_org(
+    pool: &SqlitePool,
+    user_id: &str,
+    organization_id: Option<&str>,
+) -> Result<Vec<models::ScanResult>> {
+    let scans = match organization_id {
+        Some(org_id) => {
+            sqlx::query_as::<_, models::ScanResult>(
+                "SELECT * FROM scan_results WHERE user_id = ?1 AND organization_id = ?2 ORDER BY created_at DESC",
+            )
+            .bind(user_id)
+            .bind(org_id)
+            .fetch_all(pool)
+            .await?
+        }
+        None => {
+            sqlx::query_as::<_, models::ScanResult>(
+                "SELECT * FROM scan_results WHERE user_id = ?1 ORDER BY created_at DESC",
+            )
+            .bind(user_id)
+            .fetch_all(pool)
+            .await?
+        }
+    };
+
+    Ok(scans)
+}
+
+/// Get all scans for an organization (for org admins)
+pub async fn get_org_scans(
+    pool: &SqlitePool,
+    organization_id: &str,
+) -> Result<Vec<models::ScanResult>> {
     let scans = sqlx::query_as::<_, models::ScanResult>(
-        "SELECT * FROM scan_results WHERE user_id = ?1 ORDER BY created_at DESC",
+        "SELECT * FROM scan_results WHERE organization_id = ?1 ORDER BY created_at DESC",
     )
-    .bind(user_id)
+    .bind(organization_id)
     .fetch_all(pool)
     .await?;
 
@@ -1446,6 +1497,7 @@ pub async fn duplicate_scan(
         error_message: None,
         customer_id: original.customer_id,
         engagement_id: original.engagement_id,
+        organization_id: original.organization_id,
     })
 }
 

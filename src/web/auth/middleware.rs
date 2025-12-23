@@ -8,6 +8,7 @@ use std::rc::Rc;
 use sqlx::SqlitePool;
 
 use super::jwt;
+use super::org_context::{OrganizationContext, ORG_HEADER};
 use crate::db;
 
 pub struct JwtMiddleware;
@@ -61,6 +62,13 @@ where
             });
         }
 
+        // Check for X-Organization-Id header override
+        let org_header_override = req
+            .headers()
+            .get(ORG_HEADER)
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string());
+
         // Check for Authorization header (JWT)
         let auth_header = req.headers().get("Authorization");
         if let Some(auth_value) = auth_header {
@@ -68,7 +76,22 @@ where
                 if auth_str.starts_with("Bearer ") {
                     let token = &auth_str[7..];
                     if let Ok(claims) = jwt::verify_jwt(token) {
+                        // Check if user has admin role (can access all orgs if super admin)
+                        let is_super_admin = claims.roles.contains(&"admin".to_string());
+
+                        // Use org from header if provided (and user has access), otherwise use JWT claims
+                        let org_id = org_header_override.or_else(|| claims.org_id.clone());
+
+                        // Create organization context
+                        let org_context = OrganizationContext::new(
+                            org_id,
+                            claims.org_role.clone(),
+                            claims.teams.clone(),
+                            is_super_admin,
+                        );
+
                         req.extensions_mut().insert(claims);
+                        req.extensions_mut().insert(org_context);
                         let fut = service.call(req);
                         return Box::pin(async move {
                             let res = fut.await?;
@@ -87,6 +110,7 @@ where
                 if let Some(pool) = req.app_data::<actix_web::web::Data<SqlitePool>>() {
                     let pool_clone = pool.clone();
                     let api_key = api_key_str.to_string();
+                    let org_override = org_header_override.clone();
 
                     // Verify API key and get user_id
                     return Box::pin(async move {
@@ -99,6 +123,9 @@ where
                                         let roles = db::get_user_roles(&pool_clone, &user.id).await.unwrap_or_default();
                                         let role_names: Vec<String> = roles.iter().map(|r| r.name.clone()).collect();
 
+                                        // Check if user has admin role
+                                        let is_super_admin = role_names.contains(&"admin".to_string());
+
                                         // Create claims from user
                                         let claims = jwt::Claims {
                                             sub: user.id.clone(),
@@ -106,12 +133,22 @@ where
                                             roles: role_names,
                                             exp: (chrono::Utc::now() + chrono::Duration::hours(24)).timestamp() as usize,
                                             iat: chrono::Utc::now().timestamp() as usize,
-                                            org_id: None,
+                                            org_id: org_override.clone(),
                                             org_role: None,
                                             teams: Vec::new(),
                                             permissions: Vec::new(),
                                         };
+
+                                        // Create organization context
+                                        let org_context = OrganizationContext::new(
+                                            org_override,
+                                            None,
+                                            Vec::new(),
+                                            is_super_admin,
+                                        );
+
                                         req.extensions_mut().insert(claims);
+                                        req.extensions_mut().insert(org_context);
                                         let fut = service.call(req);
                                         let res = fut.await?;
                                         Ok(res)

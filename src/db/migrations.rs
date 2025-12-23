@@ -159,6 +159,8 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     add_sso_profile_fields(pool).await?;
     // ABAC permissions and organization hierarchy
     create_permissions_system(pool).await?;
+    // Multi-tenant data isolation - add organization_id to data tables
+    add_organization_id_to_data_tables(pool).await?;
     Ok(())
 }
 
@@ -8752,5 +8754,92 @@ async fn create_permissions_system(pool: &SqlitePool) -> Result<()> {
     .await;
 
     log::info!("Created ABAC permissions system tables and seeded data");
+    Ok(())
+}
+
+/// Add organization_id to data tables for multi-tenant isolation
+async fn add_organization_id_to_data_tables(pool: &SqlitePool) -> Result<()> {
+    // Helper function to check if column exists
+    async fn has_column(pool: &SqlitePool, table: &str, column: &str) -> bool {
+        let query = format!("PRAGMA table_info({})", table);
+        let info: Vec<(i64, String, String, i64, Option<String>, i64)> =
+            sqlx::query_as(&query)
+                .fetch_all(pool)
+                .await
+                .unwrap_or_default();
+        info.iter().any(|(_, name, _, _, _, _)| name == column)
+    }
+
+    // Get default organization id for migrating existing data
+    let default_org: Option<(String,)> = sqlx::query_as(
+        "SELECT id FROM organizations WHERE slug = 'default-org' LIMIT 1"
+    )
+    .fetch_optional(pool)
+    .await?;
+    let default_org_id = default_org.map(|(id,)| id);
+
+    // Tables to add organization_id to
+    let tables = [
+        "scan_results",
+        "reports",
+        "assets",
+        "vulnerability_tracking",
+        "scan_templates",
+        "target_groups",
+        "scheduled_scans",
+        "finding_templates",
+        "scheduled_reports",
+        "asset_groups",
+        "dns_recon_results",
+    ];
+
+    for table in tables {
+        if !has_column(pool, table, "organization_id").await {
+            // Add the column
+            let alter_query = format!(
+                "ALTER TABLE {} ADD COLUMN organization_id TEXT REFERENCES organizations(id)",
+                table
+            );
+            let _ = sqlx::query(&alter_query).execute(pool).await;
+
+            // Create index for efficient org-scoped queries
+            let index_query = format!(
+                "CREATE INDEX IF NOT EXISTS idx_{}_organization_id ON {}(organization_id)",
+                table, table
+            );
+            let _ = sqlx::query(&index_query).execute(pool).await;
+
+            // Migrate existing data to default organization
+            if let Some(ref org_id) = default_org_id {
+                let update_query = format!(
+                    "UPDATE {} SET organization_id = ? WHERE organization_id IS NULL",
+                    table
+                );
+                let _ = sqlx::query(&update_query)
+                    .bind(org_id)
+                    .execute(pool)
+                    .await;
+            }
+        }
+    }
+
+    // Add compound indexes for common query patterns
+    let _ = sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_scans_org_status ON scan_results(organization_id, status)"
+    ).execute(pool).await;
+
+    let _ = sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_scans_org_created ON scan_results(organization_id, created_at)"
+    ).execute(pool).await;
+
+    let _ = sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_assets_org_type ON assets(organization_id, asset_type)"
+    ).execute(pool).await;
+
+    let _ = sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_vuln_org_status ON vulnerability_tracking(organization_id, status)"
+    ).execute(pool).await;
+
+    log::info!("Added organization_id to data tables for multi-tenant isolation");
     Ok(())
 }

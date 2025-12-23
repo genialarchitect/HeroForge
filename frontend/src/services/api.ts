@@ -289,12 +289,27 @@ const api = axios.create({
   baseURL: '/api',
 });
 
-// Add auth token to requests
+// Add auth token and organization header to requests
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+
+  // Add organization context header for multi-tenant data isolation
+  // Read from persisted org store in localStorage
+  try {
+    const orgStorage = localStorage.getItem('org-storage');
+    if (orgStorage) {
+      const orgState = JSON.parse(orgStorage);
+      if (orgState?.state?.currentOrgId) {
+        config.headers['X-Organization-Id'] = orgState.state.currentOrgId;
+      }
+    }
+  } catch {
+    // Ignore parsing errors - org header is optional
+  }
+
   return config;
 });
 
