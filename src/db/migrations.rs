@@ -169,6 +169,9 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     create_cicd_pipeline_scan_tables(pool).await?;
     // Kubernetes Security scanning tables
     create_k8s_security_tables(pool).await?;
+    // Sprint 8: Enhanced Remediation Workflows + Executive Dashboard
+    create_remediation_workflow_tables(pool).await?;
+    create_executive_dashboard_tables(pool).await?;
     Ok(())
 }
 
@@ -9463,5 +9466,499 @@ async fn create_k8s_security_tables(pool: &SqlitePool) -> Result<()> {
         .await?;
 
     log::info!("Created Kubernetes Security scanning tables");
+    Ok(())
+}
+
+// ============================================================================
+// Sprint 8: Enhanced Remediation Workflows
+// ============================================================================
+
+/// Create enhanced remediation workflow tables for verification and ticket sync
+async fn create_remediation_workflow_tables(pool: &SqlitePool) -> Result<()> {
+    // Add new columns to vulnerability_tracking for enhanced remediation
+    let _ = sqlx::query("ALTER TABLE vulnerability_tracking ADD COLUMN due_date TEXT")
+        .execute(pool)
+        .await;
+
+    let _ = sqlx::query("ALTER TABLE vulnerability_tracking ADD COLUMN remediation_status TEXT DEFAULT 'open'")
+        .execute(pool)
+        .await;
+
+    let _ = sqlx::query("ALTER TABLE vulnerability_tracking ADD COLUMN assigned_at TEXT")
+        .execute(pool)
+        .await;
+
+    let _ = sqlx::query("ALTER TABLE vulnerability_tracking ADD COLUMN priority INTEGER DEFAULT 0")
+        .execute(pool)
+        .await;
+
+    let _ = sqlx::query("ALTER TABLE vulnerability_tracking ADD COLUMN sla_breach_at TEXT")
+        .execute(pool)
+        .await;
+
+    // Create verification_requests table for retest/verification workflow
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS verification_requests (
+            id TEXT PRIMARY KEY,
+            vulnerability_id TEXT NOT NULL,
+            requested_by TEXT NOT NULL,
+            assigned_to TEXT,
+            scan_id TEXT,
+            verification_type TEXT NOT NULL DEFAULT 'retest',
+            status TEXT NOT NULL DEFAULT 'pending',
+            priority INTEGER NOT NULL DEFAULT 0,
+            notes TEXT,
+            verification_evidence TEXT,
+            result TEXT,
+            result_details TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            completed_at TEXT,
+            FOREIGN KEY (vulnerability_id) REFERENCES vulnerability_tracking(id) ON DELETE CASCADE,
+            FOREIGN KEY (requested_by) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (assigned_to) REFERENCES users(id) ON DELETE SET NULL,
+            FOREIGN KEY (scan_id) REFERENCES scan_results(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create ticket_sync table for JIRA/ServiceNow bidirectional sync
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ticket_sync (
+            id TEXT PRIMARY KEY,
+            vulnerability_id TEXT NOT NULL,
+            integration_type TEXT NOT NULL,
+            external_id TEXT NOT NULL,
+            external_url TEXT,
+            external_status TEXT,
+            external_priority TEXT,
+            external_assignee TEXT,
+            sync_status TEXT NOT NULL DEFAULT 'synced',
+            sync_direction TEXT NOT NULL DEFAULT 'bidirectional',
+            last_synced_at TEXT,
+            last_sync_error TEXT,
+            field_mappings TEXT,
+            auto_sync_enabled INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (vulnerability_id) REFERENCES vulnerability_tracking(id) ON DELETE CASCADE,
+            UNIQUE(vulnerability_id, integration_type)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create ticket_sync_history for tracking sync operations
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ticket_sync_history (
+            id TEXT PRIMARY KEY,
+            ticket_sync_id TEXT NOT NULL,
+            sync_direction TEXT NOT NULL,
+            sync_type TEXT NOT NULL,
+            fields_updated TEXT,
+            status TEXT NOT NULL,
+            error_message TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (ticket_sync_id) REFERENCES ticket_sync(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create SLA configuration table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS remediation_sla_configs (
+            id TEXT PRIMARY KEY,
+            organization_id TEXT,
+            name TEXT NOT NULL,
+            description TEXT,
+            severity TEXT NOT NULL,
+            target_days INTEGER NOT NULL,
+            warning_threshold_days INTEGER,
+            escalation_emails TEXT,
+            is_default INTEGER NOT NULL DEFAULT 0,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create remediation assignments history table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS remediation_assignments (
+            id TEXT PRIMARY KEY,
+            vulnerability_id TEXT NOT NULL,
+            assigned_by TEXT NOT NULL,
+            assigned_to TEXT NOT NULL,
+            previous_assignee TEXT,
+            reason TEXT,
+            due_date TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (vulnerability_id) REFERENCES vulnerability_tracking(id) ON DELETE CASCADE,
+            FOREIGN KEY (assigned_by) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (assigned_to) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create remediation escalations table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS remediation_escalations (
+            id TEXT PRIMARY KEY,
+            vulnerability_id TEXT NOT NULL,
+            escalation_level INTEGER NOT NULL DEFAULT 1,
+            escalation_reason TEXT NOT NULL,
+            escalated_to TEXT,
+            escalated_by TEXT,
+            notes TEXT,
+            acknowledged_at TEXT,
+            acknowledged_by TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (vulnerability_id) REFERENCES vulnerability_tracking(id) ON DELETE CASCADE,
+            FOREIGN KEY (escalated_to) REFERENCES users(id) ON DELETE SET NULL,
+            FOREIGN KEY (escalated_by) REFERENCES users(id) ON DELETE SET NULL,
+            FOREIGN KEY (acknowledged_by) REFERENCES users(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_verification_requests_vuln ON verification_requests(vulnerability_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_verification_requests_status ON verification_requests(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_verification_requests_assignee ON verification_requests(assigned_to)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ticket_sync_vuln ON ticket_sync(vulnerability_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ticket_sync_external ON ticket_sync(integration_type, external_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ticket_sync_status ON ticket_sync(sync_status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_remediation_sla_org ON remediation_sla_configs(organization_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_remediation_sla_severity ON remediation_sla_configs(severity)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_remediation_assignments_vuln ON remediation_assignments(vulnerability_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_remediation_escalations_vuln ON remediation_escalations(vulnerability_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_vuln_tracking_due_date ON vulnerability_tracking(due_date)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_vuln_tracking_sla_breach ON vulnerability_tracking(sla_breach_at)")
+        .execute(pool)
+        .await?;
+
+    // Seed default SLA configurations
+    let now = chrono::Utc::now().to_rfc3339();
+    let sla_defaults = vec![
+        ("critical", 1, 0),   // Critical: 1 day, warn immediately
+        ("high", 7, 2),       // High: 7 days, warn at day 2
+        ("medium", 30, 7),    // Medium: 30 days, warn at day 7
+        ("low", 90, 14),      // Low: 90 days, warn at day 14
+        ("info", 180, 30),    // Info: 180 days, warn at day 30
+    ];
+
+    for (severity, target_days, warning_days) in sla_defaults {
+        let _ = sqlx::query(
+            r#"INSERT OR IGNORE INTO remediation_sla_configs
+               (id, name, description, severity, target_days, warning_threshold_days, is_default, is_active, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, 1, 1, ?, ?)"#
+        )
+        .bind(format!("sla_default_{}", severity))
+        .bind(format!("Default {} SLA", severity.to_uppercase()))
+        .bind(format!("Default remediation SLA for {} severity vulnerabilities", severity))
+        .bind(severity)
+        .bind(target_days)
+        .bind(warning_days)
+        .bind(&now)
+        .bind(&now)
+        .execute(pool)
+        .await;
+    }
+
+    log::info!("Created enhanced remediation workflow tables");
+    Ok(())
+}
+
+// ============================================================================
+// Sprint 8: Executive Dashboard
+// ============================================================================
+
+/// Create executive dashboard configuration and metrics caching tables
+async fn create_executive_dashboard_tables(pool: &SqlitePool) -> Result<()> {
+    // Create executive_dashboard_config table for user-specific dashboard layouts
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS executive_dashboard_config (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL DEFAULT 'Default Dashboard',
+            layout TEXT NOT NULL,
+            widgets TEXT NOT NULL,
+            default_timeframe_days INTEGER NOT NULL DEFAULT 30,
+            auto_refresh_seconds INTEGER DEFAULT 300,
+            theme TEXT DEFAULT 'light',
+            filters TEXT,
+            is_default INTEGER NOT NULL DEFAULT 0,
+            is_shared INTEGER NOT NULL DEFAULT 0,
+            shared_with TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create dashboard_metrics_cache table for pre-computed metrics
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS dashboard_metrics_cache (
+            id TEXT PRIMARY KEY,
+            organization_id TEXT,
+            metric_type TEXT NOT NULL,
+            metric_key TEXT NOT NULL,
+            timeframe TEXT NOT NULL,
+            computed_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            data TEXT NOT NULL,
+            computation_time_ms INTEGER,
+            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
+            UNIQUE(organization_id, metric_type, metric_key, timeframe)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create executive_reports table for scheduled executive summaries
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS executive_reports (
+            id TEXT PRIMARY KEY,
+            organization_id TEXT,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            report_type TEXT NOT NULL DEFAULT 'executive_summary',
+            template_config TEXT,
+            schedule_cron TEXT,
+            recipients TEXT,
+            last_generated_at TEXT,
+            last_report_id TEXT,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (last_report_id) REFERENCES reports(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create executive_kpis table for tracking key performance indicators
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS executive_kpis (
+            id TEXT PRIMARY KEY,
+            organization_id TEXT,
+            kpi_type TEXT NOT NULL,
+            kpi_name TEXT NOT NULL,
+            target_value REAL,
+            current_value REAL,
+            unit TEXT,
+            trend TEXT,
+            trend_percentage REAL,
+            period_start TEXT NOT NULL,
+            period_end TEXT NOT NULL,
+            computed_at TEXT NOT NULL,
+            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create risk_score_history table for tracking risk trends over time
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS risk_score_history (
+            id TEXT PRIMARY KEY,
+            organization_id TEXT,
+            scan_id TEXT,
+            overall_risk_score REAL NOT NULL,
+            critical_count INTEGER NOT NULL DEFAULT 0,
+            high_count INTEGER NOT NULL DEFAULT 0,
+            medium_count INTEGER NOT NULL DEFAULT 0,
+            low_count INTEGER NOT NULL DEFAULT 0,
+            info_count INTEGER NOT NULL DEFAULT 0,
+            asset_count INTEGER NOT NULL DEFAULT 0,
+            compliant_assets INTEGER NOT NULL DEFAULT 0,
+            factors TEXT,
+            computed_at TEXT NOT NULL,
+            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
+            FOREIGN KEY (scan_id) REFERENCES scan_results(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create compliance_posture table for tracking compliance status over time
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS compliance_posture (
+            id TEXT PRIMARY KEY,
+            organization_id TEXT,
+            framework_id TEXT NOT NULL,
+            framework_name TEXT NOT NULL,
+            total_controls INTEGER NOT NULL DEFAULT 0,
+            passing_controls INTEGER NOT NULL DEFAULT 0,
+            failing_controls INTEGER NOT NULL DEFAULT 0,
+            not_applicable INTEGER NOT NULL DEFAULT 0,
+            compliance_percentage REAL NOT NULL DEFAULT 0.0,
+            previous_percentage REAL,
+            trend TEXT,
+            details TEXT,
+            computed_at TEXT NOT NULL,
+            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create mttr_metrics table (Mean Time to Remediate)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS mttr_metrics (
+            id TEXT PRIMARY KEY,
+            organization_id TEXT,
+            severity TEXT NOT NULL,
+            period_type TEXT NOT NULL,
+            period_start TEXT NOT NULL,
+            period_end TEXT NOT NULL,
+            avg_mttr_hours REAL NOT NULL,
+            min_mttr_hours REAL,
+            max_mttr_hours REAL,
+            p50_mttr_hours REAL,
+            p90_mttr_hours REAL,
+            sample_count INTEGER NOT NULL DEFAULT 0,
+            trend_percentage REAL,
+            computed_at TEXT NOT NULL,
+            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create scan_coverage table for tracking scan coverage metrics
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS scan_coverage (
+            id TEXT PRIMARY KEY,
+            organization_id TEXT,
+            period_start TEXT NOT NULL,
+            period_end TEXT NOT NULL,
+            total_assets INTEGER NOT NULL DEFAULT 0,
+            scanned_assets INTEGER NOT NULL DEFAULT 0,
+            coverage_percentage REAL NOT NULL DEFAULT 0.0,
+            scan_types TEXT,
+            avg_scan_frequency_days REAL,
+            last_full_scan_at TEXT,
+            stale_asset_count INTEGER DEFAULT 0,
+            computed_at TEXT NOT NULL,
+            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_exec_dashboard_user ON executive_dashboard_config(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_exec_dashboard_shared ON executive_dashboard_config(is_shared)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_metrics_cache_org ON dashboard_metrics_cache(organization_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_metrics_cache_type ON dashboard_metrics_cache(metric_type)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_metrics_cache_expires ON dashboard_metrics_cache(expires_at)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_exec_reports_org ON executive_reports(organization_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_exec_reports_user ON executive_reports(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_exec_kpis_org ON executive_kpis(organization_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_exec_kpis_type ON executive_kpis(kpi_type)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_risk_score_org ON risk_score_history(organization_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_risk_score_computed ON risk_score_history(computed_at)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_compliance_posture_org ON compliance_posture(organization_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_compliance_posture_framework ON compliance_posture(framework_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_mttr_metrics_org ON mttr_metrics(organization_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_mttr_metrics_severity ON mttr_metrics(severity)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_scan_coverage_org ON scan_coverage(organization_id)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created executive dashboard tables");
     Ok(())
 }

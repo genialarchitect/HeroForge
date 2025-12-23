@@ -66,6 +66,8 @@ pub mod wireless;
 pub mod workflows;
 pub mod evidence;
 pub mod exploitation;
+pub mod remediation;
+pub mod executive_dashboard;
 
 #[cfg(test)]
 mod tests;

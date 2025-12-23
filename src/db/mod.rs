@@ -63,6 +63,8 @@ pub mod vulnerabilities;
 pub mod vpn;
 pub mod webhooks;
 pub mod workflows;
+pub mod remediation;
+pub mod executive_dashboard;
 
 // Core imports used by this module
 use sqlx::sqlite::SqlitePool;
