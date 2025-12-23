@@ -418,13 +418,19 @@ pub struct SecretFinding {
     /// Location where the secret was found
     pub source: SecretSource,
     /// Line number within the content (if applicable)
-    pub line_number: Option<u32>,
+    pub line: Option<usize>,
+    /// Column number within the line (if applicable)
+    pub column: Option<usize>,
     /// Context around the match (redacted)
-    pub context: String,
-    /// Confidence score (0.0 - 1.0)
-    pub confidence: f32,
-    /// Additional metadata
-    pub metadata: HashMap<String, String>,
+    pub context: Option<String>,
+    /// Recommended remediation steps
+    pub remediation: Option<String>,
+    /// Whether this finding has been verified
+    pub verified: bool,
+    /// Entropy score for entropy-based detection
+    pub entropy_score: Option<f64>,
+    /// Detection method (pattern, entropy, key_name, etc.)
+    pub detection_method: Option<String>,
 }
 
 impl SecretFinding {
@@ -433,7 +439,6 @@ impl SecretFinding {
         secret_type: SecretType,
         matched_value: &str,
         source: SecretSource,
-        confidence: f32,
     ) -> Self {
         let severity = secret_type.default_severity();
         let redacted_value = Self::redact_value(matched_value);
@@ -443,23 +448,39 @@ impl SecretFinding {
             severity,
             redacted_value,
             source,
-            line_number: None,
-            context: String::new(),
-            confidence,
-            metadata: HashMap::new(),
+            line: None,
+            column: None,
+            context: None,
+            remediation: None,
+            verified: false,
+            entropy_score: None,
+            detection_method: Some("pattern".to_string()),
         }
     }
 
     /// Create a new finding with context
-    pub fn with_context(mut self, context: &str, line_number: Option<u32>) -> Self {
-        self.context = Self::redact_context(context);
-        self.line_number = line_number;
+    pub fn with_context(mut self, context: &str, line: Option<usize>) -> Self {
+        self.context = Some(Self::redact_context(context));
+        self.line = line;
         self
     }
 
-    /// Add metadata to the finding
-    pub fn with_metadata(mut self, key: String, value: String) -> Self {
-        self.metadata.insert(key, value);
+    /// Set remediation advice
+    pub fn with_remediation(mut self, remediation: &str) -> Self {
+        self.remediation = Some(remediation.to_string());
+        self
+    }
+
+    /// Set entropy score
+    pub fn with_entropy(mut self, score: f64) -> Self {
+        self.entropy_score = Some(score);
+        self.detection_method = Some("entropy".to_string());
+        self
+    }
+
+    /// Set detection method
+    pub fn with_detection_method(mut self, method: &str) -> Self {
+        self.detection_method = Some(method.to_string());
         self
     }
 
@@ -638,7 +659,6 @@ mod tests {
                 url: "https://example.com".to_string(),
                 content_type: Some("text/html".to_string()),
             },
-            0.95,
         );
 
         assert_eq!(finding.severity, SecretSeverity::Critical);
@@ -662,13 +682,11 @@ mod tests {
                 SecretType::AwsAccessKey,
                 "test",
                 SecretSource::Unknown { description: "test".to_string() },
-                0.9,
             ),
             SecretFinding::new(
                 SecretType::JwtToken,
                 "test",
                 SecretSource::Unknown { description: "test".to_string() },
-                0.9,
             ),
         ];
 

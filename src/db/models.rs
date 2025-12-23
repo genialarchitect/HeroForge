@@ -2054,6 +2054,89 @@ pub struct SecretFindingRecord {
     pub notes: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// Entropy score for entropy-based detection (0.0 - 8.0)
+    #[sqlx(default)]
+    pub entropy_score: Option<f64>,
+    /// Detection method: 'pattern', 'entropy', 'key_name', etc.
+    #[sqlx(default)]
+    pub detection_method: Option<String>,
+}
+
+/// Git secret scan record
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow, utoipa::ToSchema)]
+pub struct GitSecretScanRecord {
+    pub id: String,
+    pub user_id: String,
+    pub repository_url: Option<String>,
+    pub repository_path: Option<String>,
+    pub branch: Option<String>,
+    pub scan_history: bool,
+    pub history_depth: Option<i32>,
+    pub status: String,
+    pub finding_count: Option<i32>,
+    pub files_scanned: Option<i32>,
+    pub commits_scanned: Option<i32>,
+    pub error_message: Option<String>,
+    pub started_at: Option<DateTime<Utc>>,
+    pub completed_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Git secret finding - links a secret finding to git-specific metadata
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow, utoipa::ToSchema)]
+pub struct GitSecretFindingRecord {
+    pub id: String,
+    pub git_scan_id: String,
+    pub finding_id: String,
+    pub commit_sha: String,
+    pub commit_author: Option<String>,
+    pub commit_email: Option<String>,
+    pub commit_date: Option<String>,
+    pub commit_message: Option<String>,
+    pub file_path: String,
+    pub is_current: bool,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Filesystem secret scan record
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow, utoipa::ToSchema)]
+pub struct FilesystemSecretScanRecord {
+    pub id: String,
+    pub user_id: String,
+    pub scan_paths: String,
+    pub recursive: bool,
+    pub max_depth: Option<i32>,
+    pub include_patterns: Option<String>,
+    pub exclude_patterns: Option<String>,
+    pub max_file_size: Option<i64>,
+    pub entropy_detection: bool,
+    pub status: String,
+    pub finding_count: Option<i32>,
+    pub files_scanned: Option<i32>,
+    pub bytes_scanned: Option<i64>,
+    pub files_skipped: Option<i32>,
+    pub directories_scanned: Option<i32>,
+    pub error_message: Option<String>,
+    pub started_at: Option<DateTime<Utc>>,
+    pub completed_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Filesystem secret finding - links a secret finding to file-specific metadata
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow, utoipa::ToSchema)]
+pub struct FilesystemSecretFindingRecord {
+    pub id: String,
+    pub fs_scan_id: String,
+    pub finding_id: String,
+    pub file_path: String,
+    pub relative_path: String,
+    pub file_size: i64,
+    pub file_modified: Option<String>,
+    pub file_owner: Option<String>,
+    pub file_permissions: Option<String>,
+    pub created_at: DateTime<Utc>,
 }
 
 /// Summary statistics for secret findings

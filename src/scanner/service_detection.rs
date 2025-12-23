@@ -64,7 +64,7 @@ pub async fn detect_services(
                                     secret.secret_type.display_name(),
                                     port_info.port,
                                     secret.redacted_value,
-                                    secret.context,
+                                    secret.context.as_deref().unwrap_or("N/A"),
                                     secret.remediation()
                                 ),
                                 severity,

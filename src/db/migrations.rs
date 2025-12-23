@@ -163,6 +163,8 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     add_organization_id_to_data_tables(pool).await?;
     // Organization quotas and usage tracking
     create_organization_quotas_tables(pool).await?;
+    // Enhanced secret scanning tables (git, filesystem, entropy)
+    create_enhanced_secret_scanning_tables(pool).await?;
     Ok(())
 }
 
@@ -8929,5 +8931,153 @@ async fn create_organization_quotas_tables(pool: &SqlitePool) -> Result<()> {
     .await;
 
     log::info!("Created organization quotas tables");
+    Ok(())
+}
+
+// ============================================================================
+// Enhanced Secret Scanning Tables
+// ============================================================================
+
+/// Create enhanced secret scanning tables for git, filesystem, and entropy-based detection
+async fn create_enhanced_secret_scanning_tables(pool: &SqlitePool) -> Result<()> {
+    // Add new columns to existing secret_findings table
+    let _ = sqlx::query("ALTER TABLE secret_findings ADD COLUMN entropy_score REAL")
+        .execute(pool)
+        .await;
+
+    let _ = sqlx::query("ALTER TABLE secret_findings ADD COLUMN detection_method TEXT DEFAULT 'pattern'")
+        .execute(pool)
+        .await;
+
+    // Create git_secret_scans table for tracking git repository scan jobs
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS git_secret_scans (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            repository_url TEXT,
+            repository_path TEXT,
+            branch TEXT DEFAULT 'HEAD',
+            scan_history INTEGER NOT NULL DEFAULT 0,
+            history_depth INTEGER DEFAULT 100,
+            status TEXT NOT NULL DEFAULT 'pending',
+            finding_count INTEGER DEFAULT 0,
+            files_scanned INTEGER DEFAULT 0,
+            commits_scanned INTEGER DEFAULT 0,
+            error_message TEXT,
+            started_at TEXT,
+            completed_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create git_secret_findings table to extend secret findings with git-specific info
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS git_secret_findings (
+            id TEXT PRIMARY KEY,
+            git_scan_id TEXT NOT NULL,
+            finding_id TEXT NOT NULL,
+            commit_sha TEXT NOT NULL,
+            commit_author TEXT,
+            commit_email TEXT,
+            commit_date TEXT,
+            commit_message TEXT,
+            file_path TEXT NOT NULL,
+            is_current INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (git_scan_id) REFERENCES git_secret_scans(id) ON DELETE CASCADE,
+            FOREIGN KEY (finding_id) REFERENCES secret_findings(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create filesystem_secret_scans table for tracking filesystem scan jobs
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS filesystem_secret_scans (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            scan_paths TEXT NOT NULL,
+            recursive INTEGER NOT NULL DEFAULT 1,
+            max_depth INTEGER DEFAULT 0,
+            include_patterns TEXT,
+            exclude_patterns TEXT,
+            max_file_size INTEGER DEFAULT 10485760,
+            entropy_detection INTEGER NOT NULL DEFAULT 1,
+            status TEXT NOT NULL DEFAULT 'pending',
+            finding_count INTEGER DEFAULT 0,
+            files_scanned INTEGER DEFAULT 0,
+            bytes_scanned INTEGER DEFAULT 0,
+            files_skipped INTEGER DEFAULT 0,
+            directories_scanned INTEGER DEFAULT 0,
+            error_message TEXT,
+            started_at TEXT,
+            completed_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create filesystem_secret_findings table to extend secret findings with file-specific info
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS filesystem_secret_findings (
+            id TEXT PRIMARY KEY,
+            fs_scan_id TEXT NOT NULL,
+            finding_id TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            relative_path TEXT NOT NULL,
+            file_size INTEGER NOT NULL,
+            file_modified TEXT,
+            file_owner TEXT,
+            file_permissions TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (fs_scan_id) REFERENCES filesystem_secret_scans(id) ON DELETE CASCADE,
+            FOREIGN KEY (finding_id) REFERENCES secret_findings(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for efficient queries
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_git_secret_scans_user ON git_secret_scans(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_git_secret_scans_status ON git_secret_scans(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_git_secret_findings_scan ON git_secret_findings(git_scan_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_git_secret_findings_commit ON git_secret_findings(commit_sha)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_fs_secret_scans_user ON filesystem_secret_scans(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_fs_secret_scans_status ON filesystem_secret_scans(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_fs_secret_findings_scan ON filesystem_secret_findings(fs_scan_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_secret_findings_detection ON secret_findings(detection_method)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created enhanced secret scanning tables");
     Ok(())
 }

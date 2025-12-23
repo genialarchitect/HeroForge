@@ -23,9 +23,17 @@
 //! }
 //! ```
 
+pub mod config_scanner;
+pub mod entropy;
+pub mod filesystem_scanner;
+pub mod git_scanner;
 pub mod patterns;
 pub mod types;
 
+pub use config_scanner::{ConfigFileType, ConfigScanner, ConfigSecretFinding};
+pub use entropy::{EntropyConfig, EntropyResult, analyze_entropy, find_high_entropy_strings};
+pub use filesystem_scanner::{FilesystemScanConfig, FilesystemScanner, FilesystemSecretFinding};
+pub use git_scanner::{GitScanConfig, GitSecretFinding, GitSecretScanner};
 pub use patterns::SECRET_PATTERNS;
 pub use types::{
     SecretDetectionConfig, SecretDetectionSummary, SecretFinding, SecretSeverity, SecretSource,
@@ -127,9 +135,9 @@ pub fn detect_secrets(
 
             // Create finding with redacted values
             let mut finding =
-                SecretFinding::new(pattern.secret_type.clone(), matched_text, source.clone(), confidence)
+                SecretFinding::new(pattern.secret_type.clone(), matched_text, source.clone())
                     .with_context(&context, line_number)
-                    .with_metadata("pattern_name".to_string(), pattern.name.to_string());
+                    .with_detection_method(&format!("pattern:{}", pattern.name));
 
             // Apply severity override if present
             if let Some(ref severity) = pattern.severity_override {
@@ -140,12 +148,8 @@ pub fn detect_secrets(
         }
     }
 
-    // Sort by severity (critical first) then by confidence
-    findings.sort_by(|a, b| {
-        b.severity
-            .cmp(&a.severity)
-            .then_with(|| b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal))
-    });
+    // Sort by severity (critical first)
+    findings.sort_by(|a, b| b.severity.cmp(&a.severity));
 
     if !findings.is_empty() {
         info!(
@@ -344,9 +348,9 @@ fn calculate_confidence(
 }
 
 /// Find the line number where a match occurs
-fn find_line_number(content: &str, matched_text: &str) -> Option<u32> {
+fn find_line_number(content: &str, matched_text: &str) -> Option<usize> {
     content.find(matched_text).map(|pos| {
-        content[..pos].chars().filter(|&c| c == '\n').count() as u32 + 1
+        content[..pos].chars().filter(|&c| c == '\n').count() + 1
     })
 }
 

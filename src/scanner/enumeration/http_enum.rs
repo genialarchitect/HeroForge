@@ -226,10 +226,17 @@ async fn check_common_files(client: &reqwest::Client, base_url: &str) -> Vec<Fin
                     // Convert secret findings to enumeration findings
                     for secret in secrets {
                         let secret_type_name = format!("{:?}", secret.secret_type);
+                        // Map severity to confidence: Critical=95, High=80, Medium=60, Low=40
+                        let confidence = match secret.severity {
+                            crate::scanner::secret_detection::SecretSeverity::Critical => 95,
+                            crate::scanner::secret_detection::SecretSeverity::High => 80,
+                            crate::scanner::secret_detection::SecretSeverity::Medium => 60,
+                            crate::scanner::secret_detection::SecretSeverity::Low => 40,
+                        };
                         let mut secret_finding = Finding::with_confidence(
                             FindingType::ExposedSecret(secret_type_name.clone()),
                             secret.redacted_value.clone(),
-                            (secret.confidence * 100.0) as u8,
+                            confidence,
                         );
 
                         secret_finding.metadata.insert(
@@ -248,16 +255,18 @@ async fn check_common_files(client: &reqwest::Client, base_url: &str) -> Vec<Fin
                             "source_file".to_string(),
                             file.to_string(),
                         );
-                        if let Some(line) = secret.line_number {
+                        if let Some(line) = secret.line {
                             secret_finding.metadata.insert(
                                 "line_number".to_string(),
                                 line.to_string(),
                             );
                         }
-                        secret_finding.metadata.insert(
-                            "context".to_string(),
-                            secret.context.clone(),
-                        );
+                        if let Some(ref context) = secret.context {
+                            secret_finding.metadata.insert(
+                                "context".to_string(),
+                                context.clone(),
+                            );
+                        }
                         secret_finding.metadata.insert(
                             "remediation".to_string(),
                             secret.remediation().to_string(),
@@ -477,10 +486,17 @@ fn analyze_headers_with_url(headers: &HeaderMap, url: &str) -> Vec<Finding> {
 
                 for secret in secrets {
                     let secret_type_name = format!("{:?}", secret.secret_type);
+                    // Map severity to confidence: Critical=95, High=80, Medium=60, Low=40
+                    let confidence = match secret.severity {
+                        crate::scanner::secret_detection::SecretSeverity::Critical => 95,
+                        crate::scanner::secret_detection::SecretSeverity::High => 80,
+                        crate::scanner::secret_detection::SecretSeverity::Medium => 60,
+                        crate::scanner::secret_detection::SecretSeverity::Low => 40,
+                    };
                     let mut secret_finding = Finding::with_confidence(
                         FindingType::ExposedSecret(secret_type_name.clone()),
                         secret.redacted_value.clone(),
-                        (secret.confidence * 100.0) as u8,
+                        confidence,
                     );
 
                     secret_finding.metadata.insert(
