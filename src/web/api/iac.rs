@@ -24,6 +24,8 @@ use crate::db::iac;
 use crate::scanner::iac::{
     IacCloudProvider, IacFindingCategory, IacFindingStatus, IacPlatform,
     IacRule, IacScanStatus, IacScanner, IacSeverity, RulePatternType,
+    analyze_modules, analyze_state, analyze_backend,
+    get_enhanced_rules, get_rules_by_provider, get_rule_statistics,
 };
 use crate::web::auth;
 
@@ -207,6 +209,117 @@ pub struct ListScansQuery {
 
 fn default_limit() -> i32 {
     50
+}
+
+/// Request for analyzing Terraform modules
+#[derive(Debug, Deserialize)]
+pub struct AnalyzeModulesRequest {
+    pub content: String,
+    pub filename: Option<String>,
+}
+
+/// Response from module analysis
+#[derive(Debug, Serialize)]
+pub struct ModuleAnalysisResponse {
+    pub modules_found: usize,
+    pub security_score: u8,
+    pub findings: Vec<ModuleFindingInfo>,
+    pub modules: Vec<ModuleReferenceInfo>,
+}
+
+/// Module finding info for API
+#[derive(Debug, Serialize)]
+pub struct ModuleFindingInfo {
+    pub finding_type: String,
+    pub severity: String,
+    pub module_source: String,
+    pub message: String,
+    pub line_number: i32,
+    pub remediation: String,
+}
+
+/// Module reference info for API
+#[derive(Debug, Serialize)]
+pub struct ModuleReferenceInfo {
+    pub name: String,
+    pub source: String,
+    pub source_type: String,
+    pub version: Option<String>,
+    pub version_pinning: String,
+    pub line_number: i32,
+}
+
+/// Request for scanning Terraform state
+#[derive(Debug, Deserialize)]
+pub struct ScanStateRequest {
+    pub state_content: Option<String>,
+    pub backend_config: Option<BackendConfigRequest>,
+}
+
+/// Backend configuration for remote state
+#[derive(Debug, Deserialize)]
+pub struct BackendConfigRequest {
+    pub backend_type: String,  // s3, azurerm, gcs, etc.
+    pub config: std::collections::HashMap<String, String>,
+}
+
+/// Response from state scanning
+#[derive(Debug, Serialize)]
+pub struct StateAnalysisResponse {
+    pub terraform_version: Option<String>,
+    pub serial: Option<u64>,
+    pub resources_found: usize,
+    pub secrets_exposed: usize,
+    pub findings: Vec<StateFindingInfo>,
+    pub outputs: Vec<StateOutputInfo>,
+    pub backend_analysis: Option<BackendAnalysisInfo>,
+}
+
+/// State finding info for API
+#[derive(Debug, Serialize)]
+pub struct StateFindingInfo {
+    pub finding_type: String,
+    pub severity: String,
+    pub resource_address: Option<String>,
+    pub attribute_path: Option<String>,
+    pub message: String,
+    pub remediation: String,
+}
+
+/// State output info for API
+#[derive(Debug, Serialize)]
+pub struct StateOutputInfo {
+    pub name: String,
+    pub sensitive: bool,
+    pub value_type: String,
+    pub has_sensitive_value: bool,
+}
+
+/// Backend analysis info for API
+#[derive(Debug, Serialize)]
+pub struct BackendAnalysisInfo {
+    pub backend_type: String,
+    pub encryption_enabled: bool,
+    pub locking_enabled: bool,
+    pub versioning_enabled: bool,
+    pub findings: Vec<String>,
+}
+
+/// Query params for rules listing
+#[derive(Debug, Deserialize)]
+pub struct RulesQuery {
+    pub provider: Option<String>,
+    pub category: Option<String>,
+    pub severity: Option<String>,
+}
+
+/// Response for rule statistics
+#[derive(Debug, Serialize)]
+pub struct RuleStatisticsResponse {
+    pub total_rules: usize,
+    pub by_provider: std::collections::HashMap<String, usize>,
+    pub by_severity: std::collections::HashMap<String, usize>,
+    pub by_category: std::collections::HashMap<String, usize>,
 }
 
 // ============================================================================
@@ -1131,6 +1244,196 @@ pub async fn delete_rule(
     }
 }
 
+// ============================================================================
+// Enhanced Terraform Endpoints
+// ============================================================================
+
+/// Analyze Terraform modules for security issues
+///
+/// POST /api/iac/modules/analyze
+pub async fn analyze_terraform_modules(
+    _claims: web::ReqData<auth::Claims>,
+    request: web::Json<AnalyzeModulesRequest>,
+) -> Result<HttpResponse> {
+    let filename = request.filename.as_deref().unwrap_or("main.tf");
+
+    match analyze_modules(&request.content, filename) {
+        Ok(result) => {
+            let findings: Vec<ModuleFindingInfo> = result.findings.iter().map(|f| {
+                ModuleFindingInfo {
+                    finding_type: format!("{:?}", f.category),
+                    severity: format!("{:?}", f.severity),
+                    module_source: f.module_name.clone(),
+                    message: f.description.clone(),
+                    line_number: f.line_number,
+                    remediation: f.remediation.clone(),
+                }
+            }).collect();
+
+            let modules: Vec<ModuleReferenceInfo> = result.modules.iter().map(|m| {
+                ModuleReferenceInfo {
+                    name: m.name.clone(),
+                    source: m.source.clone(),
+                    source_type: format!("{:?}", m.source_type),
+                    version: m.version.clone(),
+                    version_pinning: format!("{:?}", m.version_status),
+                    line_number: m.line_number,
+                }
+            }).collect();
+
+            Ok(HttpResponse::Ok().json(ModuleAnalysisResponse {
+                modules_found: result.modules.len(),
+                security_score: result.security_score,
+                findings,
+                modules,
+            }))
+        }
+        Err(e) => {
+            log::warn!("Failed to analyze modules: {}", e);
+            Ok(HttpResponse::BadRequest().json(serde_json::json!({
+                "error": format!("Failed to analyze modules: {}", e)
+            })))
+        }
+    }
+}
+
+/// Scan Terraform state file for security issues
+///
+/// POST /api/iac/state/scan
+pub async fn scan_terraform_state(
+    _claims: web::ReqData<auth::Claims>,
+    request: web::Json<ScanStateRequest>,
+) -> Result<HttpResponse> {
+    // Check if we have state content or backend config
+    if request.state_content.is_none() && request.backend_config.is_none() {
+        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "Either state_content or backend_config must be provided"
+        })));
+    }
+
+    // If we have backend config, we would need backend content (HCL) to analyze
+    // For now, backend analysis requires the actual backend configuration from .tf files
+    // This is a simplified version that just analyzes the state content
+    let backend_analysis: Option<BackendAnalysisInfo> = None;
+
+    // If we have state content, analyze it
+    if let Some(ref state_content) = request.state_content {
+        match analyze_state(state_content) {
+            Ok(result) => {
+                let findings: Vec<StateFindingInfo> = result.findings.iter().map(|f| {
+                    StateFindingInfo {
+                        finding_type: format!("{:?}", f.category),
+                        severity: format!("{:?}", f.severity),
+                        resource_address: f.resource_address.clone(),
+                        attribute_path: f.attribute_path.clone(),
+                        message: f.description.clone(),
+                        remediation: f.remediation.clone(),
+                    }
+                }).collect();
+
+                let outputs: Vec<StateOutputInfo> = result.outputs.iter().map(|o| {
+                    StateOutputInfo {
+                        name: o.name.clone(),
+                        sensitive: o.is_sensitive,
+                        value_type: o.value_type.clone(),
+                        has_sensitive_value: o.should_be_sensitive,
+                    }
+                }).collect();
+
+                let secrets_exposed = findings.iter()
+                    .filter(|f| f.finding_type.contains("ExposedSecret") || f.finding_type.contains("SensitiveOutput"))
+                    .count();
+
+                Ok(HttpResponse::Ok().json(StateAnalysisResponse {
+                    terraform_version: result.terraform_version,
+                    serial: Some(result.serial as u64),
+                    resources_found: result.resources.len(),
+                    secrets_exposed,
+                    findings,
+                    outputs,
+                    backend_analysis,
+                }))
+            }
+            Err(e) => {
+                log::warn!("Failed to analyze state: {}", e);
+                Ok(HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": format!("Failed to analyze state: {}", e)
+                })))
+            }
+        }
+    } else {
+        // No state content provided
+        Ok(HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "state_content is required for state analysis"
+        })))
+    }
+}
+
+/// Get enhanced Terraform rules with filtering
+///
+/// GET /api/iac/rules/enhanced
+pub async fn list_enhanced_rules(
+    query: web::Query<RulesQuery>,
+) -> Result<HttpResponse> {
+    let mut rules = if let Some(ref provider) = query.provider {
+        let provider_enum = match provider.to_lowercase().as_str() {
+            "aws" => IacCloudProvider::Aws,
+            "azure" => IacCloudProvider::Azure,
+            "gcp" => IacCloudProvider::Gcp,
+            _ => IacCloudProvider::Multi,
+        };
+        get_rules_by_provider(provider_enum)
+    } else {
+        get_enhanced_rules()
+    };
+
+    // Filter by severity if provided
+    if let Some(ref severity) = query.severity {
+        let sev_lower = severity.to_lowercase();
+        rules.retain(|r| r.severity().to_string().to_lowercase() == sev_lower);
+    }
+
+    // Filter by category if provided
+    if let Some(ref category) = query.category {
+        let cat_lower = category.to_lowercase();
+        rules.retain(|r| r.category().to_string().to_lowercase().contains(&cat_lower));
+    }
+
+    // Convert to JSON response
+    let rule_infos: Vec<serde_json::Value> = rules.iter().map(|r| {
+        serde_json::json!({
+            "id": r.id(),
+            "name": r.name(),
+            "description": r.description(),
+            "severity": r.severity().to_string(),
+            "category": r.category().to_string(),
+            "platforms": r.platforms().iter().map(|p| p.to_string()).collect::<Vec<_>>(),
+            "providers": r.providers().iter().map(|p| p.to_string()).collect::<Vec<_>>(),
+            "remediation": r.remediation(),
+            "documentation_url": r.documentation_url(),
+        })
+    }).collect();
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "total": rule_infos.len(),
+        "rules": rule_infos
+    })))
+}
+
+/// Get rule statistics
+///
+/// GET /api/iac/rules/statistics
+pub async fn get_rules_statistics() -> Result<HttpResponse> {
+    let stats = get_rule_statistics();
+
+    Ok(HttpResponse::Ok().json(RuleStatisticsResponse {
+        total_rules: stats.total_rules,
+        by_provider: stats.by_provider,
+        by_severity: stats.by_severity,
+        by_category: stats.by_category,
+    }))
+}
+
 /// List supported platforms
 ///
 /// GET /api/iac/platforms
@@ -1175,20 +1478,33 @@ pub async fn seed_builtin_rules(pool: &SqlitePool) -> anyhow::Result<()> {
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/iac")
+            // Platform info
             .route("/platforms", web::get().to(list_platforms))
+            // Scan management
             .route("/scan", web::post().to(create_scan))
             .route("/scans", web::get().to(list_scans))
             .route("/scans/{id}", web::get().to(get_scan))
             .route("/scans/{id}", web::delete().to(delete_scan))
             .route("/scans/{id}/findings", web::get().to(get_findings))
             .route("/scans/{id}/files", web::get().to(get_files))
+            // File management
             .route("/files/{id}", web::get().to(get_file))
             .route("/files/{id}/findings", web::get().to(get_file_findings))
+            // Finding management
             .route("/findings/{id}/status", web::patch().to(update_finding_status))
+            // Analysis (immediate)
             .route("/analyze", web::post().to(analyze_file))
+            // Terraform module analysis
+            .route("/modules/analyze", web::post().to(analyze_terraform_modules))
+            // Terraform state scanning
+            .route("/state/scan", web::post().to(scan_terraform_state))
+            // Custom rules
             .route("/rules", web::get().to(list_rules))
             .route("/rules", web::post().to(create_rule))
             .route("/rules/{id}", web::put().to(update_rule))
-            .route("/rules/{id}", web::delete().to(delete_rule)),
+            .route("/rules/{id}", web::delete().to(delete_rule))
+            // Enhanced rules (builtin Terraform rules)
+            .route("/rules/enhanced", web::get().to(list_enhanced_rules))
+            .route("/rules/statistics", web::get().to(get_rules_statistics)),
     );
 }

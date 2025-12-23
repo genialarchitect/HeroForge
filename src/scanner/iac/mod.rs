@@ -22,14 +22,20 @@
 
 pub mod arm;
 pub mod cloudformation;
+pub mod module_analyzer;
 pub mod rules;
+pub mod state_scanner;
 pub mod terraform;
+pub mod terraform_rules;
 pub mod types;
 
 pub use arm::ArmScanner;
 pub use cloudformation::CloudFormationScanner;
+pub use module_analyzer::{analyze_modules, ModuleAnalyzer, ModuleAnalysisResult, ModuleFinding, ModuleReference};
 pub use rules::{get_builtin_iac_rules, RuleMatcher};
+pub use state_scanner::{analyze_state, analyze_backend, StateScanner, StateAnalysisResult, StateFinding, BackendAnalysis};
 pub use terraform::TerraformScanner;
+pub use terraform_rules::{get_enhanced_rules, get_rules_by_provider, get_rule_statistics};
 pub use types::*;
 
 use anyhow::{anyhow, Result};

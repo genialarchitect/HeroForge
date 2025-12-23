@@ -135,6 +135,10 @@ pub enum IacFindingCategory {
     ComplianceViolation,
     /// Best practice deviation
     BestPractice,
+    /// Data protection and backup issues
+    DataProtection,
+    /// Disaster recovery and availability issues
+    DisasterRecovery,
 }
 
 impl std::fmt::Display for IacFindingCategory {
@@ -152,6 +156,8 @@ impl std::fmt::Display for IacFindingCategory {
             IacFindingCategory::InsecureDefault => write!(f, "insecure_default"),
             IacFindingCategory::ComplianceViolation => write!(f, "compliance_violation"),
             IacFindingCategory::BestPractice => write!(f, "best_practice"),
+            IacFindingCategory::DataProtection => write!(f, "data_protection"),
+            IacFindingCategory::DisasterRecovery => write!(f, "disaster_recovery"),
         }
     }
 }
@@ -182,6 +188,14 @@ pub enum IacResourceType {
     AwsElasticache,
     AwsDynamodb,
     AwsSecretsManager,
+    AwsCloudtrail,
+    AwsApiGateway,
+    AwsElasticsearch,
+    AwsEcr,
+    AwsCognito,
+    AwsGuardDuty,
+    AwsRedshift,
+    AwsWaf,
 
     // Azure Resources
     AzureStorageAccount,
@@ -197,6 +211,14 @@ pub enum IacResourceType {
     AzureCosmosDb,
     AzureAks,
     AzureContainerRegistry,
+    AzureRedis,
+    AzureServiceBus,
+    AzureEventHub,
+    AzureSynapse,
+    AzureDataFactory,
+    AzureSecurityCenter,
+    AzureLogAnalytics,
+    AzureContainerInstance,
 
     // GCP Resources
     GcpStorageBucket,
@@ -211,6 +233,11 @@ pub enum IacResourceType {
     GcpBigQuery,
     GcpPubSub,
     GcpSecretManager,
+    GcpCloudRun,
+    GcpDataproc,
+    GcpVpcNetwork,
+    GcpSubnetwork,
+    GcpServiceAccount,
 
     // Kubernetes Resources
     K8sDeployment,
@@ -254,6 +281,14 @@ impl std::fmt::Display for IacResourceType {
             IacResourceType::AwsElasticache => write!(f, "aws_elasticache"),
             IacResourceType::AwsDynamodb => write!(f, "aws_dynamodb"),
             IacResourceType::AwsSecretsManager => write!(f, "aws_secrets_manager"),
+            IacResourceType::AwsCloudtrail => write!(f, "aws_cloudtrail"),
+            IacResourceType::AwsApiGateway => write!(f, "aws_api_gateway"),
+            IacResourceType::AwsElasticsearch => write!(f, "aws_elasticsearch"),
+            IacResourceType::AwsEcr => write!(f, "aws_ecr"),
+            IacResourceType::AwsCognito => write!(f, "aws_cognito"),
+            IacResourceType::AwsGuardDuty => write!(f, "aws_guardduty"),
+            IacResourceType::AwsRedshift => write!(f, "aws_redshift"),
+            IacResourceType::AwsWaf => write!(f, "aws_waf"),
             IacResourceType::AzureStorageAccount => write!(f, "azure_storage_account"),
             IacResourceType::AzureBlobContainer => write!(f, "azure_blob_container"),
             IacResourceType::AzureRoleAssignment => write!(f, "azure_role_assignment"),
@@ -267,6 +302,14 @@ impl std::fmt::Display for IacResourceType {
             IacResourceType::AzureCosmosDb => write!(f, "azure_cosmos_db"),
             IacResourceType::AzureAks => write!(f, "azure_aks"),
             IacResourceType::AzureContainerRegistry => write!(f, "azure_container_registry"),
+            IacResourceType::AzureRedis => write!(f, "azure_redis"),
+            IacResourceType::AzureServiceBus => write!(f, "azure_service_bus"),
+            IacResourceType::AzureEventHub => write!(f, "azure_event_hub"),
+            IacResourceType::AzureSynapse => write!(f, "azure_synapse"),
+            IacResourceType::AzureDataFactory => write!(f, "azure_data_factory"),
+            IacResourceType::AzureSecurityCenter => write!(f, "azure_security_center"),
+            IacResourceType::AzureLogAnalytics => write!(f, "azure_log_analytics"),
+            IacResourceType::AzureContainerInstance => write!(f, "azure_container_instance"),
             IacResourceType::GcpStorageBucket => write!(f, "gcp_storage_bucket"),
             IacResourceType::GcpIamBinding => write!(f, "gcp_iam_binding"),
             IacResourceType::GcpIamMember => write!(f, "gcp_iam_member"),
@@ -279,6 +322,11 @@ impl std::fmt::Display for IacResourceType {
             IacResourceType::GcpBigQuery => write!(f, "gcp_bigquery"),
             IacResourceType::GcpPubSub => write!(f, "gcp_pubsub"),
             IacResourceType::GcpSecretManager => write!(f, "gcp_secret_manager"),
+            IacResourceType::GcpCloudRun => write!(f, "gcp_cloud_run"),
+            IacResourceType::GcpDataproc => write!(f, "gcp_dataproc"),
+            IacResourceType::GcpVpcNetwork => write!(f, "gcp_vpc_network"),
+            IacResourceType::GcpSubnetwork => write!(f, "gcp_subnetwork"),
+            IacResourceType::GcpServiceAccount => write!(f, "gcp_service_account"),
             IacResourceType::K8sDeployment => write!(f, "k8s_deployment"),
             IacResourceType::K8sPod => write!(f, "k8s_pod"),
             IacResourceType::K8sService => write!(f, "k8s_service"),
