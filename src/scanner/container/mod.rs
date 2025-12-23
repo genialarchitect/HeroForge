@@ -26,8 +26,12 @@
 
 pub mod dockerfile;
 pub mod image;
+pub mod k8s_cis_benchmark;
 pub mod k8s_cluster;
 pub mod k8s_manifest;
+pub mod k8s_network_policy;
+pub mod k8s_pss;
+pub mod k8s_rbac_analyzer;
 pub mod runtime;
 pub mod types;
 

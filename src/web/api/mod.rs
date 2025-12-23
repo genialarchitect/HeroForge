@@ -29,6 +29,7 @@ pub mod exclusions;
 pub mod finding_templates;
 pub mod iac;
 pub mod jira;
+pub mod k8s_security;
 pub mod manual_compliance;
 pub mod methodology;
 pub mod mfa;

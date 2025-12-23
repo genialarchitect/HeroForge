@@ -510,6 +510,8 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .configure(api::cicd::configure)
                     // CI/CD Pipeline Security scanning endpoints
                     .configure(api::cicd_pipeline::configure)
+                    // Kubernetes Security scanning endpoints
+                    .configure(api::k8s_security::configure)
                     // IaC Security scanning endpoints
                     .configure(api::iac::configure)
                     // Breach & Attack Simulation endpoints

@@ -167,6 +167,8 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     create_enhanced_secret_scanning_tables(pool).await?;
     // CI/CD Pipeline Security scanning tables
     create_cicd_pipeline_scan_tables(pool).await?;
+    // Kubernetes Security scanning tables
+    create_k8s_security_tables(pool).await?;
     Ok(())
 }
 
@@ -9228,5 +9230,238 @@ async fn create_cicd_pipeline_scan_tables(pool: &SqlitePool) -> Result<()> {
         .await?;
 
     log::info!("Created CI/CD Pipeline Security scanning tables");
+    Ok(())
+}
+
+/// Create Kubernetes Security scanning tables
+async fn create_k8s_security_tables(pool: &SqlitePool) -> Result<()> {
+    // Main K8s security scan table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS k8s_security_scans (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            organization_id TEXT,
+            cluster_name TEXT,
+            cluster_version TEXT,
+            k8s_context TEXT,
+            namespaces TEXT,
+            scan_types TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            total_findings INTEGER DEFAULT 0,
+            critical_count INTEGER DEFAULT 0,
+            high_count INTEGER DEFAULT 0,
+            medium_count INTEGER DEFAULT 0,
+            low_count INTEGER DEFAULT 0,
+            info_count INTEGER DEFAULT 0,
+            cis_score REAL,
+            pss_compliant_baseline INTEGER DEFAULT 0,
+            pss_compliant_restricted INTEGER DEFAULT 0,
+            rbac_findings_count INTEGER DEFAULT 0,
+            network_policy_findings_count INTEGER DEFAULT 0,
+            workloads_analyzed INTEGER DEFAULT 0,
+            policies_analyzed INTEGER DEFAULT 0,
+            roles_analyzed INTEGER DEFAULT 0,
+            bindings_analyzed INTEGER DEFAULT 0,
+            error_message TEXT,
+            started_at TEXT,
+            completed_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // CIS Benchmark findings table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS k8s_cis_findings (
+            id TEXT PRIMARY KEY,
+            scan_id TEXT NOT NULL,
+            control_id TEXT NOT NULL,
+            control_title TEXT NOT NULL,
+            section TEXT NOT NULL,
+            section_title TEXT,
+            status TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            scored INTEGER DEFAULT 1,
+            level INTEGER DEFAULT 1,
+            description TEXT,
+            actual_value TEXT,
+            expected_value TEXT,
+            remediation TEXT,
+            reference_url TEXT,
+            resource_name TEXT,
+            resource_kind TEXT,
+            namespace TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (scan_id) REFERENCES k8s_security_scans(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // RBAC findings table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS k8s_rbac_findings (
+            id TEXT PRIMARY KEY,
+            scan_id TEXT NOT NULL,
+            finding_type TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            subject_kind TEXT,
+            subject_name TEXT,
+            subject_namespace TEXT,
+            role_name TEXT,
+            binding_name TEXT,
+            namespace TEXT,
+            permissions TEXT,
+            description TEXT NOT NULL,
+            remediation TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (scan_id) REFERENCES k8s_security_scans(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Network policy findings table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS k8s_network_policy_findings (
+            id TEXT PRIMARY KEY,
+            scan_id TEXT NOT NULL,
+            finding_type TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            namespace TEXT NOT NULL,
+            policy_name TEXT,
+            affected_pods TEXT,
+            description TEXT NOT NULL,
+            remediation TEXT NOT NULL,
+            details TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (scan_id) REFERENCES k8s_security_scans(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Pod Security Standards findings table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS k8s_pss_findings (
+            id TEXT PRIMARY KEY,
+            scan_id TEXT NOT NULL,
+            violation_type TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            profile TEXT NOT NULL,
+            workload_name TEXT NOT NULL,
+            workload_kind TEXT NOT NULL,
+            namespace TEXT NOT NULL,
+            container_name TEXT,
+            field_path TEXT NOT NULL,
+            current_value TEXT NOT NULL,
+            description TEXT NOT NULL,
+            remediation TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (scan_id) REFERENCES k8s_security_scans(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // K8s resources analyzed table (for reference)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS k8s_resources (
+            id TEXT PRIMARY KEY,
+            scan_id TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            name TEXT NOT NULL,
+            namespace TEXT,
+            api_version TEXT,
+            labels TEXT,
+            annotations TEXT,
+            spec_hash TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (scan_id) REFERENCES k8s_security_scans(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Namespace coverage summary table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS k8s_namespace_coverage (
+            id TEXT PRIMARY KEY,
+            scan_id TEXT NOT NULL,
+            namespace TEXT NOT NULL,
+            total_pods INTEGER DEFAULT 0,
+            covered_pods INTEGER DEFAULT 0,
+            has_default_deny_ingress INTEGER DEFAULT 0,
+            has_default_deny_egress INTEGER DEFAULT 0,
+            policy_count INTEGER DEFAULT 0,
+            pss_baseline_compliant INTEGER DEFAULT 0,
+            pss_restricted_compliant INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (scan_id) REFERENCES k8s_security_scans(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_k8s_scans_user ON k8s_security_scans(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_k8s_scans_org ON k8s_security_scans(organization_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_k8s_scans_status ON k8s_security_scans(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_k8s_cis_findings_scan ON k8s_cis_findings(scan_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_k8s_cis_findings_control ON k8s_cis_findings(control_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_k8s_cis_findings_severity ON k8s_cis_findings(severity)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_k8s_rbac_findings_scan ON k8s_rbac_findings(scan_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_k8s_rbac_findings_type ON k8s_rbac_findings(finding_type)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_k8s_netpol_findings_scan ON k8s_network_policy_findings(scan_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_k8s_pss_findings_scan ON k8s_pss_findings(scan_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_k8s_pss_findings_profile ON k8s_pss_findings(profile)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_k8s_resources_scan ON k8s_resources(scan_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_k8s_namespace_coverage_scan ON k8s_namespace_coverage(scan_id)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created Kubernetes Security scanning tables");
     Ok(())
 }
