@@ -172,6 +172,8 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     // Sprint 8: Enhanced Remediation Workflows + Executive Dashboard
     create_remediation_workflow_tables(pool).await?;
     create_executive_dashboard_tables(pool).await?;
+    // Sprint 9: Custom Report Templates
+    create_custom_report_templates_tables(pool).await?;
     Ok(())
 }
 
@@ -9960,5 +9962,263 @@ async fn create_executive_dashboard_tables(pool: &SqlitePool) -> Result<()> {
         .await?;
 
     log::info!("Created executive dashboard tables");
+    Ok(())
+}
+
+/// Sprint 9: Custom Report Templates
+async fn create_custom_report_templates_tables(pool: &SqlitePool) -> Result<()> {
+    // Create custom_report_templates table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS custom_report_templates (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            organization_id TEXT,
+            name TEXT NOT NULL,
+            description TEXT,
+            base_template TEXT NOT NULL,
+            sections TEXT NOT NULL,
+            branding TEXT,
+            header_html TEXT,
+            footer_html TEXT,
+            css_overrides TEXT,
+            cover_page_html TEXT,
+            is_public INTEGER DEFAULT 0,
+            is_active INTEGER DEFAULT 1,
+            downloads INTEGER DEFAULT 0,
+            rating REAL,
+            rating_count INTEGER DEFAULT 0,
+            version INTEGER DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            published_at TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create template_ratings table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS template_ratings (
+            id TEXT PRIMARY KEY,
+            template_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            rating INTEGER NOT NULL CHECK(rating >= 1 AND rating <= 5),
+            review TEXT,
+            helpful_count INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(template_id, user_id),
+            FOREIGN KEY (template_id) REFERENCES custom_report_templates(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create template_sections table for reusable sections
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS template_sections (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            organization_id TEXT,
+            name TEXT NOT NULL,
+            section_type TEXT NOT NULL,
+            content_html TEXT NOT NULL,
+            content_css TEXT,
+            is_public INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create template_assets table for logos, images
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS template_assets (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            organization_id TEXT,
+            name TEXT NOT NULL,
+            asset_type TEXT NOT NULL,
+            mime_type TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            file_size INTEGER NOT NULL,
+            width INTEGER,
+            height INTEGER,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create template_versions table for version history
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS template_versions (
+            id TEXT PRIMARY KEY,
+            template_id TEXT NOT NULL,
+            version INTEGER NOT NULL,
+            sections TEXT NOT NULL,
+            branding TEXT,
+            header_html TEXT,
+            footer_html TEXT,
+            css_overrides TEXT,
+            cover_page_html TEXT,
+            change_notes TEXT,
+            created_by TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (template_id) REFERENCES custom_report_templates(id) ON DELETE CASCADE,
+            FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create template_usage_stats table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS template_usage_stats (
+            id TEXT PRIMARY KEY,
+            template_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            report_id TEXT,
+            used_at TEXT NOT NULL,
+            FOREIGN KEY (template_id) REFERENCES custom_report_templates(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create scheduled_report_delivery table for enhanced delivery options
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS scheduled_report_delivery (
+            id TEXT PRIMARY KEY,
+            scheduled_report_id TEXT NOT NULL,
+            channel TEXT NOT NULL,
+            channel_config TEXT NOT NULL,
+            is_enabled INTEGER DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (scheduled_report_id) REFERENCES scheduled_reports(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create scheduled_report_runs table for delivery history
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS scheduled_report_runs (
+            id TEXT PRIMARY KEY,
+            scheduled_report_id TEXT NOT NULL,
+            started_at TEXT NOT NULL,
+            completed_at TEXT,
+            status TEXT NOT NULL,
+            file_path TEXT,
+            file_size INTEGER,
+            recipients_notified INTEGER DEFAULT 0,
+            error_message TEXT,
+            delivery_results TEXT,
+            FOREIGN KEY (scheduled_report_id) REFERENCES scheduled_reports(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Indexes for custom_report_templates
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_custom_templates_user ON custom_report_templates(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_custom_templates_org ON custom_report_templates(organization_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_custom_templates_public ON custom_report_templates(is_public)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_custom_templates_base ON custom_report_templates(base_template)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_custom_templates_rating ON custom_report_templates(rating DESC)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_custom_templates_downloads ON custom_report_templates(downloads DESC)")
+        .execute(pool)
+        .await?;
+
+    // Indexes for template_ratings
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_template_ratings_template ON template_ratings(template_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_template_ratings_user ON template_ratings(user_id)")
+        .execute(pool)
+        .await?;
+
+    // Indexes for template_sections
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_template_sections_user ON template_sections(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_template_sections_org ON template_sections(organization_id)")
+        .execute(pool)
+        .await?;
+
+    // Indexes for template_assets
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_template_assets_user ON template_assets(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_template_assets_org ON template_assets(organization_id)")
+        .execute(pool)
+        .await?;
+
+    // Indexes for template_versions
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_template_versions_template ON template_versions(template_id)")
+        .execute(pool)
+        .await?;
+
+    // Indexes for template_usage_stats
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_template_usage_template ON template_usage_stats(template_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_template_usage_user ON template_usage_stats(user_id)")
+        .execute(pool)
+        .await?;
+
+    // Indexes for scheduled_report_delivery
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_scheduled_delivery_report ON scheduled_report_delivery(scheduled_report_id)")
+        .execute(pool)
+        .await?;
+
+    // Indexes for scheduled_report_runs
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_scheduled_runs_report ON scheduled_report_runs(scheduled_report_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_scheduled_runs_status ON scheduled_report_runs(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_scheduled_runs_started ON scheduled_report_runs(started_at DESC)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created custom report templates tables");
     Ok(())
 }

@@ -68,6 +68,7 @@ pub mod evidence;
 pub mod exploitation;
 pub mod remediation;
 pub mod executive_dashboard;
+pub mod report_templates;
 
 #[cfg(test)]
 mod tests;

@@ -556,6 +556,8 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .configure(api::remediation::configure)
                     // Executive dashboard endpoints
                     .configure(api::executive_dashboard::configure)
+                    // Custom report templates endpoints
+                    .configure(api::report_templates::configure)
                     // Start workflow from vulnerability
                     .route("/vulnerabilities/{id}/workflow", web::post().to(api::workflows::start_workflow))
                     // SSO Admin endpoints
