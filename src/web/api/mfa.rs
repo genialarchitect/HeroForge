@@ -5,7 +5,48 @@ use rand::Rng;
 
 use crate::db::{self, models};
 use crate::web::auth;
-use crate::web::auth::jwt::{verify_mfa_token, create_jwt};
+use crate::web::auth::jwt::{verify_mfa_token, create_jwt_extended, ExtendedClaimsData};
+
+/// Helper function to build extended JWT claims with organization context
+async fn build_extended_claims(pool: &SqlitePool, user_id: &str) -> Option<ExtendedClaimsData> {
+    // Get user's first/default organization
+    let orgs = crate::db::permissions::organizations::list_user_organizations(pool, user_id)
+        .await
+        .ok()?;
+
+    if orgs.is_empty() {
+        return None;
+    }
+
+    let org = &orgs[0];
+
+    let org_role = crate::db::permissions::organizations::get_user_org_role(pool, user_id, &org.id)
+        .await
+        .ok()
+        .flatten()
+        .map(|r| r.as_str().to_string());
+
+    let teams = crate::db::permissions::organizations::get_user_teams(pool, user_id)
+        .await
+        .ok()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(team_id, _role)| team_id)
+        .collect();
+
+    let permissions: Vec<String> = crate::db::permissions::evaluation::get_effective_permissions(pool, user_id, &org.id)
+        .await
+        .ok()
+        .map(|p| p.granted.into_iter().take(20).collect())
+        .unwrap_or_default();
+
+    Some(ExtendedClaimsData {
+        org_id: Some(org.id.clone()),
+        org_role,
+        teams,
+        permissions,
+    })
+}
 
 /// Setup MFA for the authenticated user
 /// Returns TOTP secret, QR code URL, and recovery codes
@@ -387,7 +428,10 @@ pub async fn verify_mfa(
     let roles = db::get_user_roles(&pool, user_id).await.unwrap_or_default();
     let role_names: Vec<String> = roles.iter().map(|r| r.name.clone()).collect();
 
-    let token = create_jwt(user_id, &user.username, role_names)
+    // Get organization context for extended JWT claims
+    let extended_claims = build_extended_claims(pool.get_ref(), user_id).await;
+
+    let token = create_jwt_extended(user_id, &user.username, role_names, extended_claims)
         .map_err(|_| actix_web::error::ErrorInternalServerError("Failed to create token"))?;
 
     let refresh_token = auth::create_refresh_token(user_id)

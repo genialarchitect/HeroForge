@@ -34,6 +34,8 @@ pub mod mfa;
 pub mod mobile;
 pub mod notifications;
 pub mod nuclei;
+pub mod organizations;
+pub mod permissions;
 pub mod phishing;
 pub mod plugins;
 pub mod portal;

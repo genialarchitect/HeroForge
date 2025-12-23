@@ -19,10 +19,28 @@ static JWT_SECRET: Lazy<String> = Lazy::new(|| {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Claims {
-    pub sub: String,        // user id
+    pub sub: String,                        // user id
     pub username: String,
-    pub roles: Vec<String>, // user roles (e.g., ["admin", "user"])
-    pub exp: usize,         // expiration time
+    pub roles: Vec<String>,                 // user roles (e.g., ["admin", "user"])
+    pub exp: usize,                         // expiration time
+    #[serde(default)]
+    pub iat: usize,                         // issued at time
+    #[serde(default)]
+    pub org_id: Option<String>,             // current organization id
+    #[serde(default)]
+    pub org_role: Option<String>,           // role in organization (owner/admin/member)
+    #[serde(default)]
+    pub teams: Vec<String>,                 // team IDs user belongs to
+    #[serde(default)]
+    pub permissions: Vec<String>,           // effective permissions (top common ones)
+}
+
+/// Extended claims for organization context when creating JWTs
+pub struct ExtendedClaimsData {
+    pub org_id: Option<String>,
+    pub org_role: Option<String>,
+    pub teams: Vec<String>,
+    pub permissions: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -40,16 +58,37 @@ pub struct MfaClaims {
 }
 
 pub fn create_jwt(user_id: &str, username: &str, roles: Vec<String>) -> Result<String, Box<dyn Error>> {
-    let expiration = Utc::now()
+    create_jwt_extended(user_id, username, roles, None)
+}
+
+/// Create a JWT with extended organization context
+pub fn create_jwt_extended(
+    user_id: &str,
+    username: &str,
+    roles: Vec<String>,
+    extended: Option<ExtendedClaimsData>,
+) -> Result<String, Box<dyn Error>> {
+    let now = Utc::now();
+    let expiration = now
         .checked_add_signed(Duration::hours(JWT_EXPIRATION_HOURS))
         .expect("valid timestamp")
         .timestamp() as usize;
+
+    let (org_id, org_role, teams, permissions) = match extended {
+        Some(ext) => (ext.org_id, ext.org_role, ext.teams, ext.permissions),
+        None => (None, None, Vec::new(), Vec::new()),
+    };
 
     let claims = Claims {
         sub: user_id.to_string(),
         username: username.to_string(),
         roles,
         exp: expiration,
+        iat: now.timestamp() as usize,
+        org_id,
+        org_role,
+        teams,
+        permissions,
     };
 
     let token = encode(

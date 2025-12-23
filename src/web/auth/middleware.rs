@@ -105,6 +105,11 @@ where
                                             username: user.username.clone(),
                                             roles: role_names,
                                             exp: (chrono::Utc::now() + chrono::Duration::hours(24)).timestamp() as usize,
+                                            iat: chrono::Utc::now().timestamp() as usize,
+                                            org_id: None,
+                                            org_role: None,
+                                            teams: Vec::new(),
+                                            permissions: Vec::new(),
                                         };
                                         req.extensions_mut().insert(claims);
                                         let fut = service.call(req);

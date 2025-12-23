@@ -3,7 +3,52 @@ use sqlx::SqlitePool;
 
 use crate::db::{self, models};
 use crate::web::auth;
-use crate::web::auth::jwt::create_mfa_token;
+use crate::web::auth::jwt::{create_mfa_token, create_jwt_extended, ExtendedClaimsData};
+
+/// Helper function to build extended JWT claims with organization context
+async fn build_extended_claims(pool: &SqlitePool, user_id: &str) -> Option<ExtendedClaimsData> {
+    // Get user's first/default organization
+    let orgs = db::permissions::organizations::list_user_organizations(pool, user_id)
+        .await
+        .ok()?;
+
+    if orgs.is_empty() {
+        return None;
+    }
+
+    // Use the first organization as default
+    let org = &orgs[0];
+
+    // Get user's role in this organization
+    let org_role = db::permissions::organizations::get_user_org_role(pool, user_id, &org.id)
+        .await
+        .ok()
+        .flatten()
+        .map(|r| r.as_str().to_string());
+
+    // Get user's teams in this organization
+    let teams = db::permissions::organizations::get_user_teams(pool, user_id)
+        .await
+        .ok()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(team_id, _role)| team_id)
+        .collect();
+
+    // Get effective permissions (top permissions for the org)
+    let permissions: Vec<String> = db::permissions::evaluation::get_effective_permissions(pool, user_id, &org.id)
+        .await
+        .ok()
+        .map(|p| p.granted.into_iter().take(20).collect())
+        .unwrap_or_default();
+
+    Some(ExtendedClaimsData {
+        org_id: Some(org.id.clone()),
+        org_role,
+        teams,
+        permissions,
+    })
+}
 
 /// Register a new user account
 #[utoipa::path(
@@ -55,7 +100,8 @@ pub async fn register(
             let roles = db::get_user_roles(&pool, &user.id).await.unwrap_or_default();
             let role_names: Vec<String> = roles.iter().map(|r| r.name.clone()).collect();
 
-            let token = auth::create_jwt(&user.id, &user.username, role_names)
+            // New users won't have organizations yet, but use extended function for consistency
+            let token = create_jwt_extended(&user.id, &user.username, role_names, None)
                 .map_err(|_| actix_web::error::ErrorInternalServerError("Failed to create token"))?;
 
             let refresh_token = auth::create_refresh_token(&user.id)
@@ -272,8 +318,11 @@ pub async fn login(
     let roles = db::get_user_roles(&pool, &user.id).await.unwrap_or_default();
     let role_names: Vec<String> = roles.iter().map(|r| r.name.clone()).collect();
 
-    // Create JWT token
-    let token = auth::create_jwt(&user.id, &user.username, role_names)
+    // Get organization context for extended JWT claims
+    let extended_claims = build_extended_claims(pool.get_ref(), &user.id).await;
+
+    // Create JWT token with organization context
+    let token = create_jwt_extended(&user.id, &user.username, role_names, extended_claims)
         .map_err(|_| actix_web::error::ErrorInternalServerError("Failed to create token"))?;
 
     let refresh_token = auth::create_refresh_token(&user.id)
@@ -549,7 +598,10 @@ pub async fn refresh(
     let roles = db::get_user_roles(&pool, &user.id).await.unwrap_or_default();
     let role_names: Vec<String> = roles.iter().map(|r| r.name.clone()).collect();
 
-    let access_token = auth::create_jwt(&user.id, &user.username, role_names)
+    // Get organization context for extended JWT claims
+    let extended_claims = build_extended_claims(pool.get_ref(), &user.id).await;
+
+    let access_token = create_jwt_extended(&user.id, &user.username, role_names, extended_claims)
         .map_err(|_| actix_web::error::ErrorInternalServerError("Failed to create token"))?;
 
     Ok(HttpResponse::Ok().json(models::RefreshTokenResponse {

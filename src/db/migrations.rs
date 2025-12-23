@@ -157,6 +157,8 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     create_chat_tables(pool).await?;
     // SSO user profile sync tables
     add_sso_profile_fields(pool).await?;
+    // ABAC permissions and organization hierarchy
+    create_permissions_system(pool).await?;
     Ok(())
 }
 
@@ -7958,5 +7960,797 @@ async fn create_chat_tables(pool: &SqlitePool) -> Result<()> {
         .await?;
 
     log::info!("Created AI chat tables");
+    Ok(())
+}
+
+/// Create ABAC permissions system and organization hierarchy tables
+async fn create_permissions_system(pool: &SqlitePool) -> Result<()> {
+    // =========================================================================
+    // Organizational Hierarchy Tables
+    // =========================================================================
+
+    // Organizations (top-level tenant)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS organizations (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            slug TEXT UNIQUE NOT NULL,
+            description TEXT,
+            settings TEXT,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Departments within organizations
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS departments (
+            id TEXT PRIMARY KEY,
+            organization_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            slug TEXT NOT NULL,
+            description TEXT,
+            parent_department_id TEXT,
+            manager_user_id TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
+            FOREIGN KEY (parent_department_id) REFERENCES departments(id) ON DELETE SET NULL,
+            FOREIGN KEY (manager_user_id) REFERENCES users(id) ON DELETE SET NULL,
+            UNIQUE(organization_id, slug)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Teams within departments
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS teams (
+            id TEXT PRIMARY KEY,
+            department_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            slug TEXT NOT NULL,
+            description TEXT,
+            team_lead_user_id TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE CASCADE,
+            FOREIGN KEY (team_lead_user_id) REFERENCES users(id) ON DELETE SET NULL,
+            UNIQUE(department_id, slug)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // User-Organization membership
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS user_organizations (
+            user_id TEXT NOT NULL,
+            organization_id TEXT NOT NULL,
+            org_role TEXT NOT NULL DEFAULT 'member',
+            joined_at TEXT NOT NULL,
+            invited_by TEXT,
+            PRIMARY KEY (user_id, organization_id),
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
+            FOREIGN KEY (invited_by) REFERENCES users(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // User-Team membership
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS user_teams (
+            user_id TEXT NOT NULL,
+            team_id TEXT NOT NULL,
+            team_role TEXT NOT NULL DEFAULT 'member',
+            joined_at TEXT NOT NULL,
+            added_by TEXT,
+            PRIMARY KEY (user_id, team_id),
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
+            FOREIGN KEY (added_by) REFERENCES users(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Indexes for hierarchy queries
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_departments_org ON departments(organization_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_departments_parent ON departments(parent_department_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_teams_department ON teams(department_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_user_orgs_user ON user_organizations(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_user_orgs_org ON user_organizations(organization_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_user_teams_user ON user_teams(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_user_teams_team ON user_teams(team_id)")
+        .execute(pool)
+        .await?;
+
+    // =========================================================================
+    // Permission and Policy Tables
+    // =========================================================================
+
+    // Resource types
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS resource_types (
+            id TEXT PRIMARY KEY,
+            name TEXT UNIQUE NOT NULL,
+            description TEXT,
+            created_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Actions
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS actions (
+            id TEXT PRIMARY KEY,
+            name TEXT UNIQUE NOT NULL,
+            description TEXT,
+            created_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Permissions (atomic units)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS permissions (
+            id TEXT PRIMARY KEY,
+            resource_type_id TEXT NOT NULL,
+            action_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            is_system INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (resource_type_id) REFERENCES resource_types(id) ON DELETE CASCADE,
+            FOREIGN KEY (action_id) REFERENCES actions(id) ON DELETE CASCADE,
+            UNIQUE(resource_type_id, action_id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // ABAC Policies
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS policies (
+            id TEXT PRIMARY KEY,
+            name TEXT UNIQUE NOT NULL,
+            description TEXT,
+            resource_type_id TEXT NOT NULL,
+            effect TEXT NOT NULL DEFAULT 'allow',
+            priority INTEGER NOT NULL DEFAULT 100,
+            conditions TEXT NOT NULL,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            is_system INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (resource_type_id) REFERENCES resource_types(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Policy-Action mappings
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS policy_actions (
+            policy_id TEXT NOT NULL,
+            action_id TEXT NOT NULL,
+            PRIMARY KEY (policy_id, action_id),
+            FOREIGN KEY (policy_id) REFERENCES policies(id) ON DELETE CASCADE,
+            FOREIGN KEY (action_id) REFERENCES actions(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Indexes for permission queries
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_permissions_resource ON permissions(resource_type_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_permissions_action ON permissions(action_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_policies_resource ON policies(resource_type_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_policies_priority ON policies(priority DESC)")
+        .execute(pool)
+        .await?;
+
+    // =========================================================================
+    // Role Templates and Custom Roles
+    // =========================================================================
+
+    // Role templates (predefined, system-managed)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS role_templates (
+            id TEXT PRIMARY KEY,
+            name TEXT UNIQUE NOT NULL,
+            display_name TEXT NOT NULL,
+            description TEXT,
+            icon TEXT,
+            color TEXT,
+            is_system INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Template-Permission mappings
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS role_template_permissions (
+            template_id TEXT NOT NULL,
+            permission_id TEXT NOT NULL,
+            include_conditions INTEGER NOT NULL DEFAULT 1,
+            PRIMARY KEY (template_id, permission_id),
+            FOREIGN KEY (template_id) REFERENCES role_templates(id) ON DELETE CASCADE,
+            FOREIGN KEY (permission_id) REFERENCES permissions(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Template-Policy mappings
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS role_template_policies (
+            template_id TEXT NOT NULL,
+            policy_id TEXT NOT NULL,
+            PRIMARY KEY (template_id, policy_id),
+            FOREIGN KEY (template_id) REFERENCES role_templates(id) ON DELETE CASCADE,
+            FOREIGN KEY (policy_id) REFERENCES policies(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Custom roles (organization-specific)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS custom_roles (
+            id TEXT PRIMARY KEY,
+            organization_id TEXT NOT NULL,
+            based_on_template_id TEXT,
+            name TEXT NOT NULL,
+            display_name TEXT NOT NULL,
+            description TEXT,
+            icon TEXT,
+            color TEXT,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_by TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
+            FOREIGN KEY (based_on_template_id) REFERENCES role_templates(id) ON DELETE SET NULL,
+            FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+            UNIQUE(organization_id, name)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Custom role permissions (overrides)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS custom_role_permissions (
+            role_id TEXT NOT NULL,
+            permission_id TEXT NOT NULL,
+            granted INTEGER NOT NULL DEFAULT 1,
+            PRIMARY KEY (role_id, permission_id),
+            FOREIGN KEY (role_id) REFERENCES custom_roles(id) ON DELETE CASCADE,
+            FOREIGN KEY (permission_id) REFERENCES permissions(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Custom role policies
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS custom_role_policies (
+            role_id TEXT NOT NULL,
+            policy_id TEXT NOT NULL,
+            PRIMARY KEY (role_id, policy_id),
+            FOREIGN KEY (role_id) REFERENCES custom_roles(id) ON DELETE CASCADE,
+            FOREIGN KEY (policy_id) REFERENCES policies(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // User role assignments
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS user_role_assignments (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            organization_id TEXT NOT NULL,
+            role_type TEXT NOT NULL,
+            role_id TEXT NOT NULL,
+            scope_type TEXT,
+            scope_id TEXT,
+            assigned_at TEXT NOT NULL,
+            assigned_by TEXT,
+            expires_at TEXT,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
+            FOREIGN KEY (assigned_by) REFERENCES users(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // User permission overrides (exceptions)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS user_permission_overrides (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            organization_id TEXT NOT NULL,
+            permission_id TEXT NOT NULL,
+            granted INTEGER NOT NULL,
+            reason TEXT,
+            granted_by TEXT NOT NULL,
+            granted_at TEXT NOT NULL,
+            expires_at TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
+            FOREIGN KEY (permission_id) REFERENCES permissions(id) ON DELETE CASCADE,
+            FOREIGN KEY (granted_by) REFERENCES users(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Indexes for role queries
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_custom_roles_org ON custom_roles(organization_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_user_role_assignments_user ON user_role_assignments(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_user_role_assignments_org ON user_role_assignments(organization_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_user_permission_overrides_user ON user_permission_overrides(user_id)")
+        .execute(pool)
+        .await?;
+
+    // =========================================================================
+    // Resource Ownership and Sharing
+    // =========================================================================
+
+    // Resource ownership tracking
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS resource_ownership (
+            id TEXT PRIMARY KEY,
+            resource_type TEXT NOT NULL,
+            resource_id TEXT NOT NULL,
+            owner_type TEXT NOT NULL,
+            owner_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            created_by TEXT,
+            FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+            UNIQUE(resource_type, resource_id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Resource sharing
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS resource_shares (
+            id TEXT PRIMARY KEY,
+            resource_type TEXT NOT NULL,
+            resource_id TEXT NOT NULL,
+            shared_with_type TEXT NOT NULL,
+            shared_with_id TEXT NOT NULL,
+            permission_level TEXT NOT NULL,
+            shared_by TEXT NOT NULL,
+            shared_at TEXT NOT NULL,
+            expires_at TEXT,
+            FOREIGN KEY (shared_by) REFERENCES users(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Permission cache
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS permission_cache (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            organization_id TEXT NOT NULL,
+            cache_key TEXT NOT NULL,
+            effective_permissions TEXT NOT NULL,
+            computed_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
+            UNIQUE(user_id, organization_id, cache_key)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Indexes for ownership/sharing queries
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_resource_ownership_type_id ON resource_ownership(resource_type, resource_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_resource_ownership_owner ON resource_ownership(owner_type, owner_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_resource_shares_resource ON resource_shares(resource_type, resource_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_resource_shares_shared_with ON resource_shares(shared_with_type, shared_with_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_permission_cache_user ON permission_cache(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_permission_cache_expires ON permission_cache(expires_at)")
+        .execute(pool)
+        .await?;
+
+    // =========================================================================
+    // Seed Data
+    // =========================================================================
+
+    // Seed resource types
+    let now = chrono::Utc::now();
+    let resource_types = vec![
+        ("scans", "Network and vulnerability scans"),
+        ("reports", "Generated reports"),
+        ("assets", "Asset inventory"),
+        ("vulnerabilities", "Vulnerability tracking"),
+        ("users", "User accounts"),
+        ("settings", "System settings"),
+        ("customers", "CRM customers"),
+        ("engagements", "Customer engagements"),
+        ("audit_logs", "Audit logs"),
+    ];
+
+    for (name, desc) in resource_types {
+        let _ = sqlx::query(
+            "INSERT OR IGNORE INTO resource_types (id, name, description, created_at) VALUES (?, ?, ?, ?)"
+        )
+        .bind(name)
+        .bind(name)
+        .bind(desc)
+        .bind(now)
+        .execute(pool)
+        .await;
+    }
+
+    // Seed actions
+    let actions = vec![
+        ("create", "Create new resources"),
+        ("read", "View resources"),
+        ("update", "Modify existing resources"),
+        ("delete", "Remove resources"),
+        ("execute", "Execute/run resources"),
+        ("share", "Share resources with others"),
+        ("export", "Export/download resources"),
+    ];
+
+    for (name, desc) in actions {
+        let _ = sqlx::query(
+            "INSERT OR IGNORE INTO actions (id, name, description, created_at) VALUES (?, ?, ?, ?)"
+        )
+        .bind(name)
+        .bind(name)
+        .bind(desc)
+        .bind(now)
+        .execute(pool)
+        .await;
+    }
+
+    // Seed permissions (resource_type:action combinations)
+    let permissions = vec![
+        ("scans:create", "scans", "create", "Create Scans"),
+        ("scans:read", "scans", "read", "View Scans"),
+        ("scans:update", "scans", "update", "Update Scans"),
+        ("scans:delete", "scans", "delete", "Delete Scans"),
+        ("scans:execute", "scans", "execute", "Execute Scans"),
+        ("scans:share", "scans", "share", "Share Scans"),
+        ("scans:export", "scans", "export", "Export Scans"),
+        ("reports:create", "reports", "create", "Create Reports"),
+        ("reports:read", "reports", "read", "View Reports"),
+        ("reports:update", "reports", "update", "Update Reports"),
+        ("reports:delete", "reports", "delete", "Delete Reports"),
+        ("reports:export", "reports", "export", "Export Reports"),
+        ("assets:create", "assets", "create", "Create Assets"),
+        ("assets:read", "assets", "read", "View Assets"),
+        ("assets:update", "assets", "update", "Update Assets"),
+        ("assets:delete", "assets", "delete", "Delete Assets"),
+        ("vulnerabilities:read", "vulnerabilities", "read", "View Vulnerabilities"),
+        ("vulnerabilities:update", "vulnerabilities", "update", "Update Vulnerabilities"),
+        ("users:create", "users", "create", "Create Users"),
+        ("users:read", "users", "read", "View Users"),
+        ("users:update", "users", "update", "Update Users"),
+        ("users:delete", "users", "delete", "Delete Users"),
+        ("settings:read", "settings", "read", "View Settings"),
+        ("settings:update", "settings", "update", "Update Settings"),
+        ("customers:create", "customers", "create", "Create Customers"),
+        ("customers:read", "customers", "read", "View Customers"),
+        ("customers:update", "customers", "update", "Update Customers"),
+        ("customers:delete", "customers", "delete", "Delete Customers"),
+        ("engagements:create", "engagements", "create", "Create Engagements"),
+        ("engagements:read", "engagements", "read", "View Engagements"),
+        ("engagements:update", "engagements", "update", "Update Engagements"),
+        ("engagements:delete", "engagements", "delete", "Delete Engagements"),
+        ("audit_logs:read", "audit_logs", "read", "View Audit Logs"),
+    ];
+
+    for (id, resource_type, action, name) in permissions {
+        let _ = sqlx::query(
+            "INSERT OR IGNORE INTO permissions (id, resource_type_id, action_id, name, is_system, created_at) VALUES (?, ?, ?, ?, 1, ?)"
+        )
+        .bind(id)
+        .bind(resource_type)
+        .bind(action)
+        .bind(name)
+        .bind(now)
+        .execute(pool)
+        .await;
+    }
+
+    // Seed role templates
+    let role_templates = vec![
+        ("admin", "Administrator", "Full system access", "shield", "#ef4444"),
+        ("analyst", "Security Analyst", "Scans, reports, and vulnerability management", "search", "#3b82f6"),
+        ("viewer", "Viewer", "Read-only access to own resources", "eye", "#6b7280"),
+        ("auditor", "Auditor", "Read-only access for compliance auditing", "clipboard-check", "#8b5cf6"),
+        ("engineer", "Security Engineer", "Scans and asset management", "wrench", "#10b981"),
+        ("manager", "Team Manager", "Team resources management", "users", "#f59e0b"),
+    ];
+
+    for (id, display_name, desc, icon, color) in role_templates {
+        let _ = sqlx::query(
+            r#"INSERT OR IGNORE INTO role_templates
+               (id, name, display_name, description, icon, color, is_system, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)"#
+        )
+        .bind(id)
+        .bind(id)
+        .bind(display_name)
+        .bind(desc)
+        .bind(icon)
+        .bind(color)
+        .bind(now)
+        .bind(now)
+        .execute(pool)
+        .await;
+    }
+
+    // Seed default policies
+    let policies = vec![
+        ("owner_full_access", "Owner Full Access", "scans", r#"{"type":"owner","field":"owner_id","operator":"eq","value":"$user_id"}"#),
+        ("team_member_read", "Team Member Read", "scans", r#"{"type":"team_member","field":"owner_team_id","operator":"in","value":"$user_teams"}"#),
+    ];
+
+    for (id, name, resource_type, conditions) in policies {
+        let _ = sqlx::query(
+            r#"INSERT OR IGNORE INTO policies
+               (id, name, description, resource_type_id, effect, priority, conditions, is_active, is_system, created_at, updated_at)
+               VALUES (?, ?, ?, ?, 'allow', 100, ?, 1, 1, ?, ?)"#
+        )
+        .bind(id)
+        .bind(name)
+        .bind(name)
+        .bind(resource_type)
+        .bind(conditions)
+        .bind(now)
+        .bind(now)
+        .execute(pool)
+        .await;
+    }
+
+    // Assign all permissions to admin template
+    let _ = sqlx::query(
+        r#"INSERT OR IGNORE INTO role_template_permissions (template_id, permission_id, include_conditions)
+           SELECT 'admin', id, 0 FROM permissions"#
+    )
+    .execute(pool)
+    .await;
+
+    // Assign basic permissions to analyst template
+    let analyst_perms = vec![
+        "scans:create", "scans:read", "scans:update", "scans:delete", "scans:execute", "scans:export",
+        "reports:create", "reports:read", "reports:update", "reports:delete", "reports:export",
+        "assets:read", "vulnerabilities:read", "vulnerabilities:update",
+    ];
+    for perm in analyst_perms {
+        let _ = sqlx::query(
+            "INSERT OR IGNORE INTO role_template_permissions (template_id, permission_id, include_conditions) VALUES ('analyst', ?, 1)"
+        )
+        .bind(perm)
+        .execute(pool)
+        .await;
+    }
+
+    // Assign read permissions to viewer template (with conditions)
+    let viewer_perms = vec!["scans:read", "reports:read", "assets:read", "vulnerabilities:read"];
+    for perm in viewer_perms {
+        let _ = sqlx::query(
+            "INSERT OR IGNORE INTO role_template_permissions (template_id, permission_id, include_conditions) VALUES ('viewer', ?, 1)"
+        )
+        .bind(perm)
+        .execute(pool)
+        .await;
+    }
+
+    // Assign audit permissions to auditor template (no conditions - can view all)
+    let auditor_perms = vec![
+        "scans:read", "reports:read", "assets:read", "vulnerabilities:read", "audit_logs:read",
+        "customers:read", "engagements:read", "users:read",
+    ];
+    for perm in auditor_perms {
+        let _ = sqlx::query(
+            "INSERT OR IGNORE INTO role_template_permissions (template_id, permission_id, include_conditions) VALUES ('auditor', ?, 0)"
+        )
+        .bind(perm)
+        .execute(pool)
+        .await;
+    }
+
+    // Assign permissions to engineer template
+    let engineer_perms = vec![
+        "scans:create", "scans:read", "scans:update", "scans:execute", "scans:export",
+        "assets:create", "assets:read", "assets:update", "assets:delete",
+        "vulnerabilities:read",
+    ];
+    for perm in engineer_perms {
+        let _ = sqlx::query(
+            "INSERT OR IGNORE INTO role_template_permissions (template_id, permission_id, include_conditions) VALUES ('engineer', ?, 1)"
+        )
+        .bind(perm)
+        .execute(pool)
+        .await;
+    }
+
+    // Assign permissions to manager template
+    let manager_perms = vec![
+        "scans:read", "scans:update", "scans:share",
+        "reports:create", "reports:read", "reports:update", "reports:share", "reports:export",
+        "users:read", "customers:read", "engagements:read",
+    ];
+    for perm in manager_perms {
+        let _ = sqlx::query(
+            "INSERT OR IGNORE INTO role_template_permissions (template_id, permission_id, include_conditions) VALUES ('manager', ?, 1)"
+        )
+        .bind(perm)
+        .execute(pool)
+        .await;
+    }
+
+    // =========================================================================
+    // Migrate Existing Data
+    // =========================================================================
+
+    // Create default organization for existing users
+    let default_org_id = "org_default";
+    let _ = sqlx::query(
+        r#"INSERT OR IGNORE INTO organizations (id, name, slug, description, is_active, created_at, updated_at)
+           VALUES (?, 'Default Organization', 'default', 'Auto-created for existing users', 1, ?, ?)"#
+    )
+    .bind(default_org_id)
+    .bind(now)
+    .bind(now)
+    .execute(pool)
+    .await;
+
+    // Add existing users to default organization
+    let _ = sqlx::query(
+        r#"INSERT OR IGNORE INTO user_organizations (user_id, organization_id, org_role, joined_at)
+           SELECT id, ?, 'member', ? FROM users"#
+    )
+    .bind(default_org_id)
+    .bind(now)
+    .execute(pool)
+    .await;
+
+    // Migrate existing user_roles to user_role_assignments
+    let _ = sqlx::query(
+        r#"INSERT OR IGNORE INTO user_role_assignments (id, user_id, organization_id, role_type, role_id, assigned_at, assigned_by, is_active)
+           SELECT
+               hex(randomblob(16)),
+               ur.user_id,
+               ?,
+               'template',
+               ur.role_id,
+               ur.assigned_at,
+               ur.assigned_by,
+               1
+           FROM user_roles ur
+           WHERE ur.role_id IN ('admin', 'user', 'auditor', 'viewer')"#
+    )
+    .bind(default_org_id)
+    .execute(pool)
+    .await;
+
+    // Map old 'user' role to 'analyst' template
+    let _ = sqlx::query(
+        r#"UPDATE user_role_assignments SET role_id = 'analyst' WHERE role_id = 'user'"#
+    )
+    .execute(pool)
+    .await;
+
+    // Create resource ownership for existing scans
+    let _ = sqlx::query(
+        r#"INSERT OR IGNORE INTO resource_ownership (id, resource_type, resource_id, owner_type, owner_id, created_at, created_by)
+           SELECT
+               hex(randomblob(16)),
+               'scans',
+               id,
+               'user',
+               user_id,
+               created_at,
+               user_id
+           FROM scan_results
+           WHERE user_id IS NOT NULL"#
+    )
+    .execute(pool)
+    .await;
+
+    log::info!("Created ABAC permissions system tables and seeded data");
     Ok(())
 }
