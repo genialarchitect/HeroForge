@@ -69,6 +69,8 @@ pub mod exploitation;
 pub mod remediation;
 pub mod executive_dashboard;
 pub mod report_templates;
+pub mod scanner_import;
+pub mod integrations_bots;
 
 #[cfg(test)]
 mod tests;

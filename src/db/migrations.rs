@@ -174,6 +174,9 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     create_executive_dashboard_tables(pool).await?;
     // Sprint 9: Custom Report Templates
     create_custom_report_templates_tables(pool).await?;
+    // Sprint 10: External Integrations (Scanner Import, Slack/Teams Bots)
+    create_scanner_import_tables(pool).await?;
+    create_integration_bot_tables(pool).await?;
     Ok(())
 }
 
@@ -10220,5 +10223,355 @@ async fn create_custom_report_templates_tables(pool: &SqlitePool) -> Result<()> 
         .await?;
 
     log::info!("Created custom report templates tables");
+    Ok(())
+}
+
+/// Sprint 10: Scanner Import tables for Nessus/Qualys integration
+async fn create_scanner_import_tables(pool: &SqlitePool) -> Result<()> {
+    // Main imported scans table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS imported_scans (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            organization_id TEXT,
+            source TEXT NOT NULL,
+            original_filename TEXT NOT NULL,
+            file_hash TEXT,
+            scanner_name TEXT,
+            scanner_version TEXT,
+            policy_name TEXT,
+            scan_name TEXT,
+            scan_date TEXT,
+            host_count INTEGER NOT NULL DEFAULT 0,
+            finding_count INTEGER NOT NULL DEFAULT 0,
+            critical_count INTEGER NOT NULL DEFAULT 0,
+            high_count INTEGER NOT NULL DEFAULT 0,
+            medium_count INTEGER NOT NULL DEFAULT 0,
+            low_count INTEGER NOT NULL DEFAULT 0,
+            info_count INTEGER NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'pending',
+            error_message TEXT,
+            scan_id TEXT REFERENCES scan_results(id),
+            imported_at TEXT NOT NULL,
+            processing_started_at TEXT,
+            processing_completed_at TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Imported hosts from external scanners
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS imported_hosts (
+            id TEXT PRIMARY KEY,
+            import_id TEXT NOT NULL,
+            ip TEXT NOT NULL,
+            hostname TEXT,
+            fqdn TEXT,
+            mac_address TEXT,
+            os TEXT,
+            os_confidence INTEGER,
+            netbios_name TEXT,
+            critical_count INTEGER NOT NULL DEFAULT 0,
+            high_count INTEGER NOT NULL DEFAULT 0,
+            medium_count INTEGER NOT NULL DEFAULT 0,
+            low_count INTEGER NOT NULL DEFAULT 0,
+            info_count INTEGER NOT NULL DEFAULT 0,
+            asset_id TEXT REFERENCES assets(id),
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (import_id) REFERENCES imported_scans(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Imported findings from external scanners
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS imported_findings (
+            id TEXT PRIMARY KEY,
+            import_id TEXT NOT NULL,
+            imported_host_id TEXT NOT NULL,
+            plugin_id TEXT,
+            title TEXT NOT NULL,
+            description TEXT,
+            severity TEXT NOT NULL,
+            cvss_score REAL,
+            cvss_vector TEXT,
+            cve_ids TEXT,
+            cwe_ids TEXT,
+            port INTEGER,
+            protocol TEXT,
+            service TEXT,
+            solution TEXT,
+            see_also TEXT,
+            plugin_output TEXT,
+            first_discovered TEXT,
+            last_observed TEXT,
+            exploit_available INTEGER NOT NULL DEFAULT 0,
+            exploitability_ease TEXT,
+            patch_published TEXT,
+            vuln_tracking_id TEXT REFERENCES vulnerability_tracking(id),
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (import_id) REFERENCES imported_scans(id) ON DELETE CASCADE,
+            FOREIGN KEY (imported_host_id) REFERENCES imported_hosts(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Import field mappings (for custom field mapping)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS import_field_mappings (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            organization_id TEXT,
+            source TEXT NOT NULL,
+            name TEXT NOT NULL,
+            mappings TEXT NOT NULL,
+            is_default INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Indexes
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_imported_scans_user ON imported_scans(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_imported_scans_org ON imported_scans(organization_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_imported_scans_source ON imported_scans(source)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_imported_scans_status ON imported_scans(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_imported_hosts_import ON imported_hosts(import_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_imported_hosts_ip ON imported_hosts(ip)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_imported_findings_import ON imported_findings(import_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_imported_findings_host ON imported_findings(imported_host_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_imported_findings_severity ON imported_findings(severity)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created scanner import tables");
+    Ok(())
+}
+
+/// Sprint 10: Integration bot tables for Slack/Teams
+async fn create_integration_bot_tables(pool: &SqlitePool) -> Result<()> {
+    // Slack workspace configurations
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS slack_workspaces (
+            id TEXT PRIMARY KEY,
+            organization_id TEXT,
+            workspace_id TEXT NOT NULL UNIQUE,
+            workspace_name TEXT NOT NULL,
+            bot_token TEXT NOT NULL,
+            bot_user_id TEXT,
+            signing_secret TEXT NOT NULL,
+            default_channel_id TEXT,
+            default_channel_name TEXT,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Slack channel mappings (which channels get which alerts)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS slack_channel_mappings (
+            id TEXT PRIMARY KEY,
+            workspace_id TEXT NOT NULL,
+            channel_id TEXT NOT NULL,
+            channel_name TEXT NOT NULL,
+            alert_types TEXT NOT NULL,
+            severity_filter TEXT,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (workspace_id) REFERENCES slack_workspaces(id) ON DELETE CASCADE,
+            UNIQUE(workspace_id, channel_id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Slack command logs
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS slack_command_logs (
+            id TEXT PRIMARY KEY,
+            workspace_id TEXT NOT NULL,
+            channel_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            user_name TEXT,
+            command TEXT NOT NULL,
+            command_text TEXT,
+            response_type TEXT,
+            success INTEGER NOT NULL DEFAULT 1,
+            error_message TEXT,
+            executed_at TEXT NOT NULL,
+            FOREIGN KEY (workspace_id) REFERENCES slack_workspaces(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Microsoft Teams configurations
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS teams_tenants (
+            id TEXT PRIMARY KEY,
+            organization_id TEXT,
+            tenant_id TEXT NOT NULL UNIQUE,
+            tenant_name TEXT NOT NULL,
+            app_id TEXT NOT NULL,
+            app_secret TEXT NOT NULL,
+            bot_id TEXT,
+            service_url TEXT,
+            default_team_id TEXT,
+            default_channel_id TEXT,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Teams channel mappings
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS teams_channel_mappings (
+            id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            team_id TEXT NOT NULL,
+            channel_id TEXT NOT NULL,
+            channel_name TEXT NOT NULL,
+            alert_types TEXT NOT NULL,
+            severity_filter TEXT,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (tenant_id) REFERENCES teams_tenants(id) ON DELETE CASCADE,
+            UNIQUE(tenant_id, team_id, channel_id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Teams command logs
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS teams_command_logs (
+            id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            team_id TEXT NOT NULL,
+            channel_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            user_name TEXT,
+            command TEXT NOT NULL,
+            command_text TEXT,
+            response_type TEXT,
+            success INTEGER NOT NULL DEFAULT 1,
+            error_message TEXT,
+            executed_at TEXT NOT NULL,
+            FOREIGN KEY (tenant_id) REFERENCES teams_tenants(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Bot notification queue (for async delivery)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS bot_notification_queue (
+            id TEXT PRIMARY KEY,
+            platform TEXT NOT NULL,
+            workspace_or_tenant_id TEXT NOT NULL,
+            channel_id TEXT NOT NULL,
+            notification_type TEXT NOT NULL,
+            payload TEXT NOT NULL,
+            priority INTEGER NOT NULL DEFAULT 5,
+            status TEXT NOT NULL DEFAULT 'pending',
+            retry_count INTEGER NOT NULL DEFAULT 0,
+            max_retries INTEGER NOT NULL DEFAULT 3,
+            scheduled_for TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            sent_at TEXT,
+            error_message TEXT
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Indexes
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_slack_workspaces_org ON slack_workspaces(organization_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_slack_channel_mappings_workspace ON slack_channel_mappings(workspace_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_slack_command_logs_workspace ON slack_command_logs(workspace_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_slack_command_logs_executed ON slack_command_logs(executed_at DESC)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_teams_tenants_org ON teams_tenants(organization_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_teams_channel_mappings_tenant ON teams_channel_mappings(tenant_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_teams_command_logs_tenant ON teams_command_logs(tenant_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_teams_command_logs_executed ON teams_command_logs(executed_at DESC)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_bot_queue_status ON bot_notification_queue(status, scheduled_for)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_bot_queue_platform ON bot_notification_queue(platform, workspace_or_tenant_id)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created integration bot tables");
     Ok(())
 }

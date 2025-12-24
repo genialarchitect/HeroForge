@@ -150,6 +150,7 @@ walkdir = "2.5.0"
 tempfile = "3.23.0"
 humantime-serde = "1.1.1"
 dirs = "6.0.0"
+quick-xml = "0.38.4"
 
 [dev-dependencies]
 mockito = "1.5"
