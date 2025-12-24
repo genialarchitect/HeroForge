@@ -115,17 +115,12 @@ pub async fn init_database(database_url: &str) -> Result<SqlitePool> {
 
     // Apply encryption key if provided via PRAGMA key
     // SQLCipher will encrypt the database with AES-256 using this key
+    // Using SQLCipher 4.x defaults: 256000 KDF iterations, HMAC_SHA512, PBKDF2_HMAC_SHA512
     if let Some(key) = &encryption_key {
         log::info!("Database encryption is ENABLED via DATABASE_ENCRYPTION_KEY");
-        connect_options = connect_options.pragma("key", key.clone());
-
-        // Set SQLCipher configuration for maximum security
-        // PBKDF2 HMAC SHA512 with 256,000 iterations (FIPS 140-2 compliant)
-        connect_options = connect_options
-            .pragma("cipher_page_size", "4096")
-            .pragma("kdf_iter", "256000")
-            .pragma("cipher_hmac_algorithm", "HMAC_SHA512")
-            .pragma("cipher_kdf_algorithm", "PBKDF2_HMAC_SHA512");
+        // Key must be quoted for SQLCipher PRAGMA key syntax
+        connect_options = connect_options.pragma("key", format!("'{}'", key));
+        // Using SQLCipher 4.x defaults - no additional cipher pragmas needed
     } else if require_encryption {
         // SECURITY: Fail startup if encryption is required but no key is provided
         return Err(anyhow::anyhow!(
