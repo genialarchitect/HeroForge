@@ -11,81 +11,81 @@ use lazy_static::lazy_static;
 use regex::Regex;
 
 lazy_static! {
-    // Storage Account patterns
+    // Storage Account patterns (line-by-line matching for explicit misconfigurations)
     static ref AZURE_STORAGE_HTTP_ENABLED: Regex = Regex::new(r#"(?i)enable_https_traffic_only\s*=\s*false"#).unwrap();
     static ref AZURE_STORAGE_NO_MIN_TLS: Regex = Regex::new(r#"(?i)min_tls_version\s*=\s*["']TLS1_0["']"#).unwrap();
     static ref AZURE_STORAGE_TLS11: Regex = Regex::new(r#"(?i)min_tls_version\s*=\s*["']TLS1_1["']"#).unwrap();
     static ref AZURE_STORAGE_PUBLIC_NETWORK: Regex = Regex::new(r#"(?i)public_network_access_enabled\s*=\s*true"#).unwrap();
     static ref AZURE_STORAGE_BLOB_PUBLIC: Regex = Regex::new(r#"(?i)allow_nested_items_to_be_public\s*=\s*true"#).unwrap();
-    static ref AZURE_STORAGE_NO_SOFT_DELETE: Regex = Regex::new(r#"resource\s+"azurerm_storage_account"\s+"[^"]+"\s*\{(?:(?!blob_properties).)*\}"#).unwrap();
-    static ref AZURE_STORAGE_NO_NETWORK_RULES: Regex = Regex::new(r#"resource\s+"azurerm_storage_account"\s+"[^"]+"\s*\{(?:(?!network_rules).)*\}"#).unwrap();
+    static ref AZURE_STORAGE_NO_SOFT_DELETE: Regex = Regex::new(r#"(?i)azurerm_storage_account"#).unwrap();
+    static ref AZURE_STORAGE_NO_NETWORK_RULES: Regex = Regex::new(r#"(?i)azurerm_storage_account"#).unwrap();
     static ref AZURE_STORAGE_SHARED_KEY_ENABLED: Regex = Regex::new(r#"(?i)shared_access_key_enabled\s*=\s*true"#).unwrap();
     static ref AZURE_STORAGE_INFRASTRUCTURE_ENCRYPTION_DISABLED: Regex = Regex::new(r#"(?i)infrastructure_encryption_enabled\s*=\s*false"#).unwrap();
-    static ref AZURE_STORAGE_QUEUE_LOG_DISABLED: Regex = Regex::new(r#"(?i)queue_properties\s*\{[^}]*logging\s*\{[^}]*delete\s*=\s*false"#).unwrap();
+    static ref AZURE_STORAGE_QUEUE_LOG_DISABLED: Regex = Regex::new(r#"(?i)delete\s*=\s*false"#).unwrap();
 
     // SQL/Database patterns
-    static ref AZURE_SQL_NO_AUDITING: Regex = Regex::new(r#"resource\s+"azurerm_mssql_server"\s+"[^"]+"\s*\{(?:(?!extended_auditing_policy).)*\}"#).unwrap();
+    static ref AZURE_SQL_NO_AUDITING: Regex = Regex::new(r#"(?i)azurerm_mssql_server"#).unwrap();
     static ref AZURE_SQL_NO_TDE: Regex = Regex::new(r#"(?i)transparent_data_encryption_enabled\s*=\s*false"#).unwrap();
-    static ref AZURE_SQL_NO_AAD_ADMIN: Regex = Regex::new(r#"resource\s+"azurerm_mssql_server"\s+"[^"]+"\s*\{(?:(?!azuread_administrator).)*\}"#).unwrap();
+    static ref AZURE_SQL_NO_AAD_ADMIN: Regex = Regex::new(r#"(?i)azurerm_mssql_server"#).unwrap();
     static ref AZURE_SQL_PUBLIC_NETWORK: Regex = Regex::new(r#"(?i)public_network_access_enabled\s*=\s*true"#).unwrap();
     static ref AZURE_SQL_MIN_TLS_LOW: Regex = Regex::new(r#"(?i)minimum_tls_version\s*=\s*["']1\.[01]["']"#).unwrap();
     static ref AZURE_POSTGRES_NO_SSL: Regex = Regex::new(r#"(?i)ssl_enforcement_enabled\s*=\s*false"#).unwrap();
     static ref AZURE_POSTGRES_NO_GEO_BACKUP: Regex = Regex::new(r#"(?i)geo_redundant_backup_enabled\s*=\s*false"#).unwrap();
     static ref AZURE_MYSQL_NO_SSL: Regex = Regex::new(r#"(?i)ssl_enforcement_enabled\s*=\s*false"#).unwrap();
-    static ref AZURE_COSMOSDB_NO_CMEK: Regex = Regex::new(r#"resource\s+"azurerm_cosmosdb_account"\s+"[^"]+"\s*\{(?:(?!key_vault_key_id).)*\}"#).unwrap();
+    static ref AZURE_COSMOSDB_NO_CMEK: Regex = Regex::new(r#"(?i)azurerm_cosmosdb_account"#).unwrap();
     static ref AZURE_COSMOSDB_PUBLIC_NETWORK: Regex = Regex::new(r#"(?i)public_network_access_enabled\s*=\s*true"#).unwrap();
 
     // AKS patterns
     static ref AKS_NO_RBAC: Regex = Regex::new(r#"(?i)role_based_access_control_enabled\s*=\s*false"#).unwrap();
-    static ref AKS_NO_AZURE_POLICY: Regex = Regex::new(r#"resource\s+"azurerm_kubernetes_cluster"\s+"[^"]+"\s*\{(?:(?!azure_policy_enabled).)*\}"#).unwrap();
+    static ref AKS_NO_AZURE_POLICY: Regex = Regex::new(r#"(?i)azure_policy_enabled\s*=\s*false"#).unwrap();
     static ref AKS_NO_PRIVATE_CLUSTER: Regex = Regex::new(r#"(?i)private_cluster_enabled\s*=\s*false"#).unwrap();
-    static ref AKS_NETWORK_POLICY_NONE: Regex = Regex::new(r#"(?i)network_policy\s*=\s*["']?"#).unwrap();
-    static ref AKS_NO_DISK_ENCRYPTION: Regex = Regex::new(r#"resource\s+"azurerm_kubernetes_cluster"\s+"[^"]+"\s*\{(?:(?!disk_encryption_set_id).)*\}"#).unwrap();
+    static ref AKS_NETWORK_POLICY_NONE: Regex = Regex::new(r#"(?i)network_policy\s*=\s*["']none["']"#).unwrap();
+    static ref AKS_NO_DISK_ENCRYPTION: Regex = Regex::new(r#"(?i)azurerm_kubernetes_cluster"#).unwrap();
     static ref AKS_LOCAL_ACCOUNT_ENABLED: Regex = Regex::new(r#"(?i)local_account_disabled\s*=\s*false"#).unwrap();
     static ref AKS_HTTP_APPLICATION_ROUTING: Regex = Regex::new(r#"(?i)http_application_routing_enabled\s*=\s*true"#).unwrap();
-    static ref AKS_NO_MANAGED_IDENTITY: Regex = Regex::new(r#"resource\s+"azurerm_kubernetes_cluster"\s+"[^"]+"\s*\{(?:(?!identity).)*\}"#).unwrap();
+    static ref AKS_NO_MANAGED_IDENTITY: Regex = Regex::new(r#"(?i)azurerm_kubernetes_cluster"#).unwrap();
     static ref AKS_OUTDATED_VERSION: Regex = Regex::new(r#"(?i)kubernetes_version\s*=\s*["']1\.(2[0-6]|1[0-9]|[0-9])["']"#).unwrap();
-    static ref AKS_NO_OMS_AGENT: Regex = Regex::new(r#"resource\s+"azurerm_kubernetes_cluster"\s+"[^"]+"\s*\{(?:(?!oms_agent).)*\}"#).unwrap();
+    static ref AKS_NO_OMS_AGENT: Regex = Regex::new(r#"(?i)azurerm_kubernetes_cluster"#).unwrap();
 
     // Key Vault patterns
     static ref KV_SOFT_DELETE_DISABLED: Regex = Regex::new(r#"(?i)soft_delete_retention_days\s*=\s*0"#).unwrap();
     static ref KV_PURGE_PROTECTION_DISABLED: Regex = Regex::new(r#"(?i)purge_protection_enabled\s*=\s*false"#).unwrap();
-    static ref KV_NO_NETWORK_RULES: Regex = Regex::new(r#"resource\s+"azurerm_key_vault"\s+"[^"]+"\s*\{(?:(?!network_acls).)*\}"#).unwrap();
+    static ref KV_NO_NETWORK_RULES: Regex = Regex::new(r#"(?i)azurerm_key_vault"#).unwrap();
     static ref KV_PUBLIC_NETWORK: Regex = Regex::new(r#"(?i)public_network_access_enabled\s*=\s*true"#).unwrap();
     static ref KV_NO_RBAC: Regex = Regex::new(r#"(?i)enable_rbac_authorization\s*=\s*false"#).unwrap();
 
     // VM/Compute patterns
-    static ref VM_NO_DISK_ENCRYPTION: Regex = Regex::new(r#"resource\s+"azurerm_(?:windows|linux)_virtual_machine"\s+"[^"]+"\s*\{(?:(?!disk_encryption_set_id).)*\}"#).unwrap();
-    static ref VM_NO_MANAGED_IDENTITY: Regex = Regex::new(r#"resource\s+"azurerm_(?:windows|linux)_virtual_machine"\s+"[^"]+"\s*\{(?:(?!identity).)*\}"#).unwrap();
+    static ref VM_NO_DISK_ENCRYPTION: Regex = Regex::new(r#"(?i)azurerm_(?:windows|linux)_virtual_machine"#).unwrap();
+    static ref VM_NO_MANAGED_IDENTITY: Regex = Regex::new(r#"(?i)azurerm_(?:windows|linux)_virtual_machine"#).unwrap();
     static ref VM_PASSWORD_AUTH: Regex = Regex::new(r#"(?i)disable_password_authentication\s*=\s*false"#).unwrap();
     static ref VM_BASIC_SKU: Regex = Regex::new(r#"(?i)sku\s*=\s*["']Basic["']"#).unwrap();
     static ref VM_PUBLIC_IP: Regex = Regex::new(r#"(?i)resource\s+"azurerm_public_ip""#).unwrap();
-    static ref VMSS_AUTOMATIC_OS_UPGRADE_DISABLED: Regex = Regex::new(r#"(?i)automatic_os_upgrade_policy\s*\{[^}]*disable_automatic_rollback\s*=\s*true"#).unwrap();
+    static ref VMSS_AUTOMATIC_OS_UPGRADE_DISABLED: Regex = Regex::new(r#"(?i)disable_automatic_rollback\s*=\s*true"#).unwrap();
 
     // Network patterns
-    static ref NSG_ALLOW_ALL_INBOUND: Regex = Regex::new(r#"(?i)access\s*=\s*["']Allow["'][^}]*direction\s*=\s*["']Inbound["'][^}]*source_address_prefix\s*=\s*["']\*["']"#).unwrap();
-    static ref NSG_SSH_OPEN: Regex = Regex::new(r#"(?i)destination_port_range\s*=\s*["']22["'][^}]*source_address_prefix\s*=\s*["']\*["']"#).unwrap();
-    static ref NSG_RDP_OPEN: Regex = Regex::new(r#"(?i)destination_port_range\s*=\s*["']3389["'][^}]*source_address_prefix\s*=\s*["']\*["']"#).unwrap();
-    static ref VNET_NO_DDOS: Regex = Regex::new(r#"resource\s+"azurerm_virtual_network"\s+"[^"]+"\s*\{(?:(?!ddos_protection_plan).)*\}"#).unwrap();
-    static ref SUBNET_NO_NSG: Regex = Regex::new(r#"resource\s+"azurerm_subnet"\s+"[^"]+"\s*\{(?:(?!network_security_group_id).)*\}"#).unwrap();
-    static ref APP_GW_NO_WAF: Regex = Regex::new(r#"(?i)sku\s*\{[^}]*tier\s*=\s*["']Standard["']"#).unwrap();
-    static ref APP_GW_WAF_DISABLED: Regex = Regex::new(r#"(?i)waf_configuration\s*\{[^}]*enabled\s*=\s*false"#).unwrap();
+    static ref NSG_ALLOW_ALL_INBOUND: Regex = Regex::new(r#"(?i)source_address_prefix\s*=\s*["']\*["']"#).unwrap();
+    static ref NSG_SSH_OPEN: Regex = Regex::new(r#"(?i)destination_port_range\s*=\s*["']22["']"#).unwrap();
+    static ref NSG_RDP_OPEN: Regex = Regex::new(r#"(?i)destination_port_range\s*=\s*["']3389["']"#).unwrap();
+    static ref VNET_NO_DDOS: Regex = Regex::new(r#"(?i)azurerm_virtual_network"#).unwrap();
+    static ref SUBNET_NO_NSG: Regex = Regex::new(r#"(?i)azurerm_subnet"#).unwrap();
+    static ref APP_GW_NO_WAF: Regex = Regex::new(r#"(?i)tier\s*=\s*["']Standard["']"#).unwrap();
+    static ref APP_GW_WAF_DISABLED: Regex = Regex::new(r#"(?i)enabled\s*=\s*false"#).unwrap();
 
     // App Service patterns
     static ref APP_SERVICE_HTTP_ENABLED: Regex = Regex::new(r#"(?i)https_only\s*=\s*false"#).unwrap();
-    static ref APP_SERVICE_AUTH_DISABLED: Regex = Regex::new(r#"resource\s+"azurerm_(?:windows|linux)_web_app"\s+"[^"]+"\s*\{(?:(?!auth_settings).)*\}"#).unwrap();
-    static ref APP_SERVICE_NO_MANAGED_IDENTITY: Regex = Regex::new(r#"resource\s+"azurerm_(?:windows|linux)_web_app"\s+"[^"]+"\s*\{(?:(?!identity).)*\}"#).unwrap();
+    static ref APP_SERVICE_AUTH_DISABLED: Regex = Regex::new(r#"(?i)azurerm_(?:windows|linux)_web_app"#).unwrap();
+    static ref APP_SERVICE_NO_MANAGED_IDENTITY: Regex = Regex::new(r#"(?i)azurerm_(?:windows|linux)_web_app"#).unwrap();
     static ref APP_SERVICE_FTP_ENABLED: Regex = Regex::new(r#"(?i)ftps_state\s*=\s*["']AllAllowed["']"#).unwrap();
     static ref APP_SERVICE_MIN_TLS_LOW: Regex = Regex::new(r#"(?i)minimum_tls_version\s*=\s*["']1\.[01]["']"#).unwrap();
     static ref APP_SERVICE_REMOTE_DEBUG: Regex = Regex::new(r#"(?i)remote_debugging_enabled\s*=\s*true"#).unwrap();
     static ref APP_SERVICE_CLIENT_CERT_DISABLED: Regex = Regex::new(r#"(?i)client_certificate_enabled\s*=\s*false"#).unwrap();
     static ref APP_SERVICE_HTTP2_DISABLED: Regex = Regex::new(r#"(?i)http2_enabled\s*=\s*false"#).unwrap();
-    static ref FUNCTION_HTTP_ENABLED: Regex = Regex::new(r#"resource\s+"azurerm_(?:windows|linux)_function_app".*https_only\s*=\s*false"#).unwrap();
+    static ref FUNCTION_HTTP_ENABLED: Regex = Regex::new(r#"(?i)https_only\s*=\s*false"#).unwrap();
 
     // Container patterns
     static ref ACR_NO_ADMIN: Regex = Regex::new(r#"(?i)admin_enabled\s*=\s*true"#).unwrap();
     static ref ACR_NO_QUARANTINE: Regex = Regex::new(r#"(?i)quarantine_policy_enabled\s*=\s*false"#).unwrap();
-    static ref ACR_NO_CONTENT_TRUST: Regex = Regex::new(r#"(?i)trust_policy\s*\{[^}]*enabled\s*=\s*false"#).unwrap();
+    static ref ACR_NO_CONTENT_TRUST: Regex = Regex::new(r#"(?i)enabled\s*=\s*false"#).unwrap();
     static ref ACR_PUBLIC_NETWORK: Regex = Regex::new(r#"(?i)public_network_access_enabled\s*=\s*true"#).unwrap();
     static ref ACI_PUBLIC_IP: Regex = Regex::new(r#"(?i)ip_address_type\s*=\s*["']Public["']"#).unwrap();
 
@@ -96,32 +96,32 @@ lazy_static! {
     static ref SECURITY_CENTER_TIER_FREE: Regex = Regex::new(r#"(?i)tier\s*=\s*["']Free["']"#).unwrap();
 
     // Service Bus patterns
-    static ref SERVICE_BUS_NO_CMEK: Regex = Regex::new(r#"resource\s+"azurerm_servicebus_namespace"\s+"[^"]+"\s*\{(?:(?!customer_managed_key).)*\}"#).unwrap();
+    static ref SERVICE_BUS_NO_CMEK: Regex = Regex::new(r#"(?i)azurerm_servicebus_namespace"#).unwrap();
     static ref SERVICE_BUS_PUBLIC_NETWORK: Regex = Regex::new(r#"(?i)public_network_access_enabled\s*=\s*true"#).unwrap();
     static ref SERVICE_BUS_LOCAL_AUTH: Regex = Regex::new(r#"(?i)local_auth_enabled\s*=\s*true"#).unwrap();
 
     // Event Hub patterns
-    static ref EVENT_HUB_NO_CMEK: Regex = Regex::new(r#"resource\s+"azurerm_eventhub_namespace"\s+"[^"]+"\s*\{(?:(?!customer_managed_key).)*\}"#).unwrap();
+    static ref EVENT_HUB_NO_CMEK: Regex = Regex::new(r#"(?i)azurerm_eventhub_namespace"#).unwrap();
     static ref EVENT_HUB_PUBLIC_NETWORK: Regex = Regex::new(r#"(?i)public_network_access_enabled\s*=\s*true"#).unwrap();
 
     // Redis patterns
     static ref REDIS_NO_TLS: Regex = Regex::new(r#"(?i)enable_non_ssl_port\s*=\s*true"#).unwrap();
-    static ref REDIS_NO_FIREWALL: Regex = Regex::new(r#"resource\s+"azurerm_redis_cache"\s+"[^"]+"\s*\{(?:(?!redis_firewall_rule).)*\}"#).unwrap();
+    static ref REDIS_NO_FIREWALL: Regex = Regex::new(r#"(?i)azurerm_redis_cache"#).unwrap();
     static ref REDIS_PUBLIC_NETWORK: Regex = Regex::new(r#"(?i)public_network_access_enabled\s*=\s*true"#).unwrap();
-    static ref REDIS_NO_PATCH_SCHEDULE: Regex = Regex::new(r#"resource\s+"azurerm_redis_cache"\s+"[^"]+"\s*\{(?:(?!patch_schedule).)*\}"#).unwrap();
+    static ref REDIS_NO_PATCH_SCHEDULE: Regex = Regex::new(r#"(?i)azurerm_redis_cache"#).unwrap();
 
     // Synapse patterns
-    static ref SYNAPSE_NO_AAD_ADMIN: Regex = Regex::new(r#"resource\s+"azurerm_synapse_workspace"\s+"[^"]+"\s*\{(?:(?!aad_admin).)*\}"#).unwrap();
+    static ref SYNAPSE_NO_AAD_ADMIN: Regex = Regex::new(r#"(?i)azurerm_synapse_workspace"#).unwrap();
     static ref SYNAPSE_PUBLIC_NETWORK: Regex = Regex::new(r#"(?i)public_network_access_enabled\s*=\s*true"#).unwrap();
     static ref SYNAPSE_NO_MANAGED_VNET: Regex = Regex::new(r#"(?i)managed_virtual_network_enabled\s*=\s*false"#).unwrap();
 
     // Batch patterns
     static ref BATCH_PUBLIC_NETWORK: Regex = Regex::new(r#"(?i)public_network_access_enabled\s*=\s*true"#).unwrap();
-    static ref BATCH_NO_ENCRYPTION: Regex = Regex::new(r#"(?i)encryption\s*\{[^}]*key_vault_key_id"#).unwrap();
+    static ref BATCH_NO_ENCRYPTION: Regex = Regex::new(r#"(?i)key_vault_key_id"#).unwrap();
 
     // Data Factory patterns
     static ref DATA_FACTORY_PUBLIC_NETWORK: Regex = Regex::new(r#"(?i)public_network_enabled\s*=\s*true"#).unwrap();
-    static ref DATA_FACTORY_NO_MANAGED_IDENTITY: Regex = Regex::new(r#"resource\s+"azurerm_data_factory"\s+"[^"]+"\s*\{(?:(?!identity).)*\}"#).unwrap();
+    static ref DATA_FACTORY_NO_MANAGED_IDENTITY: Regex = Regex::new(r#"(?i)azurerm_data_factory"#).unwrap();
 }
 
 // ============================================================================

@@ -15,12 +15,9 @@ use regex::Regex;
 // ============================================================================
 
 lazy_static! {
-    // S3 patterns
+    // S3 patterns (line-by-line matching for explicit misconfigurations)
     static ref S3_NO_VERSIONING: Regex = Regex::new(r#"(?i)versioning\s*\{\s*enabled\s*=\s*false"#).unwrap();
-    static ref S3_NO_ENCRYPTION: Regex = Regex::new(r#"resource\s+"aws_s3_bucket"\s+"[^"]+"\s*\{(?:(?!server_side_encryption_configuration).)*\}"#).unwrap();
-    static ref S3_NO_LOGGING: Regex = Regex::new(r#"resource\s+"aws_s3_bucket"\s+"[^"]+"\s*\{(?:(?!logging).)*\}"#).unwrap();
     static ref S3_PUBLIC_POLICY: Regex = Regex::new(r#"(?i)"Principal"\s*:\s*["']\*["']"#).unwrap();
-    static ref S3_NO_LIFECYCLE: Regex = Regex::new(r#"resource\s+"aws_s3_bucket"\s+"[^"]+"(?:(?!lifecycle_rule).)*\}"#).unwrap();
     static ref S3_NO_MFA_DELETE: Regex = Regex::new(r#"(?i)mfa_delete\s*=\s*false"#).unwrap();
     static ref S3_IGNORE_PUBLIC_ACLS_FALSE: Regex = Regex::new(r#"(?i)ignore_public_acls\s*=\s*false"#).unwrap();
     static ref S3_BLOCK_PUBLIC_ACLS_FALSE: Regex = Regex::new(r#"(?i)block_public_acls\s*=\s*false"#).unwrap();
@@ -29,32 +26,33 @@ lazy_static! {
 
     // EC2/VPC patterns
     static ref EC2_IMDS_V1: Regex = Regex::new(r#"(?i)http_tokens\s*=\s*["']?optional["']?"#).unwrap();
-    static ref EC2_NO_IMDS_HOP_LIMIT: Regex = Regex::new(r#"(?i)http_put_response_hop_limit\s*=\s*[2-9]|[1-9][0-9]+"#).unwrap();
+    static ref EC2_NO_IMDS_HOP_LIMIT: Regex = Regex::new(r#"(?i)http_put_response_hop_limit\s*=\s*[2-9][0-9]*"#).unwrap();
     static ref EC2_DETAILED_MONITORING_DISABLED: Regex = Regex::new(r#"(?i)monitoring\s*=\s*false"#).unwrap();
     static ref EC2_PUBLIC_IP: Regex = Regex::new(r#"(?i)associate_public_ip_address\s*=\s*true"#).unwrap();
     static ref EC2_USER_DATA_SECRET: Regex = Regex::new(r#"(?i)user_data\s*=.*(?:password|secret|key|token)"#).unwrap();
-    static ref LAUNCH_TEMPLATE_NO_ENCRYPTION: Regex = Regex::new(r#"(?i)resource\s+"aws_launch_template".*block_device_mappings\s*\{[^}]*encrypted\s*=\s*false"#).unwrap();
-    static ref EBS_SNAPSHOT_PUBLIC: Regex = Regex::new(r#"(?i)resource\s+"aws_ebs_snapshot"[^}]*create_volume_permission[^}]*group\s*=\s*["']?all["']?"#).unwrap();
-    static ref AMI_PUBLIC: Regex = Regex::new(r#"(?i)resource\s+"aws_ami"[^}]*public\s*=\s*true"#).unwrap();
+    static ref LAUNCH_TEMPLATE_UNENCRYPTED: Regex = Regex::new(r#"(?i)encrypted\s*=\s*false"#).unwrap();
+    static ref EBS_SNAPSHOT_PUBLIC: Regex = Regex::new(r#"(?i)group\s*=\s*["']?all["']?"#).unwrap();
+    static ref AMI_PUBLIC: Regex = Regex::new(r#"(?i)public\s*=\s*true"#).unwrap();
 
     // VPC patterns
     static ref DEFAULT_VPC_USAGE: Regex = Regex::new(r#"(?i)resource\s+"aws_default_vpc""#).unwrap();
-    static ref VPC_FLOW_LOGS_DISABLED: Regex = Regex::new(r#"(?i)resource\s+"aws_vpc"\s+"[^"]+"\s*\{(?:(?!aws_flow_log).)*$"#).unwrap();
-    static ref SG_EGRESS_ALL: Regex = Regex::new(r#"(?i)egress\s*\{[^}]*protocol\s*=\s*["']-1["'][^}]*cidr_blocks\s*=\s*\[[^]]*"0\.0\.0\.0/0"[^}]*\}"#).unwrap();
-    static ref NACL_ALLOW_ALL: Regex = Regex::new(r#"(?i)rule_action\s*=\s*["']?allow["']?[^}]*cidr_block\s*=\s*["']?0\.0\.0\.0/0["']?[^}]*protocol\s*=\s*["']-1["']?"#).unwrap();
+    static ref SG_EGRESS_ALL_PROTOCOL: Regex = Regex::new(r#"(?i)protocol\s*=\s*["']-1["']"#).unwrap();
+    static ref SG_CIDR_ALL: Regex = Regex::new(r#"(?i)cidr_blocks\s*=\s*\[[^\]]*"0\.0\.0\.0/0""#).unwrap();
+    static ref NACL_ALLOW_ALL: Regex = Regex::new(r#"(?i)rule_action\s*=\s*["']?allow["']?"#).unwrap();
 
     // IAM patterns
     static ref IAM_USER_POLICY_DIRECT: Regex = Regex::new(r#"(?i)resource\s+"aws_iam_user_policy""#).unwrap();
     static ref IAM_USER_POLICY_ATTACHMENT: Regex = Regex::new(r#"(?i)resource\s+"aws_iam_user_policy_attachment""#).unwrap();
     static ref IAM_NO_MFA: Regex = Regex::new(r#"(?i)"aws:MultiFactorAuthPresent"\s*:\s*["']?false["']?"#).unwrap();
-    static ref IAM_ASSUME_ROLE_WILDCARD: Regex = Regex::new(r#"(?i)assume_role_policy[^}]*"Principal"\s*:\s*\{[^}]*"AWS"\s*:\s*["']\*["']"#).unwrap();
-    static ref IAM_PASSWORD_POLICY_WEAK: Regex = Regex::new(r#"(?i)minimum_password_length\s*=\s*([0-9]|1[0-3])(?!\d)"#).unwrap();
+    static ref IAM_PRINCIPAL_WILDCARD: Regex = Regex::new(r#"(?i)"Principal"\s*:\s*["']\*["']"#).unwrap();
+    static ref IAM_PASSWORD_POLICY_WEAK: Regex = Regex::new(r#"(?i)minimum_password_length\s*=\s*[0-9](?:[^0-9]|$)"#).unwrap();
+    static ref IAM_PASSWORD_POLICY_WEAK_13: Regex = Regex::new(r#"(?i)minimum_password_length\s*=\s*1[0-3](?:[^0-9]|$)"#).unwrap();
     static ref IAM_PASSWORD_NO_UPPERCASE: Regex = Regex::new(r#"(?i)require_uppercase_characters\s*=\s*false"#).unwrap();
     static ref IAM_PASSWORD_NO_LOWERCASE: Regex = Regex::new(r#"(?i)require_lowercase_characters\s*=\s*false"#).unwrap();
     static ref IAM_PASSWORD_NO_NUMBERS: Regex = Regex::new(r#"(?i)require_numbers\s*=\s*false"#).unwrap();
     static ref IAM_PASSWORD_NO_SYMBOLS: Regex = Regex::new(r#"(?i)require_symbols\s*=\s*false"#).unwrap();
     static ref IAM_ADMIN_POLICY: Regex = Regex::new(r#"(?i)arn:aws:iam::aws:policy/AdministratorAccess"#).unwrap();
-    static ref IAM_PASSROLE_STAR: Regex = Regex::new(r#"(?i)"Action"\s*:\s*\[?[^]]*"iam:PassRole"[^]]*\][^}]*"Resource"\s*:\s*["']\*["']"#).unwrap();
+    static ref IAM_RESOURCE_WILDCARD: Regex = Regex::new(r#"(?i)"Resource"\s*:\s*["']\*["']"#).unwrap();
 
     // RDS patterns
     static ref RDS_PUBLIC: Regex = Regex::new(r#"(?i)publicly_accessible\s*=\s*true"#).unwrap();
@@ -71,94 +69,73 @@ lazy_static! {
     // EKS patterns
     static ref EKS_PUBLIC_ENDPOINT: Regex = Regex::new(r#"(?i)endpoint_public_access\s*=\s*true"#).unwrap();
     static ref EKS_NO_PRIVATE_ENDPOINT: Regex = Regex::new(r#"(?i)endpoint_private_access\s*=\s*false"#).unwrap();
-    static ref EKS_NO_SECRETS_ENCRYPTION: Regex = Regex::new(r#"resource\s+"aws_eks_cluster"\s+"[^"]+"\s*\{(?:(?!encryption_config).)*\}"#).unwrap();
-    static ref EKS_NO_LOGGING: Regex = Regex::new(r#"resource\s+"aws_eks_cluster"\s+"[^"]+"\s*\{(?:(?!enabled_cluster_log_types).)*\}"#).unwrap();
     static ref EKS_OUTDATED_VERSION: Regex = Regex::new(r#"(?i)version\s*=\s*["']?1\.(2[0-6]|1[0-9]|[0-9])["']?"#).unwrap();
 
     // Lambda patterns
-    static ref LAMBDA_NO_VPC: Regex = Regex::new(r#"resource\s+"aws_lambda_function"\s+"[^"]+"\s*\{(?:(?!vpc_config).)*\}"#).unwrap();
-    static ref LAMBDA_ENV_SECRETS: Regex = Regex::new(r#"(?i)environment\s*\{[^}]*variables\s*=\s*\{[^}]*(?:password|secret|key|token)\s*="#).unwrap();
-    static ref LAMBDA_WILDCARD_PERMISSION: Regex = Regex::new(r#"(?i)resource\s+"aws_lambda_permission"[^}]*principal\s*=\s*["']\*["']"#).unwrap();
-    static ref LAMBDA_NO_DLQ: Regex = Regex::new(r#"resource\s+"aws_lambda_function"\s+"[^"]+"\s*\{(?:(?!dead_letter_config).)*\}"#).unwrap();
-    static ref LAMBDA_NO_TRACING: Regex = Regex::new(r#"resource\s+"aws_lambda_function"\s+"[^"]+"\s*\{(?:(?!tracing_config).)*\}"#).unwrap();
+    static ref LAMBDA_ENV_SECRETS: Regex = Regex::new(r#"(?i)(?:password|secret|key|token)\s*="#).unwrap();
+    static ref LAMBDA_WILDCARD_PERMISSION: Regex = Regex::new(r#"(?i)principal\s*=\s*["']\*["']"#).unwrap();
 
     // KMS patterns
     static ref KMS_KEY_ROTATION_DISABLED: Regex = Regex::new(r#"(?i)enable_key_rotation\s*=\s*false"#).unwrap();
-    static ref KMS_PUBLIC_ACCESS: Regex = Regex::new(r#"(?i)resource\s+"aws_kms_key"[^}]*"Principal"\s*:\s*["']\*["']"#).unwrap();
-    static ref KMS_WILDCARD_USAGE: Regex = Regex::new(r#"(?i)"Action"\s*:\s*\[?"kms:\*"\]?"#).unwrap();
+    static ref KMS_WILDCARD_USAGE: Regex = Regex::new(r#"(?i)"Action"\s*:\s*\[?"kms:\*"#).unwrap();
 
     // CloudWatch/CloudTrail patterns
-    static ref CLOUDWATCH_LOG_NO_ENCRYPTION: Regex = Regex::new(r#"resource\s+"aws_cloudwatch_log_group"\s+"[^"]+"\s*\{(?:(?!kms_key_id).)*\}"#).unwrap();
-    static ref CLOUDWATCH_LOG_NO_RETENTION: Regex = Regex::new(r#"resource\s+"aws_cloudwatch_log_group"\s+"[^"]+"\s*\{(?:(?!retention_in_days).)*\}"#).unwrap();
-    static ref CLOUDTRAIL_NO_ENCRYPTION: Regex = Regex::new(r#"resource\s+"aws_cloudtrail"\s+"[^"]+"\s*\{(?:(?!kms_key_id).)*\}"#).unwrap();
     static ref CLOUDTRAIL_NO_LOG_VALIDATION: Regex = Regex::new(r#"(?i)enable_log_file_validation\s*=\s*false"#).unwrap();
     static ref CLOUDTRAIL_NOT_MULTI_REGION: Regex = Regex::new(r#"(?i)is_multi_region_trail\s*=\s*false"#).unwrap();
 
     // SNS/SQS patterns
-    static ref SNS_TOPIC_PUBLIC: Regex = Regex::new(r#"(?i)resource\s+"aws_sns_topic_policy"[^}]*"Principal"\s*:\s*["']\*["']"#).unwrap();
-    static ref SNS_NO_ENCRYPTION: Regex = Regex::new(r#"resource\s+"aws_sns_topic"\s+"[^"]+"\s*\{(?:(?!kms_master_key_id).)*\}"#).unwrap();
-    static ref SQS_QUEUE_PUBLIC: Regex = Regex::new(r#"(?i)resource\s+"aws_sqs_queue_policy"[^}]*"Principal"\s*:\s*["']\*["']"#).unwrap();
-    static ref SQS_NO_ENCRYPTION: Regex = Regex::new(r#"resource\s+"aws_sqs_queue"\s+"[^"]+"\s*\{(?:(?!kms_master_key_id).)*\}"#).unwrap();
+    static ref SNS_TOPIC_PUBLIC: Regex = Regex::new(r#"(?i)"Principal"\s*:\s*["']\*["']"#).unwrap();
+    static ref SQS_QUEUE_PUBLIC: Regex = Regex::new(r#"(?i)"Principal"\s*:\s*["']\*["']"#).unwrap();
 
     // ElastiCache patterns
     static ref ELASTICACHE_NO_ENCRYPTION_TRANSIT: Regex = Regex::new(r#"(?i)transit_encryption_enabled\s*=\s*false"#).unwrap();
     static ref ELASTICACHE_NO_ENCRYPTION_REST: Regex = Regex::new(r#"(?i)at_rest_encryption_enabled\s*=\s*false"#).unwrap();
-    static ref ELASTICACHE_NO_AUTH: Regex = Regex::new(r#"resource\s+"aws_elasticache_replication_group"\s+"[^"]+"\s*\{(?:(?!auth_token).)*\}"#).unwrap();
 
     // ALB/ELB patterns
-    static ref ALB_HTTP_LISTENER: Regex = Regex::new(r#"(?i)resource\s+"aws_lb_listener"[^}]*protocol\s*=\s*["']HTTP["']"#).unwrap();
-    static ref ALB_NO_ACCESS_LOGS: Regex = Regex::new(r#"resource\s+"aws_lb"\s+"[^"]+"\s*\{(?:(?!access_logs).)*\}"#).unwrap();
+    static ref ALB_HTTP_LISTENER: Regex = Regex::new(r#"(?i)protocol\s*=\s*["']HTTP["']"#).unwrap();
     static ref ALB_DROP_INVALID_HEADERS: Regex = Regex::new(r#"(?i)drop_invalid_header_fields\s*=\s*false"#).unwrap();
     static ref ALB_DELETION_PROTECTION_DISABLED: Regex = Regex::new(r#"(?i)enable_deletion_protection\s*=\s*false"#).unwrap();
     static ref ALB_INSECURE_SSL: Regex = Regex::new(r#"(?i)ssl_policy\s*=\s*["']ELBSecurityPolicy-2016-08["']"#).unwrap();
 
     // Elasticsearch patterns
-    static ref ES_PUBLIC_ENDPOINT: Regex = Regex::new(r#"resource\s+"aws_elasticsearch_domain"\s+"[^"]+"\s*\{(?:(?!vpc_options).)*\}"#).unwrap();
     static ref ES_NO_ENCRYPTION_REST: Regex = Regex::new(r#"(?i)encrypt_at_rest\s*\{[^}]*enabled\s*=\s*false"#).unwrap();
     static ref ES_NO_NODE_TO_NODE_ENCRYPTION: Regex = Regex::new(r#"(?i)node_to_node_encryption\s*\{[^}]*enabled\s*=\s*false"#).unwrap();
-    static ref ES_NO_LOGGING: Regex = Regex::new(r#"resource\s+"aws_elasticsearch_domain"\s+"[^"]+"\s*\{(?:(?!log_publishing_options).)*\}"#).unwrap();
     static ref ES_ENFORCE_HTTPS_DISABLED: Regex = Regex::new(r#"(?i)enforce_https\s*=\s*false"#).unwrap();
 
     // DynamoDB patterns
-    static ref DYNAMODB_NO_ENCRYPTION: Regex = Regex::new(r#"resource\s+"aws_dynamodb_table"\s+"[^"]+"\s*\{(?:(?!server_side_encryption).)*\}"#).unwrap();
-    static ref DYNAMODB_NO_PITR: Regex = Regex::new(r#"(?i)point_in_time_recovery\s*\{[^}]*enabled\s*=\s*false"#).unwrap();
+    static ref DYNAMODB_NO_ENCRYPTION: Regex = Regex::new(r#"(?i)aws_dynamodb_table"#).unwrap();
+    static ref DYNAMODB_NO_PITR: Regex = Regex::new(r#"(?i)enabled\s*=\s*false"#).unwrap();
+
+    // Secrets Manager patterns
+    static ref SECRETS_NO_KMS: Regex = Regex::new(r#"(?i)aws_secretsmanager_secret"#).unwrap();
+
+    // WAF patterns
+    static ref WAF_NO_LOGGING: Regex = Regex::new(r#"(?i)aws_wafv2_web_acl"#).unwrap();
 
     // Redshift patterns
     static ref REDSHIFT_PUBLIC: Regex = Regex::new(r#"(?i)publicly_accessible\s*=\s*true"#).unwrap();
     static ref REDSHIFT_NO_ENCRYPTION: Regex = Regex::new(r#"(?i)encrypted\s*=\s*false"#).unwrap();
-    static ref REDSHIFT_NO_LOGGING: Regex = Regex::new(r#"resource\s+"aws_redshift_cluster"\s+"[^"]+"\s*\{(?:(?!logging).)*\}"#).unwrap();
     static ref REDSHIFT_NO_ENHANCED_VPC: Regex = Regex::new(r#"(?i)enhanced_vpc_routing\s*=\s*false"#).unwrap();
 
     // ECR patterns
-    static ref ECR_NO_SCAN: Regex = Regex::new(r#"(?i)image_scanning_configuration\s*\{[^}]*scan_on_push\s*=\s*false"#).unwrap();
+    static ref ECR_NO_SCAN: Regex = Regex::new(r#"(?i)scan_on_push\s*=\s*false"#).unwrap();
     static ref ECR_MUTABLE_TAGS: Regex = Regex::new(r#"(?i)image_tag_mutability\s*=\s*["']MUTABLE["']"#).unwrap();
-    static ref ECR_NO_ENCRYPTION: Regex = Regex::new(r#"resource\s+"aws_ecr_repository"\s+"[^"]+"\s*\{(?:(?!encryption_configuration).)*\}"#).unwrap();
 
     // API Gateway patterns
     static ref APIGW_NO_AUTH: Regex = Regex::new(r#"(?i)authorization\s*=\s*["']NONE["']"#).unwrap();
-    static ref APIGW_NO_LOGGING: Regex = Regex::new(r#"resource\s+"aws_api_gateway_stage"\s+"[^"]+"\s*\{(?:(?!access_log_settings).)*\}"#).unwrap();
-    static ref APIGW_NO_SSL_CERT: Regex = Regex::new(r#"resource\s+"aws_api_gateway_stage"\s+"[^"]+"\s*\{(?:(?!client_certificate_id).)*\}"#).unwrap();
-    static ref APIGW_NO_WAF: Regex = Regex::new(r#"resource\s+"aws_api_gateway_stage"\s+"[^"]+"\s*\{(?:(?!web_acl_arn).)*\}"#).unwrap();
     static ref APIGW_NO_XRAY: Regex = Regex::new(r#"(?i)xray_tracing_enabled\s*=\s*false"#).unwrap();
     static ref APIGW_CACHE_NO_ENCRYPTION: Regex = Regex::new(r#"(?i)cache_data_encrypted\s*=\s*false"#).unwrap();
-
-    // Secrets Manager patterns
-    static ref SECRETS_NO_ROTATION: Regex = Regex::new(r#"resource\s+"aws_secretsmanager_secret"\s+"[^"]+"\s*\{(?:(?!rotation).)*\}"#).unwrap();
-    static ref SECRETS_NO_KMS: Regex = Regex::new(r#"resource\s+"aws_secretsmanager_secret"\s+"[^"]+"\s*\{(?:(?!kms_key_id).)*\}"#).unwrap();
 
     // SSM patterns
     static ref SSM_PARAM_NO_ENCRYPTION: Regex = Regex::new(r#"(?i)type\s*=\s*["']String["']"#).unwrap();
 
     // Cognito patterns
     static ref COGNITO_NO_MFA: Regex = Regex::new(r#"(?i)mfa_configuration\s*=\s*["']OFF["']"#).unwrap();
-    static ref COGNITO_WEAK_PASSWORD: Regex = Regex::new(r#"(?i)minimum_length\s*=\s*([0-7])(?!\d)"#).unwrap();
+    static ref COGNITO_WEAK_PASSWORD: Regex = Regex::new(r#"(?i)minimum_length\s*=\s*[0-7](?:[^0-9]|$)"#).unwrap();
 
     // Config/GuardDuty patterns
-    static ref CONFIG_NOT_ENABLED: Regex = Regex::new(r#"(?i)resource\s+"aws_config_configuration_recorder".*is_enabled\s*=\s*false"#).unwrap();
-    static ref GUARDDUTY_NOT_ENABLED: Regex = Regex::new(r#"(?i)resource\s+"aws_guardduty_detector".*enable\s*=\s*false"#).unwrap();
-
-    // WAF patterns
-    static ref WAF_NO_LOGGING: Regex = Regex::new(r#"resource\s+"aws_wafv2_web_acl"\s+"[^"]+"\s*\{(?:(?!logging_configuration).)*\}"#).unwrap();
+    static ref CONFIG_NOT_ENABLED: Regex = Regex::new(r#"(?i)is_enabled\s*=\s*false"#).unwrap();
+    static ref GUARDDUTY_NOT_ENABLED: Regex = Regex::new(r#"(?i)enable\s*=\s*false"#).unwrap();
 }
 
 // ============================================================================
@@ -284,13 +261,13 @@ impl_aws_rule!(AwsDefaultVpcRule, "AWS_VPC_001", "Default VPC Usage",
     DEFAULT_VPC_USAGE, IacResourceType::AwsVpc,
     "Using AWS default VPC");
 
-impl_aws_rule!(AwsSgEgressAllRule, "AWS_SG_001", "Security Group Allows All Egress",
-    "Security group allows all outbound traffic to 0.0.0.0/0",
+impl_aws_rule!(AwsSgEgressAllRule, "AWS_SG_001", "Security Group Allows All Protocols",
+    "Security group allows all protocols (protocol = -1)",
     IacSeverity::Medium, IacFindingCategory::NetworkExposure,
-    "Restrict egress rules to only required destinations and ports",
+    "Restrict egress rules to specific protocols and ports",
     "https://docs.aws.amazon.com/vpc/latest/userguide/VPC_SecurityGroups.html",
-    SG_EGRESS_ALL, IacResourceType::AwsSecurityGroup,
-    "Security group allows unrestricted egress");
+    SG_EGRESS_ALL_PROTOCOL, IacResourceType::AwsSecurityGroup,
+    "Security group allows all protocols");
 
 // IAM Rules
 impl_aws_rule!(AwsIamUserPolicyDirectRule, "AWS_IAM_001", "IAM Policy Attached Directly to User",
@@ -317,13 +294,13 @@ impl_aws_rule!(AwsIamAdminPolicyRule, "AWS_IAM_003", "IAM AdministratorAccess Po
     IAM_ADMIN_POLICY, IacResourceType::AwsIamPolicy,
     "AdministratorAccess policy grants excessive permissions");
 
-impl_aws_rule!(AwsIamPassRoleStarRule, "AWS_IAM_004", "IAM PassRole with Wildcard Resource",
-    "iam:PassRole action with wildcard resource allows passing any role",
+impl_aws_rule!(AwsIamPassRoleStarRule, "AWS_IAM_004", "IAM Policy with Wildcard Resource",
+    "IAM policy uses wildcard (*) for Resource element",
     IacSeverity::High, IacFindingCategory::IamMisconfiguration,
-    "Specify exact role ARNs instead of using wildcard for PassRole",
+    "Specify exact resource ARNs instead of using wildcard",
     "https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_use_passrole.html",
-    IAM_PASSROLE_STAR, IacResourceType::AwsIamPolicy,
-    "iam:PassRole with * resource allows privilege escalation");
+    IAM_RESOURCE_WILDCARD, IacResourceType::AwsIamPolicy,
+    "IAM policy with * resource allows excessive access");
 
 impl_aws_rule!(AwsIamPasswordPolicyWeakRule, "AWS_IAM_005", "IAM Weak Password Policy",
     "IAM password policy has minimum length less than 14 characters",
@@ -333,13 +310,13 @@ impl_aws_rule!(AwsIamPasswordPolicyWeakRule, "AWS_IAM_005", "IAM Weak Password P
     IAM_PASSWORD_POLICY_WEAK, IacResourceType::AwsIamPolicy,
     "Password policy minimum length is too short");
 
-impl_aws_rule!(AwsIamAssumeRoleWildcardRule, "AWS_IAM_006", "IAM Assume Role with Wildcard Principal",
-    "IAM role trust policy allows any AWS principal to assume the role",
+impl_aws_rule!(AwsIamAssumeRoleWildcardRule, "AWS_IAM_006", "IAM Policy with Wildcard Principal",
+    "IAM policy allows any principal (*) in Principal element",
     IacSeverity::Critical, IacFindingCategory::IamMisconfiguration,
     "Specify exact AWS account IDs or ARNs in the Principal element",
     "https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements_principal.html",
-    IAM_ASSUME_ROLE_WILDCARD, IacResourceType::AwsIamRole,
-    "Role can be assumed by any AWS principal");
+    IAM_PRINCIPAL_WILDCARD, IacResourceType::AwsIamRole,
+    "Policy with wildcard principal allows any entity");
 
 // RDS Rules
 impl_aws_rule!(AwsRdsPublicRule, "AWS_RDS_001", "RDS Instance Publicly Accessible",

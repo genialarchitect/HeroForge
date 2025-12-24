@@ -342,6 +342,8 @@ mod tests {
             username: "newuser".to_string(),
             email: "newuser@example.com".to_string(),
             password: "SecurePassword123!".to_string(),
+            first_name: None,
+            last_name: None,
             accept_terms: true,
         };
 
@@ -379,6 +381,8 @@ mod tests {
             username,
             email: "different@example.com".to_string(),
             password: "SecurePassword123!".to_string(),
+            first_name: None,
+            last_name: None,
             accept_terms: true,
         };
 
@@ -410,6 +414,8 @@ mod tests {
             username: "weakpassuser".to_string(),
             email: "weak@example.com".to_string(),
             password: "weak".to_string(), // Too short, no uppercase, no number
+            first_name: None,
+            last_name: None,
             accept_terms: true,
         };
 
@@ -438,6 +444,8 @@ mod tests {
             username: "notermsuser".to_string(),
             email: "noterms@example.com".to_string(),
             password: "SecurePassword123!".to_string(),
+            first_name: None,
+            last_name: None,
             accept_terms: false, // Must accept terms
         };
 
@@ -1180,6 +1188,11 @@ mod tests {
             username: "testuser".to_string(),
             roles: vec!["user".to_string()],
             exp: 0, // Expired
+            iat: 0,
+            org_id: None,
+            org_role: None,
+            teams: vec![],
+            permissions: vec![],
         };
 
         let expired_token = jsonwebtoken::encode(

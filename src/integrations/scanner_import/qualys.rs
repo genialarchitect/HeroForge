@@ -376,6 +376,7 @@ fn parse_qualys_datetime(datetime_str: &str) -> Option<DateTime<Utc>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::Datelike;
 
     #[test]
     fn test_map_qualys_severity() {

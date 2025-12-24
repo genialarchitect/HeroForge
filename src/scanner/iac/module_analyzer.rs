@@ -36,14 +36,15 @@ lazy_static! {
     // Module block pattern
     static ref MODULE_BLOCK: Regex = Regex::new(r#"module\s+"([^"]+)"\s*\{"#).unwrap();
 
-    // Sensitive input patterns
+    // Sensitive input patterns (simple patterns without look-around)
     static ref SENSITIVE_DEFAULT: Regex = Regex::new(r#"(?i)default\s*=\s*["'][^"']+["'].*(?:password|secret|key|token|credential)"#).unwrap();
     static ref SENSITIVE_VAR_NAME: Regex = Regex::new(r#"(?i)variable\s+["']([^"']*(?:password|secret|key|token|credential|api_key)[^"']*)["']"#).unwrap();
-    static ref SENSITIVE_NOT_MARKED: Regex = Regex::new(r#"(?i)variable\s+["'][^"']*(?:password|secret|key|token)[^"']*["']\s*\{(?:(?!sensitive\s*=\s*true)[^}])*\}"#).unwrap();
+    static ref SENSITIVE_MARKED: Regex = Regex::new(r#"(?i)sensitive\s*=\s*true"#).unwrap();
 
     // Provider version pattern
     static ref PROVIDER_VERSION: Regex = Regex::new(r#"^\s*(?:required_)?version\s*=\s*["']([^"']+)["']"#).unwrap();
-    static ref PROVIDER_CONSTRAINT_LOOSE: Regex = Regex::new(r#">=\s*\d+\.\d+(?:\.\d+)?(?!\s*,\s*<)"#).unwrap();
+    static ref PROVIDER_UPPER_BOUND: Regex = Regex::new(r#"<\s*\d+\.\d+"#).unwrap();
+    static ref PROVIDER_LOWER_BOUND: Regex = Regex::new(r#">=\s*\d+\.\d+(?:\.\d+)?"#).unwrap();
 }
 
 /// Module source type classification
@@ -717,8 +718,8 @@ impl ModuleAnalyzer {
         for (line_idx, line) in lines.iter().enumerate() {
             let line_num = (line_idx + 1) as i32;
 
-            // Check for loose provider version constraints
-            if PROVIDER_CONSTRAINT_LOOSE.is_match(line) && line.contains("version") {
+            // Check for loose provider version constraints (has >= but no < upper bound)
+            if PROVIDER_LOWER_BOUND.is_match(line) && !PROVIDER_UPPER_BOUND.is_match(line) && line.contains("version") {
                 findings.push(ModuleFinding {
                     id: uuid::Uuid::new_v4().to_string(),
                     module_name: "provider".to_string(),

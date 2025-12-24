@@ -608,9 +608,8 @@ mod tests {
 
         // Generic patterns have lower base confidence and may be filtered out
         // This tests the confidence filtering mechanism
-        for finding in &findings {
-            assert!(finding.confidence >= 0.99);
-        }
+        // Note: confidence is no longer a field; entropy_score is used for entropy-based detection
+        assert!(findings.is_empty() || findings.iter().all(|f| f.entropy_score.unwrap_or(0.0) >= 0.5));
     }
 
     #[test]
@@ -661,7 +660,6 @@ mod tests {
                 SecretSource::Unknown {
                     description: "test".to_string(),
                 },
-                0.95,
             ),
             SecretFinding::new(
                 SecretType::GitHubToken,
@@ -669,7 +667,6 @@ mod tests {
                 SecretSource::Unknown {
                     description: "test".to_string(),
                 },
-                0.90,
             ),
         ];
 
@@ -706,7 +703,7 @@ mod tests {
         let findings = detect_secrets(content, source, &default_config());
 
         assert!(!findings.is_empty());
-        assert_eq!(findings[0].line_number, Some(3));
+        assert_eq!(findings[0].line, Some(3));
     }
 
     #[test]
@@ -720,10 +717,11 @@ mod tests {
         let findings = detect_secrets(content, source, &default_config());
 
         assert!(!findings.is_empty());
-        assert!(findings[0].context.contains("[REDACTED]"));
-        assert!(findings[0].context.contains("before"));
-        assert!(findings[0].context.contains("after"));
-        assert!(!findings[0].context.contains("AKIAIOSFODNN7EXAMPLE"));
+        let context = findings[0].context.as_ref().expect("context should exist");
+        assert!(context.contains("[REDACTED]"));
+        assert!(context.contains("before"));
+        assert!(context.contains("after"));
+        assert!(!context.contains("AKIAIOSFODNN7EXAMPLE"));
     }
 
     #[test]

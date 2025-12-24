@@ -190,24 +190,27 @@ impl BaselineManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{Target, PortInfo, ServiceInfo};
+    use crate::types::{ScanTarget, PortInfo, ServiceInfo, Protocol, PortState};
+    use std::net::IpAddr;
 
     fn create_test_host(ip: &str, hostname: Option<&str>, ports: Vec<u16>) -> HostInfo {
         HostInfo {
-            target: Target {
-                ip: ip.to_string(),
+            target: ScanTarget {
+                ip: ip.parse::<IpAddr>().unwrap(),
                 hostname: hostname.map(|h| h.to_string()),
             },
             is_alive: true,
             os_guess: None,
             ports: ports.into_iter().map(|p| PortInfo {
                 port: p,
-                protocol: "tcp".to_string(),
-                state: "open".to_string(),
+                protocol: Protocol::TCP,
+                state: PortState::Open,
                 service: Some(ServiceInfo {
                     name: "http".to_string(),
                     version: Some("1.0".to_string()),
                     banner: None,
+                    cpe: None,
+                    enumeration: None,
                     ssl_info: None,
                 }),
             }).collect(),

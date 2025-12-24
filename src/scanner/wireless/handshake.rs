@@ -422,8 +422,8 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_handshake_capture_creation() {
-        let capture = HandshakeCapture::new("wlan0");
-        assert_eq!(capture.interface, "wlan0");
+    async fn test_handshake_capturer_creation() {
+        let capturer = HandshakeCapturer::new("wlan0");
+        assert_eq!(capturer.interface, "wlan0");
     }
 }

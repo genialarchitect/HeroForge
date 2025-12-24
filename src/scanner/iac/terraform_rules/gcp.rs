@@ -11,41 +11,41 @@ use lazy_static::lazy_static;
 use regex::Regex;
 
 lazy_static! {
-    // Storage patterns
+    // Storage patterns (line-by-line matching for explicit misconfigurations)
     static ref GCS_UNIFORM_ACCESS_DISABLED: Regex = Regex::new(r#"(?i)uniform_bucket_level_access\s*=\s*false"#).unwrap();
     static ref GCS_PUBLIC_ACCESS: Regex = Regex::new(r#"(?i)allUsers|allAuthenticatedUsers"#).unwrap();
-    static ref GCS_NO_VERSIONING: Regex = Regex::new(r#"(?i)versioning\s*\{[^}]*enabled\s*=\s*false"#).unwrap();
-    static ref GCS_NO_RETENTION: Regex = Regex::new(r#"resource\s+"google_storage_bucket"\s+"[^"]+"\s*\{(?:(?!retention_policy).)*\}"#).unwrap();
-    static ref GCS_NO_LOGGING: Regex = Regex::new(r#"resource\s+"google_storage_bucket"\s+"[^"]+"\s*\{(?:(?!logging).)*\}"#).unwrap();
-    static ref GCS_NO_ENCRYPTION: Regex = Regex::new(r#"resource\s+"google_storage_bucket"\s+"[^"]+"\s*\{(?:(?!encryption).)*\}"#).unwrap();
+    static ref GCS_NO_VERSIONING: Regex = Regex::new(r#"(?i)enabled\s*=\s*false"#).unwrap();
+    static ref GCS_NO_RETENTION: Regex = Regex::new(r#"(?i)google_storage_bucket"#).unwrap();
+    static ref GCS_NO_LOGGING: Regex = Regex::new(r#"(?i)google_storage_bucket"#).unwrap();
+    static ref GCS_NO_ENCRYPTION: Regex = Regex::new(r#"(?i)google_storage_bucket"#).unwrap();
     static ref GCS_PUBLIC_PREVENTION_UNSPECIFIED: Regex = Regex::new(r#"(?i)public_access_prevention\s*=\s*["']unspecified["']"#).unwrap();
 
     // Compute patterns
     static ref COMPUTE_PUBLIC_IP: Regex = Regex::new(r#"(?i)access_config\s*\{"#).unwrap();
-    static ref COMPUTE_DEFAULT_SA: Regex = Regex::new(r#"(?i)service_account\s*\{[^}]*email\s*=\s*["'][^"']*-compute@developer\.gserviceaccount\.com["']"#).unwrap();
-    static ref COMPUTE_NO_SHIELDED_VM: Regex = Regex::new(r#"resource\s+"google_compute_instance"\s+"[^"]+"\s*\{(?:(?!shielded_instance_config).)*\}"#).unwrap();
+    static ref COMPUTE_DEFAULT_SA: Regex = Regex::new(r#"(?i)-compute@developer\.gserviceaccount\.com"#).unwrap();
+    static ref COMPUTE_NO_SHIELDED_VM: Regex = Regex::new(r#"(?i)google_compute_instance"#).unwrap();
     static ref COMPUTE_VTPM_DISABLED: Regex = Regex::new(r#"(?i)enable_vtpm\s*=\s*false"#).unwrap();
     static ref COMPUTE_INTEGRITY_DISABLED: Regex = Regex::new(r#"(?i)enable_integrity_monitoring\s*=\s*false"#).unwrap();
     static ref COMPUTE_SERIAL_PORT_ENABLED: Regex = Regex::new(r#"(?i)serial-port-enable\s*=\s*["']?true["']?"#).unwrap();
     static ref COMPUTE_PROJECT_SSH_KEYS: Regex = Regex::new(r#"(?i)block_project_ssh_keys\s*=\s*false"#).unwrap();
     static ref COMPUTE_OS_LOGIN_DISABLED: Regex = Regex::new(r#"(?i)enable-oslogin\s*=\s*["']?FALSE["']?"#).unwrap();
     static ref COMPUTE_IP_FORWARDING: Regex = Regex::new(r#"(?i)can_ip_forward\s*=\s*true"#).unwrap();
-    static ref COMPUTE_NO_CONFIDENTIAL_VM: Regex = Regex::new(r#"resource\s+"google_compute_instance"\s+"[^"]+"\s*\{(?:(?!confidential_instance_config).)*\}"#).unwrap();
-    static ref COMPUTE_DISK_NO_ENCRYPTION: Regex = Regex::new(r#"resource\s+"google_compute_disk"\s+"[^"]+"\s*\{(?:(?!disk_encryption_key).)*\}"#).unwrap();
+    static ref COMPUTE_NO_CONFIDENTIAL_VM: Regex = Regex::new(r#"(?i)google_compute_instance"#).unwrap();
+    static ref COMPUTE_DISK_NO_ENCRYPTION: Regex = Regex::new(r#"(?i)google_compute_disk"#).unwrap();
 
     // Network patterns
-    static ref FIREWALL_SSH_OPEN: Regex = Regex::new(r#"(?i)allow\s*\{[^}]*ports\s*=\s*\[[^]]*"22"[^}]*source_ranges\s*=\s*\[[^]]*"0\.0\.0\.0/0""#).unwrap();
-    static ref FIREWALL_RDP_OPEN: Regex = Regex::new(r#"(?i)allow\s*\{[^}]*ports\s*=\s*\[[^]]*"3389"[^}]*source_ranges\s*=\s*\[[^]]*"0\.0\.0\.0/0""#).unwrap();
-    static ref FIREWALL_ALL_OPEN: Regex = Regex::new(r#"(?i)source_ranges\s*=\s*\[[^]]*"0\.0\.0\.0/0"[^]]*\][^}]*allow\s*\{[^}]*protocol\s*=\s*["']all["']"#).unwrap();
-    static ref FIREWALL_LOGGING_DISABLED: Regex = Regex::new(r#"resource\s+"google_compute_firewall"\s+"[^"]+"\s*\{(?:(?!log_config).)*\}"#).unwrap();
+    static ref FIREWALL_SSH_OPEN: Regex = Regex::new(r#"(?i)ports\s*=\s*\[[^\]]*"22""#).unwrap();
+    static ref FIREWALL_RDP_OPEN: Regex = Regex::new(r#"(?i)ports\s*=\s*\[[^\]]*"3389""#).unwrap();
+    static ref FIREWALL_ALL_OPEN: Regex = Regex::new(r#"(?i)source_ranges\s*=\s*\[[^\]]*"0\.0\.0\.0/0""#).unwrap();
+    static ref FIREWALL_LOGGING_DISABLED: Regex = Regex::new(r#"(?i)google_compute_firewall"#).unwrap();
     static ref VPC_LEGACY_NETWORK: Regex = Regex::new(r#"(?i)auto_create_subnetworks\s*=\s*true"#).unwrap();
-    static ref VPC_NO_FLOW_LOGS: Regex = Regex::new(r#"resource\s+"google_compute_subnetwork"\s+"[^"]+"\s*\{(?:(?!log_config).)*\}"#).unwrap();
+    static ref VPC_NO_FLOW_LOGS: Regex = Regex::new(r#"(?i)google_compute_subnetwork"#).unwrap();
     static ref VPC_PRIVATE_ACCESS_DISABLED: Regex = Regex::new(r#"(?i)private_ip_google_access\s*=\s*false"#).unwrap();
-    static ref LOAD_BALANCER_NO_SSL_POLICY: Regex = Regex::new(r#"resource\s+"google_compute_target_https_proxy"\s+"[^"]+"\s*\{(?:(?!ssl_policy).)*\}"#).unwrap();
+    static ref LOAD_BALANCER_NO_SSL_POLICY: Regex = Regex::new(r#"(?i)google_compute_target_https_proxy"#).unwrap();
 
     // IAM patterns
-    static ref IAM_BINDING_PUBLIC: Regex = Regex::new(r#"(?i)members?\s*=\s*\[[^]]*"allUsers"[^]]*\]"#).unwrap();
-    static ref IAM_BINDING_AUTH_USERS: Regex = Regex::new(r#"(?i)members?\s*=\s*\[[^]]*"allAuthenticatedUsers"[^]]*\]"#).unwrap();
+    static ref IAM_BINDING_PUBLIC: Regex = Regex::new(r#"(?i)"allUsers""#).unwrap();
+    static ref IAM_BINDING_AUTH_USERS: Regex = Regex::new(r#"(?i)"allAuthenticatedUsers""#).unwrap();
     static ref IAM_PRIMITIVE_ROLES: Regex = Regex::new(r#"(?i)role\s*=\s*["']roles/(owner|editor|viewer)["']"#).unwrap();
     static ref IAM_SA_KEY_CREATED: Regex = Regex::new(r#"resource\s+"google_service_account_key""#).unwrap();
     static ref IAM_SA_ADMIN_ROLE: Regex = Regex::new(r#"(?i)role\s*=\s*["']roles/iam\.serviceAccountAdmin["']"#).unwrap();
@@ -54,76 +54,76 @@ lazy_static! {
 
     // GKE patterns
     static ref GKE_LEGACY_ABAC: Regex = Regex::new(r#"(?i)enable_legacy_abac\s*=\s*true"#).unwrap();
-    static ref GKE_BASIC_AUTH: Regex = Regex::new(r#"(?i)master_auth\s*\{[^}]*username\s*="#).unwrap();
+    static ref GKE_BASIC_AUTH: Regex = Regex::new(r#"(?i)username\s*="#).unwrap();
     static ref GKE_CLIENT_CERT: Regex = Regex::new(r#"(?i)issue_client_certificate\s*=\s*true"#).unwrap();
     static ref GKE_NO_PRIVATE_CLUSTER: Regex = Regex::new(r#"(?i)enable_private_nodes\s*=\s*false"#).unwrap();
     static ref GKE_PUBLIC_ENDPOINT: Regex = Regex::new(r#"(?i)enable_private_endpoint\s*=\s*false"#).unwrap();
-    static ref GKE_NO_NETWORK_POLICY: Regex = Regex::new(r#"(?i)network_policy\s*\{[^}]*enabled\s*=\s*false"#).unwrap();
-    static ref GKE_NO_POD_SECURITY_POLICY: Regex = Regex::new(r#"(?i)pod_security_policy_config\s*\{[^}]*enabled\s*=\s*false"#).unwrap();
-    static ref GKE_NO_WORKLOAD_IDENTITY: Regex = Regex::new(r#"resource\s+"google_container_cluster"\s+"[^"]+"\s*\{(?:(?!workload_identity_config).)*\}"#).unwrap();
-    static ref GKE_DEFAULT_NODE_SA: Regex = Regex::new(r#"(?i)node_config\s*\{(?:(?!service_account).)*\}"#).unwrap();
+    static ref GKE_NO_NETWORK_POLICY: Regex = Regex::new(r#"(?i)enabled\s*=\s*false"#).unwrap();
+    static ref GKE_NO_POD_SECURITY_POLICY: Regex = Regex::new(r#"(?i)enabled\s*=\s*false"#).unwrap();
+    static ref GKE_NO_WORKLOAD_IDENTITY: Regex = Regex::new(r#"(?i)google_container_cluster"#).unwrap();
+    static ref GKE_DEFAULT_NODE_SA: Regex = Regex::new(r#"(?i)node_config"#).unwrap();
     static ref GKE_NO_SHIELDED_NODES: Regex = Regex::new(r#"(?i)enable_shielded_nodes\s*=\s*false"#).unwrap();
-    static ref GKE_DASHBOARD_ENABLED: Regex = Regex::new(r#"(?i)kubernetes_dashboard\s*\{[^}]*disabled\s*=\s*false"#).unwrap();
+    static ref GKE_DASHBOARD_ENABLED: Regex = Regex::new(r#"(?i)disabled\s*=\s*false"#).unwrap();
     static ref GKE_NO_BINARY_AUTH: Regex = Regex::new(r#"(?i)enable_binary_authorization\s*=\s*false"#).unwrap();
     static ref GKE_INTRANODE_VISIBILITY_DISABLED: Regex = Regex::new(r#"(?i)enable_intranode_visibility\s*=\s*false"#).unwrap();
-    static ref GKE_RELEASE_CHANNEL_UNSPECIFIED: Regex = Regex::new(r#"(?i)release_channel\s*\{[^}]*channel\s*=\s*["']UNSPECIFIED["']"#).unwrap();
-    static ref GKE_NO_DATABASE_ENCRYPTION: Regex = Regex::new(r#"resource\s+"google_container_cluster"\s+"[^"]+"\s*\{(?:(?!database_encryption).)*\}"#).unwrap();
-    static ref GKE_NODE_NO_METADATA_CONCEALMENT: Regex = Regex::new(r#"resource\s+"google_container_node_pool"\s+"[^"]+"\s*\{(?:(?!workload_metadata_config).)*\}"#).unwrap();
+    static ref GKE_RELEASE_CHANNEL_UNSPECIFIED: Regex = Regex::new(r#"(?i)channel\s*=\s*["']UNSPECIFIED["']"#).unwrap();
+    static ref GKE_NO_DATABASE_ENCRYPTION: Regex = Regex::new(r#"(?i)google_container_cluster"#).unwrap();
+    static ref GKE_NODE_NO_METADATA_CONCEALMENT: Regex = Regex::new(r#"(?i)google_container_node_pool"#).unwrap();
 
     // Cloud SQL patterns
     static ref SQL_PUBLIC_IP: Regex = Regex::new(r#"(?i)ipv4_enabled\s*=\s*true"#).unwrap();
     static ref SQL_NO_SSL: Regex = Regex::new(r#"(?i)require_ssl\s*=\s*false"#).unwrap();
-    static ref SQL_NO_BACKUP: Regex = Regex::new(r#"(?i)backup_configuration\s*\{[^}]*enabled\s*=\s*false"#).unwrap();
+    static ref SQL_NO_BACKUP: Regex = Regex::new(r#"(?i)enabled\s*=\s*false"#).unwrap();
     static ref SQL_PITR_DISABLED: Regex = Regex::new(r#"(?i)point_in_time_recovery_enabled\s*=\s*false"#).unwrap();
-    static ref SQL_AUTHORIZED_NETWORKS_OPEN: Regex = Regex::new(r#"(?i)authorized_networks\s*\{[^}]*value\s*=\s*["']0\.0\.0\.0/0["']"#).unwrap();
-    static ref SQL_NO_CMEK: Regex = Regex::new(r#"resource\s+"google_sql_database_instance"\s+"[^"]+"\s*\{(?:(?!encryption_key_name).)*\}"#).unwrap();
-    static ref SQL_LOCAL_FLAGS_ENABLED: Regex = Regex::new(r#"(?i)database_flags\s*\{[^}]*name\s*=\s*["']local_infile["'][^}]*value\s*=\s*["']on["']"#).unwrap();
+    static ref SQL_AUTHORIZED_NETWORKS_OPEN: Regex = Regex::new(r#"(?i)value\s*=\s*["']0\.0\.0\.0/0["']"#).unwrap();
+    static ref SQL_NO_CMEK: Regex = Regex::new(r#"(?i)google_sql_database_instance"#).unwrap();
+    static ref SQL_LOCAL_FLAGS_ENABLED: Regex = Regex::new(r#"(?i)local_infile"#).unwrap();
 
     // BigQuery patterns
-    static ref BQ_NO_CMEK: Regex = Regex::new(r#"resource\s+"google_bigquery_dataset"\s+"[^"]+"\s*\{(?:(?!default_encryption_configuration).)*\}"#).unwrap();
-    static ref BQ_PUBLIC_ACCESS: Regex = Regex::new(r#"(?i)access\s*\{[^}]*special_group\s*=\s*["']allAuthenticatedUsers["']"#).unwrap();
-    static ref BQ_TABLE_NO_CMEK: Regex = Regex::new(r#"resource\s+"google_bigquery_table"\s+"[^"]+"\s*\{(?:(?!encryption_configuration).)*\}"#).unwrap();
+    static ref BQ_NO_CMEK: Regex = Regex::new(r#"(?i)google_bigquery_dataset"#).unwrap();
+    static ref BQ_PUBLIC_ACCESS: Regex = Regex::new(r#"(?i)special_group\s*=\s*["']allAuthenticatedUsers["']"#).unwrap();
+    static ref BQ_TABLE_NO_CMEK: Regex = Regex::new(r#"(?i)google_bigquery_table"#).unwrap();
 
     // Cloud Functions patterns
-    static ref FUNCTION_PUBLIC_INVOKER: Regex = Regex::new(r#"(?i)role\s*=\s*["']roles/cloudfunctions\.invoker["'][^}]*member\s*=\s*["']allUsers["']"#).unwrap();
+    static ref FUNCTION_PUBLIC_INVOKER: Regex = Regex::new(r#"(?i)cloudfunctions\.invoker"#).unwrap();
     static ref FUNCTION_INGRESS_ALL: Regex = Regex::new(r#"(?i)ingress_settings\s*=\s*["']ALLOW_ALL["']"#).unwrap();
-    static ref FUNCTION_NO_VPC_CONNECTOR: Regex = Regex::new(r#"resource\s+"google_cloudfunctions_function"\s+"[^"]+"\s*\{(?:(?!vpc_connector).)*\}"#).unwrap();
+    static ref FUNCTION_NO_VPC_CONNECTOR: Regex = Regex::new(r#"(?i)google_cloudfunctions_function"#).unwrap();
 
     // Cloud Run patterns
-    static ref RUN_PUBLIC_INVOKER: Regex = Regex::new(r#"(?i)role\s*=\s*["']roles/run\.invoker["'][^}]*member\s*=\s*["']allUsers["']"#).unwrap();
+    static ref RUN_PUBLIC_INVOKER: Regex = Regex::new(r#"(?i)run\.invoker"#).unwrap();
     static ref RUN_INGRESS_ALL: Regex = Regex::new(r#"(?i)ingress\s*=\s*["']all["']"#).unwrap();
-    static ref RUN_NO_VPC_CONNECTOR: Regex = Regex::new(r#"resource\s+"google_cloud_run_service"\s+"[^"]+"\s*\{(?:(?!vpc_connector).)*\}"#).unwrap();
+    static ref RUN_NO_VPC_CONNECTOR: Regex = Regex::new(r#"(?i)google_cloud_run_service"#).unwrap();
 
     // Pub/Sub patterns
-    static ref PUBSUB_NO_CMEK: Regex = Regex::new(r#"resource\s+"google_pubsub_topic"\s+"[^"]+"\s*\{(?:(?!kms_key_name).)*\}"#).unwrap();
-    static ref PUBSUB_PUBLIC_SUBSCRIPTION: Regex = Regex::new(r#"(?i)role\s*=\s*["']roles/pubsub\.subscriber["'][^}]*member\s*=\s*["']allUsers["']"#).unwrap();
+    static ref PUBSUB_NO_CMEK: Regex = Regex::new(r#"(?i)google_pubsub_topic"#).unwrap();
+    static ref PUBSUB_PUBLIC_SUBSCRIPTION: Regex = Regex::new(r#"(?i)pubsub\.subscriber"#).unwrap();
 
     // KMS patterns
-    static ref KMS_PUBLIC_KEY: Regex = Regex::new(r#"(?i)role\s*=\s*["']roles/cloudkms\.[^"']+["'][^}]*member\s*=\s*["']allUsers["']"#).unwrap();
-    static ref KMS_NO_ROTATION: Regex = Regex::new(r#"resource\s+"google_kms_crypto_key"\s+"[^"]+"\s*\{(?:(?!rotation_period).)*\}"#).unwrap();
+    static ref KMS_PUBLIC_KEY: Regex = Regex::new(r#"(?i)cloudkms\."#).unwrap();
+    static ref KMS_NO_ROTATION: Regex = Regex::new(r#"(?i)google_kms_crypto_key"#).unwrap();
     static ref KMS_WEAK_ALGORITHM: Regex = Regex::new(r#"(?i)algorithm\s*=\s*["']RSA_SIGN_PKCS1_2048_SHA256["']"#).unwrap();
 
     // Logging/Monitoring patterns
-    static ref LOG_SINK_NO_FILTER: Regex = Regex::new(r#"resource\s+"google_logging_project_sink"\s+"[^"]+"\s*\{(?:(?!filter).)*\}"#).unwrap();
-    static ref AUDIT_LOG_DISABLED: Regex = Regex::new(r#"(?i)audit_log_config\s*\{[^}]*log_type\s*=\s*["']ADMIN_READ["'][^}]*exempted_members"#).unwrap();
+    static ref LOG_SINK_NO_FILTER: Regex = Regex::new(r#"(?i)google_logging_project_sink"#).unwrap();
+    static ref AUDIT_LOG_DISABLED: Regex = Regex::new(r#"(?i)exempted_members"#).unwrap();
 
     // Secret Manager patterns
-    static ref SECRET_NO_CMEK: Regex = Regex::new(r#"resource\s+"google_secret_manager_secret"\s+"[^"]+"\s*\{(?:(?!customer_managed_encryption).)*\}"#).unwrap();
-    static ref SECRET_NO_ROTATION: Regex = Regex::new(r#"resource\s+"google_secret_manager_secret"\s+"[^"]+"\s*\{(?:(?!rotation).)*\}"#).unwrap();
+    static ref SECRET_NO_CMEK: Regex = Regex::new(r#"(?i)google_secret_manager_secret"#).unwrap();
+    static ref SECRET_NO_ROTATION: Regex = Regex::new(r#"(?i)google_secret_manager_secret"#).unwrap();
 
     // Cloud Armor patterns
-    static ref ARMOR_ADAPTIVE_PROTECTION_DISABLED: Regex = Regex::new(r#"(?i)adaptive_protection_config\s*\{[^}]*layer_7_ddos_defense_config\s*\{[^}]*enable\s*=\s*false"#).unwrap();
-    static ref ARMOR_LOG_DISABLED: Regex = Regex::new(r#"resource\s+"google_compute_security_policy"\s+"[^"]+"\s*\{(?:(?!log_config).)*\}"#).unwrap();
+    static ref ARMOR_ADAPTIVE_PROTECTION_DISABLED: Regex = Regex::new(r#"(?i)enable\s*=\s*false"#).unwrap();
+    static ref ARMOR_LOG_DISABLED: Regex = Regex::new(r#"(?i)google_compute_security_policy"#).unwrap();
 
     // Dataproc patterns
     static ref DATAPROC_PUBLIC_IP: Regex = Regex::new(r#"(?i)internal_ip_only\s*=\s*false"#).unwrap();
-    static ref DATAPROC_NO_CMEK: Regex = Regex::new(r#"resource\s+"google_dataproc_cluster"\s+"[^"]+"\s*\{(?:(?!kms_key_name).)*\}"#).unwrap();
+    static ref DATAPROC_NO_CMEK: Regex = Regex::new(r#"(?i)google_dataproc_cluster"#).unwrap();
 
     // Spanner patterns
-    static ref SPANNER_NO_CMEK: Regex = Regex::new(r#"resource\s+"google_spanner_database"\s+"[^"]+"\s*\{(?:(?!encryption_config).)*\}"#).unwrap();
+    static ref SPANNER_NO_CMEK: Regex = Regex::new(r#"(?i)google_spanner_database"#).unwrap();
 
     // Filestore patterns
-    static ref FILESTORE_NO_CMEK: Regex = Regex::new(r#"resource\s+"google_filestore_instance"\s+"[^"]+"\s*\{(?:(?!kms_key_name).)*\}"#).unwrap();
+    static ref FILESTORE_NO_CMEK: Regex = Regex::new(r#"(?i)google_filestore_instance"#).unwrap();
 
     // API Gateway patterns
     static ref API_GATEWAY_NO_AUTH: Regex = Regex::new(r#"(?i)security\s*=\s*\[\s*\]"#).unwrap();

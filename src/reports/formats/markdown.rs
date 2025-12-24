@@ -399,6 +399,7 @@ mod tests {
             completed_at: Some(Utc::now()),
             customer_id: None,
             engagement_id: None,
+            organization_id: None,
         }
     }
 

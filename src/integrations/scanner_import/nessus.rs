@@ -378,6 +378,7 @@ pub fn map_nessus_severity(nessus_severity: u8) -> Severity {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::Datelike;
 
     #[test]
     fn test_parse_nessus_date() {
