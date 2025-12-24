@@ -661,12 +661,17 @@ pub async fn list_user_role_assignments(
             _ => None,
         };
 
+        // Get organization name
+        let org = super::organizations::get_organization_by_id(pool, &a.organization_id).await?;
+
         result.push(RoleAssignmentInfo {
             id: a.id,
             role_type: RoleType::from_str(&a.role_type).unwrap_or(RoleType::Template),
             role_id: a.role_id,
             role_name,
             role_display_name,
+            organization_id: Some(a.organization_id),
+            organization_name: org.map(|o| o.name),
             scope_type: a.scope_type.and_then(|s| ScopeType::from_str(&s)),
             scope_id: a.scope_id,
             scope_name,
@@ -717,6 +722,85 @@ pub async fn get_active_role_assignments(
     .await?;
 
     Ok(assignments)
+}
+
+/// List all role assignments for a user across all organizations (for admin view)
+pub async fn list_all_user_role_assignments(
+    pool: &SqlitePool,
+    user_id: &str,
+) -> Result<Vec<RoleAssignmentInfo>> {
+    let assignments = sqlx::query_as::<_, UserRoleAssignment>(
+        r#"
+        SELECT * FROM user_role_assignments
+        WHERE user_id = ? AND is_active = 1
+        AND (expires_at IS NULL OR expires_at > datetime('now'))
+        ORDER BY assigned_at DESC
+        "#,
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?;
+
+    let mut result = Vec::new();
+    for a in assignments {
+        // Get role name/display_name
+        let (role_name, role_display_name) = match RoleType::from_str(&a.role_type) {
+            Some(RoleType::Template) => {
+                if let Some(t) = get_role_template_by_id(pool, &a.role_id).await? {
+                    (t.name, t.display_name)
+                } else {
+                    continue;
+                }
+            }
+            Some(RoleType::Custom) => {
+                if let Some(r) = get_custom_role_by_id(pool, &a.role_id).await? {
+                    (r.name, r.display_name)
+                } else {
+                    continue;
+                }
+            }
+            None => continue,
+        };
+
+        // Get organization name
+        let org_name = super::organizations::get_organization_by_id(pool, &a.organization_id)
+            .await?
+            .map(|o| o.name);
+
+        // Get scope name if applicable
+        let scope_name = match (ScopeType::from_str(a.scope_type.as_deref().unwrap_or("")), &a.scope_id) {
+            (Some(ScopeType::Department), Some(id)) => {
+                super::organizations::get_department_by_id(pool, id)
+                    .await?
+                    .map(|d| d.name)
+            }
+            (Some(ScopeType::Team), Some(id)) => {
+                super::organizations::get_team_by_id(pool, id)
+                    .await?
+                    .map(|t| t.name)
+            }
+            _ => None, // No specific scope name
+        };
+
+        result.push(RoleAssignmentInfo {
+            id: a.id,
+            role_type: RoleType::from_str(&a.role_type).unwrap_or(RoleType::Template),
+            role_id: a.role_id,
+            role_name,
+            role_display_name,
+            organization_id: Some(a.organization_id),
+            organization_name: org_name,
+            scope_type: a.scope_type.and_then(|s| ScopeType::from_str(&s)),
+            scope_id: a.scope_id,
+            scope_name,
+            assigned_at: a.assigned_at,
+            assigned_by: a.assigned_by,
+            expires_at: a.expires_at,
+            is_active: a.is_active,
+        });
+    }
+
+    Ok(result)
 }
 
 // ============================================================================

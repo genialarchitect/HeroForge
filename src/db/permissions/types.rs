@@ -545,6 +545,8 @@ pub struct RoleAssignmentInfo {
     pub role_id: String,
     pub role_name: String,
     pub role_display_name: String,
+    pub organization_id: Option<String>,
+    pub organization_name: Option<String>,
     pub scope_type: Option<ScopeType>,
     pub scope_id: Option<String>,
     pub scope_name: Option<String>,

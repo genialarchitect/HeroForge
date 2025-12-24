@@ -5416,6 +5416,47 @@ export interface UserRoleAssignment {
   is_active: boolean;
 }
 
+// Extended role assignment info with organization details (from admin API)
+export interface RoleAssignmentInfo {
+  id: string;
+  role_type: 'template' | 'custom' | 'Template' | 'Custom';
+  role_id: string;
+  role_name: string;
+  role_display_name: string;
+  organization_id?: string;
+  organization_name?: string;
+  scope_type?: ScopeType | string;
+  scope_id?: string;
+  scope_name?: string;
+  assigned_at: string;
+  assigned_by?: string;
+  expires_at?: string;
+  is_active: boolean;
+}
+
+// Permission summary for admin user list
+export interface PermissionsSummary {
+  role_count: number;
+  organization_count: number;
+  has_admin_role: boolean;
+}
+
+// Extended user type for admin API response
+export interface AdminUser {
+  id: string;
+  username: string;
+  email: string;
+  is_active: boolean;
+  created_at: string;
+  mfa_enabled: boolean;
+  roles: UserRole[];  // Legacy roles for backward compatibility
+  role_assignments: RoleAssignmentInfo[];  // ABAC role assignments
+  permissions_summary: PermissionsSummary;
+  is_locked: boolean;
+  locked_until?: string;
+  failed_attempts: number;
+}
+
 export interface AssignRoleRequest {
   user_id: string;
   role_type: 'template' | 'custom';

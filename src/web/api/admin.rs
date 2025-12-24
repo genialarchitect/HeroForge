@@ -1,11 +1,57 @@
 use actix_web::{web, HttpRequest, HttpResponse, Result};
+use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use uuid::Uuid;
 use chrono::Utc;
 
 use crate::db::{self, models};
+use crate::db::permissions::{self, types::{RoleAssignmentInfo, AssignRoleRequest, RoleType, ScopeType}};
 use crate::web::auth;
 use crate::web::rate_limit_stats;
+
+// ============================================================================
+// Response Types
+// ============================================================================
+
+/// User response with ABAC role assignments
+#[derive(Debug, Serialize)]
+pub struct AdminUserResponse {
+    pub id: String,
+    pub username: String,
+    pub email: String,
+    pub is_active: bool,
+    pub created_at: String,
+    pub mfa_enabled: bool,
+    /// Legacy roles (for backward compatibility)
+    pub roles: Vec<String>,
+    /// ABAC role assignments with full details
+    pub role_assignments: Vec<RoleAssignmentInfo>,
+    /// Quick permission summary
+    pub permissions_summary: PermissionsSummary,
+    /// Account lockout status
+    pub is_locked: bool,
+    pub locked_until: Option<String>,
+    pub failed_attempts: i32,
+}
+
+/// Quick permission summary for the admin view
+#[derive(Debug, Serialize)]
+pub struct PermissionsSummary {
+    pub role_count: i32,
+    pub organization_count: i32,
+    pub has_admin_role: bool,
+}
+
+/// Request to assign a role with scope
+#[derive(Debug, Deserialize, Serialize)]
+pub struct AssignRoleWithScopeRequest {
+    pub role_type: String,  // "template" or "custom"
+    pub role_id: String,
+    pub organization_id: String,
+    pub scope_type: Option<String>,  // "department" or "team"
+    pub scope_id: Option<String>,
+    pub expires_at: Option<String>,
+}
 
 // ============================================================================
 // Helper Functions
@@ -49,34 +95,64 @@ pub async fn list_users(
 
     match db::get_all_users(&pool).await {
         Ok(users) => {
-            // For each user, fetch their roles and lockout status
-            let mut users_with_roles = Vec::new();
+            let mut admin_users = Vec::new();
             let now = chrono::Utc::now();
 
             for user in users {
-                let roles = db::get_user_roles(&pool, &user.id).await.unwrap_or_default();
-                let role_names: Vec<String> = roles.iter().map(|r| r.name.clone()).collect();
+                // Get legacy roles for backward compatibility
+                let legacy_roles = db::get_user_roles(&pool, &user.id).await.unwrap_or_default();
+                let role_names: Vec<String> = legacy_roles.iter().map(|r| r.name.clone()).collect();
+
+                // Get ABAC role assignments
+                let role_assignments = permissions::roles::list_all_user_role_assignments(
+                    pool.get_ref(),
+                    &user.id,
+                ).await.unwrap_or_default();
+
+                // Compute summary stats before moving role_assignments
+                let role_count = role_assignments.len() as i32;
+                let org_count = role_assignments
+                    .iter()
+                    .filter_map(|r| r.organization_id.as_ref())
+                    .collect::<std::collections::HashSet<_>>()
+                    .len() as i32;
+                let has_admin_role = role_names.contains(&"admin".to_string())
+                    || role_assignments.iter().any(|r| r.role_name == "admin");
 
                 // Check lockout status
                 let lockout = db::get_user_lockout_status(&pool, &user.username).await.ok().flatten();
                 let is_locked = lockout.as_ref().map(|l| l.locked_until > now).unwrap_or(false);
-                let locked_until = if is_locked { lockout.as_ref().map(|l| l.locked_until) } else { None };
+                let locked_until = if is_locked {
+                    lockout.as_ref().map(|l| l.locked_until.to_rfc3339())
+                } else {
+                    None
+                };
                 let failed_attempts = lockout.as_ref().map(|l| l.attempt_count).unwrap_or(0);
 
-                users_with_roles.push(serde_json::json!({
-                    "id": user.id,
-                    "username": user.username,
-                    "email": user.email,
-                    "is_active": user.is_active,
-                    "created_at": user.created_at,
-                    "roles": role_names,
-                    "is_locked": is_locked,
-                    "locked_until": locked_until,
-                    "failed_attempts": failed_attempts
-                }));
+                // Check MFA status
+                let mfa_enabled = db::is_mfa_enabled(&pool, &user.id).await.unwrap_or(false);
+
+                admin_users.push(AdminUserResponse {
+                    id: user.id,
+                    username: user.username,
+                    email: user.email,
+                    is_active: user.is_active,
+                    created_at: user.created_at.to_rfc3339(),
+                    mfa_enabled,
+                    roles: role_names,
+                    role_assignments,
+                    permissions_summary: PermissionsSummary {
+                        role_count,
+                        organization_count: org_count,
+                        has_admin_role,
+                    },
+                    is_locked,
+                    locked_until,
+                    failed_attempts,
+                });
             }
 
-            Ok(HttpResponse::Ok().json(users_with_roles))
+            Ok(HttpResponse::Ok().json(admin_users))
         }
         Err(e) => {
             log::error!("Database error in list_users: {}", e);
@@ -729,6 +805,176 @@ pub async fn update_setting(
 }
 
 // ============================================================================
+// ABAC Role Assignment Endpoints
+// ============================================================================
+
+/// Get user's role assignments (ABAC)
+pub async fn get_user_role_assignments(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    user_id: web::Path<String>,
+) -> Result<HttpResponse> {
+    // Check permission
+    if !db::has_permission(&pool, &claims.sub, "manage_users").await.unwrap_or(false) {
+        return Ok(HttpResponse::Forbidden().json(serde_json::json!({
+            "error": "Insufficient permissions"
+        })));
+    }
+
+    match permissions::roles::list_all_user_role_assignments(pool.get_ref(), &user_id).await {
+        Ok(assignments) => Ok(HttpResponse::Ok().json(assignments)),
+        Err(e) => {
+            log::error!("Failed to get role assignments: {}", e);
+            Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to get role assignments"
+            })))
+        }
+    }
+}
+
+/// Assign role to user with scope (ABAC)
+pub async fn assign_role_with_scope(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    user_id: web::Path<String>,
+    body: web::Json<AssignRoleWithScopeRequest>,
+    req: HttpRequest,
+) -> Result<HttpResponse> {
+    // Check permission
+    if !db::has_permission(&pool, &claims.sub, "manage_users").await.unwrap_or(false) {
+        return Ok(HttpResponse::Forbidden().json(serde_json::json!({
+            "error": "Insufficient permissions"
+        })));
+    }
+
+    // Parse expiration date if provided
+    let expires_at = body.expires_at.as_ref().and_then(|s| {
+        chrono::DateTime::parse_from_rfc3339(s)
+            .ok()
+            .map(|dt| dt.with_timezone(&chrono::Utc))
+    });
+
+    // Parse role type
+    let role_type = match body.role_type.as_str() {
+        "custom" => RoleType::Custom,
+        _ => RoleType::Template,
+    };
+
+    // Parse scope type
+    let scope_type = body.scope_type.as_ref().and_then(|s| match s.as_str() {
+        "department" => Some(ScopeType::Department),
+        "team" => Some(ScopeType::Team),
+        "organization" => Some(ScopeType::Organization),
+        _ => None,
+    });
+
+    // Build the role assignment request
+    let assign_req = AssignRoleRequest {
+        role_type,
+        role_id: body.role_id.clone(),
+        scope_type,
+        scope_id: body.scope_id.clone(),
+        expires_at,
+    };
+
+    // Create the assignment
+    match permissions::roles::assign_role_to_user(
+        pool.get_ref(),
+        &user_id,
+        &body.organization_id,
+        &assign_req,
+        Some(&claims.sub),
+    ).await {
+        Ok(assignment) => {
+            // Log audit
+            let log = models::AuditLog {
+                id: Uuid::new_v4().to_string(),
+                user_id: claims.sub.clone(),
+                action: "role.assign_abac".to_string(),
+                target_type: Some("user".to_string()),
+                target_id: Some(user_id.to_string()),
+                details: Some(serde_json::to_string(&body.into_inner()).unwrap_or_default()),
+                ip_address: get_client_ip(&req),
+                user_agent: req.headers().get("User-Agent").and_then(|h| h.to_str().ok()).map(|s| s.to_string()),
+                created_at: Utc::now(),
+            };
+            let _ = db::create_audit_log(&pool, &log).await;
+
+            Ok(HttpResponse::Ok().json(serde_json::json!({
+                "message": "Role assigned successfully",
+                "assignment_id": assignment.id,
+                "assignment": assignment
+            })))
+        }
+        Err(e) => {
+            log::error!("Failed to assign role: {}", e);
+            Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to assign role"
+            })))
+        }
+    }
+}
+
+/// Remove role assignment (ABAC)
+pub async fn remove_role_assignment(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    path: web::Path<(String, String)>,
+    req: HttpRequest,
+) -> Result<HttpResponse> {
+    let (user_id, assignment_id) = path.into_inner();
+
+    // Check permission
+    if !db::has_permission(&pool, &claims.sub, "manage_users").await.unwrap_or(false) {
+        return Ok(HttpResponse::Forbidden().json(serde_json::json!({
+            "error": "Insufficient permissions"
+        })));
+    }
+
+    // Verify the assignment belongs to this user
+    let assignment = permissions::roles::get_role_assignment_by_id(pool.get_ref(), &assignment_id).await;
+    if let Ok(Some(a)) = &assignment {
+        if a.user_id != user_id {
+            return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+                "error": "Assignment does not belong to this user"
+            })));
+        }
+    } else {
+        return Ok(HttpResponse::NotFound().json(serde_json::json!({
+            "error": "Assignment not found"
+        })));
+    }
+
+    match permissions::roles::remove_role_assignment(pool.get_ref(), &assignment_id).await {
+        Ok(_) => {
+            // Log audit
+            let log = models::AuditLog {
+                id: Uuid::new_v4().to_string(),
+                user_id: claims.sub.clone(),
+                action: "role.remove_abac".to_string(),
+                target_type: Some("user".to_string()),
+                target_id: Some(user_id),
+                details: Some(format!("Removed assignment: {}", assignment_id)),
+                ip_address: get_client_ip(&req),
+                user_agent: req.headers().get("User-Agent").and_then(|h| h.to_str().ok()).map(|s| s.to_string()),
+                created_at: Utc::now(),
+            };
+            let _ = db::create_audit_log(&pool, &log).await;
+
+            Ok(HttpResponse::Ok().json(serde_json::json!({
+                "message": "Role assignment removed successfully"
+            })))
+        }
+        Err(e) => {
+            log::error!("Failed to remove role assignment: {}", e);
+            Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to remove role assignment"
+            })))
+        }
+    }
+}
+
+// ============================================================================
 // Rate Limit Dashboard
 // ============================================================================
 
@@ -763,8 +1009,13 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/users/{id}", web::get().to(get_user))
             .route("/users/{id}", web::patch().to(update_user))
             .route("/users/{id}", web::delete().to(delete_user))
+            // Legacy role endpoints (for backward compatibility)
             .route("/users/{id}/roles", web::post().to(assign_role))
             .route("/users/{id}/roles/{role_id}", web::delete().to(remove_role))
+            // ABAC role assignment endpoints
+            .route("/users/{id}/role-assignments", web::get().to(get_user_role_assignments))
+            .route("/users/{id}/role-assignments", web::post().to(assign_role_with_scope))
+            .route("/users/{id}/role-assignments/{assignment_id}", web::delete().to(remove_role_assignment))
             .route("/users/{id}/unlock", web::post().to(unlock_user))
 
             // Account lockout management

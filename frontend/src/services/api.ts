@@ -394,21 +394,41 @@ export const scanTagAPI = {
     api.delete<{ message: string }>(`/scans/${scanId}/tags/${tagId}`),
 };
 
-import type { RateLimitDashboardData } from '../types';
+import type { RateLimitDashboardData, AdminUser, RoleAssignmentInfo } from '../types';
+
+// Request type for assigning role with scope
+interface AssignRoleWithScopeRequest {
+  role_type: 'template' | 'custom';
+  role_id: string;
+  organization_id: string;
+  scope_type?: 'department' | 'team' | 'organization';
+  scope_id?: string;
+  expires_at?: string;
+}
 
 export const adminAPI = {
   // User management
-  getUsers: () => api.get<User[]>('/admin/users'),
+  getUsers: () => api.get<AdminUser[]>('/admin/users'),
   getUser: (id: string) => api.get<User>(`/admin/users/${id}`),
   updateUser: (id: string, data: Partial<User>) =>
     api.patch(`/admin/users/${id}`, data),
   deleteUser: (id: string) => api.delete(`/admin/users/${id}`),
+
+  // Legacy role endpoints (for backward compatibility)
   assignRole: (userId: string, roleId: string) =>
     api.post(`/admin/users/${userId}/roles`, { role_id: roleId }),
   removeRole: (userId: string, roleId: string) =>
     api.delete(`/admin/users/${userId}/roles/${roleId}`),
   unlockUser: (userId: string) =>
     api.post<{ message: string }>(`/admin/users/${userId}/unlock`),
+
+  // ABAC Role Assignment endpoints
+  getUserRoleAssignments: (userId: string) =>
+    api.get<RoleAssignmentInfo[]>(`/admin/users/${userId}/role-assignments`),
+  assignRoleWithScope: (userId: string, data: AssignRoleWithScopeRequest) =>
+    api.post<{ message: string; assignment_id: string }>(`/admin/users/${userId}/role-assignments`, data),
+  removeRoleAssignment: (userId: string, assignmentId: string) =>
+    api.delete(`/admin/users/${userId}/role-assignments/${assignmentId}`),
 
   // Roles
   getRoles: () => api.get<Role[]>('/admin/roles'),
