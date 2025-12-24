@@ -10,7 +10,11 @@ import { useAuthStore } from '../../store/authStore';
 import { SsoProviderForLogin } from '../../types';
 import SsoProviderButton from './SsoProviderButton';
 
-const LoginForm: React.FC = () => {
+interface LoginFormProps {
+  onSwitchToRegister?: () => void;
+}
+
+const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [mfaRequired, setMfaRequired] = useState(false);
@@ -320,6 +324,20 @@ const LoginForm: React.FC = () => {
           Sign In
         </Button>
       </form>
+
+      {/* Switch to Register */}
+      {onSwitchToRegister && (
+        <div className="text-center mt-4">
+          <span className="text-slate-500 dark:text-slate-400">Don't have an account? </span>
+          <button
+            type="button"
+            onClick={onSwitchToRegister}
+            className="text-primary hover:text-primary-dark font-medium transition-colors"
+          >
+            Create Account
+          </button>
+        </div>
+      )}
     </div>
   );
 };

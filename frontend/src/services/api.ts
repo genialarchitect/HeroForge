@@ -1,6 +1,7 @@
 import axios from 'axios';
 import type {
   LoginRequest,
+  RegisterRequest,
   LoginResponse,
   User,
   CreateScanRequest,
@@ -315,7 +316,7 @@ api.interceptors.request.use((config) => {
 
 export const authAPI = {
   // Public auth routes (at /api/auth)
-  register: (data: LoginRequest & { email: string }) =>
+  register: (data: RegisterRequest) =>
     api.post<LoginResponse>('/auth/register', data),
   login: (data: LoginRequest) => api.post<MfaLoginResponse>('/auth/login', data),
   // Protected user routes (at /api/user)

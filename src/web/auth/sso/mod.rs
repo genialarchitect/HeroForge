@@ -306,6 +306,8 @@ impl SsoManager {
                     username: username.clone(),
                     email: email.clone(),
                     password: uuid::Uuid::new_v4().to_string(), // Random password (user authenticates via SSO)
+                    first_name: mapped_info.first_name.clone(),
+                    last_name: mapped_info.last_name.clone(),
                     accept_terms: true, // SSO implies acceptance
                 };
 

@@ -18,8 +18,8 @@ pub async fn create_user(pool: &SqlitePool, user: &models::CreateUser) -> Result
     let now = chrono::Utc::now();
     let terms_version = "1.0";
     let user = sqlx::query_as::<_, models::User>(
-        r#"INSERT INTO users (id, username, email, password_hash, created_at, is_active, accepted_terms_at, terms_version) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8) RETURNING *"#,
-    ).bind(&id).bind(&user.username).bind(&user.email).bind(&password_hash).bind(now).bind(true).bind(now).bind(terms_version).fetch_one(pool).await?;
+        r#"INSERT INTO users (id, username, email, password_hash, created_at, is_active, accepted_terms_at, terms_version, first_name, last_name) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10) RETURNING *"#,
+    ).bind(&id).bind(&user.username).bind(&user.email).bind(&password_hash).bind(now).bind(true).bind(now).bind(terms_version).bind(&user.first_name).bind(&user.last_name).fetch_one(pool).await?;
     Ok(user)
 }
 
@@ -139,7 +139,7 @@ pub async fn export_user_data(pool: &SqlitePool, user_id: &str) -> Result<models
     let scheduled_scans = super::scans::get_user_scheduled_scans(pool, user_id).await?;
     let notification_settings = super::settings::get_notification_settings(pool, user_id).await.ok();
     Ok(models::UserDataExport {
-        user: models::UserExportData { id: user.id, username: user.username, email: user.email, created_at: user.created_at, is_active: user.is_active, accepted_terms_at: user.accepted_terms_at, terms_version: user.terms_version },
+        user: models::UserExportData { id: user.id, username: user.username, email: user.email, first_name: user.first_name, last_name: user.last_name, created_at: user.created_at, is_active: user.is_active, accepted_terms_at: user.accepted_terms_at, terms_version: user.terms_version },
         scans, reports, templates, target_groups, scheduled_scans, notification_settings,
     })
 }

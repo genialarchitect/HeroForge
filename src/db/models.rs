@@ -13,6 +13,8 @@ pub struct User {
     pub password_hash: String,
     pub created_at: DateTime<Utc>,
     pub is_active: bool,
+    pub first_name: Option<String>,
+    pub last_name: Option<String>,
     pub accepted_terms_at: Option<DateTime<Utc>>,
     pub terms_version: Option<String>,
 }
@@ -41,6 +43,8 @@ pub struct CreateUser {
     pub username: String,
     pub email: String,
     pub password: String,
+    pub first_name: Option<String>,
+    pub last_name: Option<String>,
     pub accept_terms: bool,
 }
 
@@ -62,6 +66,8 @@ pub struct UserInfo {
     pub id: String,
     pub username: String,
     pub email: String,
+    pub first_name: Option<String>,
+    pub last_name: Option<String>,
 }
 
 impl From<User> for UserInfo {
@@ -70,6 +76,8 @@ impl From<User> for UserInfo {
             id: user.id,
             username: user.username,
             email: user.email,
+            first_name: user.first_name,
+            last_name: user.last_name,
         }
     }
 }
@@ -765,6 +773,8 @@ pub struct UserExportData {
     pub id: String,
     pub username: String,
     pub email: String,
+    pub first_name: Option<String>,
+    pub last_name: Option<String>,
     pub created_at: DateTime<Utc>,
     pub is_active: bool,
     pub accepted_terms_at: Option<DateTime<Utc>>,

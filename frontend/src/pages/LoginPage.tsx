@@ -1,12 +1,16 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import LoginForm from '../components/auth/LoginForm';
+import RegisterForm from '../components/auth/RegisterForm';
 import { Shield } from 'lucide-react';
+
+type AuthMode = 'login' | 'register';
 
 const LoginPage: React.FC = () => {
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  const [mode, setMode] = useState<AuthMode>('login');
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -30,12 +34,17 @@ const LoginPage: React.FC = () => {
           </p>
         </div>
 
-        {/* Login Card */}
+        {/* Auth Card */}
         <div className="bg-light-surface dark:bg-dark-surface border border-light-border dark:border-dark-border rounded-lg shadow-2xl p-8 animate-fadeIn">
           <h2 className="text-2xl font-semibold text-slate-900 dark:text-white mb-6 text-center">
-            Sign In
+            {mode === 'login' ? 'Sign In' : 'Create Account'}
           </h2>
-          <LoginForm />
+
+          {mode === 'login' ? (
+            <LoginForm onSwitchToRegister={() => setMode('register')} />
+          ) : (
+            <RegisterForm onSwitchToLogin={() => setMode('login')} />
+          )}
         </div>
 
         {/* Footer */}
