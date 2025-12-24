@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import LoginForm from '../components/auth/LoginForm';
 import RegisterForm from '../components/auth/RegisterForm';
@@ -48,8 +48,18 @@ const LoginPage: React.FC = () => {
         </div>
 
         {/* Footer */}
-        <div className="text-center mt-6 text-slate-500 text-sm">
+        <div className="text-center mt-6 text-slate-500 dark:text-slate-400 text-sm space-y-2">
           <p>Authorized personnel only</p>
+          <div className="flex items-center justify-center gap-4">
+            <Link to="/legal/terms" className="hover:text-primary transition-colors">Terms</Link>
+            <span className="text-slate-300 dark:text-slate-600">|</span>
+            <Link to="/legal/privacy" className="hover:text-primary transition-colors">Privacy</Link>
+            <span className="text-slate-300 dark:text-slate-600">|</span>
+            <Link to="/legal/acceptable-use" className="hover:text-primary transition-colors">Acceptable Use</Link>
+          </div>
+          <p className="text-xs text-slate-400 dark:text-slate-500">
+            &copy; {new Date().getFullYear()} HeroForge Security
+          </p>
         </div>
       </div>
     </div>

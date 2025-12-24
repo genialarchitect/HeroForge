@@ -565,11 +565,13 @@ const SalesPage: React.FC = () => {
           </div>
           <div className="border-t border-gray-800 pt-8 flex flex-col md:flex-row items-center justify-between">
             <p className="text-gray-500 text-sm">
-              &copy; {new Date().getFullYear()} Genial Architect. All rights reserved.
+              &copy; {new Date().getFullYear()} HeroForge Security. All rights reserved.
             </p>
             <div className="flex items-center gap-6 mt-4 md:mt-0">
-              <a href="#" className="text-gray-400 hover:text-white text-sm">Privacy Policy</a>
-              <a href="#" className="text-gray-400 hover:text-white text-sm">Terms of Service</a>
+              <Link to="/legal/terms" className="text-gray-400 hover:text-white text-sm">Terms of Service</Link>
+              <Link to="/legal/privacy" className="text-gray-400 hover:text-white text-sm">Privacy Policy</Link>
+              <Link to="/legal/acceptable-use" className="text-gray-400 hover:text-white text-sm">Acceptable Use</Link>
+              <Link to="/legal/cookies" className="text-gray-400 hover:text-white text-sm">Cookies</Link>
             </div>
           </div>
         </div>

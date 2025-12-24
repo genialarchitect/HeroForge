@@ -139,9 +139,18 @@ export function PortalLogin() {
           </div>
         </div>
 
-        <p className="text-center text-xs text-gray-500">
-          Powered by HeroForge Security Platform
-        </p>
+        <div className="text-center space-y-2">
+          <p className="text-xs text-gray-500">
+            Powered by HeroForge Security Platform
+          </p>
+          <div className="flex items-center justify-center gap-4 text-xs">
+            <Link to="/legal/terms" className="text-gray-500 hover:text-gray-300">Terms</Link>
+            <span className="text-gray-600">|</span>
+            <Link to="/legal/privacy" className="text-gray-500 hover:text-gray-300">Privacy</Link>
+            <span className="text-gray-600">|</span>
+            <Link to="/legal/acceptable-use" className="text-gray-500 hover:text-gray-300">Acceptable Use</Link>
+          </div>
+        </div>
       </div>
     </div>
   );

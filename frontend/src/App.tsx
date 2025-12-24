@@ -61,6 +61,12 @@ const OrganizationPage = lazy(() => import('./pages/OrganizationPage'));
 
 // CRM pages
 const CrmDashboard = lazy(() => import('./pages/crm/CrmDashboard'));
+
+// Legal pages
+const TermsPage = lazy(() => import('./pages/legal/TermsPage'));
+const PrivacyPage = lazy(() => import('./pages/legal/PrivacyPage'));
+const AcceptableUsePage = lazy(() => import('./pages/legal/AcceptableUsePage'));
+const CookiePage = lazy(() => import('./pages/legal/CookiePage'));
 const CustomerList = lazy(() => import('./pages/crm/CustomerList'));
 const CustomerDetail = lazy(() => import('./pages/crm/CustomerDetail'));
 const EngagementsPage = lazy(() => import('./pages/crm/EngagementsPage'));
@@ -612,6 +618,11 @@ function App() {
               </PortalProtectedRoute>
             }
           />
+          {/* Legal Pages (public) */}
+          <Route path="/legal/terms" element={<TermsPage />} />
+          <Route path="/legal/privacy" element={<PrivacyPage />} />
+          <Route path="/legal/acceptable-use" element={<AcceptableUsePage />} />
+          <Route path="/legal/cookies" element={<CookiePage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>
