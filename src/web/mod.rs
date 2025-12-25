@@ -598,6 +598,14 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .configure(api::ids::configure)
                     // TLS/JA3 fingerprint analysis endpoints (blue team threat detection)
                     .configure(api::tls_analysis::configure)
+                    // Incident Response endpoints (blue team)
+                    .configure(api::incident_response::configure)
+                    // Digital Forensics endpoints (blue team)
+                    .configure(api::forensics::configure)
+                    // Detection Engineering endpoints (blue team)
+                    .configure(api::detection_engineering::configure)
+                    // Threat Hunting endpoints (blue team)
+                    .configure(api::threat_hunting::configure)
                     // Start workflow from vulnerability
                     .route("/vulnerabilities/{id}/workflow", web::post().to(api::workflows::start_workflow))
                     // SSO Admin endpoints

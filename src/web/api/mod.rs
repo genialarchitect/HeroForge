@@ -33,9 +33,11 @@ pub mod dorking;
 pub mod email_security;
 pub mod exclusions;
 pub mod finding_templates;
+pub mod forensics;
 pub mod git_recon;
 pub mod iac;
 pub mod ids;
+pub mod incident_response;
 pub mod jira;
 pub mod k8s_security;
 pub mod manual_compliance;
@@ -86,6 +88,8 @@ pub mod integrations_bots;
 pub mod tunneling;
 pub mod yara;
 pub mod tls_analysis;
+pub mod detection_engineering;
+pub mod threat_hunting;
 
 #[cfg(test)]
 mod tests;

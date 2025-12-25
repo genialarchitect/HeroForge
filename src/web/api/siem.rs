@@ -3,8 +3,10 @@
 //! This module provides full SIEM capabilities including:
 //! - Log source management (CRUD operations)
 //! - Log entry querying and retrieval
-//! - Detection rule management
-//! - Alert management and resolution
+//! - Detection rule management (including Sigma rules)
+//! - Correlation rules for advanced threat detection
+//! - Alert management and resolution (with deduplication)
+//! - SIEM dashboards and saved searches
 //! - SIEM statistics
 
 use actix_web::{web, HttpResponse, Result};
@@ -15,6 +17,9 @@ use sqlx::SqlitePool;
 use crate::siem::{
     AlertStatus, LogFormat, LogSource, LogSourceStatus, RuleStatus, RuleType,
     SiemAlert, SiemRule, SiemSeverity, TransportProtocol,
+    sigma::{SigmaParser, CompiledSigmaRule, validate_sigma_rule, get_builtin_rules, SigmaSeverity},
+    correlation::{CorrelationRule, CorrelationRuleType, CorrelationConditions, get_builtin_correlation_rules},
+    dashboard::{SavedSearch, SiemDashboard, DashboardWidget, WidgetType, WidgetPosition, WidgetConfig, AlertWorkflow, TimeRange, get_default_dashboard},
 };
 use crate::web::auth;
 
@@ -148,6 +153,251 @@ pub struct UpdateAlertStatusRequest {
 pub struct ResolveAlertRequest {
     pub resolution_notes: Option<String>,
     pub is_false_positive: Option<bool>,
+}
+
+// =============================================================================
+// Sigma Rule Request/Response Types
+// =============================================================================
+
+/// Request to create a Sigma rule
+#[derive(Debug, Deserialize)]
+pub struct CreateSigmaRuleRequest {
+    pub yaml_content: String,
+    pub enabled: Option<bool>,
+}
+
+/// Request to validate a Sigma rule
+#[derive(Debug, Deserialize)]
+pub struct ValidateSigmaRuleRequest {
+    pub yaml_content: String,
+}
+
+/// Request to test a Sigma rule
+#[derive(Debug, Deserialize)]
+pub struct TestSigmaRuleRequest {
+    pub yaml_content: String,
+    pub sample_logs: Vec<serde_json::Value>,
+}
+
+/// Sigma rule response
+#[derive(Debug, Serialize)]
+pub struct SigmaRuleResponse {
+    pub id: String,
+    pub name: String,
+    pub level: String,
+    pub status: String,
+    pub enabled: bool,
+    pub logsource_product: Option<String>,
+    pub logsource_service: Option<String>,
+    pub logsource_category: Option<String>,
+    pub tags: Vec<String>,
+    pub mitre_tactics: Vec<String>,
+    pub mitre_techniques: Vec<String>,
+    pub author: Option<String>,
+    pub trigger_count: i64,
+    pub last_triggered: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// Sigma validation response
+#[derive(Debug, Serialize)]
+pub struct SigmaValidationResponse {
+    pub is_valid: bool,
+    pub errors: Vec<String>,
+    pub warnings: Vec<String>,
+}
+
+/// Sigma test result response
+#[derive(Debug, Serialize)]
+pub struct SigmaTestResponse {
+    pub rule_id: String,
+    pub rule_title: String,
+    pub total_logs_tested: usize,
+    pub match_count: usize,
+    pub matches: Vec<SigmaTestMatch>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SigmaTestMatch {
+    pub log_index: usize,
+    pub message: String,
+}
+
+// =============================================================================
+// Correlation Rule Request/Response Types
+// =============================================================================
+
+/// Request to create a correlation rule
+#[derive(Debug, Deserialize)]
+pub struct CreateCorrelationRuleRequest {
+    pub name: String,
+    pub description: Option<String>,
+    pub rule_type: String,
+    pub conditions: serde_json::Value,
+    pub time_window_secs: i64,
+    pub threshold: Option<i64>,
+    pub group_by: Option<Vec<String>>,
+    pub severity: Option<String>,
+    pub enabled: Option<bool>,
+    pub mitre_tactics: Option<Vec<String>>,
+    pub mitre_techniques: Option<Vec<String>>,
+}
+
+/// Request to update a correlation rule
+#[derive(Debug, Deserialize)]
+pub struct UpdateCorrelationRuleRequest {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub rule_type: Option<String>,
+    pub conditions: Option<serde_json::Value>,
+    pub time_window_secs: Option<i64>,
+    pub threshold: Option<i64>,
+    pub group_by: Option<Vec<String>>,
+    pub severity: Option<String>,
+    pub enabled: Option<bool>,
+    pub mitre_tactics: Option<Vec<String>>,
+    pub mitre_techniques: Option<Vec<String>>,
+}
+
+/// Query parameters for listing correlation rules
+#[derive(Debug, Deserialize)]
+pub struct CorrelationRuleListQuery {
+    pub enabled: Option<bool>,
+    pub rule_type: Option<String>,
+}
+
+// =============================================================================
+// Saved Search Request/Response Types
+// =============================================================================
+
+/// Request to create a saved search
+#[derive(Debug, Deserialize)]
+pub struct CreateSavedSearchRequest {
+    pub name: String,
+    pub description: Option<String>,
+    pub query: String,
+    pub schedule_cron: Option<String>,
+    pub schedule_enabled: Option<bool>,
+    pub alert_threshold: Option<i64>,
+    pub alert_severity: Option<String>,
+    pub email_recipients: Option<Vec<String>>,
+    pub tags: Option<Vec<String>>,
+}
+
+/// Request to update a saved search
+#[derive(Debug, Deserialize)]
+pub struct UpdateSavedSearchRequest {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub query: Option<String>,
+    pub schedule_cron: Option<String>,
+    pub schedule_enabled: Option<bool>,
+    pub alert_threshold: Option<i64>,
+    pub alert_severity: Option<String>,
+    pub email_recipients: Option<Vec<String>>,
+    pub tags: Option<Vec<String>>,
+}
+
+// =============================================================================
+// Dashboard Request/Response Types
+// =============================================================================
+
+/// Request to create a dashboard
+#[derive(Debug, Deserialize)]
+pub struct CreateDashboardRequest {
+    pub name: String,
+    pub description: Option<String>,
+    pub default_time_range: Option<String>,
+    pub auto_refresh: Option<i32>,
+    pub is_public: Option<bool>,
+}
+
+/// Request to update a dashboard
+#[derive(Debug, Deserialize)]
+pub struct UpdateDashboardRequest {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub default_time_range: Option<String>,
+    pub auto_refresh: Option<i32>,
+    pub is_public: Option<bool>,
+}
+
+/// Request to create/update a dashboard widget
+#[derive(Debug, Deserialize)]
+pub struct WidgetRequest {
+    pub widget_type: String,
+    pub position_x: Option<i32>,
+    pub position_y: Option<i32>,
+    pub width: Option<i32>,
+    pub height: Option<i32>,
+    pub config: serde_json::Value,
+}
+
+// =============================================================================
+// Alert Enhancement Request/Response Types
+// =============================================================================
+
+/// Request to update alert status with workflow validation
+#[derive(Debug, Deserialize)]
+pub struct UpdateAlertStatusWorkflowRequest {
+    pub status: String,
+    pub assigned_to: Option<String>,
+    pub notes: Option<String>,
+}
+
+/// Deduplicated alert group response
+#[derive(Debug, Serialize)]
+pub struct AlertGroupResponse {
+    pub group_id: String,
+    pub primary_alert: SiemAlert,
+    pub alert_count: i64,
+    pub alert_ids: Vec<String>,
+    pub first_seen: String,
+    pub last_seen: String,
+    pub suppressed: bool,
+}
+
+/// Alert status history entry
+#[derive(Debug, Serialize)]
+pub struct AlertStatusHistoryEntry {
+    pub id: String,
+    pub alert_id: String,
+    pub old_status: Option<String>,
+    pub new_status: String,
+    pub changed_by: Option<String>,
+    pub notes: Option<String>,
+    pub created_at: String,
+}
+
+/// Dashboard overview response
+#[derive(Debug, Serialize)]
+pub struct DashboardOverviewResponse {
+    pub total_alerts: i64,
+    pub open_alerts: i64,
+    pub critical_alerts: i64,
+    pub high_alerts: i64,
+    pub medium_alerts: i64,
+    pub low_alerts: i64,
+    pub alerts_by_status: Vec<AlertStatusCount>,
+    pub top_rules: Vec<TopRuleCount>,
+    pub top_sources: Vec<TopSourceStats>,
+    pub alert_trend: Vec<TrendPoint>,
+    pub active_correlation_rules: i64,
+    pub active_sigma_rules: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TopRuleCount {
+    pub rule_id: String,
+    pub rule_name: String,
+    pub alert_count: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TrendPoint {
+    pub timestamp: String,
+    pub value: i64,
 }
 
 /// SIEM statistics response
@@ -1320,6 +1570,713 @@ pub async fn get_siem_stats(
 }
 
 // =============================================================================
+// Sigma Rule Endpoints
+// =============================================================================
+
+/// List Sigma rules
+pub async fn list_sigma_rules(
+    pool: web::Data<SqlitePool>,
+    _claims: web::ReqData<auth::Claims>,
+) -> Result<HttpResponse> {
+    let rows: Vec<SigmaRuleRow> = sqlx::query_as(
+        "SELECT * FROM sigma_rules ORDER BY name"
+    )
+    .fetch_all(pool.get_ref())
+    .await
+    .map_err(|e| {
+        log::error!("Failed to fetch Sigma rules: {}", e);
+        actix_web::error::ErrorInternalServerError("Failed to fetch Sigma rules")
+    })?;
+
+    let rules: Vec<SigmaRuleResponse> = rows.into_iter().map(|r| r.into()).collect();
+    Ok(HttpResponse::Ok().json(rules))
+}
+
+/// Create a Sigma rule
+pub async fn create_sigma_rule(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    request: web::Json<CreateSigmaRuleRequest>,
+) -> Result<HttpResponse> {
+    // Parse and validate the YAML
+    let parsed = SigmaParser::parse(&request.yaml_content).map_err(|e| {
+        log::warn!("Invalid Sigma rule YAML: {}", e);
+        actix_web::error::ErrorBadRequest(format!("Invalid Sigma rule: {}", e))
+    })?;
+
+    // Try to compile to validate
+    let _compiled = CompiledSigmaRule::compile(parsed.clone()).map_err(|e| {
+        log::warn!("Failed to compile Sigma rule: {}", e);
+        actix_web::error::ErrorBadRequest(format!("Failed to compile rule: {}", e))
+    })?;
+
+    let id = parsed.id.clone();
+    let now = Utc::now();
+    let enabled = request.enabled.unwrap_or(false);
+    let tags_json = serde_json::to_string(&parsed.tags).unwrap_or_else(|_| "[]".to_string());
+    let mitre_tactics: Vec<String> = parsed.tags.iter()
+        .filter(|t| t.starts_with("attack.") && !t.contains('.', ))
+        .cloned()
+        .collect();
+    let mitre_techniques: Vec<String> = parsed.tags.iter()
+        .filter(|t| t.starts_with("attack.t"))
+        .cloned()
+        .collect();
+    let tactics_json = serde_json::to_string(&mitre_tactics).unwrap_or_else(|_| "[]".to_string());
+    let techniques_json = serde_json::to_string(&mitre_techniques).unwrap_or_else(|_| "[]".to_string());
+    let refs_json = serde_json::to_string(&parsed.references).unwrap_or_else(|_| "[]".to_string());
+    let fps_json = serde_json::to_string(&parsed.falsepositives).unwrap_or_else(|_| "[]".to_string());
+
+    sqlx::query(
+        r#"
+        INSERT INTO sigma_rules (
+            id, name, yaml_content, enabled, level, status,
+            logsource_product, logsource_service, logsource_category,
+            tags, mitre_tactics, mitre_techniques, author,
+            references_json, false_positives, user_id, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        "#,
+    )
+    .bind(&id)
+    .bind(&parsed.title)
+    .bind(&request.yaml_content)
+    .bind(enabled)
+    .bind(parsed.level.as_str())
+    .bind(parsed.status.as_str())
+    .bind(&parsed.logsource.product)
+    .bind(&parsed.logsource.service)
+    .bind(&parsed.logsource.category)
+    .bind(&tags_json)
+    .bind(&tactics_json)
+    .bind(&techniques_json)
+    .bind(&parsed.author)
+    .bind(&refs_json)
+    .bind(&fps_json)
+    .bind(&claims.sub)
+    .bind(now.to_rfc3339())
+    .bind(now.to_rfc3339())
+    .execute(pool.get_ref())
+    .await
+    .map_err(|e| {
+        log::error!("Failed to create Sigma rule: {}", e);
+        actix_web::error::ErrorInternalServerError("Failed to create Sigma rule")
+    })?;
+
+    Ok(HttpResponse::Created().json(serde_json::json!({
+        "id": id,
+        "name": parsed.title,
+        "message": "Sigma rule created successfully"
+    })))
+}
+
+/// Get a Sigma rule by ID
+pub async fn get_sigma_rule(
+    pool: web::Data<SqlitePool>,
+    _claims: web::ReqData<auth::Claims>,
+    path: web::Path<String>,
+) -> Result<HttpResponse> {
+    let id = path.into_inner();
+
+    let row: Option<SigmaRuleRow> = sqlx::query_as(
+        "SELECT * FROM sigma_rules WHERE id = ?"
+    )
+    .bind(&id)
+    .fetch_optional(pool.get_ref())
+    .await
+    .map_err(|e| {
+        log::error!("Failed to fetch Sigma rule: {}", e);
+        actix_web::error::ErrorInternalServerError("Failed to fetch Sigma rule")
+    })?;
+
+    match row {
+        Some(r) => {
+            let response: SigmaRuleResponse = r.into();
+            Ok(HttpResponse::Ok().json(response))
+        }
+        None => Ok(HttpResponse::NotFound().json(serde_json::json!({
+            "error": "Sigma rule not found"
+        }))),
+    }
+}
+
+/// Delete a Sigma rule
+pub async fn delete_sigma_rule(
+    pool: web::Data<SqlitePool>,
+    _claims: web::ReqData<auth::Claims>,
+    path: web::Path<String>,
+) -> Result<HttpResponse> {
+    let id = path.into_inner();
+
+    let result = sqlx::query("DELETE FROM sigma_rules WHERE id = ?")
+        .bind(&id)
+        .execute(pool.get_ref())
+        .await
+        .map_err(|e| {
+            log::error!("Failed to delete Sigma rule: {}", e);
+            actix_web::error::ErrorInternalServerError("Failed to delete Sigma rule")
+        })?;
+
+    if result.rows_affected() == 0 {
+        return Ok(HttpResponse::NotFound().json(serde_json::json!({
+            "error": "Sigma rule not found"
+        })));
+    }
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "message": "Sigma rule deleted successfully"
+    })))
+}
+
+/// Validate a Sigma rule without saving
+pub async fn validate_sigma(
+    _claims: web::ReqData<auth::Claims>,
+    request: web::Json<ValidateSigmaRuleRequest>,
+) -> Result<HttpResponse> {
+    let result = validate_sigma_rule(&request.yaml_content);
+
+    Ok(HttpResponse::Ok().json(SigmaValidationResponse {
+        is_valid: result.is_valid,
+        errors: result.errors,
+        warnings: result.warnings,
+    }))
+}
+
+/// Test a Sigma rule against sample logs
+pub async fn test_sigma_rule(
+    _claims: web::ReqData<auth::Claims>,
+    request: web::Json<TestSigmaRuleRequest>,
+) -> Result<HttpResponse> {
+    // Parse and compile the rule
+    let parsed = SigmaParser::parse(&request.yaml_content).map_err(|e| {
+        actix_web::error::ErrorBadRequest(format!("Invalid Sigma rule: {}", e))
+    })?;
+
+    let compiled = CompiledSigmaRule::compile(parsed.clone()).map_err(|e| {
+        actix_web::error::ErrorBadRequest(format!("Failed to compile rule: {}", e))
+    })?;
+
+    // Convert sample logs to LogEntry format and test
+    let mut matches = Vec::new();
+    for (index, log) in request.sample_logs.iter().enumerate() {
+        // Create a simple log entry from the sample
+        let message = log.get("message")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+
+        let mut entry = crate::siem::LogEntry::new(
+            "test".to_string(),
+            message.clone(),
+            serde_json::to_string(log).unwrap_or_default(),
+        );
+
+        // Copy structured data from sample
+        if let Some(obj) = log.as_object() {
+            for (k, v) in obj {
+                entry.structured_data.insert(k.clone(), v.clone());
+            }
+        }
+
+        if compiled.evaluate(&entry) {
+            matches.push(SigmaTestMatch {
+                log_index: index,
+                message,
+            });
+        }
+    }
+
+    Ok(HttpResponse::Ok().json(SigmaTestResponse {
+        rule_id: parsed.id,
+        rule_title: parsed.title,
+        total_logs_tested: request.sample_logs.len(),
+        match_count: matches.len(),
+        matches,
+    }))
+}
+
+/// Get built-in Sigma rules
+pub async fn get_builtin_sigma_rules(
+    _claims: web::ReqData<auth::Claims>,
+) -> Result<HttpResponse> {
+    let rules = get_builtin_rules();
+    Ok(HttpResponse::Ok().json(rules))
+}
+
+// =============================================================================
+// Correlation Rule Endpoints
+// =============================================================================
+
+/// List correlation rules
+pub async fn list_correlation_rules(
+    pool: web::Data<SqlitePool>,
+    _claims: web::ReqData<auth::Claims>,
+    query: web::Query<CorrelationRuleListQuery>,
+) -> Result<HttpResponse> {
+    let mut sql = String::from("SELECT * FROM correlation_rules WHERE 1=1");
+
+    if let Some(enabled) = query.enabled {
+        sql.push_str(&format!(" AND enabled = {}", if enabled { 1 } else { 0 }));
+    }
+    if let Some(ref rule_type) = query.rule_type {
+        sql.push_str(&format!(" AND rule_type = '{}'", rule_type.replace('\'', "''")));
+    }
+    sql.push_str(" ORDER BY name");
+
+    let rows: Vec<CorrelationRuleRow> = sqlx::query_as(&sql)
+        .fetch_all(pool.get_ref())
+        .await
+        .map_err(|e| {
+            log::error!("Failed to fetch correlation rules: {}", e);
+            actix_web::error::ErrorInternalServerError("Failed to fetch correlation rules")
+        })?;
+
+    let rules: Vec<CorrelationRuleResponse> = rows.into_iter().map(|r| r.into()).collect();
+    Ok(HttpResponse::Ok().json(rules))
+}
+
+/// Create a correlation rule
+pub async fn create_correlation_rule(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    request: web::Json<CreateCorrelationRuleRequest>,
+) -> Result<HttpResponse> {
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = Utc::now();
+    let enabled = request.enabled.unwrap_or(false);
+    let severity = request.severity.clone().unwrap_or_else(|| "warning".to_string());
+    let group_by = serde_json::to_string(&request.group_by.clone().unwrap_or_default())
+        .unwrap_or_else(|_| "[]".to_string());
+    let conditions = serde_json::to_string(&request.conditions)
+        .unwrap_or_else(|_| "{}".to_string());
+    let tactics = serde_json::to_string(&request.mitre_tactics.clone().unwrap_or_default())
+        .unwrap_or_else(|_| "[]".to_string());
+    let techniques = serde_json::to_string(&request.mitre_techniques.clone().unwrap_or_default())
+        .unwrap_or_else(|_| "[]".to_string());
+
+    sqlx::query(
+        r#"
+        INSERT INTO correlation_rules (
+            id, name, description, rule_type, conditions_json, time_window_secs,
+            threshold, group_by_fields, severity, enabled, mitre_tactics,
+            mitre_techniques, user_id, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        "#,
+    )
+    .bind(&id)
+    .bind(&request.name)
+    .bind(&request.description)
+    .bind(&request.rule_type)
+    .bind(&conditions)
+    .bind(request.time_window_secs)
+    .bind(request.threshold)
+    .bind(&group_by)
+    .bind(&severity)
+    .bind(enabled)
+    .bind(&tactics)
+    .bind(&techniques)
+    .bind(&claims.sub)
+    .bind(now.to_rfc3339())
+    .bind(now.to_rfc3339())
+    .execute(pool.get_ref())
+    .await
+    .map_err(|e| {
+        log::error!("Failed to create correlation rule: {}", e);
+        actix_web::error::ErrorInternalServerError("Failed to create correlation rule")
+    })?;
+
+    Ok(HttpResponse::Created().json(serde_json::json!({
+        "id": id,
+        "name": request.name,
+        "message": "Correlation rule created successfully"
+    })))
+}
+
+/// Delete a correlation rule
+pub async fn delete_correlation_rule(
+    pool: web::Data<SqlitePool>,
+    _claims: web::ReqData<auth::Claims>,
+    path: web::Path<String>,
+) -> Result<HttpResponse> {
+    let id = path.into_inner();
+
+    let result = sqlx::query("DELETE FROM correlation_rules WHERE id = ?")
+        .bind(&id)
+        .execute(pool.get_ref())
+        .await
+        .map_err(|e| {
+            log::error!("Failed to delete correlation rule: {}", e);
+            actix_web::error::ErrorInternalServerError("Failed to delete correlation rule")
+        })?;
+
+    if result.rows_affected() == 0 {
+        return Ok(HttpResponse::NotFound().json(serde_json::json!({
+            "error": "Correlation rule not found"
+        })));
+    }
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "message": "Correlation rule deleted successfully"
+    })))
+}
+
+/// Get built-in correlation rules
+pub async fn get_builtin_correlation_rules_handler(
+    _claims: web::ReqData<auth::Claims>,
+) -> Result<HttpResponse> {
+    let rules = get_builtin_correlation_rules();
+    Ok(HttpResponse::Ok().json(rules))
+}
+
+// =============================================================================
+// Alert Enhancement Endpoints
+// =============================================================================
+
+/// Get deduplicated alert groups
+pub async fn get_deduplicated_alerts(
+    pool: web::Data<SqlitePool>,
+    _claims: web::ReqData<auth::Claims>,
+) -> Result<HttpResponse> {
+    let rows: Vec<AlertGroupRow> = sqlx::query_as(
+        "SELECT * FROM siem_alert_groups WHERE suppressed = 0 ORDER BY last_seen DESC LIMIT 100"
+    )
+    .fetch_all(pool.get_ref())
+    .await
+    .map_err(|e| {
+        log::error!("Failed to fetch alert groups: {}", e);
+        actix_web::error::ErrorInternalServerError("Failed to fetch alert groups")
+    })?;
+
+    let groups: Vec<AlertGroupResponse> = Vec::new();
+    // Note: Full implementation would fetch primary_alert for each group
+    // This is a simplified version
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "groups": groups,
+        "total": rows.len()
+    })))
+}
+
+/// Update alert status with workflow validation
+pub async fn update_alert_status_workflow(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    path: web::Path<String>,
+    request: web::Json<UpdateAlertStatusWorkflowRequest>,
+) -> Result<HttpResponse> {
+    let id = path.into_inner();
+    let now = Utc::now();
+
+    // Get current alert status
+    let current: Option<(String,)> = sqlx::query_as(
+        "SELECT status FROM siem_alerts WHERE id = ?"
+    )
+    .bind(&id)
+    .fetch_optional(pool.get_ref())
+    .await
+    .map_err(|e| {
+        log::error!("Failed to fetch alert: {}", e);
+        actix_web::error::ErrorInternalServerError("Failed to fetch alert")
+    })?;
+
+    let Some((current_status,)) = current else {
+        return Ok(HttpResponse::NotFound().json(serde_json::json!({
+            "error": "Alert not found"
+        })));
+    };
+
+    // Validate transition
+    let from_status = parse_alert_status(&current_status);
+    let to_status = parse_alert_status(&request.status);
+
+    if !AlertWorkflow::is_valid_transition(from_status, to_status) {
+        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+            "error": format!("Invalid status transition from '{}' to '{}'", current_status, request.status),
+            "valid_transitions": AlertWorkflow::get_valid_transitions(from_status)
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+        })));
+    }
+
+    // Update alert
+    sqlx::query(
+        "UPDATE siem_alerts SET status = ?, assigned_to = ?, updated_at = ? WHERE id = ?"
+    )
+    .bind(&request.status)
+    .bind(&request.assigned_to)
+    .bind(now.to_rfc3339())
+    .bind(&id)
+    .execute(pool.get_ref())
+    .await
+    .map_err(|e| {
+        log::error!("Failed to update alert status: {}", e);
+        actix_web::error::ErrorInternalServerError("Failed to update alert status")
+    })?;
+
+    // Record status history
+    let history_id = uuid::Uuid::new_v4().to_string();
+    sqlx::query(
+        r#"
+        INSERT INTO siem_alert_status_history (id, alert_id, old_status, new_status, changed_by, notes, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        "#
+    )
+    .bind(&history_id)
+    .bind(&id)
+    .bind(&current_status)
+    .bind(&request.status)
+    .bind(&claims.sub)
+    .bind(&request.notes)
+    .bind(now.to_rfc3339())
+    .execute(pool.get_ref())
+    .await
+    .ok(); // Don't fail if history insert fails
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "message": "Alert status updated",
+        "old_status": current_status,
+        "new_status": request.status
+    })))
+}
+
+/// Get alert status history
+pub async fn get_alert_history(
+    pool: web::Data<SqlitePool>,
+    _claims: web::ReqData<auth::Claims>,
+    path: web::Path<String>,
+) -> Result<HttpResponse> {
+    let id = path.into_inner();
+
+    let rows: Vec<(String, String, Option<String>, String, Option<String>, Option<String>, String)> = sqlx::query_as(
+        "SELECT id, alert_id, old_status, new_status, changed_by, notes, created_at FROM siem_alert_status_history WHERE alert_id = ? ORDER BY created_at DESC"
+    )
+    .bind(&id)
+    .fetch_all(pool.get_ref())
+    .await
+    .map_err(|e| {
+        log::error!("Failed to fetch alert history: {}", e);
+        actix_web::error::ErrorInternalServerError("Failed to fetch alert history")
+    })?;
+
+    let history: Vec<AlertStatusHistoryEntry> = rows.into_iter().map(|(id, alert_id, old_status, new_status, changed_by, notes, created_at)| {
+        AlertStatusHistoryEntry {
+            id,
+            alert_id,
+            old_status,
+            new_status,
+            changed_by,
+            notes,
+            created_at,
+        }
+    }).collect();
+
+    Ok(HttpResponse::Ok().json(history))
+}
+
+// =============================================================================
+// Saved Search Endpoints
+// =============================================================================
+
+/// List saved searches
+pub async fn list_saved_searches(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+) -> Result<HttpResponse> {
+    let rows: Vec<SavedSearchRow> = sqlx::query_as(
+        "SELECT * FROM siem_saved_searches WHERE user_id = ? OR EXISTS (SELECT 1 FROM siem_dashboards WHERE user_id = ? AND is_public = 1) ORDER BY name"
+    )
+    .bind(&claims.sub)
+    .bind(&claims.sub)
+    .fetch_all(pool.get_ref())
+    .await
+    .map_err(|e| {
+        log::error!("Failed to fetch saved searches: {}", e);
+        actix_web::error::ErrorInternalServerError("Failed to fetch saved searches")
+    })?;
+
+    let searches: Vec<SavedSearchResponse> = rows.into_iter().map(|r| r.into()).collect();
+    Ok(HttpResponse::Ok().json(searches))
+}
+
+/// Create a saved search
+pub async fn create_saved_search(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    request: web::Json<CreateSavedSearchRequest>,
+) -> Result<HttpResponse> {
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = Utc::now();
+    let tags = serde_json::to_string(&request.tags.clone().unwrap_or_default())
+        .unwrap_or_else(|_| "[]".to_string());
+    let recipients = serde_json::to_string(&request.email_recipients.clone().unwrap_or_default())
+        .unwrap_or_else(|_| "[]".to_string());
+
+    sqlx::query(
+        r#"
+        INSERT INTO siem_saved_searches (
+            id, name, description, query, schedule_cron, schedule_enabled,
+            alert_threshold, alert_severity, email_recipients, tags,
+            user_id, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        "#,
+    )
+    .bind(&id)
+    .bind(&request.name)
+    .bind(&request.description)
+    .bind(&request.query)
+    .bind(&request.schedule_cron)
+    .bind(request.schedule_enabled.unwrap_or(false))
+    .bind(request.alert_threshold)
+    .bind(&request.alert_severity)
+    .bind(&recipients)
+    .bind(&tags)
+    .bind(&claims.sub)
+    .bind(now.to_rfc3339())
+    .bind(now.to_rfc3339())
+    .execute(pool.get_ref())
+    .await
+    .map_err(|e| {
+        log::error!("Failed to create saved search: {}", e);
+        actix_web::error::ErrorInternalServerError("Failed to create saved search")
+    })?;
+
+    Ok(HttpResponse::Created().json(serde_json::json!({
+        "id": id,
+        "name": request.name,
+        "message": "Saved search created successfully"
+    })))
+}
+
+/// Delete a saved search
+pub async fn delete_saved_search(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    path: web::Path<String>,
+) -> Result<HttpResponse> {
+    let id = path.into_inner();
+
+    let result = sqlx::query("DELETE FROM siem_saved_searches WHERE id = ? AND user_id = ?")
+        .bind(&id)
+        .bind(&claims.sub)
+        .execute(pool.get_ref())
+        .await
+        .map_err(|e| {
+            log::error!("Failed to delete saved search: {}", e);
+            actix_web::error::ErrorInternalServerError("Failed to delete saved search")
+        })?;
+
+    if result.rows_affected() == 0 {
+        return Ok(HttpResponse::NotFound().json(serde_json::json!({
+            "error": "Saved search not found"
+        })));
+    }
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "message": "Saved search deleted successfully"
+    })))
+}
+
+// =============================================================================
+// Dashboard Endpoints
+// =============================================================================
+
+/// Get SIEM dashboard overview
+pub async fn get_dashboard_overview(
+    pool: web::Data<SqlitePool>,
+    _claims: web::ReqData<auth::Claims>,
+) -> Result<HttpResponse> {
+    // Alert counts by severity
+    let total_alerts: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM siem_alerts")
+        .fetch_one(pool.get_ref()).await.unwrap_or((0,));
+
+    let open_alerts: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM siem_alerts WHERE status IN ('new', 'in_progress', 'escalated')"
+    ).fetch_one(pool.get_ref()).await.unwrap_or((0,));
+
+    let critical_alerts: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM siem_alerts WHERE severity IN ('critical', 'emergency') AND status NOT IN ('resolved', 'false_positive')"
+    ).fetch_one(pool.get_ref()).await.unwrap_or((0,));
+
+    let high_alerts: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM siem_alerts WHERE severity = 'error' AND status NOT IN ('resolved', 'false_positive')"
+    ).fetch_one(pool.get_ref()).await.unwrap_or((0,));
+
+    let medium_alerts: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM siem_alerts WHERE severity = 'warning' AND status NOT IN ('resolved', 'false_positive')"
+    ).fetch_one(pool.get_ref()).await.unwrap_or((0,));
+
+    let low_alerts: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM siem_alerts WHERE severity IN ('notice', 'info') AND status NOT IN ('resolved', 'false_positive')"
+    ).fetch_one(pool.get_ref()).await.unwrap_or((0,));
+
+    // Alerts by status
+    let status_rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT status, COUNT(*) FROM siem_alerts GROUP BY status"
+    ).fetch_all(pool.get_ref()).await.unwrap_or_default();
+
+    let alerts_by_status: Vec<AlertStatusCount> = status_rows.into_iter()
+        .map(|(status, count)| AlertStatusCount { status, count })
+        .collect();
+
+    // Top alerting rules
+    let rule_rows: Vec<(String, String, i64)> = sqlx::query_as(
+        "SELECT rule_id, rule_name, COUNT(*) as cnt FROM siem_alerts GROUP BY rule_id ORDER BY cnt DESC LIMIT 10"
+    ).fetch_all(pool.get_ref()).await.unwrap_or_default();
+
+    let top_rules: Vec<TopRuleCount> = rule_rows.into_iter()
+        .map(|(rule_id, rule_name, alert_count)| TopRuleCount { rule_id, rule_name, alert_count })
+        .collect();
+
+    // Top sources
+    let source_rows: Vec<(String, String, i64, i64)> = sqlx::query_as(
+        "SELECT id, name, log_count, logs_per_hour FROM siem_log_sources ORDER BY log_count DESC LIMIT 10"
+    ).fetch_all(pool.get_ref()).await.unwrap_or_default();
+
+    let top_sources: Vec<TopSourceStats> = source_rows.into_iter()
+        .map(|(id, name, log_count, logs_per_hour)| TopSourceStats { id, name, log_count, logs_per_hour })
+        .collect();
+
+    // Alert trend (last 24 hours by hour)
+    let trend_rows: Vec<(String, i64)> = sqlx::query_as(
+        r#"
+        SELECT strftime('%Y-%m-%dT%H:00:00Z', created_at) as hour, COUNT(*) as cnt
+        FROM siem_alerts
+        WHERE created_at >= datetime('now', '-1 day')
+        GROUP BY hour
+        ORDER BY hour
+        "#
+    ).fetch_all(pool.get_ref()).await.unwrap_or_default();
+
+    let alert_trend: Vec<TrendPoint> = trend_rows.into_iter()
+        .map(|(timestamp, value)| TrendPoint { timestamp, value })
+        .collect();
+
+    // Active rules counts
+    let active_correlation: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM correlation_rules WHERE enabled = 1"
+    ).fetch_one(pool.get_ref()).await.unwrap_or((0,));
+
+    let active_sigma: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM sigma_rules WHERE enabled = 1"
+    ).fetch_one(pool.get_ref()).await.unwrap_or((0,));
+
+    Ok(HttpResponse::Ok().json(DashboardOverviewResponse {
+        total_alerts: total_alerts.0,
+        open_alerts: open_alerts.0,
+        critical_alerts: critical_alerts.0,
+        high_alerts: high_alerts.0,
+        medium_alerts: medium_alerts.0,
+        low_alerts: low_alerts.0,
+        alerts_by_status,
+        top_rules,
+        top_sources,
+        alert_trend,
+        active_correlation_rules: active_correlation.0,
+        active_sigma_rules: active_sigma.0,
+    }))
+}
+
+// =============================================================================
 // Route Configuration
 // =============================================================================
 
@@ -1347,6 +2304,29 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/alerts/{id}/resolve", web::post().to(resolve_alert))
             // Statistics
             .route("/stats", web::get().to(get_siem_stats))
+            // Sigma Rules
+            .route("/sigma/rules", web::get().to(list_sigma_rules))
+            .route("/sigma/rules", web::post().to(create_sigma_rule))
+            .route("/sigma/rules/{id}", web::get().to(get_sigma_rule))
+            .route("/sigma/rules/{id}", web::delete().to(delete_sigma_rule))
+            .route("/sigma/validate", web::post().to(validate_sigma))
+            .route("/sigma/test", web::post().to(test_sigma_rule))
+            .route("/sigma/builtin", web::get().to(get_builtin_sigma_rules))
+            // Correlation Rules
+            .route("/correlation/rules", web::get().to(list_correlation_rules))
+            .route("/correlation/rules", web::post().to(create_correlation_rule))
+            .route("/correlation/rules/{id}", web::delete().to(delete_correlation_rule))
+            .route("/correlation/builtin", web::get().to(get_builtin_correlation_rules_handler))
+            // Alert Enhancements (deduplicated alerts, status workflow, history)
+            .route("/alerts/deduplicated", web::get().to(get_deduplicated_alerts))
+            .route("/alerts/{id}/workflow", web::put().to(update_alert_status_workflow))
+            .route("/alerts/{id}/history", web::get().to(get_alert_status_history))
+            // Saved Searches
+            .route("/saved-searches", web::get().to(list_saved_searches))
+            .route("/saved-searches", web::post().to(create_saved_search))
+            .route("/saved-searches/{id}", web::delete().to(delete_saved_search))
+            // Dashboard
+            .route("/dashboard", web::get().to(get_dashboard_overview))
     );
 }
 
@@ -1660,4 +2640,255 @@ impl TryFrom<SiemAlertRow> for SiemAlert {
             external_ticket_id: row.external_ticket_id,
         })
     }
+}
+
+// =============================================================================
+// SIEM Enhancement Row Types
+// =============================================================================
+
+#[derive(sqlx::FromRow)]
+struct SigmaRuleRow {
+    id: String,
+    name: String,
+    yaml_content: String,
+    compiled_query: Option<String>,
+    enabled: bool,
+    level: String,
+    status: String,
+    logsource_product: Option<String>,
+    logsource_service: Option<String>,
+    logsource_category: Option<String>,
+    tags: String,
+    mitre_tactics: String,
+    mitre_techniques: String,
+    author: Option<String>,
+    references_json: String,
+    false_positives: String,
+    trigger_count: i64,
+    last_triggered: Option<String>,
+    user_id: Option<String>,
+    organization_id: Option<String>,
+    created_at: String,
+    updated_at: String,
+}
+
+impl From<SigmaRuleRow> for SigmaRuleResponse {
+    fn from(row: SigmaRuleRow) -> Self {
+        SigmaRuleResponse {
+            id: row.id,
+            name: row.name,
+            level: row.level,
+            status: row.status,
+            enabled: row.enabled,
+            logsource_product: row.logsource_product,
+            logsource_service: row.logsource_service,
+            logsource_category: row.logsource_category,
+            tags: serde_json::from_str(&row.tags).unwrap_or_default(),
+            mitre_tactics: serde_json::from_str(&row.mitre_tactics).unwrap_or_default(),
+            mitre_techniques: serde_json::from_str(&row.mitre_techniques).unwrap_or_default(),
+            author: row.author,
+            trigger_count: row.trigger_count,
+            last_triggered: row.last_triggered,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+        }
+    }
+}
+
+#[derive(sqlx::FromRow)]
+struct CorrelationRuleRow {
+    id: String,
+    name: String,
+    description: Option<String>,
+    rule_type: String,
+    conditions_json: String,
+    time_window_secs: i64,
+    threshold: Option<i64>,
+    group_by_fields: String,
+    severity: String,
+    enabled: bool,
+    mitre_tactics: String,
+    mitre_techniques: String,
+    trigger_count: i64,
+    last_triggered: Option<String>,
+    user_id: Option<String>,
+    organization_id: Option<String>,
+    created_at: String,
+    updated_at: String,
+}
+
+/// Correlation rule response
+#[derive(Debug, Serialize)]
+pub struct CorrelationRuleResponse {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub rule_type: String,
+    pub conditions: serde_json::Value,
+    pub time_window_secs: i64,
+    pub threshold: Option<i64>,
+    pub group_by: Vec<String>,
+    pub severity: String,
+    pub enabled: bool,
+    pub mitre_tactics: Vec<String>,
+    pub mitre_techniques: Vec<String>,
+    pub trigger_count: i64,
+    pub last_triggered: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+impl From<CorrelationRuleRow> for CorrelationRuleResponse {
+    fn from(row: CorrelationRuleRow) -> Self {
+        CorrelationRuleResponse {
+            id: row.id,
+            name: row.name,
+            description: row.description,
+            rule_type: row.rule_type,
+            conditions: serde_json::from_str(&row.conditions_json).unwrap_or(serde_json::json!({})),
+            time_window_secs: row.time_window_secs,
+            threshold: row.threshold,
+            group_by: serde_json::from_str(&row.group_by_fields).unwrap_or_default(),
+            severity: row.severity,
+            enabled: row.enabled,
+            mitre_tactics: serde_json::from_str(&row.mitre_tactics).unwrap_or_default(),
+            mitre_techniques: serde_json::from_str(&row.mitre_techniques).unwrap_or_default(),
+            trigger_count: row.trigger_count,
+            last_triggered: row.last_triggered,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+        }
+    }
+}
+
+#[derive(sqlx::FromRow)]
+struct SavedSearchRow {
+    id: String,
+    name: String,
+    description: Option<String>,
+    query: String,
+    query_params_json: String,
+    schedule_cron: Option<String>,
+    schedule_enabled: bool,
+    alert_threshold: Option<i64>,
+    alert_severity: Option<String>,
+    email_recipients: String,
+    last_run: Option<String>,
+    last_result_count: Option<i64>,
+    tags: String,
+    user_id: String,
+    organization_id: Option<String>,
+    created_at: String,
+    updated_at: String,
+}
+
+/// Saved search response
+#[derive(Debug, Serialize)]
+pub struct SavedSearchResponse {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub query: String,
+    pub query_params: serde_json::Value,
+    pub schedule_cron: Option<String>,
+    pub schedule_enabled: bool,
+    pub alert_threshold: Option<i64>,
+    pub alert_severity: Option<String>,
+    pub email_recipients: Vec<String>,
+    pub last_run: Option<String>,
+    pub last_result_count: Option<i64>,
+    pub tags: Vec<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+impl From<SavedSearchRow> for SavedSearchResponse {
+    fn from(row: SavedSearchRow) -> Self {
+        SavedSearchResponse {
+            id: row.id,
+            name: row.name,
+            description: row.description,
+            query: row.query,
+            query_params: serde_json::from_str(&row.query_params_json).unwrap_or(serde_json::json!({})),
+            schedule_cron: row.schedule_cron,
+            schedule_enabled: row.schedule_enabled,
+            alert_threshold: row.alert_threshold,
+            alert_severity: row.alert_severity,
+            email_recipients: serde_json::from_str(&row.email_recipients).unwrap_or_default(),
+            last_run: row.last_run,
+            last_result_count: row.last_result_count,
+            tags: serde_json::from_str(&row.tags).unwrap_or_default(),
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+        }
+    }
+}
+
+#[derive(sqlx::FromRow)]
+struct AlertGroupRow {
+    id: String,
+    group_key: String,
+    primary_alert_id: String,
+    alert_count: i64,
+    alert_ids: String,
+    first_seen: String,
+    last_seen: String,
+    suppressed: bool,
+    created_at: String,
+    updated_at: String,
+}
+
+#[derive(sqlx::FromRow)]
+struct AlertStatusHistoryRow {
+    id: String,
+    alert_id: String,
+    old_status: Option<String>,
+    new_status: String,
+    changed_by: Option<String>,
+    notes: Option<String>,
+    created_at: String,
+}
+
+impl From<AlertStatusHistoryRow> for AlertStatusHistoryEntry {
+    fn from(row: AlertStatusHistoryRow) -> Self {
+        AlertStatusHistoryEntry {
+            id: row.id,
+            alert_id: row.alert_id,
+            old_status: row.old_status,
+            new_status: row.new_status,
+            changed_by: row.changed_by,
+            notes: row.notes,
+            created_at: row.created_at,
+        }
+    }
+}
+
+// =============================================================================
+// Alert Status History Endpoint
+// =============================================================================
+
+/// Get alert status history
+pub async fn get_alert_status_history(
+    pool: web::Data<SqlitePool>,
+    _claims: web::ReqData<auth::Claims>,
+    path: web::Path<String>,
+) -> Result<HttpResponse> {
+    let alert_id = path.into_inner();
+
+    let rows: Vec<AlertStatusHistoryRow> = sqlx::query_as(
+        "SELECT id, alert_id, old_status, new_status, changed_by, notes, created_at
+         FROM siem_alert_status_history
+         WHERE alert_id = ?
+         ORDER BY created_at DESC"
+    )
+    .bind(&alert_id)
+    .fetch_all(pool.get_ref())
+    .await
+    .map_err(|e| {
+        log::error!("Failed to fetch alert status history: {}", e);
+        actix_web::error::ErrorInternalServerError("Failed to fetch alert status history")
+    })?;
+
+    let history: Vec<AlertStatusHistoryEntry> = rows.into_iter().map(|r| r.into()).collect();
+    Ok(HttpResponse::Ok().json(history))
 }

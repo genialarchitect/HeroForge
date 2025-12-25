@@ -122,6 +122,8 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     create_agent_mesh_tables(pool).await?;
     // SIEM (Full SIEM Capabilities) tables
     create_siem_tables(pool).await?;
+    // SIEM Enhancements (Sigma, Correlation, Dashboard)
+    create_siem_enhancement_tables(pool).await?;
     // Compliance Evidence Collection tables
     create_compliance_evidence_tables(pool).await?;
     // Breach & Attack Simulation (BAS) tables
@@ -211,6 +213,11 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     create_ids_tables(pool).await?;
     // TLS/JA3 fingerprint analysis tables (blue team threat detection)
     create_tls_analysis_tables(pool).await?;
+    // Incident Response tables (blue team)
+    create_incident_response_tables(pool).await?;
+    // Threat Hunting tables (blue team)
+    super::threat_hunting::create_threat_hunting_tables(pool).await?;
+    super::threat_hunting::seed_builtin_playbooks(pool).await?;
     Ok(())
 }
 
@@ -5943,6 +5950,262 @@ async fn create_siem_tables(pool: &SqlitePool) -> Result<()> {
         .await?;
 
     log::info!("Created SIEM tables (siem_log_sources, siem_log_entries, siem_rules, siem_alerts)");
+    Ok(())
+}
+
+// ============================================================================
+// SIEM Enhancement Tables (Sigma, Correlation, Dashboard)
+// ============================================================================
+
+/// Create SIEM enhancement tables for Sigma rules, correlation, and dashboards
+async fn create_siem_enhancement_tables(pool: &SqlitePool) -> Result<()> {
+    // Sigma rules table - for parsed Sigma YAML rules
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS sigma_rules (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            yaml_content TEXT NOT NULL,
+            compiled_query TEXT,
+            enabled INTEGER NOT NULL DEFAULT 0,
+            level TEXT NOT NULL DEFAULT 'medium',
+            status TEXT NOT NULL DEFAULT 'experimental',
+            logsource_product TEXT,
+            logsource_service TEXT,
+            logsource_category TEXT,
+            tags TEXT NOT NULL DEFAULT '[]',
+            mitre_tactics TEXT NOT NULL DEFAULT '[]',
+            mitre_techniques TEXT NOT NULL DEFAULT '[]',
+            author TEXT,
+            references_json TEXT NOT NULL DEFAULT '[]',
+            false_positives TEXT NOT NULL DEFAULT '[]',
+            trigger_count INTEGER NOT NULL DEFAULT 0,
+            last_triggered TEXT,
+            user_id TEXT,
+            organization_id TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sigma_rules_name ON sigma_rules(name)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sigma_rules_enabled ON sigma_rules(enabled)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sigma_rules_level ON sigma_rules(level)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sigma_rules_user ON sigma_rules(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sigma_rules_org ON sigma_rules(organization_id)")
+        .execute(pool)
+        .await?;
+
+    // Correlation rules table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS correlation_rules (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            rule_type TEXT NOT NULL,
+            conditions_json TEXT NOT NULL DEFAULT '{}',
+            time_window_secs INTEGER NOT NULL DEFAULT 300,
+            threshold INTEGER,
+            group_by_fields TEXT NOT NULL DEFAULT '[]',
+            severity TEXT NOT NULL DEFAULT 'warning',
+            enabled INTEGER NOT NULL DEFAULT 0,
+            mitre_tactics TEXT NOT NULL DEFAULT '[]',
+            mitre_techniques TEXT NOT NULL DEFAULT '[]',
+            trigger_count INTEGER NOT NULL DEFAULT 0,
+            last_triggered TEXT,
+            user_id TEXT,
+            organization_id TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_correlation_rules_name ON correlation_rules(name)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_correlation_rules_enabled ON correlation_rules(enabled)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_correlation_rules_type ON correlation_rules(rule_type)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_correlation_rules_user ON correlation_rules(user_id)")
+        .execute(pool)
+        .await?;
+
+    // SIEM saved searches table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS siem_saved_searches (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            query TEXT NOT NULL,
+            query_params_json TEXT NOT NULL DEFAULT '{}',
+            schedule_cron TEXT,
+            schedule_enabled INTEGER NOT NULL DEFAULT 0,
+            alert_threshold INTEGER,
+            alert_severity TEXT,
+            email_recipients TEXT NOT NULL DEFAULT '[]',
+            last_run TEXT,
+            last_result_count INTEGER,
+            tags TEXT NOT NULL DEFAULT '[]',
+            user_id TEXT NOT NULL,
+            organization_id TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_siem_saved_searches_name ON siem_saved_searches(name)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_siem_saved_searches_user ON siem_saved_searches(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_siem_saved_searches_schedule ON siem_saved_searches(schedule_enabled)")
+        .execute(pool)
+        .await?;
+
+    // SIEM dashboards table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS siem_dashboards (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            default_time_range TEXT NOT NULL DEFAULT '24h',
+            auto_refresh INTEGER NOT NULL DEFAULT 60,
+            is_public INTEGER NOT NULL DEFAULT 0,
+            user_id TEXT NOT NULL,
+            organization_id TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_siem_dashboards_name ON siem_dashboards(name)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_siem_dashboards_user ON siem_dashboards(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_siem_dashboards_public ON siem_dashboards(is_public)")
+        .execute(pool)
+        .await?;
+
+    // SIEM dashboard widgets table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS siem_dashboard_widgets (
+            id TEXT PRIMARY KEY,
+            dashboard_id TEXT NOT NULL,
+            widget_type TEXT NOT NULL,
+            position_x INTEGER NOT NULL DEFAULT 0,
+            position_y INTEGER NOT NULL DEFAULT 0,
+            width INTEGER NOT NULL DEFAULT 4,
+            height INTEGER NOT NULL DEFAULT 3,
+            config_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (dashboard_id) REFERENCES siem_dashboards(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_siem_widgets_dashboard ON siem_dashboard_widgets(dashboard_id)")
+        .execute(pool)
+        .await?;
+
+    // Alert status history table (for workflow tracking)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS siem_alert_status_history (
+            id TEXT PRIMARY KEY,
+            alert_id TEXT NOT NULL,
+            old_status TEXT,
+            new_status TEXT NOT NULL,
+            changed_by TEXT,
+            notes TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (alert_id) REFERENCES siem_alerts(id) ON DELETE CASCADE,
+            FOREIGN KEY (changed_by) REFERENCES users(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_siem_alert_history_alert ON siem_alert_status_history(alert_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_siem_alert_history_created ON siem_alert_status_history(created_at)")
+        .execute(pool)
+        .await?;
+
+    // Alert deduplication groups table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS siem_alert_groups (
+            id TEXT PRIMARY KEY,
+            group_key TEXT NOT NULL,
+            primary_alert_id TEXT NOT NULL,
+            alert_count INTEGER NOT NULL DEFAULT 1,
+            alert_ids TEXT NOT NULL DEFAULT '[]',
+            first_seen TEXT NOT NULL,
+            last_seen TEXT NOT NULL,
+            suppressed INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (primary_alert_id) REFERENCES siem_alerts(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_siem_alert_groups_key ON siem_alert_groups(group_key)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_siem_alert_groups_suppressed ON siem_alert_groups(suppressed)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_siem_alert_groups_last_seen ON siem_alert_groups(last_seen)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created SIEM enhancement tables (sigma_rules, correlation_rules, siem_saved_searches, siem_dashboards, siem_dashboard_widgets, siem_alert_status_history, siem_alert_groups)");
     Ok(())
 }
 
@@ -12299,5 +12562,835 @@ async fn create_dns_analysis_tables(pool: &SqlitePool) -> Result<()> {
     .await?;
 
     log::info!("Created DNS analysis tables for blue team threat detection");
+    Ok(())
+}
+
+// ============================================================================
+// Incident Response Tables (Blue Team)
+// ============================================================================
+
+/// Create all incident response tables for blue team incident management
+async fn create_incident_response_tables(pool: &SqlitePool) -> Result<()> {
+    // Main incidents table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS incidents (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            description TEXT,
+            severity TEXT NOT NULL CHECK(severity IN ('P1', 'P2', 'P3', 'P4')),
+            classification TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'detected' CHECK(status IN ('detected', 'triaged', 'contained', 'eradicated', 'recovered', 'closed')),
+            assignee_id TEXT,
+            sla_breach_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            closed_at TEXT,
+            user_id TEXT NOT NULL,
+            organization_id TEXT,
+            FOREIGN KEY (assignee_id) REFERENCES users(id),
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            FOREIGN KEY (organization_id) REFERENCES organizations(id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_incidents_status ON incidents(status)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_incidents_severity ON incidents(severity)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_incidents_assignee ON incidents(assignee_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_incidents_created ON incidents(created_at)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_incidents_org ON incidents(organization_id)")
+        .execute(pool)
+        .await?;
+
+    // Incident-Alert linking table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS incident_alerts (
+            incident_id TEXT NOT NULL,
+            alert_id TEXT NOT NULL,
+            PRIMARY KEY (incident_id, alert_id),
+            FOREIGN KEY (incident_id) REFERENCES incidents(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_incident_alerts_incident ON incident_alerts(incident_id)")
+        .execute(pool)
+        .await?;
+
+    // Incident-IOC linking table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS incident_iocs (
+            incident_id TEXT NOT NULL,
+            ioc_id TEXT NOT NULL,
+            PRIMARY KEY (incident_id, ioc_id),
+            FOREIGN KEY (incident_id) REFERENCES incidents(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_incident_iocs_incident ON incident_iocs(incident_id)")
+        .execute(pool)
+        .await?;
+
+    // Incident timeline events table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS incident_timeline (
+            id TEXT PRIMARY KEY,
+            incident_id TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            timestamp TEXT NOT NULL,
+            description TEXT NOT NULL,
+            source TEXT NOT NULL,
+            actor TEXT,
+            created_by TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (incident_id) REFERENCES incidents(id) ON DELETE CASCADE,
+            FOREIGN KEY (created_by) REFERENCES users(id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_incident_timeline_incident ON incident_timeline(incident_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_incident_timeline_timestamp ON incident_timeline(timestamp)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_incident_timeline_type ON incident_timeline(event_type)")
+        .execute(pool)
+        .await?;
+
+    // Incident evidence table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS incident_evidence (
+            id TEXT PRIMARY KEY,
+            incident_id TEXT NOT NULL,
+            evidence_type TEXT NOT NULL,
+            filename TEXT NOT NULL,
+            file_hash TEXT NOT NULL,
+            file_size INTEGER NOT NULL,
+            storage_path TEXT NOT NULL,
+            collected_by TEXT NOT NULL,
+            collected_at TEXT NOT NULL,
+            notes TEXT,
+            tags TEXT,
+            FOREIGN KEY (incident_id) REFERENCES incidents(id) ON DELETE CASCADE,
+            FOREIGN KEY (collected_by) REFERENCES users(id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_incident_evidence_incident ON incident_evidence(incident_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_incident_evidence_type ON incident_evidence(evidence_type)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_incident_evidence_hash ON incident_evidence(file_hash)")
+        .execute(pool)
+        .await?;
+
+    // Evidence chain of custody table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS evidence_chain_of_custody (
+            id TEXT PRIMARY KEY,
+            evidence_id TEXT NOT NULL,
+            action TEXT NOT NULL,
+            actor_id TEXT NOT NULL,
+            timestamp TEXT NOT NULL,
+            notes TEXT,
+            FOREIGN KEY (evidence_id) REFERENCES incident_evidence(id) ON DELETE CASCADE,
+            FOREIGN KEY (actor_id) REFERENCES users(id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_custody_evidence ON evidence_chain_of_custody(evidence_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_custody_timestamp ON evidence_chain_of_custody(timestamp)")
+        .execute(pool)
+        .await?;
+
+    // Response playbooks table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS response_playbooks (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            trigger_conditions TEXT,
+            steps_json TEXT NOT NULL,
+            is_builtin INTEGER NOT NULL DEFAULT 0,
+            user_id TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_playbooks_builtin ON response_playbooks(is_builtin)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_playbooks_user ON response_playbooks(user_id)")
+        .execute(pool)
+        .await?;
+
+    // Response actions table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS response_actions (
+            id TEXT PRIMARY KEY,
+            incident_id TEXT NOT NULL,
+            playbook_id TEXT,
+            action_type TEXT NOT NULL,
+            target TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'executed', 'failed', 'rejected', 'cancelled')),
+            approved_by TEXT,
+            executed_at TEXT,
+            result TEXT,
+            created_at TEXT NOT NULL,
+            created_by TEXT NOT NULL,
+            FOREIGN KEY (incident_id) REFERENCES incidents(id) ON DELETE CASCADE,
+            FOREIGN KEY (playbook_id) REFERENCES response_playbooks(id),
+            FOREIGN KEY (approved_by) REFERENCES users(id),
+            FOREIGN KEY (created_by) REFERENCES users(id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_actions_incident ON response_actions(incident_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_actions_status ON response_actions(status)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_actions_created ON response_actions(created_at)")
+        .execute(pool)
+        .await?;
+
+    // Action audit log table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS action_audit_log (
+            id TEXT PRIMARY KEY,
+            action_id TEXT NOT NULL,
+            event TEXT NOT NULL,
+            details TEXT,
+            timestamp TEXT NOT NULL,
+            FOREIGN KEY (action_id) REFERENCES response_actions(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_action_audit_action ON action_audit_log(action_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_action_audit_timestamp ON action_audit_log(timestamp)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created incident response tables for blue team capabilities");
+    Ok(())
+}
+
+/// Create Digital Forensics tables for blue team capabilities
+async fn create_forensics_tables(pool: &SqlitePool) -> Result<()> {
+    // Forensic cases table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS forensic_cases (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            case_type TEXT NOT NULL DEFAULT 'incident_response' CHECK(case_type IN (
+                'incident_response', 'malware_analysis', 'data_breach', 'insider_threat',
+                'network_intrusion', 'ransomware_recovery', 'litigation', 'other'
+            )),
+            status TEXT NOT NULL DEFAULT 'open' CHECK(status IN (
+                'open', 'in_progress', 'pending_review', 'closed', 'archived'
+            )),
+            lead_analyst TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_forensic_cases_user ON forensic_cases(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_forensic_cases_status ON forensic_cases(status)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_forensic_cases_type ON forensic_cases(case_type)")
+        .execute(pool)
+        .await?;
+
+    // Memory dumps table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS memory_dumps (
+            id TEXT PRIMARY KEY,
+            case_id TEXT NOT NULL,
+            filename TEXT NOT NULL,
+            file_hash TEXT NOT NULL,
+            file_size INTEGER NOT NULL,
+            os_profile TEXT,
+            collected_at TEXT NOT NULL,
+            analysis_status TEXT NOT NULL DEFAULT 'pending' CHECK(analysis_status IN (
+                'pending', 'analyzing', 'completed', 'error'
+            )),
+            findings_json TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (case_id) REFERENCES forensic_cases(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_memory_dumps_case ON memory_dumps(case_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_memory_dumps_status ON memory_dumps(analysis_status)")
+        .execute(pool)
+        .await?;
+
+    // Disk images table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS disk_images (
+            id TEXT PRIMARY KEY,
+            case_id TEXT NOT NULL,
+            filename TEXT NOT NULL,
+            file_hash TEXT NOT NULL,
+            file_size INTEGER NOT NULL,
+            image_type TEXT NOT NULL DEFAULT 'raw' CHECK(image_type IN (
+                'raw', 'ewf', 'vhd', 'vhdx', 'vmdk', 'qcow2', 'dd', 'aff', 'other'
+            )),
+            collected_at TEXT NOT NULL,
+            analysis_status TEXT NOT NULL DEFAULT 'pending' CHECK(analysis_status IN (
+                'pending', 'analyzing', 'completed', 'error'
+            )),
+            findings_json TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (case_id) REFERENCES forensic_cases(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_disk_images_case ON disk_images(case_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_disk_images_status ON disk_images(analysis_status)")
+        .execute(pool)
+        .await?;
+
+    // PCAP files table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS pcap_files (
+            id TEXT PRIMARY KEY,
+            case_id TEXT NOT NULL,
+            filename TEXT NOT NULL,
+            file_hash TEXT NOT NULL,
+            file_size INTEGER NOT NULL,
+            capture_start TEXT,
+            capture_end TEXT,
+            packet_count INTEGER NOT NULL DEFAULT 0,
+            analysis_status TEXT NOT NULL DEFAULT 'pending' CHECK(analysis_status IN (
+                'pending', 'analyzing', 'completed', 'error'
+            )),
+            findings_json TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (case_id) REFERENCES forensic_cases(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_pcap_files_case ON pcap_files(case_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_pcap_files_status ON pcap_files(analysis_status)")
+        .execute(pool)
+        .await?;
+
+    // Forensic artifacts table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS forensic_artifacts (
+            id TEXT PRIMARY KEY,
+            case_id TEXT NOT NULL,
+            artifact_type TEXT NOT NULL,
+            source_path TEXT NOT NULL,
+            content_hash TEXT NOT NULL,
+            collected_at TEXT NOT NULL,
+            analysis_notes TEXT,
+            tags TEXT DEFAULT '[]',
+            metadata TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (case_id) REFERENCES forensic_cases(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_forensic_artifacts_case ON forensic_artifacts(case_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_forensic_artifacts_type ON forensic_artifacts(artifact_type)")
+        .execute(pool)
+        .await?;
+
+    // Forensic timeline table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS forensic_timeline (
+            id TEXT PRIMARY KEY,
+            case_id TEXT NOT NULL,
+            timestamp TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            source TEXT NOT NULL,
+            description TEXT NOT NULL,
+            artifact_id TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (case_id) REFERENCES forensic_cases(id) ON DELETE CASCADE,
+            FOREIGN KEY (artifact_id) REFERENCES forensic_artifacts(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_forensic_timeline_case ON forensic_timeline(case_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_forensic_timeline_timestamp ON forensic_timeline(timestamp)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_forensic_timeline_type ON forensic_timeline(event_type)")
+        .execute(pool)
+        .await?;
+
+    // Forensic findings table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS forensic_findings (
+            id TEXT PRIMARY KEY,
+            case_id TEXT NOT NULL,
+            finding_type TEXT NOT NULL DEFAULT 'other' CHECK(finding_type IN (
+                'malware_detected', 'suspicious_process', 'persistence_mechanism',
+                'data_exfiltration', 'lateral_movement', 'privilege_escalation',
+                'credential_access', 'anomaly', 'ioc', 'timeline_event', 'other'
+            )),
+            severity TEXT NOT NULL DEFAULT 'informational' CHECK(severity IN (
+                'critical', 'high', 'medium', 'low', 'informational'
+            )),
+            title TEXT NOT NULL,
+            description TEXT NOT NULL,
+            evidence_refs TEXT DEFAULT '[]',
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (case_id) REFERENCES forensic_cases(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_forensic_findings_case ON forensic_findings(case_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_forensic_findings_type ON forensic_findings(finding_type)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_forensic_findings_severity ON forensic_findings(severity)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created digital forensics tables for blue team capabilities");
+    Ok(())
+}
+
+// ============================================================================
+// Detection Engineering Tables (Blue Team)
+// ============================================================================
+
+/// Create all detection engineering tables for blue team detection management
+async fn create_detection_engineering_tables(pool: &SqlitePool) -> Result<()> {
+    // Main detections table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS detections (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL,
+            logic_yaml TEXT NOT NULL,
+            data_sources TEXT NOT NULL DEFAULT '[]',
+            severity TEXT NOT NULL DEFAULT 'medium' CHECK(severity IN (
+                'informational', 'low', 'medium', 'high', 'critical'
+            )),
+            status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN (
+                'draft', 'testing', 'production', 'deprecated', 'disabled'
+            )),
+            author_id TEXT NOT NULL,
+            version INTEGER NOT NULL DEFAULT 1,
+            mitre_techniques TEXT DEFAULT '[]',
+            mitre_tactics TEXT DEFAULT '[]',
+            tags TEXT DEFAULT '[]',
+            fp_rate REAL,
+            confidence REAL,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (author_id) REFERENCES users(id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_detections_status ON detections(status)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_detections_severity ON detections(severity)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_detections_author ON detections(author_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_detections_enabled ON detections(enabled)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_detections_updated ON detections(updated_at)")
+        .execute(pool)
+        .await?;
+
+    // Detection versions table - git-like version history
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS detection_versions (
+            id TEXT PRIMARY KEY,
+            detection_id TEXT NOT NULL,
+            version INTEGER NOT NULL,
+            logic_yaml TEXT NOT NULL,
+            change_notes TEXT NOT NULL,
+            created_by TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (detection_id) REFERENCES detections(id) ON DELETE CASCADE,
+            FOREIGN KEY (created_by) REFERENCES users(id),
+            UNIQUE(detection_id, version)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_detection_versions_detection ON detection_versions(detection_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_detection_versions_version ON detection_versions(detection_id, version)")
+        .execute(pool)
+        .await?;
+
+    // Detection coverage table - MITRE ATT&CK mapping
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS detection_coverage (
+            detection_id TEXT NOT NULL,
+            technique_id TEXT NOT NULL,
+            coverage_type TEXT NOT NULL DEFAULT 'partial' CHECK(coverage_type IN (
+                'full', 'partial', 'basic', 'none'
+            )),
+            notes TEXT,
+            created_by TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (detection_id, technique_id),
+            FOREIGN KEY (detection_id) REFERENCES detections(id) ON DELETE CASCADE,
+            FOREIGN KEY (created_by) REFERENCES users(id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_detection_coverage_technique ON detection_coverage(technique_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_detection_coverage_type ON detection_coverage(coverage_type)")
+        .execute(pool)
+        .await?;
+
+    // Detection data sources table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS detection_data_sources (
+            detection_id TEXT NOT NULL,
+            data_source TEXT NOT NULL,
+            required INTEGER NOT NULL DEFAULT 1,
+            PRIMARY KEY (detection_id, data_source),
+            FOREIGN KEY (detection_id) REFERENCES detections(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_detection_data_sources_source ON detection_data_sources(data_source)")
+        .execute(pool)
+        .await?;
+
+    // False positives table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS false_positives (
+            id TEXT PRIMARY KEY,
+            detection_id TEXT NOT NULL,
+            alert_id TEXT NOT NULL,
+            reason TEXT NOT NULL,
+            explanation TEXT,
+            evidence TEXT,
+            pattern TEXT,
+            exception_rule TEXT,
+            status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN (
+                'pending', 'investigating', 'confirmed', 'rejected', 'resolved', 'closed'
+            )),
+            priority TEXT NOT NULL DEFAULT 'medium' CHECK(priority IN (
+                'low', 'medium', 'high', 'critical'
+            )),
+            reported_by TEXT NOT NULL,
+            assigned_to TEXT,
+            resolution_notes TEXT,
+            resolved_by TEXT,
+            resolved_at TEXT,
+            alert_data TEXT,
+            tags TEXT NOT NULL DEFAULT '[]',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (detection_id) REFERENCES detections(id) ON DELETE CASCADE,
+            FOREIGN KEY (reported_by) REFERENCES users(id),
+            FOREIGN KEY (assigned_to) REFERENCES users(id),
+            FOREIGN KEY (resolved_by) REFERENCES users(id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_false_positives_detection ON false_positives(detection_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_false_positives_status ON false_positives(status)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_false_positives_priority ON false_positives(priority)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_false_positives_reported_by ON false_positives(reported_by)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_false_positives_assigned_to ON false_positives(assigned_to)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_false_positives_created ON false_positives(created_at)")
+        .execute(pool)
+        .await?;
+
+    // Detection tuning table - records of tuning applied
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS detection_tuning (
+            id TEXT PRIMARY KEY,
+            detection_id TEXT NOT NULL,
+            tuning_type TEXT NOT NULL CHECK(tuning_type IN (
+                'exclusion', 'threshold', 'aggregation', 'time_window',
+                'field_filter', 'severity', 'source_suppression',
+                'logic_modification', 'other'
+            )),
+            original_value TEXT NOT NULL,
+            new_value TEXT NOT NULL,
+            reason TEXT NOT NULL,
+            related_fp_ids TEXT NOT NULL DEFAULT '[]',
+            applied_at TEXT NOT NULL,
+            applied_by TEXT NOT NULL,
+            active INTEGER NOT NULL DEFAULT 1,
+            rolled_back_at TEXT,
+            FOREIGN KEY (detection_id) REFERENCES detections(id) ON DELETE CASCADE,
+            FOREIGN KEY (applied_by) REFERENCES users(id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_detection_tuning_detection ON detection_tuning(detection_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_detection_tuning_type ON detection_tuning(tuning_type)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_detection_tuning_active ON detection_tuning(active)")
+        .execute(pool)
+        .await?;
+
+    // Detection tests table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS detection_tests (
+            id TEXT PRIMARY KEY,
+            detection_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            test_type TEXT NOT NULL DEFAULT 'unit' CHECK(test_type IN (
+                'unit', 'integration', 'regression', 'performance', 'coverage', 'validation'
+            )),
+            input_logs_json TEXT NOT NULL DEFAULT '[]',
+            expected_result TEXT NOT NULL,
+            priority TEXT NOT NULL DEFAULT 'medium' CHECK(priority IN (
+                'critical', 'high', 'medium', 'low'
+            )),
+            tags TEXT NOT NULL DEFAULT '[]',
+            enabled INTEGER NOT NULL DEFAULT 1,
+            created_by TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (detection_id) REFERENCES detections(id) ON DELETE CASCADE,
+            FOREIGN KEY (created_by) REFERENCES users(id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_detection_tests_detection ON detection_tests(detection_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_detection_tests_type ON detection_tests(test_type)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_detection_tests_enabled ON detection_tests(enabled)")
+        .execute(pool)
+        .await?;
+
+    // Detection test runs table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS detection_test_runs (
+            id TEXT PRIMARY KEY,
+            test_id TEXT NOT NULL,
+            detection_id TEXT NOT NULL,
+            result TEXT NOT NULL,
+            actual_output TEXT NOT NULL DEFAULT '[]',
+            passed INTEGER NOT NULL,
+            detection_version INTEGER NOT NULL DEFAULT 1,
+            environment TEXT NOT NULL DEFAULT 'test',
+            triggered_by TEXT,
+            run_at TEXT NOT NULL,
+            FOREIGN KEY (test_id) REFERENCES detection_tests(id) ON DELETE CASCADE,
+            FOREIGN KEY (detection_id) REFERENCES detections(id) ON DELETE CASCADE,
+            FOREIGN KEY (triggered_by) REFERENCES users(id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_detection_test_runs_test ON detection_test_runs(test_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_detection_test_runs_detection ON detection_test_runs(detection_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_detection_test_runs_passed ON detection_test_runs(passed)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_detection_test_runs_run_at ON detection_test_runs(run_at)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created detection engineering tables for blue team capabilities");
     Ok(())
 }

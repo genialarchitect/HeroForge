@@ -4,8 +4,10 @@
 //! - Log collection from multiple sources (syslog, HTTP, agents)
 //! - Log parsing for various formats (CEF, LEEF, JSON, syslog RFC 3164/5424)
 //! - Log storage with date-based partitioning for efficient querying
-//! - Detection rules for threat detection
-//! - Alert generation and management
+//! - Detection rules for threat detection (including Sigma rule support)
+//! - Real-time correlation engine for advanced threat detection
+//! - Alert generation, deduplication, and management
+//! - SIEM dashboards with saved searches and widgets
 //!
 //! # Architecture
 //!
@@ -18,8 +20,8 @@
 //!                                                          v
 //! +------------------+     +------------------+     +------------------+
 //! |   Alert Mgmt     | <-- |  Rule Engine     | <-- |    Storage       |
-//! +------------------+     +------------------+     | (Partitioned DB) |
-//!                                                   +------------------+
+//! |   Dashboard      |     | (Sigma, Corr.)   |     | (Partitioned DB) |
+//! +------------------+     +------------------+     +------------------+
 //! ```
 //!
 //! # Example Usage
@@ -50,8 +52,11 @@
 
 #![allow(dead_code)]
 
+pub mod correlation;
+pub mod dashboard;
 pub mod ingestion;
 pub mod parser;
+pub mod sigma;
 pub mod storage;
 pub mod types;
 
@@ -67,6 +72,28 @@ pub use types::{
     AlertStatus, IngestionStats, LogEntry, LogFormat, LogQuery, LogQueryResult, LogSource,
     LogSourceStatus, RuleStatus, RuleType, SiemAlert, SiemId, SiemRule, SiemSeverity,
     SyslogFacility, TransportProtocol,
+};
+
+// Re-export Sigma types
+#[allow(unused_imports)]
+pub use sigma::{
+    CompiledSigmaRule, SigmaParser, SigmaRule, SigmaSeverity, SigmaStatus,
+    ValidationResult as SigmaValidationResult,
+};
+
+// Re-export correlation types
+#[allow(unused_imports)]
+pub use correlation::{
+    CorrelationAlert, CorrelationEngine, CorrelationRule, CorrelationRuleType,
+    CorrelationStats,
+};
+
+// Re-export dashboard types
+#[allow(unused_imports)]
+pub use dashboard::{
+    AlertDeduplicator, AlertGroup, AlertWorkflow, DashboardOverview, DashboardWidget,
+    DeduplicationConfig, SavedSearch, SeverityScorer, SiemDashboard, TimeRange,
+    WidgetType,
 };
 
 #[cfg(test)]
