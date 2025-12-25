@@ -204,6 +204,13 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     create_evasion_tables(pool).await?;
     // Payload encoding jobs table
     create_encoding_jobs_table(pool).await?;
+    // YARA threat detection tables
+    super::yara::create_yara_tables(pool).await?;
+    super::yara::seed_builtin_yara_rules(pool).await?;
+    // IDS (Intrusion Detection System) rules tables
+    create_ids_tables(pool).await?;
+    // TLS/JA3 fingerprint analysis tables (blue team threat detection)
+    create_tls_analysis_tables(pool).await?;
     Ok(())
 }
 
@@ -11811,5 +11818,486 @@ async fn create_tunneling_tables(pool: &SqlitePool) -> Result<()> {
         .await?;
 
     log::info!("Created tunneling framework tables");
+    Ok(())
+}
+
+/// Create IDS (Intrusion Detection System) rules tables
+async fn create_ids_tables(pool: &SqlitePool) -> Result<()> {
+    // IDS Rules table - stores Suricata/Snort format rules
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ids_rules (
+            sid INTEGER PRIMARY KEY,
+            rev INTEGER NOT NULL DEFAULT 1,
+            msg TEXT NOT NULL,
+            classtype TEXT,
+            priority INTEGER,
+            rule_text TEXT NOT NULL,
+            rule_json TEXT NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            category TEXT,
+            user_id TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Index for category filtering
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ids_rules_category ON ids_rules(category)")
+        .execute(pool)
+        .await?;
+
+    // Index for enabled rules
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ids_rules_enabled ON ids_rules(enabled)")
+        .execute(pool)
+        .await?;
+
+    // Index for classtype filtering
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ids_rules_classtype ON ids_rules(classtype)")
+        .execute(pool)
+        .await?;
+
+    // Index for priority sorting
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ids_rules_priority ON ids_rules(priority)")
+        .execute(pool)
+        .await?;
+
+    // Index for message search
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ids_rules_msg ON ids_rules(msg)")
+        .execute(pool)
+        .await?;
+
+    // IDS Rule Categories table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ids_rule_categories (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            description TEXT,
+            created_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // IDS Alerts table - stores alerts generated when rules match
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ids_alerts (
+            id TEXT PRIMARY KEY,
+            rule_sid INTEGER NOT NULL,
+            src_ip TEXT,
+            src_port INTEGER,
+            dst_ip TEXT,
+            dst_port INTEGER,
+            protocol TEXT NOT NULL,
+            payload_excerpt TEXT,
+            timestamp TEXT NOT NULL,
+            severity INTEGER NOT NULL DEFAULT 3,
+            category TEXT,
+            acknowledged INTEGER NOT NULL DEFAULT 0,
+            acknowledged_by TEXT,
+            acknowledged_at TEXT,
+            notes TEXT,
+            false_positive INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY (rule_sid) REFERENCES ids_rules(sid) ON DELETE CASCADE,
+            FOREIGN KEY (acknowledged_by) REFERENCES users(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Index for alert timestamp (for time-based queries)
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ids_alerts_timestamp ON ids_alerts(timestamp)")
+        .execute(pool)
+        .await?;
+
+    // Index for rule SID (for finding all alerts from a specific rule)
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ids_alerts_rule_sid ON ids_alerts(rule_sid)")
+        .execute(pool)
+        .await?;
+
+    // Index for severity filtering
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ids_alerts_severity ON ids_alerts(severity)")
+        .execute(pool)
+        .await?;
+
+    // Index for source IP (for threat hunting)
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ids_alerts_src_ip ON ids_alerts(src_ip)")
+        .execute(pool)
+        .await?;
+
+    // Index for destination IP (for threat hunting)
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ids_alerts_dst_ip ON ids_alerts(dst_ip)")
+        .execute(pool)
+        .await?;
+
+    // Index for category filtering
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ids_alerts_category ON ids_alerts(category)")
+        .execute(pool)
+        .await?;
+
+    // Index for acknowledgement status
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ids_alerts_acknowledged ON ids_alerts(acknowledged)")
+        .execute(pool)
+        .await?;
+
+    // Seed default rule categories
+    let categories = vec![
+        ("malware-c2", "Malware Command & Control", "Detection of malware C2 communication patterns and beacons"),
+        ("exploit-attempts", "Exploit Attempts", "Detection of exploitation attempts against known vulnerabilities"),
+        ("suspicious-traffic", "Suspicious Traffic", "Detection of unusual or suspicious network traffic patterns"),
+        ("data-exfiltration", "Data Exfiltration", "Detection of potential data exfiltration attempts"),
+        ("policy-violation", "Policy Violations", "Detection of security policy violations"),
+        ("reconnaissance", "Reconnaissance", "Detection of network scanning and reconnaissance activities"),
+        ("credential-theft", "Credential Theft", "Detection of credential harvesting and theft attempts"),
+        ("web-attacks", "Web Application Attacks", "Detection of web application attacks (SQLi, XSS, etc.)"),
+        ("lateral-movement", "Lateral Movement", "Detection of lateral movement techniques"),
+        ("persistence", "Persistence", "Detection of persistence mechanism establishment"),
+    ];
+
+    for (id, name, description) in categories {
+        let _ = sqlx::query(
+            "INSERT OR IGNORE INTO ids_rule_categories (id, name, description, created_at) VALUES (?, ?, ?, ?)"
+        )
+        .bind(id)
+        .bind(name)
+        .bind(description)
+        .bind(chrono::Utc::now().to_rfc3339())
+        .execute(pool)
+        .await;
+    }
+
+    log::info!("Created IDS rules tables and seeded categories");
+    Ok(())
+}
+
+// ============================================================================
+// TLS/JA3 Fingerprint Analysis Tables (Blue Team Threat Detection)
+// ============================================================================
+
+/// Create TLS analysis tables for JA3/JA3S fingerprinting
+async fn create_tls_analysis_tables(pool: &SqlitePool) -> Result<()> {
+    // Custom JA3 fingerprints table - user-defined fingerprints
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ja3_fingerprints (
+            id TEXT PRIMARY KEY,
+            hash TEXT NOT NULL,
+            fingerprint_type TEXT NOT NULL CHECK(fingerprint_type IN ('ja3', 'ja3s')),
+            description TEXT NOT NULL,
+            category TEXT NOT NULL,
+            is_malicious INTEGER NOT NULL DEFAULT 0,
+            malware_family TEXT,
+            confidence INTEGER NOT NULL DEFAULT 80,
+            notes TEXT,
+            associated_cves TEXT,
+            first_seen TEXT,
+            last_seen TEXT,
+            created_by TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT,
+            FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE,
+            UNIQUE(hash, fingerprint_type)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // JA3S fingerprints table - for server fingerprints
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ja3s_fingerprints (
+            id TEXT PRIMARY KEY,
+            hash TEXT NOT NULL UNIQUE,
+            description TEXT NOT NULL,
+            server_type TEXT,
+            is_malicious INTEGER NOT NULL DEFAULT 0,
+            malware_family TEXT,
+            confidence INTEGER NOT NULL DEFAULT 80,
+            notes TEXT,
+            created_by TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT,
+            FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // TLS analysis results table - stores analysis results with threat detection
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS tls_analysis_results (
+            id TEXT PRIMARY KEY,
+            ja3_hash TEXT,
+            ja3s_hash TEXT,
+            src_ip TEXT,
+            dst_ip TEXT,
+            src_port INTEGER,
+            dst_port INTEGER,
+            threat_level TEXT NOT NULL,
+            threats_json TEXT,
+            fingerprint_matches_json TEXT,
+            raw_ja3_string TEXT,
+            raw_ja3s_string TEXT,
+            tls_version TEXT,
+            cipher_suites TEXT,
+            extensions TEXT,
+            detected_at TEXT NOT NULL,
+            scan_id TEXT,
+            user_id TEXT,
+            notes TEXT,
+            acknowledged INTEGER NOT NULL DEFAULT 0,
+            acknowledged_by TEXT,
+            acknowledged_at TEXT,
+            FOREIGN KEY (scan_id) REFERENCES scan_results(id) ON DELETE SET NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+            FOREIGN KEY (acknowledged_by) REFERENCES users(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // TLS threat alerts table - for tracking detected threats
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS tls_threat_alerts (
+            id TEXT PRIMARY KEY,
+            analysis_id TEXT NOT NULL,
+            threat_type TEXT NOT NULL,
+            threat_level TEXT NOT NULL,
+            description TEXT NOT NULL,
+            details TEXT,
+            related_hash TEXT,
+            malware_family TEXT,
+            confidence INTEGER NOT NULL,
+            recommendation TEXT,
+            mitre_techniques TEXT,
+            is_acknowledged INTEGER NOT NULL DEFAULT 0,
+            acknowledged_by TEXT,
+            acknowledged_at TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (analysis_id) REFERENCES tls_analysis_results(id) ON DELETE CASCADE,
+            FOREIGN KEY (acknowledged_by) REFERENCES users(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for efficient queries
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ja3_fingerprints_hash ON ja3_fingerprints(hash)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ja3_fingerprints_type ON ja3_fingerprints(fingerprint_type)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ja3_fingerprints_category ON ja3_fingerprints(category)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ja3_fingerprints_malicious ON ja3_fingerprints(is_malicious)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ja3s_fingerprints_hash ON ja3s_fingerprints(hash)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ja3s_fingerprints_malicious ON ja3s_fingerprints(is_malicious)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_tls_analysis_ja3 ON tls_analysis_results(ja3_hash)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_tls_analysis_ja3s ON tls_analysis_results(ja3s_hash)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_tls_analysis_src_ip ON tls_analysis_results(src_ip)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_tls_analysis_dst_ip ON tls_analysis_results(dst_ip)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_tls_analysis_threat_level ON tls_analysis_results(threat_level)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_tls_analysis_detected ON tls_analysis_results(detected_at DESC)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_tls_analysis_scan ON tls_analysis_results(scan_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_tls_threat_alerts_analysis ON tls_threat_alerts(analysis_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_tls_threat_alerts_level ON tls_threat_alerts(threat_level)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_tls_threat_alerts_type ON tls_threat_alerts(threat_type)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_tls_threat_alerts_ack ON tls_threat_alerts(is_acknowledged)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created TLS/JA3 fingerprint analysis tables");
+    Ok(())
+}
+
+/// Create DNS analysis tables for blue team threat detection
+async fn create_dns_analysis_tables(pool: &SqlitePool) -> Result<()> {
+    // DNS threats table - stores detected DNS-based threats
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS dns_threats (
+            id TEXT PRIMARY KEY,
+            domain TEXT NOT NULL,
+            threat_type TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            confidence REAL NOT NULL DEFAULT 0.0,
+            first_seen TEXT NOT NULL,
+            last_seen TEXT NOT NULL,
+            occurrence_count INTEGER DEFAULT 1,
+            client_ips TEXT,
+            evidence TEXT,
+            mitre_tactics TEXT,
+            mitre_techniques TEXT,
+            recommendations TEXT,
+            raw_scores TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for dns_threats
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_dns_threats_domain ON dns_threats(domain)"
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_dns_threats_type ON dns_threats(threat_type)"
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_dns_threats_severity ON dns_threats(severity)"
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_dns_threats_last_seen ON dns_threats(last_seen)"
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_dns_threats_domain_type ON dns_threats(domain, threat_type)"
+    )
+    .execute(pool)
+    .await?;
+
+    // DNS blocklist table - user-managed blocklist
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS dns_blocklist (
+            id TEXT PRIMARY KEY,
+            domain TEXT NOT NULL UNIQUE,
+            reason TEXT NOT NULL,
+            include_subdomains INTEGER DEFAULT 0,
+            added_by TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            expires_at TEXT,
+            FOREIGN KEY (added_by) REFERENCES users(id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_dns_blocklist_domain ON dns_blocklist(domain)"
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_dns_blocklist_added_by ON dns_blocklist(added_by)"
+    )
+    .execute(pool)
+    .await?;
+
+    // DNS analysis jobs table - tracks analysis jobs
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS dns_analysis_jobs (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            query_count INTEGER NOT NULL DEFAULT 0,
+            threats_found INTEGER NOT NULL DEFAULT 0,
+            anomalies_found INTEGER DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'pending',
+            risk_score INTEGER DEFAULT 0,
+            summary TEXT,
+            config TEXT,
+            error TEXT,
+            created_at TEXT NOT NULL,
+            started_at TEXT,
+            completed_at TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_dns_analysis_jobs_user ON dns_analysis_jobs(user_id)"
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_dns_analysis_jobs_status ON dns_analysis_jobs(status)"
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_dns_analysis_jobs_created ON dns_analysis_jobs(created_at)"
+    )
+    .execute(pool)
+    .await?;
+
+    log::info!("Created DNS analysis tables for blue team threat detection");
     Ok(())
 }

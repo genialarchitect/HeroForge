@@ -70,6 +70,7 @@ pub mod workflows;
 pub mod remediation;
 pub mod executive_dashboard;
 pub mod report_templates;
+pub mod yara;
 
 // Core imports used by this module
 use sqlx::sqlite::SqlitePool;

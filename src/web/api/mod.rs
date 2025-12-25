@@ -27,6 +27,7 @@ pub mod compliance;
 pub mod crm;
 pub mod dashboard;
 pub mod dns;
+pub mod dns_analysis;
 pub mod domain_intel;
 pub mod dorking;
 pub mod email_security;
@@ -34,6 +35,7 @@ pub mod exclusions;
 pub mod finding_templates;
 pub mod git_recon;
 pub mod iac;
+pub mod ids;
 pub mod jira;
 pub mod k8s_security;
 pub mod manual_compliance;
@@ -82,6 +84,8 @@ pub mod report_templates;
 pub mod scanner_import;
 pub mod integrations_bots;
 pub mod tunneling;
+pub mod yara;
+pub mod tls_analysis;
 
 #[cfg(test)]
 mod tests;
