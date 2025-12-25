@@ -183,7 +183,7 @@ async fn scope_matches(
     pool: &SqlitePool,
     assignment: &UserRoleAssignment,
     user_teams: &[String],
-    resource_id: Option<&str>,
+    _resource_id: Option<&str>,
 ) -> Result<bool> {
     match (assignment.scope_type.as_deref(), &assignment.scope_id) {
         // Team-scoped: user must be in that team
@@ -622,7 +622,7 @@ pub async fn get_effective_permissions(
     let mut denied: HashSet<String> = HashSet::new();
 
     // Get all permissions for building the set
-    let all_permissions = roles::list_permissions(pool).await?;
+    let _all_permissions = roles::list_permissions(pool).await?;
 
     // Check user permission overrides
     let overrides = roles::get_active_permission_overrides(pool, user_id, org_id).await?;

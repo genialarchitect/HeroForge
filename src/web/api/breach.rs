@@ -468,7 +468,7 @@ pub async fn delete_history_entry(
 pub async fn get_status(_claims: web::ReqData<Claims>) -> Result<HttpResponse> {
     let engine = match create_engine() {
         Ok(e) => e,
-        Err(e) => {
+        Err(_e) => {
             return Ok(HttpResponse::Ok().json(StatusResponse {
                 success: false,
                 status: BreachEngineStatus {

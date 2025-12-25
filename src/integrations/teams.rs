@@ -2,6 +2,8 @@
 //!
 //! Provides Teams adaptive card responses and bot activity handlers for HeroForge.
 
+#![allow(dead_code)]
+
 use anyhow::Result;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};

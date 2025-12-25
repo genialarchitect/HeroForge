@@ -12,6 +12,8 @@
 //! - `GET /api/recon/git/secrets` - List all secrets found
 //! - `PATCH /api/recon/git/secrets/{id}` - Update secret status
 
+#![allow(dead_code)]
+
 use actix_web::{web, HttpResponse, Result};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};

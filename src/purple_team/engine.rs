@@ -2,6 +2,8 @@
 //!
 //! Orchestrates attack execution and detection validation
 
+#![allow(dead_code)]
+
 use anyhow::Result;
 use chrono::Utc;
 use uuid::Uuid;
@@ -228,7 +230,7 @@ impl PurpleTeamEngine {
     }
 
     /// Simulate attack execution (placeholder for real implementation)
-    async fn simulate_attack_execution(&self, config: &PurpleAttackConfig) -> AttackStatus {
+    async fn simulate_attack_execution(&self, _config: &PurpleAttackConfig) -> AttackStatus {
         // In production, this would:
         // 1. Invoke the appropriate exploitation module
         // 2. Execute the actual attack safely

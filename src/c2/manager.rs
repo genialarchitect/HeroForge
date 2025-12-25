@@ -2,6 +2,8 @@
 //!
 //! Unified interface for managing multiple C2 frameworks and their sessions.
 
+#![allow(dead_code)]
+
 use anyhow::{anyhow, Result};
 use chrono::Utc;
 use sqlx::SqlitePool;

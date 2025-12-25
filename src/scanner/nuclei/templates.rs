@@ -1,6 +1,8 @@
 // Nuclei Template Management
 // List, browse, and manage Nuclei templates
 
+#![allow(dead_code)]
+
 use super::runner::get_templates_path;
 use super::types::*;
 use anyhow::{anyhow, Result};

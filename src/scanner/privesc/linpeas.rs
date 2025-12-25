@@ -179,7 +179,7 @@ fn parse_capabilities_section(section: &str) -> Vec<PrivescFinding> {
 
 /// Parse users section
 fn parse_users_section(section: &str) -> Vec<PrivescFinding> {
-    let mut findings = Vec::new();
+    let findings = Vec::new();
 
     // Look for users with shell access
     for line in section.lines() {

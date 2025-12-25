@@ -66,6 +66,7 @@ pub struct C2Config {
 }
 
 /// Connection status
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum ConnectionStatus {
@@ -301,6 +302,7 @@ pub struct ImplantConfig {
 }
 
 /// Generated implant record
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Implant {
     pub id: String,
@@ -468,6 +470,7 @@ impl std::fmt::Display for CredentialType {
 }
 
 /// File downloaded from session
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DownloadedFile {
     pub id: String,
@@ -481,6 +484,7 @@ pub struct DownloadedFile {
 }
 
 /// Screenshot from session
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Screenshot {
     pub id: String,
@@ -590,6 +594,7 @@ pub struct C2DashboardStats {
 }
 
 /// Common task types
+#[allow(dead_code)]
 pub mod task_types {
     pub const SHELL: &str = "shell";
     pub const EXECUTE: &str = "execute";

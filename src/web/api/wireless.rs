@@ -3,6 +3,8 @@
 //! REST API for wireless security assessment including network discovery,
 //! handshake capture, and password cracking.
 
+#![allow(dead_code)]
+
 use actix_web::{web, HttpResponse};
 use serde::Deserialize;
 use sqlx::SqlitePool;
@@ -288,7 +290,7 @@ async fn get_network(
 // ============================================================================
 
 async fn send_deauth(
-    claims: auth::Claims,
+    _claims: auth::Claims,
     body: web::Json<DeauthRequest>,
 ) -> Result<HttpResponse, ApiError> {
     let config = DeauthConfig {
@@ -356,7 +358,7 @@ async fn capture_pmkid(
 }
 
 async fn wps_pixie_dust(
-    claims: auth::Claims,
+    _claims: auth::Claims,
     body: web::Json<WpsAttackRequest>,
 ) -> Result<HttpResponse, ApiError> {
     let attack = WpsAttack::new(&body.interface);

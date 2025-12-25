@@ -3,6 +3,8 @@
 //! This module provides REST API endpoints for WHOIS lookup
 //! and comprehensive domain intelligence gathering.
 
+#![allow(dead_code)]
+
 use actix_web::{web, HttpResponse, Result};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};

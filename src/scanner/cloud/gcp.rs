@@ -1589,7 +1589,7 @@ impl CloudScanner for GcpScanner {
         };
 
         // List all instances across all zones using aggregated list
-        let instances_url = format!("{}/projects/{}/aggregated/instances", GCP_COMPUTE_API, project_id);
+        let _instances_url = format!("{}/projects/{}/aggregated/instances", GCP_COMPUTE_API, project_id);
 
         // The aggregated list returns a different structure, so we'll iterate by zone
         // For simplicity, we'll get zones first and then query each zone

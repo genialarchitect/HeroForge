@@ -7,6 +7,8 @@
 //! - Missing security scanning jobs
 //! - Privileged Docker operations
 
+#![allow(dead_code)]
+
 use super::types::*;
 use regex::Regex;
 use std::collections::HashSet;
@@ -299,7 +301,7 @@ impl GitLabCIScanner {
     }
 
     /// Check for unprotected variable exposure
-    fn check_variable_exposure(&self, content: &str, file_path: &str, pipeline: &serde_yaml::Value, result: &mut CiCdScanResult) {
+    fn check_variable_exposure(&self, content: &str, file_path: &str, _pipeline: &serde_yaml::Value, result: &mut CiCdScanResult) {
         let rule = self.rules.iter().find(|r| r.id == "GITLAB002").unwrap();
 
         // Check for sensitive-looking variables in scripts that might be echoed
@@ -383,7 +385,7 @@ impl GitLabCIScanner {
     }
 
     /// Check for security scanning jobs
-    fn check_security_scanning(&self, content: &str, file_path: &str, pipeline: &serde_yaml::Value, result: &mut CiCdScanResult) {
+    fn check_security_scanning(&self, content: &str, file_path: &str, _pipeline: &serde_yaml::Value, result: &mut CiCdScanResult) {
         let rule = self.rules.iter().find(|r| r.id == "GITLAB005").unwrap();
 
         let security_indicators = [
@@ -406,7 +408,7 @@ impl GitLabCIScanner {
     }
 
     /// Check for privileged Docker operations
-    fn check_privileged_docker(&self, content: &str, file_path: &str, pipeline: &serde_yaml::Value, result: &mut CiCdScanResult) {
+    fn check_privileged_docker(&self, content: &str, file_path: &str, _pipeline: &serde_yaml::Value, result: &mut CiCdScanResult) {
         let rule = self.rules.iter().find(|r| r.id == "GITLAB006").unwrap();
 
         // Check for privileged: true in services or variables
@@ -435,7 +437,7 @@ impl GitLabCIScanner {
     }
 
     /// Check for script injection vulnerabilities
-    fn check_script_injection(&self, content: &str, file_path: &str, pipeline: &serde_yaml::Value, result: &mut CiCdScanResult) {
+    fn check_script_injection(&self, content: &str, file_path: &str, _pipeline: &serde_yaml::Value, result: &mut CiCdScanResult) {
         let rule = self.rules.iter().find(|r| r.id == "GITLAB007").unwrap();
 
         // User-controlled CI variables that could contain malicious input
@@ -473,7 +475,7 @@ impl GitLabCIScanner {
     }
 
     /// Check for debug mode
-    fn check_debug_mode(&self, content: &str, file_path: &str, pipeline: &serde_yaml::Value, result: &mut CiCdScanResult) {
+    fn check_debug_mode(&self, content: &str, file_path: &str, _pipeline: &serde_yaml::Value, result: &mut CiCdScanResult) {
         let rule = self.rules.iter().find(|r| r.id == "GITLAB009").unwrap();
 
         let debug_patterns = [

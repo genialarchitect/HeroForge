@@ -16,6 +16,8 @@
 //!
 //! Always ensure you have proper authorization before running dorks against any domain.
 
+#![allow(dead_code)]
+
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use log::{debug, info, warn};

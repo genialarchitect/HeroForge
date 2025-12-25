@@ -12,6 +12,7 @@ use super::types::*;
 use super::GitPlatformClient;
 
 /// GitHub API client
+#[allow(dead_code)]
 pub struct GitHubClient {
     client: Client,
     base_url: String,
@@ -357,6 +358,7 @@ impl GitPlatformClient for GitHubClient {
 
 // GitHub API response types
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct GitHubRepo {
     name: String,
@@ -377,6 +379,7 @@ struct GitHubRepo {
     owner: GitHubOwner,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct GitHubOwner {
     login: String,
@@ -405,6 +408,7 @@ impl From<GitHubRepo> for RepoInfo {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct GitHubContent {
     content: Option<String>,
@@ -412,6 +416,7 @@ struct GitHubContent {
     size: Option<usize>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct GitHubTree {
     sha: String,
@@ -419,6 +424,7 @@ struct GitHubTree {
     truncated: bool,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct GitHubTreeItem {
     path: String,
@@ -429,6 +435,7 @@ struct GitHubTreeItem {
     size: Option<usize>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct GitHubCommit {
     sha: String,
@@ -437,12 +444,14 @@ struct GitHubCommit {
     parents: Vec<GitHubParent>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct GitHubCommitData {
     message: String,
     author: GitHubAuthor,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct GitHubAuthor {
     name: String,
@@ -450,17 +459,20 @@ struct GitHubAuthor {
     date: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct GitHubParent {
     sha: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct GitHubCommitDetail {
     sha: String,
     files: Option<Vec<GitHubCommitFile>>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct GitHubCommitFile {
     filename: String,
@@ -471,12 +483,14 @@ struct GitHubCommitFile {
     previous_filename: Option<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct GitHubSearchResult {
     total_count: u32,
     items: Vec<GitHubSearchItem>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct GitHubSearchItem {
     name: String,
@@ -486,11 +500,13 @@ struct GitHubSearchItem {
     text_matches: Option<Vec<GitHubTextMatch>>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct GitHubSearchRepo {
     full_name: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct GitHubTextMatch {
     object_type: String,
@@ -498,6 +514,7 @@ struct GitHubTextMatch {
     matches: Vec<GitHubMatchIndex>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct GitHubMatchIndex {
     indices: Vec<usize>,

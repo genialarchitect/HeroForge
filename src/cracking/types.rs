@@ -3,6 +3,8 @@
 //! This module defines the core types for the password cracking integration,
 //! including hash types, job configurations, and results.
 
+#![allow(dead_code)]
+
 use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
 

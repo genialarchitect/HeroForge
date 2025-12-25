@@ -2,6 +2,8 @@
 // REST API for payload analysis, evasion technique documentation, and sandbox detection
 // For educational and authorized penetration testing purposes only
 
+#![allow(dead_code)]
+
 use actix_web::{web, HttpResponse, Result};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};

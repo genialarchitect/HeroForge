@@ -2,6 +2,8 @@
 //!
 //! Data structures for GitHub and GitLab API responses and scan results.
 
+#![allow(dead_code)]
+
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 

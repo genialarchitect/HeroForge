@@ -13,6 +13,8 @@
 //! - Real-time campaign statistics
 //! - Awareness training mode
 //! - SMS phishing (smishing) campaigns with Twilio integration
+
+#![allow(dead_code)]
 //! - Pretexting templates for social engineering scenarios
 //! - Voice phishing (vishing) campaign management
 //!

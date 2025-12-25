@@ -13,6 +13,8 @@
 //!
 //! - `POST /api/recon/dorks` - Run dorks against a domain
 //! - `GET /api/recon/dorks/templates` - List available dork templates
+
+#![allow(dead_code)]
 //! - `GET /api/recon/dorks/categories` - List dork categories
 //! - `POST /api/recon/dorks/custom` - Run a custom dork query
 //! - `GET /api/recon/dorks/results/{id}` - Get dork scan results

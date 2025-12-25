@@ -3,6 +3,8 @@
 //! This module provides a unified interface to access all CI/CD security rules
 //! across different platforms (GitHub Actions, GitLab CI, Jenkins).
 
+#![allow(dead_code)]
+
 use super::types::*;
 use super::github_actions::GitHubActionsScanner;
 use super::gitlab_ci::GitLabCIScanner;

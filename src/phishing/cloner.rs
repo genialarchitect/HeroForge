@@ -2,6 +2,8 @@
 //!
 //! Clones websites for phishing landing pages.
 
+#![allow(dead_code)]
+
 use anyhow::{anyhow, Result};
 use reqwest::Client;
 use scraper::{Html, Selector};
@@ -181,7 +183,7 @@ impl WebsiteCloner {
     fn modify_forms(
         &self,
         html: &str,
-        capture_fields: &[String],
+        _capture_fields: &[String],
         redirect_url: Option<&str>,
     ) -> Result<String> {
         let mut modified = html.to_string();

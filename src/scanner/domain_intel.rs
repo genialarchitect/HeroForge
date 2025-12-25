@@ -3,6 +3,8 @@
 //! This module provides comprehensive domain intelligence by aggregating
 //! WHOIS data, DNS history, related domain discovery hints, and more.
 
+#![allow(dead_code)]
+
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use log::{debug, info, warn};

@@ -3,6 +3,8 @@
 //! Implements the Dehashed API for more detailed breach data lookups.
 //! API documentation: https://www.dehashed.com/docs
 
+#![allow(dead_code)]
+
 use anyhow::{anyhow, Result};
 use chrono::Utc;
 use log::{debug, info};

@@ -2,6 +2,8 @@
 //!
 //! Parses Nessus .nessus (XML) and CSV export files.
 
+#![allow(dead_code)]
+
 use anyhow::{Context, Result};
 use chrono::{DateTime, TimeZone, Utc};
 use quick_xml::events::Event;
@@ -175,15 +177,14 @@ impl NessusParser {
                         }
                     } else if in_report_host {
                         // Host-level tags
-                        if let Some(ref host_ip) = current_host {
-                            if let Some(host) = hosts.get_mut(host_ip) {
-                                match current_element.as_str() {
-                                    "tag" => {
-                                        // Parse host properties
-                                    }
-                                    "HostProperties" => {}
-                                    _ => {}
+                        if let Some(ref _host_ip) = current_host {
+                            // Host-level tag processing is placeholder
+                            match current_element.as_str() {
+                                "tag" => {
+                                    // Parse host properties
                                 }
+                                "HostProperties" => {}
+                                _ => {}
                             }
                         }
                     }
@@ -194,7 +195,7 @@ impl NessusParser {
                         if let Some(ref host_ip) = current_host {
                             if let Some(host) = hosts.get_mut(host_ip) {
                                 let mut tag_name = String::new();
-                                let mut tag_value = String::new();
+                                let tag_value = String::new();
 
                                 for attr in e.attributes().filter_map(|a| a.ok()) {
                                     let key = String::from_utf8_lossy(attr.key.as_ref()).to_string();

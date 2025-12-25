@@ -2,6 +2,8 @@
 //!
 //! Handles campaign lifecycle, scheduling, and execution.
 
+#![allow(dead_code)]
+
 use anyhow::{anyhow, Result};
 use chrono::Utc;
 use sqlx::SqlitePool;

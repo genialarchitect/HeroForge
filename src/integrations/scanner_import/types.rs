@@ -1,5 +1,7 @@
 //! Common types for scanner import functionality
 
+#![allow(dead_code)]
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 

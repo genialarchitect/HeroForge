@@ -1,5 +1,7 @@
 //! Types for CI/CD pipeline security scanning
 
+#![allow(dead_code)]
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 

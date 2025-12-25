@@ -7,6 +7,8 @@
 //! - Overdue vulnerabilities
 //! - Remediation dashboard
 
+#![allow(dead_code)]
+
 use actix_web::{web, HttpResponse};
 use sqlx::SqlitePool;
 use serde::{Deserialize, Serialize};

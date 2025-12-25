@@ -3,6 +3,8 @@
 //! These types represent Active Directory objects and relationships
 //! as collected by SharpHound and used by BloodHound for attack path analysis.
 
+#![allow(dead_code)]
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 

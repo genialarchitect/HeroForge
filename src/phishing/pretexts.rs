@@ -12,6 +12,8 @@
 //!
 //! Unauthorized social engineering is illegal. Always obtain proper authorization.
 
+#![allow(dead_code)]
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

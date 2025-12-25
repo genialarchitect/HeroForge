@@ -3,6 +3,8 @@
 //! Implements the HIBP v3 API for checking email breaches and paste exposures.
 //! API documentation: https://haveibeenpwned.com/API/v3
 
+#![allow(dead_code)]
+
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, NaiveDate, Utc};
 use log::{debug, info};

@@ -1487,7 +1487,7 @@ async fn report_phish(
 /// Generate a standalone QR code (without campaign)
 async fn generate_qr_code(
     pool: web::Data<SqlitePool>,
-    claims: auth::Claims,
+    _claims: auth::Claims,
     body: web::Json<GenerateQrCodeRequest>,
 ) -> Result<HttpResponse, ApiError> {
     let generator = QrCodeGenerator::new(pool.get_ref().clone());
@@ -1870,7 +1870,7 @@ async fn track_qr_scan(
         .map(|s| s.to_string());
 
     match generator.record_scan(&tracking_id, ip.as_deref(), user_agent.as_deref()).await? {
-        Some((asset, Some(redirect_url))) => {
+        Some((_asset, Some(redirect_url))) => {
             // Redirect to landing page or training URL
             if redirect_url.starts_with('/') {
                 // Relative URL - treat as click tracking
@@ -1883,7 +1883,7 @@ async fn track_qr_scan(
                     .finish())
             }
         }
-        Some((asset, None)) => {
+        Some((_asset, None)) => {
             // No redirect configured - show thank you page
             Ok(HttpResponse::Ok()
                 .content_type("text/html")

@@ -7,6 +7,8 @@
 //! - https://www.cobaltstrike.com/help-externalc2
 //! - External C2 specification for third-party C2 channel development
 
+#![allow(dead_code)]
+
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Utc};
 use reqwest::Client;
@@ -75,7 +77,7 @@ impl ExternalC2Frame {
             return Err(anyhow!("Frame too short"));
         }
 
-        let length = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as usize;
+        let _length = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as usize;
         let frame_type_raw = u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]);
 
         let frame_type = match frame_type_raw {

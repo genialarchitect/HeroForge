@@ -5,6 +5,8 @@
 //!
 //! **WARNING**: These endpoints are for authorized security testing only.
 
+#![allow(dead_code)]
+
 use actix_web::{web, HttpResponse};
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;

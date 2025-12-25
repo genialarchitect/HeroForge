@@ -397,7 +397,7 @@ impl StateScanner {
     }
 
     /// Scan for exposed secrets in resources
-    fn scan_for_secrets(&self, resources: &[StateResource]) -> Result<Vec<StateFinding>> {
+    fn scan_for_secrets(&self, _resources: &[StateResource]) -> Result<Vec<StateFinding>> {
         let mut findings = Vec::new();
 
         if let Some(state_resources) = self.state.get("resources").and_then(|r| r.as_array()) {
@@ -511,7 +511,7 @@ impl StateScanner {
     }
 
     /// Check resource security configurations
-    fn check_resource_security(&self, resources: &[StateResource]) -> Result<Vec<StateFinding>> {
+    fn check_resource_security(&self, _resources: &[StateResource]) -> Result<Vec<StateFinding>> {
         let mut findings = Vec::new();
 
         if let Some(state_resources) = self.state.get("resources").and_then(|r| r.as_array()) {
@@ -799,9 +799,9 @@ pub fn analyze_state(content: &str) -> Result<StateAnalysisResult> {
 pub fn analyze_backend(content: &str) -> Result<BackendAnalysis> {
     let mut findings = Vec::new();
     let mut backend_type = "local".to_string();
-    let mut has_encryption = false;
-    let mut has_locking = false;
-    let mut has_versioning = false;
+    let has_encryption;
+    let has_locking;
+    let has_versioning;
 
     // Parse backend configuration
     let backend_pattern = Regex::new(r#"backend\s+"([^"]+)"\s*\{"#).unwrap();

@@ -14,6 +14,8 @@
 //! These dorks should ONLY be used for authorized security testing.
 //! Unauthorized use may violate laws and terms of service.
 
+#![allow(dead_code)]
+
 use crate::scanner::google_dorking::{DorkCategory, DorkTemplate};
 use once_cell::sync::Lazy;
 

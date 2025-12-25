@@ -3,6 +3,8 @@
 //! This module provides comprehensive email security analysis for domains,
 //! including SPF, DKIM, and DMARC validation and spoofability assessment.
 
+#![allow(dead_code)]
+
 use anyhow::Result;
 use log::{debug, info, warn};
 use serde::{Deserialize, Serialize};

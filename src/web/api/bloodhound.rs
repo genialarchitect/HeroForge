@@ -75,7 +75,7 @@ pub async fn upload_data(
     info!("User {} uploading SharpHound data", claims.sub);
 
     let mut file_data: Vec<u8> = Vec::new();
-    let mut file_name = String::new();
+    let mut _file_name = String::new();
     let mut file_type = String::new();
 
     // Process multipart form
@@ -89,14 +89,14 @@ pub async fn upload_data(
             .unwrap_or_default();
 
         if field_name == "file" {
-            file_name = content_disposition
+            _file_name = content_disposition
                 .and_then(|cd| cd.get_filename().map(|s| s.to_string()))
                 .unwrap_or_else(|| "unknown".to_string());
 
             // Determine file type from extension
-            if file_name.ends_with(".zip") {
+            if _file_name.ends_with(".zip") {
                 file_type = "zip".to_string();
-            } else if file_name.ends_with(".json") {
+            } else if _file_name.ends_with(".json") {
                 file_type = "json".to_string();
             } else {
                 return Err(ApiError::bad_request(

@@ -639,7 +639,7 @@ impl PssValidator {
     fn check_container(
         &self,
         container: &serde_yaml::Value,
-        pod_spec: &serde_yaml::Value,
+        _pod_spec: &serde_yaml::Value,
         kind: &str,
         name: &str,
         namespace: &str,
@@ -920,7 +920,7 @@ impl PssValidator {
     fn calculate_summary(
         &self,
         violations: &[PssViolation],
-        workloads_analyzed: usize,
+        _workloads_analyzed: usize,
         workloads_passing_baseline: usize,
         workloads_passing_restricted: usize,
     ) -> PssSummary {

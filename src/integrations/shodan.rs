@@ -3,6 +3,8 @@
 //! This module provides a comprehensive Shodan API client for network reconnaissance,
 //! including host lookups, searches, and DNS operations.
 
+#![allow(dead_code)]
+
 use anyhow::{anyhow, Result};
 use log::{debug, info, warn};
 use reqwest::Client;

@@ -1,5 +1,7 @@
 //! Detection gap analysis and prioritization
 
+#![allow(dead_code)]
+
 use std::collections::HashMap;
 use chrono::Utc;
 use uuid::Uuid;
@@ -70,7 +72,7 @@ impl GapAnalyzer {
         let partially_detected = results.iter()
             .filter(|r| r.detection_status == DetectionStatus::PartiallyDetected)
             .count();
-        let not_detected = results.iter()
+        let _not_detected = results.iter()
             .filter(|r| r.detection_status == DetectionStatus::NotDetected)
             .count();
 

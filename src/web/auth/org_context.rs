@@ -33,16 +33,19 @@ impl OrganizationContext {
     }
 
     /// Check if user is an owner of the current organization
+    #[allow(dead_code)]
     pub fn is_owner(&self) -> bool {
         self.org_role.as_deref() == Some("owner")
     }
 
     /// Check if user is an admin of the current organization
+    #[allow(dead_code)]
     pub fn is_admin(&self) -> bool {
         matches!(self.org_role.as_deref(), Some("owner") | Some("admin"))
     }
 
     /// Check if user has any role in the current organization
+    #[allow(dead_code)]
     pub fn is_member(&self) -> bool {
         self.org_role.is_some()
     }
@@ -53,6 +56,7 @@ impl OrganizationContext {
     }
 
     /// Check if a specific team is accessible to the user
+    #[allow(dead_code)]
     pub fn has_team(&self, team_id: &str) -> bool {
         self.teams.contains(&team_id.to_string())
     }

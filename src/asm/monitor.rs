@@ -226,7 +226,7 @@ impl AsmMonitorEngine {
     }
 
     /// Send alert for a detected change
-    async fn send_alert(&self, monitor: &AsmMonitor, change: &AsmChange) -> anyhow::Result<()> {
+    async fn send_alert(&self, _monitor: &AsmMonitor, change: &AsmChange) -> anyhow::Result<()> {
         // Get notification settings and send via configured channels
         // This would integrate with the notifications module
         log::info!(
@@ -245,7 +245,7 @@ impl AsmMonitorEngine {
     }
 
     /// Convert host info to baseline assets (placeholder for scanner integration)
-    fn hosts_to_baseline(assets: &[BaselineAsset]) -> Vec<crate::types::HostInfo> {
+    fn hosts_to_baseline(_assets: &[BaselineAsset]) -> Vec<crate::types::HostInfo> {
         // This would convert in the other direction normally
         // For now, return empty as we work with BaselineAssets directly
         vec![]

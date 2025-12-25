@@ -2,6 +2,8 @@
 //!
 //! Provides Slack slash command handlers and event processing for HeroForge.
 
+#![allow(dead_code)]
+
 use anyhow::Result;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};

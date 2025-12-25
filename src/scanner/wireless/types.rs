@@ -2,6 +2,8 @@
 //!
 //! Data structures for WiFi security assessment and penetration testing.
 
+#![allow(dead_code)]
+
 use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
 

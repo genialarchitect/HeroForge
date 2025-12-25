@@ -2,6 +2,8 @@
 //!
 //! Implements the GitPlatformClient trait for GitLab's REST API.
 
+#![allow(dead_code)]
+
 use anyhow::{anyhow, Result};
 use log::{debug, warn};
 use reqwest::{Client, StatusCode};

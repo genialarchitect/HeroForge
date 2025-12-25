@@ -18,6 +18,7 @@ use tokio::sync::RwLock;
 use super::types::*;
 
 /// Mythic C2 client using GraphQL API
+#[allow(dead_code)]
 pub struct MythicClient {
     config: C2Config,
     client: Client,
@@ -25,6 +26,7 @@ pub struct MythicClient {
 }
 
 // GraphQL request/response types
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 struct GraphQLRequest {
     query: String,
@@ -32,18 +34,21 @@ struct GraphQLRequest {
     variables: Option<serde_json::Value>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct GraphQLResponse<T> {
     data: Option<T>,
     errors: Option<Vec<GraphQLError>>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct GraphQLError {
     message: String,
 }
 
 // Mythic-specific types
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct MythicCallback {
     id: i64,
@@ -65,6 +70,7 @@ struct MythicCallback {
     last_checkin: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct MythicPayload {
     id: i64,
@@ -80,11 +86,13 @@ struct MythicPayload {
     created_at: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct MythicPayloadType {
     name: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct MythicC2Profile {
     id: i64,
@@ -95,6 +103,7 @@ struct MythicC2Profile {
     running: bool,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct MythicTask {
     id: i64,
@@ -112,6 +121,7 @@ struct MythicTask {
     completed_at: Option<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct MythicCredential {
     id: i64,
@@ -124,6 +134,7 @@ struct MythicCredential {
     timestamp: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct MythicFile {
     id: i64,
@@ -138,42 +149,50 @@ struct MythicFile {
 }
 
 // GraphQL response wrapper types
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct CallbacksResponse {
     callback: Vec<MythicCallback>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct PayloadsResponse {
     payload: Vec<MythicPayload>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct C2ProfilesResponse {
     c2profile: Vec<MythicC2Profile>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct TasksResponse {
     task: Vec<MythicTask>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct CredentialsResponse {
     credential: Vec<MythicCredential>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct FilesResponse {
     filemeta: Vec<MythicFile>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 #[allow(non_snake_case)]
 struct CreateTaskResponse {
     createTask: Option<CreateTaskResult>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct CreateTaskResult {
     status: String,
@@ -181,6 +200,7 @@ struct CreateTaskResult {
     error: Option<String>,
 }
 
+#[allow(dead_code)]
 impl MythicClient {
     /// Create a new Mythic client
     pub fn new(config: C2Config) -> Result<Self> {

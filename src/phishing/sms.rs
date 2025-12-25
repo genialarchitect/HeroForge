@@ -37,6 +37,7 @@ use super::types::{generate_tracking_id, CampaignStatus, TargetStatus};
 // ============================================================================
 
 /// Trait for SMS provider abstraction
+#[allow(dead_code)]
 #[async_trait]
 pub trait SmsClient: Send + Sync {
     /// Send an SMS message
@@ -50,6 +51,7 @@ pub trait SmsClient: Send + Sync {
 }
 
 /// Result of an SMS delivery attempt
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SmsDeliveryResult {
     pub message_sid: String,
@@ -59,6 +61,7 @@ pub struct SmsDeliveryResult {
 }
 
 /// SMS delivery status
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum SmsDeliveryStatus {
@@ -106,6 +109,7 @@ impl std::str::FromStr for SmsDeliveryStatus {
 // ============================================================================
 
 /// Twilio SMS provider configuration
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TwilioConfig {
     pub id: String,
@@ -122,6 +126,7 @@ pub struct TwilioConfig {
 }
 
 /// Twilio SMS client implementation
+#[allow(dead_code)]
 #[derive(Clone)]
 pub struct TwilioClient {
     account_sid: String,
@@ -132,6 +137,7 @@ pub struct TwilioClient {
     rate_limit_per_second: u32,
 }
 
+#[allow(dead_code)]
 impl TwilioClient {
     pub fn new(config: &TwilioConfig) -> Self {
         Self {
@@ -271,6 +277,7 @@ impl SmsClient for TwilioClient {
 // ============================================================================
 
 /// SMS campaign
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SmsCampaign {
     pub id: String,
@@ -291,6 +298,7 @@ pub struct SmsCampaign {
 }
 
 /// SMS campaign summary with statistics
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SmsCampaignSummary {
     pub id: String,
@@ -306,6 +314,7 @@ pub struct SmsCampaignSummary {
 }
 
 /// Detailed SMS campaign statistics
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SmsCampaignStatistics {
     pub total_targets: u32,
@@ -320,6 +329,7 @@ pub struct SmsCampaignStatistics {
 }
 
 /// SMS message template
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SmsTemplate {
     pub id: String,
@@ -332,6 +342,7 @@ pub struct SmsTemplate {
 }
 
 /// SMS phishing target
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SmsTarget {
     pub id: String,
@@ -352,6 +363,7 @@ pub struct SmsTarget {
 }
 
 /// SMS click event
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SmsClickEvent {
     pub id: String,
@@ -368,6 +380,7 @@ pub struct SmsClickEvent {
 // ============================================================================
 
 /// SMS template variables for message personalization
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct SmsTemplateVariables {
     pub first_name: String,
@@ -379,6 +392,7 @@ pub struct SmsTemplateVariables {
     pub short_url: String,
 }
 
+#[allow(dead_code)]
 impl SmsTemplateVariables {
     /// Replace variables in template content
     pub fn apply(&self, content: &str) -> String {
@@ -433,6 +447,7 @@ impl SmsTemplateVariables {
 // ============================================================================
 
 /// SMS campaign creation request
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateSmsCampaignRequest {
     pub name: String,
@@ -449,6 +464,7 @@ pub struct CreateSmsCampaignRequest {
 }
 
 /// SMS target creation request
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateSmsTargetRequest {
     pub phone_number: String,
@@ -459,6 +475,7 @@ pub struct CreateSmsTargetRequest {
 }
 
 /// SMS template creation request
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateSmsTemplateRequest {
     pub name: String,
@@ -466,6 +483,7 @@ pub struct CreateSmsTemplateRequest {
 }
 
 /// Twilio config creation request
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateTwilioConfigRequest {
     pub name: String,
@@ -477,6 +495,7 @@ pub struct CreateTwilioConfigRequest {
 }
 
 /// Single SMS send request
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SendSingleSmsRequest {
     pub twilio_config_id: String,
@@ -489,10 +508,12 @@ pub struct SendSingleSmsRequest {
 // ============================================================================
 
 /// SMS campaign manager handles campaign lifecycle and SMS delivery
+#[allow(dead_code)]
 pub struct SmsCampaignManager {
     pool: SqlitePool,
 }
 
+#[allow(dead_code)]
 impl SmsCampaignManager {
     pub fn new(pool: SqlitePool) -> Self {
         Self { pool }
@@ -1203,6 +1224,7 @@ impl SmsCampaignManager {
 // ============================================================================
 
 /// Normalize phone number to E.164 format
+#[allow(dead_code)]
 fn normalize_phone_number(phone: &str) -> String {
     let mut result = String::new();
     let mut chars = phone.chars().peekable();

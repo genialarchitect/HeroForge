@@ -3,6 +3,8 @@
 //! Client for interacting with Sliver C2 server via its operator API.
 //! Sliver uses mTLS for authentication with operator certificates.
 
+#![allow(dead_code)]
+
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Utc};
 use reqwest::Client;

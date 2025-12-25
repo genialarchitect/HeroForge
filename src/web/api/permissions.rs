@@ -659,7 +659,7 @@ pub async fn share_resource(
 #[get("/resources/{resource_type}/{resource_id}/shares")]
 pub async fn list_resource_shares(
     pool: web::Data<SqlitePool>,
-    claims: Claims,
+    _claims: Claims,
     path: web::Path<(String, String)>,
 ) -> Result<HttpResponse, ApiError> {
     let (resource_type, resource_id) = path.into_inner();

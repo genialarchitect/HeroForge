@@ -107,7 +107,7 @@ pub async fn save_discovery_results(
     pool: &SqlitePool,
     result: &AssetDiscoveryResult,
 ) -> Result<()> {
-    let now = Utc::now().to_rfc3339();
+    let _now = Utc::now().to_rfc3339();
     let completed_at = result.completed_at.map(|dt| dt.to_rfc3339());
     let whois_json = result.whois.as_ref().map(|w| serde_json::to_string(w)).transpose()?;
     let stats_json = serde_json::to_string(&result.statistics)?;

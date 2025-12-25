@@ -12,6 +12,8 @@
 //!
 //! Unauthorized SMS phishing (smishing) is illegal. Always obtain proper authorization.
 
+#![allow(dead_code)]
+
 use actix_web::{web, HttpRequest, HttpResponse};
 use chrono::Utc;
 use serde::Deserialize;
@@ -809,13 +811,13 @@ async fn track_sms_click(
         user_agent.as_deref(),
         referrer.as_deref(),
     ).await? {
-        Some((target, Some(training_url))) => {
+        Some((_target, Some(training_url))) => {
             // Awareness training mode - redirect to training page
             Ok(HttpResponse::Found()
                 .insert_header(("Location", training_url))
                 .finish())
         }
-        Some((target, None)) => {
+        Some((_target, None)) => {
             // No training mode - show generic page
             Ok(HttpResponse::Ok()
                 .content_type("text/html")

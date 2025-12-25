@@ -1,5 +1,7 @@
 //! Cracking engine for orchestrating password cracking jobs
 
+#![allow(dead_code)]
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{broadcast, RwLock};
@@ -250,7 +252,7 @@ async fn run_hashcat_job(
     let args = runner.build_args(&hash_file, &wordlist_paths, &rule_paths)?;
 
     // Run hashcat
-    let mut cracked_count = 0;
+    let cracked_count = 0;
 
     // For now, use a simulated run since hashcat may not be installed
     // In production, this would spawn the hashcat process

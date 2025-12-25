@@ -74,7 +74,7 @@ pub fn analyze_import(data: &SharpHoundData) -> Result<BloodHoundImportResult> {
     let users_with_path = graph.find_users_with_path_to_da();
 
     // Find DCSync principals
-    let dcsync_principals = find_dcsync_principals(&relationships, &domains);
+    let _dcsync_principals = find_dcsync_principals(&relationships, &domains);
 
     // Build attack paths for users with shortest paths
     let mut attack_paths = Vec::new();

@@ -2,6 +2,8 @@
 //!
 //! Discovers wireless networks and clients using aircrack-ng suite tools.
 
+#![allow(dead_code)]
+
 use std::collections::HashMap;
 use std::process::Stdio;
 use tokio::process::Command;
@@ -92,7 +94,7 @@ impl WirelessScanner {
     }
 
     /// Check if an interface supports monitor mode
-    async fn check_monitor_mode_support(interface: &str) -> bool {
+    async fn check_monitor_mode_support(_interface: &str) -> bool {
         // Check using iw phy info
         let output = Command::new("iw")
             .args(["phy"])

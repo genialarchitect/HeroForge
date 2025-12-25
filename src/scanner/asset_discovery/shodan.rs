@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use anyhow::{anyhow, Result};
 use log::{debug, info, warn};
 use reqwest::Client;
@@ -10,6 +12,7 @@ use super::types::{DiscoveredAsset, DiscoveredPort, DiscoverySource, TechnologyF
 const SHODAN_API_BASE: &str = "https://api.shodan.io";
 
 /// Shodan API response for domain search
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct ShodanDomainResponse {
     #[serde(default)]
@@ -22,6 +25,7 @@ struct ShodanDomainResponse {
     data: Vec<ShodanDnsRecord>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct ShodanDnsRecord {
     #[serde(default)]
@@ -35,6 +39,7 @@ struct ShodanDnsRecord {
 }
 
 /// Shodan API response for host lookup
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct ShodanHostResponse {
     #[serde(default)]
@@ -59,6 +64,7 @@ struct ShodanHostResponse {
     data: Vec<ShodanServiceData>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct ShodanServiceData {
     #[serde(default)]
@@ -79,12 +85,14 @@ struct ShodanServiceData {
     http: Option<ShodanHttpInfo>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct ShodanSslInfo {
     #[serde(default)]
     cert: Option<ShodanCertInfo>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct ShodanCertInfo {
     #[serde(default)]
@@ -97,6 +105,7 @@ struct ShodanCertInfo {
     expires: Option<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct ShodanSubject {
     #[serde(rename = "CN", default)]
@@ -105,12 +114,14 @@ struct ShodanSubject {
     o: Option<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct ShodanFingerprint {
     #[serde(default)]
     sha256: Option<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct ShodanHttpInfo {
     #[serde(default)]

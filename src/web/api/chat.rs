@@ -2,6 +2,8 @@
 //!
 //! Provides REST API endpoints for AI chat functionality with streaming responses.
 
+#![allow(dead_code)]
+
 use actix_web::{web, HttpResponse, Result};
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};

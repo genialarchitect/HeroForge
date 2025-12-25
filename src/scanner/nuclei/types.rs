@@ -1,6 +1,8 @@
 // Nuclei Scanner Types
 // Data structures for Nuclei vulnerability scanner integration
 
+#![allow(dead_code)]
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;

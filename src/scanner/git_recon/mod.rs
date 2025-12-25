@@ -16,6 +16,8 @@
 //! - API tokens are stored securely and never logged
 //! - Rate limiting is implemented to avoid API throttling
 
+#![allow(dead_code)]
+
 pub mod github;
 pub mod gitlab;
 pub mod types;

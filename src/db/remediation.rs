@@ -421,31 +421,24 @@ pub async fn update_verification_request(
 
     // Build dynamic update query
     let mut updates = vec!["updated_at = ?1"];
-    let mut param_idx = 2;
 
     if request.status.is_some() {
         updates.push("status = ?");
-        param_idx += 1;
     }
     if request.assigned_to.is_some() {
         updates.push("assigned_to = ?");
-        param_idx += 1;
     }
     if request.result.is_some() {
         updates.push("result = ?");
-        param_idx += 1;
     }
     if request.result_details.is_some() {
         updates.push("result_details = ?");
-        param_idx += 1;
     }
     if request.verification_evidence.is_some() {
         updates.push("verification_evidence = ?");
-        param_idx += 1;
     }
     if request.notes.is_some() {
         updates.push("notes = ?");
-        param_idx += 1;
     }
     if completed_at.is_some() {
         updates.push("completed_at = ?");

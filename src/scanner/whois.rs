@@ -3,6 +3,8 @@
 //! This module provides WHOIS lookup functionality for domains,
 //! parsing structured data from WHOIS server responses.
 
+#![allow(dead_code)]
+
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, NaiveDateTime, Utc};
 use log::{debug, info, warn};

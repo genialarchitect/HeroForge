@@ -2,6 +2,8 @@
 //!
 //! Parses Qualys XML export files (Asset/Vulnerability Report format).
 
+#![allow(dead_code)]
+
 use anyhow::Result;
 use chrono::{DateTime, TimeZone, Utc};
 use quick_xml::events::Event;

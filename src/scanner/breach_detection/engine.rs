@@ -7,6 +7,8 @@
 //!
 //! Provides unified interface for email, domain, and password breach checking.
 
+#![allow(dead_code)]
+
 use anyhow::{anyhow, Result};
 use chrono::Utc;
 use log::{debug, error, info, warn};

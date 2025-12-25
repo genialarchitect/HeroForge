@@ -10,6 +10,8 @@
 //! - Tasks are queued and retrieved during check-ins
 //! - Results are submitted via POST /api/c2/custom/result
 
+#![allow(dead_code)]
+
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};

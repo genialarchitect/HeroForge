@@ -13,6 +13,8 @@
 //!
 //! Unauthorized use of QR phishing (quishing) is illegal. Always obtain proper authorization.
 
+#![allow(dead_code)]
+
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Utc};
 use qrcode::render::svg;

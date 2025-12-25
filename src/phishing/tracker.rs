@@ -2,6 +2,8 @@
 //!
 //! Handles tracking of email opens, link clicks, and credential submissions.
 
+#![allow(dead_code)]
+
 use anyhow::Result;
 use chrono::Utc;
 use sqlx::SqlitePool;

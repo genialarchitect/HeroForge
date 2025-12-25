@@ -7,6 +7,8 @@
 //! - https://github.com/HavocFramework/Havoc
 //! - Teamserver WebSocket API
 
+#![allow(dead_code)]
+
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Utc};
 use futures_util::{SinkExt, StreamExt};

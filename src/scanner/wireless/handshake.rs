@@ -2,6 +2,8 @@
 //!
 //! Captures WPA/WPA2 4-way handshakes and PMKID for offline cracking.
 
+#![allow(dead_code)]
+
 use std::process::Stdio;
 use tokio::process::Command;
 use tokio::sync::mpsc;
@@ -127,7 +129,7 @@ impl HandshakeCapturer {
         let capture_file = format!("{}-01.cap", capture_prefix);
 
         let start_time = std::time::Instant::now();
-        let mut handshake_captured = false;
+        let mut _handshake_captured = false;
 
         loop {
             if start_time.elapsed() >= timeout {
@@ -138,7 +140,7 @@ impl HandshakeCapturer {
             if tokio::fs::metadata(&capture_file).await.is_ok() {
                 if let Ok(has_handshake) = Self::check_handshake(&capture_file).await {
                     if has_handshake {
-                        handshake_captured = true;
+                        _handshake_captured = true;
                         if let Some(tx) = &progress_tx {
                             let _ = tx.send("Handshake captured!".to_string()).await;
                         }

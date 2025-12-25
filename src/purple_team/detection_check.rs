@@ -1,5 +1,7 @@
 //! SIEM detection checking and alert correlation
 
+#![allow(dead_code)]
+
 use anyhow::Result;
 use chrono::{DateTime, Duration, Utc};
 use sqlx::SqlitePool;

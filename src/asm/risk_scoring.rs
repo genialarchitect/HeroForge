@@ -1,5 +1,7 @@
 //! Risk scoring for attack surface assets
 
+#![allow(dead_code)]
+
 use chrono::Utc;
 use uuid::Uuid;
 

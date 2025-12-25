@@ -2,6 +2,8 @@
 //!
 //! Password cracking using aircrack-ng for WPA/WPA2 handshakes.
 
+#![allow(dead_code)]
+
 use std::process::Stdio;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;

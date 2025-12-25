@@ -655,7 +655,7 @@ pub async fn list_marketplace_templates(
         _ => "t.downloads DESC",
     };
 
-    let query = if let Some(base) = base_template {
+    let query = if let Some(_base) = base_template {
         format!(
             r#"
             SELECT t.id, t.name, t.description, t.base_template, u.username,

@@ -460,7 +460,7 @@ async fn run_winrm_command(
     timeout_secs: u64,
 ) -> Result<String> {
     // Try using evil-winrm if available
-    let protocol = if https { "https" } else { "http" };
+    let _protocol = if https { "https" } else { "http" };
 
     // Use PowerShell remoting via pwsh if available
     let ps_command = format!(

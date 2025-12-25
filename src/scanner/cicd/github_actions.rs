@@ -8,6 +8,8 @@
 //! - Supply chain risks
 //! - Dangerous workflow triggers
 
+#![allow(dead_code)]
+
 use super::types::*;
 use regex::Regex;
 use std::path::Path;

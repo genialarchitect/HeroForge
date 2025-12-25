@@ -1,6 +1,8 @@
 // Nuclei Output Parser
 // Parse JSON output from Nuclei scans
 
+#![allow(dead_code)]
+
 use super::types::*;
 use chrono::Utc;
 use log::debug;

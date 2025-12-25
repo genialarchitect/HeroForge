@@ -1,5 +1,7 @@
 //! MITRE ATT&CK mappings for HeroForge attack types
 
+#![allow(dead_code)]
+
 use super::types::{MitreTactic, MitreTechnique};
 use std::collections::HashMap;
 

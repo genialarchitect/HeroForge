@@ -1474,7 +1474,7 @@ impl CisBenchmarkScanner {
         let mut warnings = 0;
         let mut manual = 0;
         let mut not_applicable = 0;
-        let mut by_section: HashMap<String, SectionSummary> = HashMap::new();
+        let by_section: HashMap<String, SectionSummary> = HashMap::new();
 
         // Count unique control statuses
         let mut control_statuses: HashMap<String, CisControlStatus> = HashMap::new();

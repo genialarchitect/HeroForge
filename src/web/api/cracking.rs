@@ -1,5 +1,7 @@
 //! Password cracking API endpoints
 
+#![allow(dead_code)]
+
 use actix_web::{web, HttpResponse};
 use sqlx::sqlite::SqlitePool;
 use serde::Deserialize;
@@ -20,7 +22,7 @@ use crate::web::error::ApiError;
 
 /// Create a new cracking job
 pub async fn create_job(
-    pool: web::Data<SqlitePool>,
+    _pool: web::Data<SqlitePool>,
     engine: web::Data<Arc<RwLock<CrackingEngine>>>,
     claims: Claims,
     body: web::Json<CreateCrackingJobRequest>,
@@ -183,9 +185,9 @@ pub async fn list_wordlists(
 
 /// Upload a new wordlist
 pub async fn upload_wordlist(
-    pool: web::Data<SqlitePool>,
-    claims: Claims,
-    body: web::Json<CreateWordlistRequest>,
+    _pool: web::Data<SqlitePool>,
+    _claims: Claims,
+    _body: web::Json<CreateWordlistRequest>,
 ) -> Result<HttpResponse, ApiError> {
     // In a real implementation, this would handle multipart file upload
     // For now, return a placeholder response
