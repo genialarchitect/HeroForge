@@ -31,11 +31,16 @@ pub mod types;
 
 pub use arm::ArmScanner;
 pub use cloudformation::CloudFormationScanner;
+#[allow(unused_imports)]
 pub use module_analyzer::{analyze_modules, ModuleAnalyzer, ModuleAnalysisResult, ModuleFinding, ModuleReference};
+#[allow(unused_imports)]
 pub use rules::{get_builtin_iac_rules, RuleMatcher};
+#[allow(unused_imports)]
 pub use state_scanner::{analyze_state, analyze_backend, StateScanner, StateAnalysisResult, StateFinding, BackendAnalysis};
 pub use terraform::TerraformScanner;
+#[allow(unused_imports)]
 pub use terraform_rules::{get_enhanced_rules, get_rules_by_provider, get_rule_statistics};
+#[allow(unused_imports)]
 pub use types::*;
 
 use anyhow::{anyhow, Result};

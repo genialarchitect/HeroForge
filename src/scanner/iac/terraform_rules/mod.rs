@@ -7,7 +7,7 @@ pub mod aws;
 pub mod azure;
 pub mod gcp;
 
-use super::rules::{RuleMatcher, RuleMatch};
+use super::rules::RuleMatcher;
 use super::types::*;
 use std::collections::HashMap;
 

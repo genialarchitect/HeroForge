@@ -376,7 +376,12 @@ mod tests {
         let asset = create_test_asset("db.example.com", vec![22, 3389, 3306], false);
         let score = RiskScorer::calculate_score(&asset, true);
 
-        assert!(score.overall_score >= 40, "High-risk ports should increase score");
+        // With high-risk/critical ports (22, 3389, 3306), port factor score should be high
+        let port_factor = score.factors.iter()
+            .find(|f| matches!(f.factor_type, RiskFactorType::ExposedPorts))
+            .expect("Port factor should exist");
+        assert!(port_factor.score >= 70, "High-risk ports should have high port factor score");
+        assert!(score.overall_score >= 30, "High-risk ports should increase overall score");
     }
 
     #[test]

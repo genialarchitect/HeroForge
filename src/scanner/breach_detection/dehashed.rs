@@ -4,8 +4,8 @@
 //! API documentation: https://www.dehashed.com/docs
 
 use anyhow::{anyhow, Result};
-use chrono::{DateTime, Utc};
-use log::{debug, info, warn};
+use chrono::Utc;
+use log::{debug, info};
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;

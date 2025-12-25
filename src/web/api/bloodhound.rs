@@ -8,7 +8,6 @@ use futures_util::StreamExt;
 use log::{error, info};
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
-use std::io::Read;
 
 use crate::db::bloodhound;
 use crate::scanner::bloodhound::{

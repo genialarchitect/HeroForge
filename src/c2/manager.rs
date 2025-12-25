@@ -10,7 +10,11 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
+use super::cobaltstrike::CobaltStrikeClient;
 use super::sliver::SliverClient;
+use super::havoc::HavocClient;
+use super::mythic::MythicClient;
+use super::custom::CustomC2Client;
 use super::types::*;
 
 /// C2 client trait for framework implementations
@@ -48,18 +52,25 @@ impl C2Manager {
             .ok_or_else(|| anyhow!("C2 config not found"))?;
 
         let client: Arc<dyn C2Client> = match config.framework {
+            C2Framework::CobaltStrike => {
+                let cs = CobaltStrikeClient::new(config.clone())?;
+                Arc::new(CobaltStrikeClientWrapper(cs))
+            }
             C2Framework::Sliver => {
                 let sliver = SliverClient::new(config.clone())?;
                 Arc::new(SliverClientWrapper(sliver))
             }
             C2Framework::Havoc => {
-                return Err(anyhow!("Havoc integration not yet implemented"));
+                let havoc = HavocClient::new(config.clone())?;
+                Arc::new(HavocClientWrapper(havoc))
             }
             C2Framework::Mythic => {
-                return Err(anyhow!("Mythic integration not yet implemented"));
+                let mythic = MythicClient::new(config.clone())?;
+                Arc::new(MythicClientWrapper(mythic))
             }
             C2Framework::Custom => {
-                return Err(anyhow!("Custom C2 requires specific implementation"));
+                let custom = CustomC2Client::new(config.clone())?;
+                Arc::new(CustomC2ClientWrapper(custom))
             }
         };
 
@@ -613,6 +624,174 @@ impl C2Client for SliverClientWrapper {
             }
             _ => Err(anyhow!("Listener protocol not supported for Sliver")),
         }
+    }
+
+    async fn stop_listener(&self, listener_id: &str) -> Result<()> {
+        self.0.stop_listener(listener_id).await
+    }
+
+    async fn generate_implant(&self, config: &ImplantConfig) -> Result<Vec<u8>> {
+        self.0.generate_implant(config).await
+    }
+
+    async fn execute_task(&self, session_id: &str, task: &ExecuteTaskRequest) -> Result<Task> {
+        self.0.execute_task(session_id, task).await
+    }
+
+    async fn kill_session(&self, session_id: &str) -> Result<()> {
+        self.0.kill_session(session_id).await
+    }
+}
+
+// Wrapper to implement C2Client trait for CobaltStrikeClient
+struct CobaltStrikeClientWrapper(CobaltStrikeClient);
+
+#[async_trait::async_trait]
+impl C2Client for CobaltStrikeClientWrapper {
+    async fn test_connection(&self) -> Result<bool> {
+        self.0.test_connection().await
+    }
+
+    async fn is_connected(&self) -> bool {
+        self.0.is_connected().await
+    }
+
+    async fn list_sessions(&self) -> Result<Vec<Session>> {
+        self.0.list_beacons().await
+    }
+
+    async fn list_listeners(&self) -> Result<Vec<Listener>> {
+        self.0.list_listeners().await
+    }
+
+    async fn start_listener(&self, req: &CreateListenerRequest) -> Result<Listener> {
+        self.0.start_listener(req).await
+    }
+
+    async fn stop_listener(&self, listener_id: &str) -> Result<()> {
+        self.0.stop_listener(listener_id).await
+    }
+
+    async fn generate_implant(&self, config: &ImplantConfig) -> Result<Vec<u8>> {
+        self.0.generate_implant(config).await
+    }
+
+    async fn execute_task(&self, session_id: &str, task: &ExecuteTaskRequest) -> Result<Task> {
+        self.0.execute_task(session_id, task).await
+    }
+
+    async fn kill_session(&self, session_id: &str) -> Result<()> {
+        self.0.kill_beacon(session_id).await
+    }
+}
+
+// Wrapper to implement C2Client trait for HavocClient
+struct HavocClientWrapper(HavocClient);
+
+#[async_trait::async_trait]
+impl C2Client for HavocClientWrapper {
+    async fn test_connection(&self) -> Result<bool> {
+        self.0.test_connection().await
+    }
+
+    async fn is_connected(&self) -> bool {
+        self.0.is_connected().await
+    }
+
+    async fn list_sessions(&self) -> Result<Vec<Session>> {
+        self.0.list_demons().await
+    }
+
+    async fn list_listeners(&self) -> Result<Vec<Listener>> {
+        self.0.list_listeners().await
+    }
+
+    async fn start_listener(&self, req: &CreateListenerRequest) -> Result<Listener> {
+        self.0.start_listener(req).await
+    }
+
+    async fn stop_listener(&self, listener_id: &str) -> Result<()> {
+        self.0.stop_listener(listener_id).await
+    }
+
+    async fn generate_implant(&self, config: &ImplantConfig) -> Result<Vec<u8>> {
+        self.0.generate_implant(config).await
+    }
+
+    async fn execute_task(&self, session_id: &str, task: &ExecuteTaskRequest) -> Result<Task> {
+        self.0.execute_task(session_id, task).await
+    }
+
+    async fn kill_session(&self, session_id: &str) -> Result<()> {
+        self.0.kill_demon(session_id).await
+    }
+}
+
+// Wrapper to implement C2Client trait for MythicClient
+struct MythicClientWrapper(MythicClient);
+
+#[async_trait::async_trait]
+impl C2Client for MythicClientWrapper {
+    async fn test_connection(&self) -> Result<bool> {
+        self.0.test_connection().await
+    }
+
+    async fn is_connected(&self) -> bool {
+        self.0.is_connected().await
+    }
+
+    async fn list_sessions(&self) -> Result<Vec<Session>> {
+        self.0.list_callbacks().await
+    }
+
+    async fn list_listeners(&self) -> Result<Vec<Listener>> {
+        self.0.list_c2_profiles().await
+    }
+
+    async fn start_listener(&self, _req: &CreateListenerRequest) -> Result<Listener> {
+        Err(anyhow!("Mythic C2 profiles must be started via the web UI"))
+    }
+
+    async fn stop_listener(&self, _listener_id: &str) -> Result<()> {
+        Err(anyhow!("Mythic C2 profiles must be stopped via the web UI"))
+    }
+
+    async fn generate_implant(&self, config: &ImplantConfig) -> Result<Vec<u8>> {
+        self.0.generate_payload(config).await
+    }
+
+    async fn execute_task(&self, session_id: &str, task: &ExecuteTaskRequest) -> Result<Task> {
+        self.0.execute_task(session_id, task).await
+    }
+
+    async fn kill_session(&self, session_id: &str) -> Result<()> {
+        self.0.kill_callback(session_id).await
+    }
+}
+
+// Wrapper to implement C2Client trait for CustomC2Client
+struct CustomC2ClientWrapper(CustomC2Client);
+
+#[async_trait::async_trait]
+impl C2Client for CustomC2ClientWrapper {
+    async fn test_connection(&self) -> Result<bool> {
+        self.0.test_connection().await
+    }
+
+    async fn is_connected(&self) -> bool {
+        self.0.is_connected().await
+    }
+
+    async fn list_sessions(&self) -> Result<Vec<Session>> {
+        self.0.list_sessions().await
+    }
+
+    async fn list_listeners(&self) -> Result<Vec<Listener>> {
+        self.0.list_listeners().await
+    }
+
+    async fn start_listener(&self, req: &CreateListenerRequest) -> Result<Listener> {
+        self.0.start_listener(req).await
     }
 
     async fn stop_listener(&self, listener_id: &str) -> Result<()> {

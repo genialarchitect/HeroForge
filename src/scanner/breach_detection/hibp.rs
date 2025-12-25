@@ -5,7 +5,7 @@
 
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, NaiveDate, Utc};
-use log::{debug, info, warn};
+use log::{debug, info};
 use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;

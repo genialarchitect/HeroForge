@@ -6,7 +6,6 @@
 //! - Restricted: Heavily restricted policy, following hardening best practices
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 /// Pod Security Standard profiles
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]

@@ -24,7 +24,7 @@ use crate::db::nuclei as db;
 use crate::scanner::nuclei::{
     self, check_nuclei_available, get_nuclei_version, run_nuclei_scan, update_templates,
     CancellationToken, NucleiConfig, NucleiProgress, NucleiResult, NucleiScanStatus,
-    NucleiSeverity, NucleiTemplate, TemplateStats,
+    NucleiSeverity, NucleiTemplate,
 };
 use crate::web::auth;
 

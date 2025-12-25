@@ -138,6 +138,10 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     create_bloodhound_tables(pool).await?;
     // Phishing campaign tables
     create_phishing_tables(pool).await?;
+    // SMS phishing (smishing) campaign tables
+    create_sms_phishing_tables(pool).await?;
+    // Vishing (voice phishing) and pretexting tables
+    create_vishing_tables(pool).await?;
     // C2 framework integration tables
     create_c2_tables(pool).await?;
     // Wireless security tables
@@ -177,6 +181,29 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     // Sprint 10: External Integrations (Scanner Import, Slack/Teams Bots)
     create_scanner_import_tables(pool).await?;
     create_integration_bot_tables(pool).await?;
+    // Shodan integration cache and query history
+    super::shodan_cache::create_shodan_cache_table(pool).await?;
+    super::shodan_cache::create_shodan_queries_table(pool).await?;
+    // Email security analysis results
+    create_email_security_results_table(pool).await?;
+    // Domain intelligence cache
+    create_domain_intel_cache_table(pool).await?;
+    // Google Dorking automation tables
+    create_google_dorking_tables(pool).await?;
+    // Breach check history tables
+    create_breach_check_tables(pool).await?;
+    // Git repository reconnaissance tables (GitHub/GitLab API scanning)
+    create_git_recon_tables(pool).await?;
+    // Cloud asset discovery tables
+    super::cloud_discovery::create_cloud_discovery_tables(pool).await?;
+    // QR code phishing (quishing) tables
+    create_qr_phishing_tables(pool).await?;
+    // Tunneling framework tables (DNS, HTTPS, ICMP tunneling for exfiltration defense testing)
+    create_tunneling_tables(pool).await?;
+    // AV/EDR Evasion analysis tables
+    create_evasion_tables(pool).await?;
+    // Payload encoding jobs table
+    create_encoding_jobs_table(pool).await?;
     Ok(())
 }
 
@@ -6793,6 +6820,334 @@ async fn create_phishing_tables(pool: &SqlitePool) -> Result<()> {
     Ok(())
 }
 
+/// Create SMS phishing (smishing) campaign tables
+async fn create_sms_phishing_tables(pool: &SqlitePool) -> Result<()> {
+    // SMS campaigns table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS sms_campaigns (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            status TEXT NOT NULL DEFAULT 'draft',
+            template_id TEXT NOT NULL,
+            twilio_config_id TEXT NOT NULL,
+            tracking_domain TEXT NOT NULL,
+            awareness_training INTEGER DEFAULT 0,
+            training_url TEXT,
+            launch_date TEXT,
+            end_date TEXT,
+            rate_limit_per_minute INTEGER DEFAULT 30,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // SMS templates table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS sms_templates (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Twilio configuration table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS sms_twilio_configs (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            account_sid TEXT NOT NULL,
+            auth_token TEXT NOT NULL,
+            from_number TEXT NOT NULL,
+            messaging_service_sid TEXT,
+            rate_limit_per_second INTEGER DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // SMS targets table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS sms_targets (
+            id TEXT PRIMARY KEY,
+            campaign_id TEXT NOT NULL,
+            phone_number TEXT NOT NULL,
+            first_name TEXT,
+            last_name TEXT,
+            company TEXT,
+            department TEXT,
+            tracking_id TEXT UNIQUE NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            message_sid TEXT,
+            delivery_status TEXT,
+            sent_at TEXT,
+            delivered_at TEXT,
+            clicked_at TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (campaign_id) REFERENCES sms_campaigns(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create index on tracking_id for fast lookups
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_sms_targets_tracking_id ON sms_targets(tracking_id)"
+    )
+    .execute(pool)
+    .await?;
+
+    // Create index on phone_number for lookups
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_sms_targets_phone ON sms_targets(phone_number)"
+    )
+    .execute(pool)
+    .await?;
+
+    // SMS click events table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS sms_click_events (
+            id TEXT PRIMARY KEY,
+            target_id TEXT NOT NULL,
+            campaign_id TEXT NOT NULL,
+            ip_address TEXT,
+            user_agent TEXT,
+            referrer TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (target_id) REFERENCES sms_targets(id) ON DELETE CASCADE,
+            FOREIGN KEY (campaign_id) REFERENCES sms_campaigns(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create index on click events for campaign statistics
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_sms_clicks_campaign ON sms_click_events(campaign_id)"
+    )
+    .execute(pool)
+    .await?;
+
+    log::info!("Created SMS phishing (smishing) campaign tables");
+    Ok(())
+}
+
+/// Create vishing (voice phishing) and pretexting tables
+async fn create_vishing_tables(pool: &SqlitePool) -> Result<()> {
+    // Pretext templates table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS pretext_templates (
+            id TEXT PRIMARY KEY,
+            user_id TEXT,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL,
+            category TEXT NOT NULL,
+            difficulty TEXT NOT NULL DEFAULT 'medium',
+            scenario TEXT NOT NULL,
+            objectives TEXT NOT NULL DEFAULT '[]',
+            script TEXT NOT NULL,
+            prerequisites TEXT NOT NULL DEFAULT '[]',
+            success_criteria TEXT NOT NULL DEFAULT '[]',
+            red_flags TEXT NOT NULL DEFAULT '[]',
+            tips TEXT NOT NULL DEFAULT '[]',
+            tags TEXT NOT NULL DEFAULT '[]',
+            is_builtin INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create index on category for filtering
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_pretext_templates_category ON pretext_templates(category)"
+    )
+    .execute(pool)
+    .await?;
+
+    // Vishing scripts table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS vishing_scripts (
+            id TEXT PRIMARY KEY,
+            user_id TEXT,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL,
+            category TEXT NOT NULL,
+            difficulty TEXT NOT NULL DEFAULT 'medium',
+            persona TEXT NOT NULL,
+            caller_id TEXT,
+            script TEXT NOT NULL,
+            call_flow TEXT NOT NULL DEFAULT '[]',
+            objection_handling TEXT NOT NULL DEFAULT '{}',
+            red_flags TEXT NOT NULL DEFAULT '[]',
+            success_indicators TEXT NOT NULL DEFAULT '[]',
+            caller_tips TEXT NOT NULL DEFAULT '[]',
+            pretext_template_id TEXT,
+            is_builtin INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (pretext_template_id) REFERENCES pretext_templates(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create index on category
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_vishing_scripts_category ON vishing_scripts(category)"
+    )
+    .execute(pool)
+    .await?;
+
+    // Vishing campaigns table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS vishing_campaigns (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            status TEXT NOT NULL DEFAULT 'draft',
+            script_id TEXT NOT NULL,
+            pretext_template_id TEXT,
+            caller_id TEXT,
+            start_date TEXT,
+            end_date TEXT,
+            target_organization TEXT,
+            notes TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (script_id) REFERENCES vishing_scripts(id) ON DELETE RESTRICT,
+            FOREIGN KEY (pretext_template_id) REFERENCES pretext_templates(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create index on status for filtering
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_vishing_campaigns_status ON vishing_campaigns(status)"
+    )
+    .execute(pool)
+    .await?;
+
+    // Vishing targets table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS vishing_targets (
+            id TEXT PRIMARY KEY,
+            campaign_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            phone_number TEXT NOT NULL,
+            email TEXT,
+            job_title TEXT,
+            department TEXT,
+            notes TEXT,
+            called INTEGER DEFAULT 0,
+            last_outcome TEXT,
+            attempt_count INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (campaign_id) REFERENCES vishing_campaigns(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create index on campaign_id for faster lookups
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_vishing_targets_campaign ON vishing_targets(campaign_id)"
+    )
+    .execute(pool)
+    .await?;
+
+    // Create index on phone_number for lookups
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_vishing_targets_phone ON vishing_targets(phone_number)"
+    )
+    .execute(pool)
+    .await?;
+
+    // Vishing call logs table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS vishing_call_logs (
+            id TEXT PRIMARY KEY,
+            campaign_id TEXT NOT NULL,
+            target_id TEXT NOT NULL,
+            caller_id TEXT,
+            script_id TEXT NOT NULL,
+            started_at TEXT NOT NULL,
+            ended_at TEXT,
+            duration_seconds INTEGER,
+            outcome TEXT NOT NULL,
+            information_gathered TEXT NOT NULL DEFAULT '{}',
+            notes TEXT,
+            target_suspicious INTEGER DEFAULT 0,
+            verification_requested INTEGER DEFAULT 0,
+            stages_completed INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (campaign_id) REFERENCES vishing_campaigns(id) ON DELETE CASCADE,
+            FOREIGN KEY (target_id) REFERENCES vishing_targets(id) ON DELETE CASCADE,
+            FOREIGN KEY (script_id) REFERENCES vishing_scripts(id) ON DELETE RESTRICT
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create index on campaign_id for statistics
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_vishing_calls_campaign ON vishing_call_logs(campaign_id)"
+    )
+    .execute(pool)
+    .await?;
+
+    // Create index on outcome for filtering
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_vishing_calls_outcome ON vishing_call_logs(outcome)"
+    )
+    .execute(pool)
+    .await?;
+
+    log::info!("Created vishing (voice phishing) and pretexting tables");
+    Ok(())
+}
+
 /// Create C2 framework integration tables
 async fn create_c2_tables(pool: &SqlitePool) -> Result<()> {
     // C2 server configurations
@@ -10573,5 +10928,888 @@ async fn create_integration_bot_tables(pool: &SqlitePool) -> Result<()> {
         .await?;
 
     log::info!("Created integration bot tables");
+    Ok(())
+}
+
+/// Create email security analysis results table
+async fn create_email_security_results_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS email_security_results (
+            id TEXT PRIMARY KEY,
+            domain TEXT NOT NULL,
+            spf_record TEXT,
+            dkim_selectors TEXT,
+            dmarc_policy TEXT,
+            spoofability TEXT NOT NULL,
+            result_json TEXT NOT NULL,
+            analyzed_at TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for efficient queries
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_email_security_user_id ON email_security_results(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_email_security_domain ON email_security_results(domain)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_email_security_analyzed_at ON email_security_results(analyzed_at DESC)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_email_security_spoofability ON email_security_results(spoofability)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created email security results table");
+    Ok(())
+}
+
+/// Create domain intelligence cache table for WHOIS and domain intel caching
+async fn create_domain_intel_cache_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS domain_intel_cache (
+            id TEXT PRIMARY KEY,
+            domain TEXT NOT NULL,
+            whois_data TEXT,
+            intel_data TEXT,
+            related_domains TEXT,
+            last_updated TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            UNIQUE(domain, user_id),
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for efficient queries
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_domain_intel_cache_user_id ON domain_intel_cache(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_domain_intel_cache_domain ON domain_intel_cache(domain)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_domain_intel_cache_last_updated ON domain_intel_cache(last_updated DESC)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created domain intelligence cache table");
+    Ok(())
+}
+
+// ============================================================================
+// Google Dorking Automation Migrations
+// ============================================================================
+
+/// Create Google Dorking tables for reconnaissance automation
+async fn create_google_dorking_tables(pool: &SqlitePool) -> Result<()> {
+    // Google dork scans table - stores scan sessions
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS google_dork_scans (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            domain TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            dork_count INTEGER DEFAULT 0,
+            result_count INTEGER DEFAULT 0,
+            summary TEXT,
+            created_at TEXT NOT NULL,
+            completed_at TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for google_dork_scans
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_google_dork_scans_user_id ON google_dork_scans(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_google_dork_scans_domain ON google_dork_scans(domain)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_google_dork_scans_status ON google_dork_scans(status)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_google_dork_scans_created_at ON google_dork_scans(created_at DESC)")
+        .execute(pool)
+        .await?;
+
+    // Google dork results table - stores individual dork query results
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS google_dork_results (
+            id TEXT PRIMARY KEY,
+            scan_id TEXT NOT NULL,
+            template_id TEXT NOT NULL,
+            query TEXT NOT NULL,
+            results TEXT NOT NULL,
+            result_count INTEGER DEFAULT 0,
+            status TEXT NOT NULL,
+            error TEXT,
+            provider TEXT NOT NULL,
+            executed_at TEXT NOT NULL,
+            duration_ms INTEGER DEFAULT 0,
+            FOREIGN KEY (scan_id) REFERENCES google_dork_scans(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for google_dork_results
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_google_dork_results_scan_id ON google_dork_results(scan_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_google_dork_results_template_id ON google_dork_results(template_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_google_dork_results_status ON google_dork_results(status)")
+        .execute(pool)
+        .await?;
+
+    // Custom dork templates table - stores user-created dork templates
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS custom_dork_templates (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            category TEXT NOT NULL,
+            query_template TEXT NOT NULL,
+            description TEXT,
+            risk_level TEXT DEFAULT 'medium',
+            tags TEXT DEFAULT '[]',
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for custom_dork_templates
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_custom_dork_templates_user_id ON custom_dork_templates(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_custom_dork_templates_category ON custom_dork_templates(category)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_custom_dork_templates_name ON custom_dork_templates(name)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created Google Dorking tables");
+    Ok(())
+}
+
+/// Create breach check history tables
+async fn create_breach_check_tables(pool: &SqlitePool) -> Result<()> {
+    // Breach check history table - stores results of breach checks
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS breach_check_history (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            check_type TEXT NOT NULL,             -- 'email', 'domain', 'password'
+            target TEXT NOT NULL,                  -- email address, domain, or '[hashed]' for passwords
+            result_json TEXT NOT NULL,             -- full result as JSON
+            breach_count INTEGER DEFAULT 0,
+            exposure_count INTEGER DEFAULT 0,
+            password_exposures INTEGER DEFAULT 0,
+            has_critical INTEGER DEFAULT 0,        -- has critical severity breaches
+            has_high INTEGER DEFAULT 0,            -- has high severity breaches
+            sources_checked TEXT DEFAULT '[]',     -- JSON array of sources used
+            errors TEXT DEFAULT '[]',              -- JSON array of any errors
+            cached INTEGER DEFAULT 0,              -- whether result was from cache
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for breach_check_history
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_breach_check_history_user_id ON breach_check_history(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_breach_check_history_check_type ON breach_check_history(check_type)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_breach_check_history_target ON breach_check_history(target)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_breach_check_history_created_at ON breach_check_history(created_at DESC)")
+        .execute(pool)
+        .await?;
+
+    // Breach monitoring table - scheduled monitoring jobs
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS breach_monitors (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            target TEXT NOT NULL,                  -- email or domain to monitor
+            check_type TEXT NOT NULL,              -- 'email' or 'domain'
+            interval_hours INTEGER DEFAULT 24,
+            enabled INTEGER DEFAULT 1,
+            last_check TEXT,
+            next_check TEXT NOT NULL,
+            last_breach_count INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for breach_monitors
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_breach_monitors_user_id ON breach_monitors(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_breach_monitors_next_check ON breach_monitors(next_check)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_breach_monitors_enabled ON breach_monitors(enabled)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created breach check tables");
+    Ok(())
+}
+
+/// Create git repository reconnaissance tables for GitHub/GitLab API-based scanning
+async fn create_git_recon_tables(pool: &SqlitePool) -> Result<()> {
+    // Create git_recon_scans table for tracking remote repository scans
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS git_recon_scans (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            platform TEXT NOT NULL,              -- 'github' or 'gitlab'
+            scan_type TEXT NOT NULL,             -- 'repo', 'user', 'org'
+            target TEXT NOT NULL,                -- repo URL or username/org name
+            owner TEXT,                          -- repository owner
+            repo_name TEXT,                      -- repository name
+            api_token_id TEXT,                   -- reference to stored API token (optional)
+            include_private INTEGER DEFAULT 0,
+            include_forks INTEGER DEFAULT 0,
+            include_archived INTEGER DEFAULT 0,
+            scan_current_files INTEGER DEFAULT 1,
+            scan_commit_history INTEGER DEFAULT 1,
+            commit_depth INTEGER DEFAULT 50,
+            status TEXT NOT NULL DEFAULT 'pending',
+            repos_scanned INTEGER DEFAULT 0,
+            files_scanned INTEGER DEFAULT 0,
+            commits_scanned INTEGER DEFAULT 0,
+            secrets_found INTEGER DEFAULT 0,
+            error_message TEXT,
+            started_at TEXT,
+            completed_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create git_recon_repos table for enumerated repositories
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS git_recon_repos (
+            id TEXT PRIMARY KEY,
+            scan_id TEXT NOT NULL,
+            platform TEXT NOT NULL,
+            owner TEXT NOT NULL,
+            name TEXT NOT NULL,
+            full_name TEXT NOT NULL,
+            description TEXT,
+            url TEXT NOT NULL,
+            clone_url TEXT,
+            default_branch TEXT,
+            is_private INTEGER DEFAULT 0,
+            is_fork INTEGER DEFAULT 0,
+            is_archived INTEGER DEFAULT 0,
+            size_kb INTEGER,
+            language TEXT,
+            stars INTEGER,
+            forks INTEGER,
+            pushed_at TEXT,
+            created_at TEXT,
+            scanned INTEGER DEFAULT 0,
+            secrets_found INTEGER DEFAULT 0,
+            scan_error TEXT,
+            discovered_at TEXT NOT NULL,
+            FOREIGN KEY (scan_id) REFERENCES git_recon_scans(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create git_recon_secrets table for secrets found in remote repos
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS git_recon_secrets (
+            id TEXT PRIMARY KEY,
+            scan_id TEXT NOT NULL,
+            repo_id TEXT,
+            platform TEXT NOT NULL,
+            owner TEXT NOT NULL,
+            repo_name TEXT NOT NULL,
+            secret_type TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            redacted_value TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            line_number INTEGER,
+            context TEXT,
+            commit_sha TEXT,
+            commit_author TEXT,
+            commit_date TEXT,
+            is_current INTEGER DEFAULT 1,
+            detection_method TEXT,
+            remediation TEXT,
+            status TEXT DEFAULT 'open',
+            false_positive INTEGER DEFAULT 0,
+            notes TEXT,
+            reviewed_by TEXT,
+            reviewed_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (scan_id) REFERENCES git_recon_scans(id) ON DELETE CASCADE,
+            FOREIGN KEY (repo_id) REFERENCES git_recon_repos(id) ON DELETE SET NULL,
+            FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create git_platform_tokens table for storing API tokens securely
+    // Note: Tokens should be encrypted before storage
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS git_platform_tokens (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            platform TEXT NOT NULL,              -- 'github' or 'gitlab'
+            name TEXT NOT NULL,                  -- user-friendly name
+            token_hint TEXT,                     -- last 4 chars for identification
+            encrypted_token TEXT NOT NULL,       -- encrypted token value
+            scopes TEXT,                         -- comma-separated scopes
+            is_valid INTEGER DEFAULT 1,
+            last_used_at TEXT,
+            expires_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for efficient queries
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_git_recon_scans_user ON git_recon_scans(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_git_recon_scans_platform ON git_recon_scans(platform)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_git_recon_scans_status ON git_recon_scans(status)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_git_recon_scans_target ON git_recon_scans(target)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_git_recon_repos_scan ON git_recon_repos(scan_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_git_recon_repos_platform ON git_recon_repos(platform)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_git_recon_repos_owner ON git_recon_repos(owner)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_git_recon_secrets_scan ON git_recon_secrets(scan_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_git_recon_secrets_repo ON git_recon_secrets(repo_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_git_recon_secrets_severity ON git_recon_secrets(severity)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_git_recon_secrets_status ON git_recon_secrets(status)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_git_platform_tokens_user ON git_platform_tokens(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_git_platform_tokens_platform ON git_platform_tokens(platform)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created git recon tables for GitHub/GitLab API scanning");
+    Ok(())
+}
+
+/// Create QR code phishing (quishing) tables
+async fn create_qr_phishing_tables(pool: &SqlitePool) -> Result<()> {
+    // QR Code campaigns table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS qr_campaigns (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            status TEXT NOT NULL DEFAULT 'draft',
+            template_type TEXT NOT NULL DEFAULT 'url',
+            tracking_domain TEXT NOT NULL,
+            landing_page_id TEXT,
+            awareness_training INTEGER DEFAULT 0,
+            training_url TEXT,
+            config TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (landing_page_id) REFERENCES phishing_landing_pages(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // QR Code assets table (generated QR codes)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS qr_assets (
+            id TEXT PRIMARY KEY,
+            campaign_id TEXT NOT NULL,
+            tracking_id TEXT NOT NULL UNIQUE,
+            tracking_url TEXT NOT NULL,
+            content_data TEXT NOT NULL,
+            format TEXT NOT NULL DEFAULT 'png',
+            image_data TEXT,
+            target_email TEXT,
+            target_name TEXT,
+            metadata TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (campaign_id) REFERENCES qr_campaigns(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // QR Code scans table (tracking events)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS qr_scans (
+            id TEXT PRIMARY KEY,
+            asset_id TEXT NOT NULL,
+            tracking_id TEXT NOT NULL,
+            ip_address TEXT,
+            user_agent TEXT,
+            device_type TEXT,
+            os TEXT,
+            browser TEXT,
+            country TEXT,
+            city TEXT,
+            referer TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (asset_id) REFERENCES qr_assets(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for efficient queries
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_qr_campaigns_user ON qr_campaigns(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_qr_campaigns_status ON qr_campaigns(status)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_qr_assets_campaign ON qr_assets(campaign_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_qr_assets_tracking_id ON qr_assets(tracking_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_qr_scans_asset ON qr_scans(asset_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_qr_scans_tracking_id ON qr_scans(tracking_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_qr_scans_created_at ON qr_scans(created_at)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created QR code phishing (quishing) tables");
+    Ok(())
+}
+
+// ============================================================================
+// AV/EDR Evasion Analysis Tables
+// ============================================================================
+
+/// Create evasion analysis tables for payload analysis and evasion job tracking
+async fn create_evasion_tables(pool: &SqlitePool) -> Result<()> {
+    // Evasion jobs table - track analysis and evasion application jobs
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS evasion_jobs (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            job_type TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            input_hash TEXT,
+            input_size INTEGER,
+            techniques TEXT,
+            profile_name TEXT,
+            result TEXT,
+            error_message TEXT,
+            created_at TEXT NOT NULL,
+            started_at TEXT,
+            completed_at TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Payload analysis results table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS payload_analysis (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            job_id TEXT,
+            payload_hash TEXT NOT NULL,
+            payload_size INTEGER,
+            detection_risk TEXT NOT NULL,
+            risk_score INTEGER NOT NULL,
+            entropy_overall REAL,
+            entropy_assessment TEXT,
+            suspicious_strings_count INTEGER DEFAULT 0,
+            suspicious_patterns_count INTEGER DEFAULT 0,
+            api_analysis TEXT,
+            heuristic_results TEXT,
+            recommendations TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (job_id) REFERENCES evasion_jobs(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Sandbox check results table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS sandbox_check_results (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            job_id TEXT,
+            is_sandbox INTEGER DEFAULT 0,
+            confidence INTEGER DEFAULT 0,
+            indicators TEXT,
+            environment TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (job_id) REFERENCES evasion_jobs(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Evasion technique usage audit log
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS evasion_audit_log (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            job_id TEXT,
+            action TEXT NOT NULL,
+            techniques TEXT,
+            payload_hash TEXT,
+            details TEXT,
+            ip_address TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (job_id) REFERENCES evasion_jobs(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for efficient queries
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_evasion_jobs_user ON evasion_jobs(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_evasion_jobs_status ON evasion_jobs(status)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_evasion_jobs_type ON evasion_jobs(job_type)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_evasion_jobs_created ON evasion_jobs(created_at DESC)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_payload_analysis_user ON payload_analysis(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_payload_analysis_hash ON payload_analysis(payload_hash)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_payload_analysis_risk ON payload_analysis(detection_risk)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sandbox_check_user ON sandbox_check_results(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_evasion_audit_user ON evasion_audit_log(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_evasion_audit_action ON evasion_audit_log(action)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_evasion_audit_created ON evasion_audit_log(created_at DESC)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created AV/EDR evasion analysis tables");
+    Ok(())
+}
+
+/// Create encoding_jobs table for payload encoding operations
+async fn create_encoding_jobs_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS encoding_jobs (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            encoder_type TEXT NOT NULL,
+            options TEXT,
+            original_size INTEGER NOT NULL,
+            encoded_size INTEGER NOT NULL,
+            metadata TEXT,
+            customer_id TEXT,
+            asset_id TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL,
+            FOREIGN KEY (asset_id) REFERENCES assets(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for efficient queries
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_encoding_jobs_user ON encoding_jobs(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_encoding_jobs_type ON encoding_jobs(encoder_type)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_encoding_jobs_customer ON encoding_jobs(customer_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_encoding_jobs_created ON encoding_jobs(created_at DESC)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created encoding_jobs table");
+    Ok(())
+}
+
+/// Create tunneling framework tables for exfiltration defense testing
+async fn create_tunneling_tables(pool: &SqlitePool) -> Result<()> {
+    // Tunnel sessions table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS tunnel_sessions (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            protocol TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'active',
+            config TEXT,
+            bytes_sent INTEGER DEFAULT 0,
+            bytes_received INTEGER DEFAULT 0,
+            packets_sent INTEGER DEFAULT 0,
+            packets_received INTEGER DEFAULT 0,
+            successful_transmissions INTEGER DEFAULT 0,
+            failed_transmissions INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL,
+            started_at TEXT,
+            ended_at TEXT,
+            last_activity TEXT,
+            error TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Exfiltration jobs table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS exfiltration_jobs (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            source TEXT,
+            total_size INTEGER DEFAULT 0,
+            transferred_size INTEGER DEFAULT 0,
+            total_chunks INTEGER DEFAULT 0,
+            completed_chunks INTEGER DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'pending',
+            bytes_sent INTEGER DEFAULT 0,
+            packets_sent INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL,
+            started_at TEXT,
+            completed_at TEXT,
+            error TEXT,
+            metadata TEXT,
+            FOREIGN KEY (session_id) REFERENCES tunnel_sessions(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Tunnel activity log for auditing
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS tunnel_activity_log (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            job_id TEXT,
+            action TEXT NOT NULL,
+            protocol TEXT NOT NULL,
+            target TEXT,
+            data_size INTEGER DEFAULT 0,
+            encoding TEXT,
+            success INTEGER DEFAULT 1,
+            error TEXT,
+            metadata TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (session_id) REFERENCES tunnel_sessions(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_tunnel_sessions_user ON tunnel_sessions(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_tunnel_sessions_status ON tunnel_sessions(status)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_tunnel_sessions_protocol ON tunnel_sessions(protocol)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_exfiltration_jobs_session ON exfiltration_jobs(session_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_exfiltration_jobs_user ON exfiltration_jobs(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_exfiltration_jobs_status ON exfiltration_jobs(status)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_tunnel_activity_session ON tunnel_activity_log(session_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_tunnel_activity_created ON tunnel_activity_log(created_at)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created tunneling framework tables");
     Ok(())
 }

@@ -195,7 +195,8 @@ pub fn parse_always_install_elevated(output: &str) -> Option<PrivescFinding> {
 /// Parse token privileges
 pub fn parse_token_privileges(output: &str) -> Vec<PrivescFinding> {
     let mut findings = Vec::new();
-    let priv_regex = Regex::new(r"(?i)(Se\w+Privilege)\s+(Enabled|Disabled)").ok();
+    // Match privilege name followed by any text and then Enabled/Disabled at end of line
+    let priv_regex = Regex::new(r"(?i)(Se\w+Privilege)\s+.*\s+(Enabled|Disabled)\s*$").ok();
 
     for line in output.lines() {
         let line = line.trim();

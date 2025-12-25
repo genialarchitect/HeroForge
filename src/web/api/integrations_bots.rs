@@ -2,8 +2,7 @@
 //!
 //! Provides endpoints for Slack and Microsoft Teams bot integrations.
 
-use actix_web::{web, HttpRequest, HttpResponse};
-use anyhow::Result;
+use actix_web::{web, HttpResponse};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;

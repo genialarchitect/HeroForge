@@ -6,15 +6,18 @@ pub mod runner;
 pub mod templates;
 pub mod types;
 
+#[allow(unused_imports)]
 pub use parser::{parse_nuclei_output, parse_nuclei_results, result_to_vulnerability};
 pub use runner::{
     check_nuclei_available, get_nuclei_version, get_templates_path, run_nuclei_scan,
     update_templates, CancellationToken,
 };
+#[allow(unused_imports)]
 pub use templates::{
     get_template, get_template_content, get_template_stats, get_templates_for_cve, list_tags,
     list_templates, search_templates,
 };
+#[allow(unused_imports)]
 pub use types::*;
 
 #[cfg(test)]

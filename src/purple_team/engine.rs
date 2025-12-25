@@ -2,7 +2,6 @@
 //!
 //! Orchestrates attack execution and detection validation
 
-use std::sync::Arc;
 use anyhow::Result;
 use chrono::Utc;
 use uuid::Uuid;
@@ -425,11 +424,9 @@ pub enum ParameterType {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_get_attack_parameters() {
-        let pool = futures::executor::block_on(async {
-            SqlitePool::connect(":memory:").await.unwrap()
-        });
+    #[tokio::test]
+    async fn test_get_attack_parameters() {
+        let pool = SqlitePool::connect(":memory:").await.unwrap();
         let engine = PurpleTeamEngine::new(pool);
 
         let params = engine.get_attack_parameters("kerberoast");

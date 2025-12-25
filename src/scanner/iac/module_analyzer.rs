@@ -9,7 +9,7 @@
 
 #![allow(dead_code)]
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use lazy_static::lazy_static;
 use regex::Regex;
 use serde::{Deserialize, Serialize};

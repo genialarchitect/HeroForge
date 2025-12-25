@@ -46,6 +46,8 @@ mod tests {
                 password_hash TEXT NOT NULL,
                 created_at TEXT NOT NULL,
                 is_active BOOLEAN NOT NULL DEFAULT 1,
+                first_name TEXT,
+                last_name TEXT,
                 accepted_terms_at TEXT,
                 terms_version TEXT
             )
@@ -71,6 +73,7 @@ mod tests {
                 error_message TEXT,
                 customer_id TEXT,
                 engagement_id TEXT,
+                organization_id TEXT,
                 FOREIGN KEY (user_id) REFERENCES users(id)
             )
             "#,
@@ -158,9 +161,11 @@ mod tests {
             r#"
             CREATE TABLE IF NOT EXISTS account_lockouts (
                 username TEXT PRIMARY KEY,
-                failed_attempts INTEGER NOT NULL DEFAULT 0,
-                locked_until TEXT,
-                last_attempt TEXT
+                locked_until TEXT NOT NULL,
+                attempt_count INTEGER NOT NULL,
+                first_failed_attempt TEXT NOT NULL,
+                last_failed_attempt TEXT NOT NULL,
+                lockout_reason TEXT NOT NULL
             )
             "#,
         )

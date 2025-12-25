@@ -1,7 +1,7 @@
 //! C2 Framework Integration Types
 //!
 //! Types for managing Command & Control framework integrations including
-//! Sliver, Havoc, and Mythic.
+//! Cobalt Strike, Sliver, Havoc, Mythic, and Custom protocols.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -11,6 +11,7 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum C2Framework {
+    CobaltStrike,
     Sliver,
     Havoc,
     Mythic,
@@ -20,6 +21,7 @@ pub enum C2Framework {
 impl std::fmt::Display for C2Framework {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            C2Framework::CobaltStrike => write!(f, "cobaltstrike"),
             C2Framework::Sliver => write!(f, "sliver"),
             C2Framework::Havoc => write!(f, "havoc"),
             C2Framework::Mythic => write!(f, "mythic"),
@@ -33,6 +35,7 @@ impl std::str::FromStr for C2Framework {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
+            "cobaltstrike" | "cobalt_strike" | "cs" => Ok(C2Framework::CobaltStrike),
             "sliver" => Ok(C2Framework::Sliver),
             "havoc" => Ok(C2Framework::Havoc),
             "mythic" => Ok(C2Framework::Mythic),

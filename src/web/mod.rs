@@ -71,6 +71,8 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
     let discovery_state_clone = discovery_state.clone();
     let privesc_state = Arc::new(api::privesc::PrivescState::default());
     let privesc_state_clone = privesc_state.clone();
+    let dorking_state = Arc::new(api::dorking::DorkingState::default());
+    let dorking_state_clone = dorking_state.clone();
 
     HttpServer::new(move || {
         // Configure CORS origins from environment variable or use defaults
@@ -119,6 +121,7 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
             .app_data(web::Data::from(nuclei_state_clone.clone()))
             .app_data(web::Data::from(discovery_state_clone.clone()))
             .app_data(web::Data::from(privesc_state_clone.clone()))
+            .app_data(web::Data::from(dorking_state_clone.clone()))
             .wrap(cors)
             .wrap(Logger::default())
             // Security headers per OWASP guidelines
@@ -400,6 +403,11 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .route("/dns/recon/{id}", web::get().to(api::dns::get_dns_recon_result))
                     .route("/dns/recon/{id}", web::delete().to(api::dns::delete_dns_recon_result))
                     .route("/dns/wordlist", web::get().to(api::dns::get_wordlist))
+                    // Email security analysis endpoints
+                    .route("/recon/email-security", web::post().to(api::email_security::analyze_email_security))
+                    .route("/recon/email-security", web::get().to(api::email_security::list_email_security_results))
+                    .route("/recon/email-security/{id}", web::get().to(api::email_security::get_email_security_result))
+                    .route("/recon/email-security/{id}", web::delete().to(api::email_security::delete_email_security_result))
                     // Web Application scanning endpoints
                     .configure(api::webapp::configure)
                     // JIRA integration endpoints
@@ -486,6 +494,8 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .configure(api::threat_intel::configure)
                     // Cloud infrastructure scanning endpoints
                     .configure(api::cloud::configure)
+                    // Cloud asset discovery (passive recon) endpoints
+                    .configure(api::cloud_discovery::configure)
                     // Container/K8s scanning endpoints
                     .configure(api::container::configure)
                     // Attack path analysis endpoints
@@ -530,6 +540,8 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .configure(api::siem::configure)
                     // Exploitation Framework endpoints
                     .configure(api::exploitation::configure)
+                    // AV/EDR Evasion Analysis endpoints
+                    .configure(api::evasion::configure)
                     // Nuclei scanner endpoints
                     .configure(api::nuclei::configure)
                     // Asset discovery endpoints
@@ -562,6 +574,22 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .configure(api::scanner_import::configure)
                     // Bot integrations endpoints (Slack/Teams)
                     .configure(api::integrations_bots::configure)
+                    // Shodan recon integration endpoints
+                    .configure(api::shodan::configure)
+                    // Shodan settings (API key management)
+                    .configure(api::shodan::configure_settings)
+                    // Domain intelligence endpoints (WHOIS, domain intel)
+                    .configure(api::domain_intel::configure)
+                    // Google Dorking reconnaissance endpoints
+                    .configure(api::dorking::configure)
+                    // Breach detection/checking endpoints
+                    .configure(api::breach::configure)
+                    // Git repository reconnaissance endpoints (GitHub/GitLab API scanning)
+                    .configure(api::git_recon::configure)
+                    // Tunneling (DNS, HTTPS, ICMP) for exfiltration defense testing
+                    .configure(api::tunneling::configure)
+                    // Payload encoding and obfuscation endpoints
+                    .configure(api::payloads::configure)
                     // Start workflow from vulnerability
                     .route("/vulnerabilities/{id}/workflow", web::post().to(api::workflows::start_workflow))
                     // SSO Admin endpoints

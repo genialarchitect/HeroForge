@@ -30,9 +30,13 @@ pub mod git_scanner;
 pub mod patterns;
 pub mod types;
 
+#[allow(unused_imports)]
 pub use config_scanner::{ConfigFileType, ConfigScanner, ConfigSecretFinding};
+#[allow(unused_imports)]
 pub use entropy::{EntropyConfig, EntropyResult, analyze_entropy, find_high_entropy_strings};
+#[allow(unused_imports)]
 pub use filesystem_scanner::{FilesystemScanConfig, FilesystemScanner, FilesystemSecretFinding};
+#[allow(unused_imports)]
 pub use git_scanner::{GitScanConfig, GitSecretFinding, GitSecretScanner};
 pub use patterns::SECRET_PATTERNS;
 pub use types::{

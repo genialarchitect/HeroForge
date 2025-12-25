@@ -6,8 +6,8 @@ use sqlx::SqlitePool;
 
 use crate::db;
 use crate::db::permissions::{
-    AddPermissionOverrideRequest, AssignRoleRequest, CheckPermissionRequest,
-    CreateCustomRoleRequest, PermissionContext, RoleType, ShareResourceRequest,
+    AddPermissionOverrideRequest, AssignRoleRequest,
+    CreateCustomRoleRequest, PermissionContext, ShareResourceRequest,
     UpdateCustomRoleRequest, OwnerType,
 };
 use crate::web::auth::jwt::Claims;

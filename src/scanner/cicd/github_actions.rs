@@ -10,8 +10,6 @@
 
 use super::types::*;
 use regex::Regex;
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::path::Path;
 
 /// GitHub Actions Security Scanner
@@ -771,19 +769,21 @@ jobs:
     #[test]
     fn test_detect_script_injection() {
         let scanner = GitHubActionsScanner::new();
-        let workflow = r#"
-name: Test
+        let workflow = r#"name: Test
 on: issues
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - name: Dangerous step
-        run: echo "Issue: ${{ github.event.issue.title }}"
+        run: 'echo "Issue: ${{ github.event.issue.title }}"'
 "#;
 
         let result = scanner.scan_content(workflow, "test.yml");
-        assert!(result.findings.iter().any(|f| f.rule_id == "ACTIONS002"));
+        assert!(result.findings.iter().any(|f| f.rule_id == "ACTIONS002"),
+            "Expected ACTIONS002 finding for script injection. Found: {:?}, Errors: {:?}",
+            result.findings.iter().map(|f| &f.rule_id).collect::<Vec<_>>(),
+            result.errors);
     }
 
     #[test]

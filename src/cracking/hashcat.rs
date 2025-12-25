@@ -3,7 +3,7 @@
 //! Handles running hashcat as a subprocess and parsing its output.
 
 use std::fs::{self, File};
-use std::io::{BufRead, BufReader, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use anyhow::Result;

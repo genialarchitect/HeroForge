@@ -8,7 +8,7 @@ use sqlx::SqlitePool;
 
 use crate::c2::{
     C2Manager, CreateC2ConfigRequest, CreateListenerRequest, ExecuteTaskRequest,
-    GenerateImplantRequest, ImplantConfig, ImplantType, Architecture, Platform, ImplantFormat,
+    GenerateImplantRequest, ImplantConfig, ImplantType, ImplantFormat,
 };
 use crate::web::auth;
 use crate::web::error::ApiError;

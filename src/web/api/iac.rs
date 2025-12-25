@@ -24,7 +24,7 @@ use crate::db::iac;
 use crate::scanner::iac::{
     IacCloudProvider, IacFindingCategory, IacFindingStatus, IacPlatform,
     IacRule, IacScanStatus, IacScanner, IacSeverity, RulePatternType,
-    analyze_modules, analyze_state, analyze_backend,
+    analyze_modules, analyze_state,
     get_enhanced_rules, get_rules_by_provider, get_rule_statistics,
 };
 use crate::web::auth;

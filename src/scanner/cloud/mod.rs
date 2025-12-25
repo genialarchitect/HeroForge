@@ -31,6 +31,7 @@
 
 pub mod aws;
 pub mod azure;
+pub mod cloud_discovery;
 pub mod gcp;
 pub mod types;
 
@@ -55,6 +56,12 @@ pub use types::{
 
 pub use aws::AwsScanner;
 pub use azure::AzureScanner;
+#[allow(unused_imports)]
+pub use cloud_discovery::{
+    check_bucket_names, run_cloud_discovery, AccessibilityStatus, CloudAsset, CloudAssetType,
+    CloudDiscoveryConfig, CloudDiscoveryResult, CloudDiscoveryScanner, CloudDiscoveryStatus,
+    CloudProviderType, DiscoveryMethod, DiscoveryStatistics,
+};
 pub use gcp::GcpScanner;
 
 use anyhow::Result;

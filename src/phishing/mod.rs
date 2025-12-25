@@ -12,6 +12,9 @@
 //! - Click tracking for link visits
 //! - Real-time campaign statistics
 //! - Awareness training mode
+//! - SMS phishing (smishing) campaigns with Twilio integration
+//! - Pretexting templates for social engineering scenarios
+//! - Voice phishing (vishing) campaign management
 //!
 //! # Security Notice
 //!
@@ -24,15 +27,36 @@
 
 pub mod campaign;
 pub mod cloner;
+pub mod pretexts;
+pub mod qrcode;
 pub mod sender;
+pub mod sms;
 pub mod tracker;
 pub mod types;
+pub mod vishing;
 
 pub use campaign::CampaignManager;
 pub use cloner::WebsiteCloner;
+#[allow(unused_imports)]
+pub use pretexts::{
+    CreatePretextRequest, PretextCategory, PretextDifficulty, PretextLibrary, PretextScript,
+    PretextTemplate,
+};
+#[allow(unused_imports)]
+pub use qrcode::{ErrorCorrectionLevel, QrCodeConfig, QrCodeFormat, QrCodeGenerator};
 pub use sender::EmailSender;
+#[allow(unused_imports)]
+pub use sms::{SmsCampaignManager, SmsClient, SmsDeliveryStatus, TwilioClient, TwilioConfig};
 pub use tracker::{Tracker, TRACKING_PIXEL};
+#[allow(unused_imports)]
 pub use types::*;
+#[allow(unused_imports)]
+pub use vishing::{
+    CallFlowStage, CallOutcome, CreateVishingCampaignRequest, CreateVishingScriptRequest,
+    CreateVishingTargetRequest, LogCallRequest, VishingCallLog, VishingCampaign,
+    VishingCampaignStats, VishingCampaignStatus, VishingCampaignSummary, VishingManager,
+    VishingScript, VishingTarget,
+};
 
 use sqlx::SqlitePool;
 

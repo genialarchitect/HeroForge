@@ -8,9 +8,11 @@ pub mod scanner;
 pub mod handshake;
 pub mod aircrack;
 
+#[allow(unused_imports)]
 pub use types::*;
 pub use scanner::WirelessScanner;
 pub use handshake::{HandshakeCapturer, DeauthAttack};
+#[allow(unused_imports)]
 pub use aircrack::{AircrackCracker, WpsAttack, CrackProgress, CrackResult, WordlistInfo, WpsResult};
 
 use sqlx::SqlitePool;

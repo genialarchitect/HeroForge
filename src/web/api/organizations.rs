@@ -1,7 +1,7 @@
 //! Organization, department, and team API endpoints
 
 use actix_web::{delete, get, post, put, web, HttpResponse};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use sqlx::SqlitePool;
 
 use crate::db;

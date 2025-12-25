@@ -604,11 +604,18 @@ mod tests {
         let analyzer = GapAnalyzer::new();
 
         // Critical technique with 0% detection should be Critical
+        // score = (1.0 - 0.0) * (5.0 / 5.0) = 1.0 >= 0.8 -> Critical
         let severity = analyzer.calculate_gap_severity(0.0, 5);
         assert_eq!(severity, GapSeverity::Critical);
 
-        // Medium criticality with partial detection
-        let severity = analyzer.calculate_gap_severity(0.5, 3);
+        // High criticality with low detection should be Medium
+        // score = (1.0 - 0.3) * (4.0 / 5.0) = 0.7 * 0.8 = 0.56 >= 0.4 -> Medium
+        let severity = analyzer.calculate_gap_severity(0.3, 4);
         assert_eq!(severity, GapSeverity::Medium);
+
+        // Medium criticality with partial detection should be Low
+        // score = (1.0 - 0.5) * (3.0 / 5.0) = 0.5 * 0.6 = 0.3 < 0.4 -> Low
+        let severity = analyzer.calculate_gap_severity(0.5, 3);
+        assert_eq!(severity, GapSeverity::Low);
     }
 }

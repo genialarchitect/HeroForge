@@ -5,7 +5,6 @@
 use anyhow::{anyhow, Result};
 use chrono::Utc;
 use sqlx::SqlitePool;
-use tokio::sync::broadcast;
 use uuid::Uuid;
 
 use super::types::*;

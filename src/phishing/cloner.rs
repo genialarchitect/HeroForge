@@ -5,7 +5,6 @@
 use anyhow::{anyhow, Result};
 use reqwest::Client;
 use scraper::{Html, Selector};
-use std::collections::HashMap;
 use url::Url;
 
 /// Website cloner for creating phishing landing pages
@@ -334,7 +333,8 @@ mod tests {
         let cloner = WebsiteCloner::new();
         let fields = cloner.extract_form_fields(html);
 
-        assert_eq!(fields.len(), 3);
+        // Submit button doesn't have a name attribute, so only 2 fields are extracted
+        assert_eq!(fields.len(), 2);
         assert_eq!(fields[0].name, "username");
         assert_eq!(fields[1].name, "password");
     }

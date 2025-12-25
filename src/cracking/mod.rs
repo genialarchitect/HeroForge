@@ -33,6 +33,7 @@ pub mod engine;
 pub mod hashcat;
 
 // Re-export commonly used types
+#[allow(unused_imports)]
 pub use types::{
     HashType,
     CrackerType,

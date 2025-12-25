@@ -48,9 +48,13 @@ pub use types::*;
 pub use scanner::run_privesc_scan;
 
 // Re-export GTFOBins/LOLBAS utilities
+#[allow(unused_imports)]
 pub use gtfobins::lookup_gtfobins;
+#[allow(unused_imports)]
 pub use lolbas::lookup_lolbas;
 
 // Re-export PEAS URLs
+#[allow(unused_imports)]
 pub use linpeas::LINPEAS_URL;
+#[allow(unused_imports)]
 pub use winpeas::{WINPEAS_URL, WINPEAS_X86_URL};

@@ -1,9 +1,7 @@
 //! ASM Monitor execution engine
 
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use sqlx::SqlitePool;
-use std::sync::Arc;
-use tokio::sync::RwLock;
 
 use super::types::*;
 use super::baseline::BaselineManager;

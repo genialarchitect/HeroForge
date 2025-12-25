@@ -8,7 +8,7 @@ use tokio::sync::RwLock;
 
 use crate::db::privesc;
 use crate::scanner::privesc::{
-    run_privesc_scan, OsType, PrivescConfig, PrivescResult, PrivescSeverity, PrivescStatus,
+    run_privesc_scan, OsType, PrivescConfig, PrivescStatus,
 };
 use crate::web::auth::jwt::Claims;
 use crate::web::error::ApiError;

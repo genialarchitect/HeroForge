@@ -1,8 +1,8 @@
 //! Password cracking API endpoints
 
-use actix_web::{web, HttpRequest, HttpResponse};
+use actix_web::{web, HttpResponse};
 use sqlx::sqlite::SqlitePool;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 

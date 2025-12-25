@@ -2,7 +2,7 @@
 //!
 //! Handles tracking of email opens, link clicks, and credential submissions.
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use chrono::Utc;
 use sqlx::SqlitePool;
 

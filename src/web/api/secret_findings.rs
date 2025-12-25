@@ -18,7 +18,6 @@ use crate::db::models::{SecretFindingRecord, SecretFindingStats, UpdateSecretFin
 use crate::scanner::secret_detection::{
     GitScanConfig, GitSecretScanner,
     FilesystemScanConfig, FilesystemScanner,
-    SecretDetectionConfig,
 };
 use crate::web::auth;
 
