@@ -13,8 +13,6 @@
 //!
 //! - `POST /api/recon/dorks` - Run dorks against a domain
 //! - `GET /api/recon/dorks/templates` - List available dork templates
-
-#![allow(dead_code)]
 //! - `GET /api/recon/dorks/categories` - List dork categories
 //! - `POST /api/recon/dorks/custom` - Run a custom dork query
 //! - `GET /api/recon/dorks/results/{id}` - Get dork scan results
@@ -746,8 +744,12 @@ fn parse_category(s: &str) -> Option<DorkCategory> {
 
 /// Configure dorking routes
 pub fn configure(cfg: &mut web::ServiceConfig) {
+    // Create shared state for tracking running scans
+    let state = Arc::new(DorkingState::default());
+
     cfg.service(
         web::scope("/recon/dorks")
+            .app_data(web::Data::new(state))
             .route("", web::post().to(run_dorks))
             .route("/custom", web::post().to(run_custom_dork))
             .route("/templates", web::get().to(list_templates))

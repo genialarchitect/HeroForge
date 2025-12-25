@@ -578,14 +578,14 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .configure(api::shodan::configure)
                     // Shodan settings (API key management)
                     .configure(api::shodan::configure_settings)
-                    // Domain intelligence endpoints (WHOIS, domain intel)
-                    .configure(api::domain_intel::configure)
-                    // Google Dorking reconnaissance endpoints
+                    // Google Dorking reconnaissance endpoints (must be before /recon scope)
                     .configure(api::dorking::configure)
-                    // Breach detection/checking endpoints
+                    // Breach detection/checking endpoints (must be before /recon scope)
                     .configure(api::breach::configure)
                     // Git repository reconnaissance endpoints (GitHub/GitLab API scanning)
                     .configure(api::git_recon::configure)
+                    // Domain intelligence endpoints (WHOIS, domain intel) - /recon scope
+                    .configure(api::domain_intel::configure)
                     // Tunneling (DNS, HTTPS, ICMP) for exfiltration defense testing
                     .configure(api::tunneling::configure)
                     // Payload encoding and obfuscation endpoints
