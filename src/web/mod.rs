@@ -167,6 +167,8 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
             )
             // Phishing tracking routes (public, no auth required)
             .configure(api::phishing::configure_tracking)
+            // SMS Phishing tracking routes (public, no auth required)
+            .configure(api::sms_phishing::configure_sms_tracking)
             // Customer Portal routes (separate auth from main app) - at /api/portal/*
             .service(
                 web::scope("/api/portal")
@@ -550,6 +552,8 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .configure(api::privesc::configure)
                     // BloodHound integration endpoints
                     .configure(api::bloodhound::configure)
+                    // SMS Phishing (Smishing) endpoints (must be before phishing for route matching)
+                    .configure(api::sms_phishing::configure)
                     // Phishing campaign endpoints
                     .configure(api::phishing::configure)
                     // C2 framework integration endpoints
