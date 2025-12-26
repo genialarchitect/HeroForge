@@ -57,7 +57,17 @@ const FindingTemplatesPage = lazy(() => import('./pages/FindingTemplatesPage'));
 const CrackingPage = lazy(() => import('./pages/CrackingPage'));
 const AttackSurfacePage = lazy(() => import('./pages/AttackSurfacePage'));
 const PurpleTeamPage = lazy(() => import('./pages/PurpleTeamPage'));
+const OrangeTeamPage = lazy(() => import('./pages/OrangeTeamPage'));
+const GreenTeamPage = lazy(() => import('./pages/GreenTeamPage'));
+const YellowTeamPage = lazy(() => import('./pages/YellowTeamPage'));
+const WhiteTeamPage = lazy(() => import('./pages/WhiteTeamPage'));
 const OrganizationPage = lazy(() => import('./pages/OrganizationPage'));
+
+// Blue Team pages
+const ForensicsPage = lazy(() => import('./pages/ForensicsPage'));
+const IncidentResponsePage = lazy(() => import('./pages/IncidentResponsePage'));
+const DetectionEngineeringPage = lazy(() => import('./pages/DetectionEngineeringPage'));
+const ThreatHuntingPage = lazy(() => import('./pages/ThreatHuntingPage'));
 
 // CRM pages
 const CrmDashboard = lazy(() => import('./pages/crm/CrmDashboard'));
@@ -462,6 +472,76 @@ function App() {
             element={
               <ProtectedRoute>
                 <PurpleTeamPage />
+              </ProtectedRoute>
+            }
+          />
+          {/* Orange Team Routes (Security Awareness & Training) */}
+          <Route
+            path="/orange-team"
+            element={
+              <ProtectedRoute>
+                <OrangeTeamPage />
+              </ProtectedRoute>
+            }
+          />
+          {/* Green Team Routes (SOAR) */}
+          <Route
+            path="/green-team"
+            element={
+              <ProtectedRoute>
+                <GreenTeamPage />
+              </ProtectedRoute>
+            }
+          />
+          {/* Yellow Team Routes (DevSecOps) */}
+          <Route
+            path="/yellow-team"
+            element={
+              <ProtectedRoute>
+                <YellowTeamPage />
+              </ProtectedRoute>
+            }
+          />
+          {/* White Team Routes (GRC) */}
+          <Route
+            path="/white-team"
+            element={
+              <ProtectedRoute>
+                <WhiteTeamPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Blue Team Routes (Defense) */}
+          <Route
+            path="/forensics"
+            element={
+              <ProtectedRoute>
+                <ForensicsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/incident-response"
+            element={
+              <ProtectedRoute>
+                <IncidentResponsePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/detection-engineering"
+            element={
+              <ProtectedRoute>
+                <DetectionEngineeringPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/threat-hunting"
+            element={
+              <ProtectedRoute>
+                <ThreatHuntingPage />
               </ProtectedRoute>
             }
           />

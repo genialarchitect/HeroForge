@@ -5541,3 +5541,375 @@ export interface OrganizationQuotaUsage {
   usages: QuotaUsage[];
   updated_at: string;
 }
+
+// ============================================================================
+// Green Team - SOAR Types
+// ============================================================================
+
+// Case Management Types
+export type CaseSeverity = 'informational' | 'low' | 'medium' | 'high' | 'critical';
+export type CaseStatus = 'open' | 'in_progress' | 'pending' | 'resolved' | 'closed';
+export type CasePriority = 'low' | 'medium' | 'high' | 'urgent';
+export type CaseType = 'incident' | 'investigation' | 'threat_hunt' | 'vulnerability' | 'compliance' | 'other';
+export type CaseTlp = 'white' | 'green' | 'amber' | 'red';
+export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'blocked' | 'cancelled';
+export type TimelineEventType = 'created' | 'status_change' | 'assignment' | 'comment' | 'evidence' | 'task' | 'playbook' | 'resolution' | 'reopened';
+
+export interface SoarCase {
+  id: string;
+  case_number: string;
+  title: string;
+  description: string | null;
+  severity: CaseSeverity;
+  status: CaseStatus;
+  priority: CasePriority;
+  case_type: CaseType;
+  assignee_id: string | null;
+  source: string | null;
+  source_ref: string | null;
+  tlp: CaseTlp;
+  tags: string[];
+  resolution: string | null;
+  resolution_time_hours: number | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  resolved_at: string | null;
+  closed_at: string | null;
+}
+
+export interface CreateCaseRequest {
+  title: string;
+  description?: string;
+  severity: CaseSeverity;
+  case_type: CaseType;
+  priority: CasePriority;
+  tlp: CaseTlp;
+}
+
+export interface UpdateCaseRequest {
+  status?: CaseStatus;
+  assignee_id?: string;
+  resolution?: string;
+  severity?: CaseSeverity;
+  priority?: CasePriority;
+}
+
+export interface CaseTask {
+  id: string;
+  case_id: string;
+  title: string;
+  description: string | null;
+  status: TaskStatus;
+  priority: CasePriority;
+  assignee_id: string | null;
+  due_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+}
+
+export interface CreateCaseTaskRequest {
+  title: string;
+  description?: string;
+  priority?: CasePriority;
+}
+
+export interface CaseComment {
+  id: string;
+  case_id: string;
+  user_id: string;
+  content: string;
+  is_internal: boolean;
+  created_at: string;
+}
+
+export interface CreateCaseCommentRequest {
+  content: string;
+  is_internal?: boolean;
+}
+
+export interface CaseTimelineEvent {
+  id: string;
+  case_id: string;
+  event_type: TimelineEventType;
+  event_data: Record<string, unknown>;
+  user_id: string | null;
+  created_at: string;
+}
+
+// Playbook Types
+export type PlaybookCategory = 'incident_response' | 'threat_hunting' | 'compliance' | 'enrichment' | 'remediation' | 'notification' | 'custom';
+export type PlaybookTriggerType = 'manual' | 'alert' | 'schedule' | 'webhook' | 'ioc' | 'event';
+export type PlaybookRunStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'waiting_approval';
+
+export interface PlaybookStep {
+  id: string;
+  name: string;
+  action: Record<string, unknown>;
+  condition?: Record<string, unknown>;
+  on_success?: string;
+  on_failure?: string;
+  timeout_seconds: number;
+  retry_count?: number;
+}
+
+export interface Playbook {
+  id: string;
+  name: string;
+  description: string | null;
+  category: PlaybookCategory;
+  trigger: Record<string, unknown>;
+  steps: PlaybookStep[];
+  is_active: boolean;
+  is_template: boolean;
+  marketplace_id: string | null;
+  version: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreatePlaybookRequest {
+  name: string;
+  description?: string;
+  category: string;
+  trigger_type: string;
+  steps: Array<{
+    id: string;
+    name: string;
+    action: Record<string, unknown>;
+    timeout_seconds: number;
+  }>;
+}
+
+export interface PlaybookRun {
+  id: string;
+  playbook_id: string;
+  trigger_type: string;
+  trigger_source: string | null;
+  status: PlaybookRunStatus;
+  current_step: number;
+  total_steps: number;
+  input_data: Record<string, unknown> | null;
+  output_data: Record<string, unknown> | null;
+  error_message: string | null;
+  started_at: string;
+  completed_at: string | null;
+  duration_seconds: number | null;
+}
+
+// IOC Feed Types
+export type IocFeedType = 'stix' | 'csv' | 'json' | 'taxii' | 'misp' | 'openioc' | 'custom';
+
+export interface IocFeed {
+  id: string;
+  name: string;
+  description: string | null;
+  feed_type: IocFeedType;
+  url: string;
+  api_key: string | null;
+  poll_interval_minutes: number;
+  is_active: boolean;
+  last_poll_at: string | null;
+  last_poll_status: string | null;
+  ioc_count: number;
+  created_at: string;
+}
+
+export interface CreateIocFeedRequest {
+  name: string;
+  feed_type: string;
+  url: string;
+  poll_interval_minutes: number;
+}
+
+// Metrics Types
+export interface MetricsOverview {
+  total_cases: number;
+  open_cases: number;
+  resolved_today: number;
+  avg_mttd_minutes: number;
+  avg_mttr_minutes: number;
+  sla_compliance_rate: number;
+  playbooks_executed: number;
+  automation_rate: number;
+}
+
+// =============================================================================
+// Yellow Team (DevSecOps / Security Architecture) Types
+// =============================================================================
+
+export type SastScanStatus = 'pending' | 'running' | 'completed' | 'failed';
+export type SbomStatus = 'pending' | 'generating' | 'completed' | 'failed';
+export type ArchReviewStatus = 'draft' | 'in_progress' | 'approved' | 'rejected';
+export type StrideCategoryType = 'spoofing' | 'tampering' | 'repudiation' | 'information_disclosure' | 'denial_of_service' | 'elevation_of_privilege';
+export type ThreatStatus = 'identified' | 'mitigated' | 'accepted' | 'transferred';
+
+// SAST (Static Application Security Testing)
+export interface SastScan {
+  id: string;
+  user_id: string;
+  project_name: string;
+  language?: string;
+  source_type: 'git' | 'upload' | 'path';
+  source_path: string;
+  status: SastScanStatus;
+  finding_count: number;
+  critical_count: number;
+  high_count: number;
+  medium_count: number;
+  low_count: number;
+  lines_of_code?: number;
+  scan_duration_ms?: number;
+  created_at: string;
+  completed_at?: string;
+}
+
+export interface SastFinding {
+  id: string;
+  scan_id: string;
+  rule_id: string;
+  category: string;
+  severity: string;
+  message: string;
+  file_path: string;
+  line_number: number;
+  column_number?: number;
+  code_snippet?: string;
+  remediation?: string;
+  cwe_id?: number;
+  owasp_category?: string;
+  created_at: string;
+}
+
+export interface SastRule {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  severity: string;
+  languages: string[];
+  cwe_ids: number[];
+  is_enabled: boolean;
+}
+
+export interface CreateSastScanRequest {
+  project_name: string;
+  language?: string;
+  source_type: 'git' | 'upload' | 'path';
+  source_path: string;
+}
+
+// SBOM (Software Bill of Materials)
+export interface SbomProject {
+  id: string;
+  user_id: string;
+  name: string;
+  source_type: 'git' | 'container' | 'path';
+  source_path: string;
+  status: SbomStatus;
+  component_count: number;
+  vulnerable_count: number;
+  license_issues: number;
+  sbom_format: 'cyclonedx' | 'spdx';
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SbomComponent {
+  id: string;
+  project_id: string;
+  name: string;
+  version: string;
+  purl?: string;
+  component_type: string;
+  license?: string;
+  license_risk?: 'low' | 'medium' | 'high';
+  vulnerabilities?: SbomVulnerability[];
+  is_direct: boolean;
+}
+
+export interface SbomVulnerability {
+  cve_id: string;
+  severity: string;
+  cvss_score?: number;
+  description: string;
+  fixed_version?: string;
+}
+
+export interface CreateSbomRequest {
+  name: string;
+  source_type: 'git' | 'container' | 'path';
+  source_path: string;
+}
+
+// Architecture Reviews & STRIDE Threat Modeling
+export interface ArchitectureReview {
+  id: string;
+  user_id: string;
+  project_name: string;
+  description: string;
+  diagram_data?: string;
+  status: ArchReviewStatus;
+  threat_count: number;
+  critical_threats: number;
+  high_threats: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StrideThreat {
+  id: string;
+  review_id: string;
+  stride_category: StrideCategoryType;
+  title: string;
+  description: string;
+  severity: string;
+  affected_component: string;
+  attack_vector: string;
+  mitigation?: string;
+  status: ThreatStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateArchitectureReviewRequest {
+  project_name: string;
+  description: string;
+  diagram_data?: string;
+}
+
+// Yellow Team Dashboard
+export interface YellowTeamDashboard {
+  mttr_days: number;
+  mttr_trend: number;
+  vuln_density: number;
+  vuln_density_trend: number;
+  sla_compliance: number;
+  sla_trend: number;
+  open_findings: number;
+  critical_findings: number;
+  total_findings: number;
+  findings_by_category: CategoryCount[];
+  sla_by_severity: SlaBySeverity[];
+  recent_activity: YellowTeamActivity[];
+}
+
+export interface CategoryCount {
+  category: string;
+  count: number;
+}
+
+export interface SlaBySeverity {
+  severity: string;
+  compliance_rate: number;
+  total: number;
+  within_sla: number;
+}
+
+export interface YellowTeamActivity {
+  type: 'sast' | 'sbom' | 'architecture';
+  message: string;
+  status: string;
+  timestamp: string;
+}

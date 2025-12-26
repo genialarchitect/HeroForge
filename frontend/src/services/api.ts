@@ -284,6 +284,33 @@ import type {
   OrganizationQuotas,
   UpdateQuotasRequest,
   OrganizationQuotaUsage,
+  // Green Team - SOAR types
+  SoarCase,
+  CreateCaseRequest,
+  UpdateCaseRequest,
+  CaseTask,
+  CreateCaseTaskRequest,
+  CaseComment,
+  CreateCaseCommentRequest,
+  CaseTimelineEvent,
+  Playbook,
+  CreatePlaybookRequest,
+  PlaybookRun,
+  IocFeed,
+  CreateIocFeedRequest,
+  MetricsOverview,
+  // Yellow Team types
+  YellowTeamDashboard,
+  SastScan,
+  SastFinding,
+  SastRule,
+  CreateSastScanRequest,
+  SbomProject,
+  SbomComponent,
+  CreateSbomRequest,
+  ArchitectureReview,
+  StrideThreat,
+  CreateArchitectureReviewRequest,
 } from '../types';
 
 const api = axios.create({
@@ -3455,6 +3482,170 @@ export const quotasAPI = {
 
   getUsage: (orgId: string) =>
     api.get<OrganizationQuotaUsage>(`/organizations/${orgId}/quotas/usage`),
+};
+
+// =============================================================================
+// Green Team - SOAR API
+// =============================================================================
+
+export const greenTeamAPI = {
+  // Cases
+  listCases: (params?: Record<string, string>) =>
+    api.get<SoarCase[]>('/green-team/cases', { params }),
+
+  getCase: (id: string) =>
+    api.get<SoarCase>(`/green-team/cases/${id}`),
+
+  createCase: (data: CreateCaseRequest) =>
+    api.post<SoarCase>('/green-team/cases', data),
+
+  updateCase: (id: string, data: UpdateCaseRequest) =>
+    api.put<SoarCase>(`/green-team/cases/${id}`, data),
+
+  deleteCase: (id: string) =>
+    api.delete<void>(`/green-team/cases/${id}`),
+
+  // Case Tasks
+  getCaseTasks: (caseId: string) =>
+    api.get<CaseTask[]>(`/green-team/cases/${caseId}/tasks`),
+
+  addCaseTask: (caseId: string, data: CreateCaseTaskRequest) =>
+    api.post<CaseTask>(`/green-team/cases/${caseId}/tasks`, data),
+
+  updateCaseTask: (caseId: string, taskId: string, data: Partial<CaseTask>) =>
+    api.put<CaseTask>(`/green-team/cases/${caseId}/tasks/${taskId}`, data),
+
+  // Case Comments
+  getCaseComments: (caseId: string) =>
+    api.get<CaseComment[]>(`/green-team/cases/${caseId}/comments`),
+
+  addCaseComment: (caseId: string, data: CreateCaseCommentRequest) =>
+    api.post<CaseComment>(`/green-team/cases/${caseId}/comments`, data),
+
+  // Case Timeline
+  getCaseTimeline: (caseId: string) =>
+    api.get<CaseTimelineEvent[]>(`/green-team/cases/${caseId}/timeline`),
+
+  // Playbooks
+  listPlaybooks: () =>
+    api.get<Playbook[]>('/green-team/playbooks'),
+
+  getPlaybook: (id: string) =>
+    api.get<Playbook>(`/green-team/playbooks/${id}`),
+
+  createPlaybook: (data: CreatePlaybookRequest) =>
+    api.post<Playbook>('/green-team/playbooks', data),
+
+  updatePlaybook: (id: string, data: Partial<CreatePlaybookRequest>) =>
+    api.put<Playbook>(`/green-team/playbooks/${id}`, data),
+
+  deletePlaybook: (id: string) =>
+    api.delete<void>(`/green-team/playbooks/${id}`),
+
+  runPlaybook: (id: string, inputData?: Record<string, unknown>) =>
+    api.post<PlaybookRun>(`/green-team/playbooks/${id}/run`, { input_data: inputData }),
+
+  getPlaybookRuns: (id: string) =>
+    api.get<PlaybookRun[]>(`/green-team/playbooks/${id}/runs`),
+
+  // IOC Feeds
+  listFeeds: () =>
+    api.get<IocFeed[]>('/green-team/feeds'),
+
+  getFeed: (id: string) =>
+    api.get<IocFeed>(`/green-team/feeds/${id}`),
+
+  createFeed: (data: CreateIocFeedRequest) =>
+    api.post<IocFeed>('/green-team/feeds', data),
+
+  updateFeed: (id: string, data: Partial<CreateIocFeedRequest>) =>
+    api.put<IocFeed>(`/green-team/feeds/${id}`, data),
+
+  deleteFeed: (id: string) =>
+    api.delete<void>(`/green-team/feeds/${id}`),
+
+  pollFeed: (id: string) =>
+    api.post<{ iocs_fetched: number }>(`/green-team/feeds/${id}/poll`),
+
+  // Metrics
+  getMetricsOverview: () =>
+    api.get<MetricsOverview>('/green-team/metrics/overview'),
+};
+
+// =============================================================================
+// Yellow Team - DevSecOps & Security Architecture API
+// =============================================================================
+
+export const yellowTeamAPI = {
+  // Dashboard
+  getDashboardOverview: () =>
+    api.get<YellowTeamDashboard>('/yellow-team/dashboard/overview'),
+
+  // SAST Scans
+  listSastScans: () =>
+    api.get<SastScan[]>('/yellow-team/sast/scans'),
+
+  getSastScan: (id: string) =>
+    api.get<SastScan>(`/yellow-team/sast/scans/${id}`),
+
+  startSastScan: (data: CreateSastScanRequest) =>
+    api.post<SastScan>('/yellow-team/sast/scan', data),
+
+  deleteSastScan: (id: string) =>
+    api.delete<void>(`/yellow-team/sast/scans/${id}`),
+
+  getSastFindings: (scanId: string) =>
+    api.get<SastFinding[]>(`/yellow-team/sast/scans/${scanId}/findings`),
+
+  getSastRules: () =>
+    api.get<SastRule[]>('/yellow-team/sast/rules'),
+
+  updateSastRule: (id: string, data: Partial<SastRule>) =>
+    api.put<SastRule>(`/yellow-team/sast/rules/${id}`, data),
+
+  // SBOM Projects
+  listSbomProjects: () =>
+    api.get<SbomProject[]>('/yellow-team/sbom/projects'),
+
+  getSbomProject: (id: string) =>
+    api.get<SbomProject>(`/yellow-team/sbom/projects/${id}`),
+
+  generateSbom: (data: CreateSbomRequest) =>
+    api.post<SbomProject>('/yellow-team/sbom/generate', data),
+
+  deleteSbomProject: (id: string) =>
+    api.delete<void>(`/yellow-team/sbom/projects/${id}`),
+
+  getSbomComponents: (projectId: string) =>
+    api.get<SbomComponent[]>(`/yellow-team/sbom/projects/${projectId}/components`),
+
+  exportSbom: (projectId: string, format: 'cyclonedx' | 'spdx') =>
+    api.get(`/yellow-team/sbom/projects/${projectId}/export`, {
+      params: { format },
+      responseType: 'blob',
+    }),
+
+  // Architecture Reviews
+  listArchitectureReviews: () =>
+    api.get<ArchitectureReview[]>('/yellow-team/architecture/reviews'),
+
+  getArchitectureReview: (id: string) =>
+    api.get<ArchitectureReview>(`/yellow-team/architecture/reviews/${id}`),
+
+  createArchitectureReview: (data: CreateArchitectureReviewRequest) =>
+    api.post<ArchitectureReview>('/yellow-team/architecture/reviews', data),
+
+  updateArchitectureReview: (id: string, data: Partial<CreateArchitectureReviewRequest>) =>
+    api.put<ArchitectureReview>(`/yellow-team/architecture/reviews/${id}`, data),
+
+  deleteArchitectureReview: (id: string) =>
+    api.delete<void>(`/yellow-team/architecture/reviews/${id}`),
+
+  getArchitectureThreats: (reviewId: string) =>
+    api.get<StrideThreat[]>(`/yellow-team/architecture/reviews/${reviewId}/threats`),
+
+  updateThreatStatus: (threatId: string, status: string, mitigation?: string) =>
+    api.put<StrideThreat>(`/yellow-team/architecture/threats/${threatId}`, { status, mitigation }),
 };
 
 export default api;

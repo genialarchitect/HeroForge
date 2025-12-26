@@ -56,6 +56,10 @@ import {
   Play,
   Cpu,
   FileWarning,
+  HardDrive,
+  AlertCircle,
+  ScanSearch,
+  Fingerprint,
 } from 'lucide-react';
 
 interface NavItem {
@@ -226,6 +230,10 @@ const Header: React.FC = () => {
   // BLUE TEAM - Defensive Security / Detection
   const blueTeamItems: NavItem[] = [
     { to: '/siem', icon: <Activity className="h-4 w-4" />, label: 'SIEM' },
+    { to: '/forensics', icon: <HardDrive className="h-4 w-4" />, label: 'Forensics' },
+    { to: '/incident-response', icon: <AlertCircle className="h-4 w-4" />, label: 'Incident Response' },
+    { to: '/detection-engineering', icon: <ScanSearch className="h-4 w-4" />, label: 'Detection Engineering' },
+    { to: '/threat-hunting', icon: <Fingerprint className="h-4 w-4" />, label: 'Threat Hunting' },
     { to: '/agents', icon: <Radio className="h-4 w-4" />, label: 'Scan Agents' },
     { to: '/agents/mesh', icon: <Share2 className="h-4 w-4" />, label: 'Mesh Network' },
     { to: '/attack-surface', icon: <Radar className="h-4 w-4" />, label: 'Attack Surface' },
@@ -239,19 +247,27 @@ const Header: React.FC = () => {
 
   // YELLOW TEAM - DevSecOps / Security Architecture
   const yellowTeamItems: NavItem[] = [
+    { to: '/yellow-team', icon: <FileCode className="h-4 w-4" />, label: 'DevSecOps Dashboard' },
     { to: '/iac-security', icon: <FileCode className="h-4 w-4" />, label: 'IaC Security' },
     { to: '/container-security', icon: <Box className="h-4 w-4" />, label: 'Container Security' },
     { to: '/api-security', icon: <FileSearch className="h-4 w-4" />, label: 'API Security' },
   ];
 
+  // ORANGE TEAM - Security Awareness & Training
+  const orangeTeamItems: NavItem[] = [
+    { to: '/orange-team', icon: <BookOpenCheck className="h-4 w-4" />, label: 'Training & Awareness' },
+  ];
+
   // GREEN TEAM - SOAR / Security Automation
   const greenTeamItems: NavItem[] = [
+    { to: '/green-team', icon: <Workflow className="h-4 w-4" />, label: 'SOAR Dashboard' },
     { to: '/workflows', icon: <Workflow className="h-4 w-4" />, label: 'Workflows' },
     { to: '/remediation', icon: <Layers className="h-4 w-4" />, label: 'Remediation' },
   ];
 
   // WHITE TEAM - GRC / Governance, Risk, Compliance
   const whiteTeamItems: NavItem[] = [
+    { to: '/white-team', icon: <ShieldCheck className="h-4 w-4" />, label: 'GRC Dashboard' },
     { to: '/compliance', icon: <ShieldCheck className="h-4 w-4" />, label: 'Compliance' },
     { to: '/evidence', icon: <FileText className="h-4 w-4" />, label: 'Evidence' },
     { to: '/manual-assessments', icon: <ClipboardCheck className="h-4 w-4" />, label: 'Assessments' },
@@ -293,6 +309,9 @@ const Header: React.FC = () => {
     item => location.pathname === item.to || location.pathname.startsWith(item.to)
   );
   const isYellowTeamActive = yellowTeamItems.some(
+    item => location.pathname === item.to || location.pathname.startsWith(item.to)
+  );
+  const isOrangeTeamActive = orangeTeamItems.some(
     item => location.pathname === item.to || location.pathname.startsWith(item.to)
   );
   const isGreenTeamActive = greenTeamItems.some(
@@ -380,6 +399,15 @@ const Header: React.FC = () => {
                   items={yellowTeamItems}
                   isActive={isYellowTeamActive}
                   teamColor="yellow"
+                />
+
+                {/* Orange Team - Security Awareness & Training */}
+                <DropdownMenu
+                  label="Orange Team"
+                  icon={<BookOpenCheck className="h-4 w-4" />}
+                  items={orangeTeamItems}
+                  isActive={isOrangeTeamActive}
+                  teamColor="orange"
                 />
 
                 {/* Green Team - SOAR */}
