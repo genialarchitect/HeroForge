@@ -40,6 +40,7 @@ mod white_team;
 mod vpn;
 mod vuln;
 mod web;
+mod exploit_research;
 mod webhooks;
 mod workflows;
 

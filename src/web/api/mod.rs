@@ -79,6 +79,7 @@ pub mod wireless;
 pub mod workflows;
 pub mod evasion;
 pub mod evidence;
+pub mod exploit_research;
 pub mod exploitation;
 pub mod remediation;
 pub mod executive_dashboard;

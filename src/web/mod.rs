@@ -73,6 +73,11 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
     let privesc_state_clone = privesc_state.clone();
     let dorking_state = Arc::new(api::dorking::DorkingState::default());
     let dorking_state_clone = dorking_state.clone();
+    let exploit_research_state = Arc::new(
+        api::exploit_research::ExploitResearchState::new()
+            .expect("Failed to initialize ExploitResearchState")
+    );
+    let exploit_research_state_clone = exploit_research_state.clone();
 
     HttpServer::new(move || {
         // Configure CORS origins from environment variable or use defaults
@@ -122,6 +127,7 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
             .app_data(web::Data::from(discovery_state_clone.clone()))
             .app_data(web::Data::from(privesc_state_clone.clone()))
             .app_data(web::Data::from(dorking_state_clone.clone()))
+            .app_data(web::Data::from(exploit_research_state_clone.clone()))
             .wrap(cors)
             .wrap(Logger::default())
             // Security headers per OWASP guidelines
@@ -614,6 +620,8 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .configure(api::green_team::configure)
                     // White Team (GRC - Governance, Risk & Compliance) endpoints
                     .configure(api::white_team::configure)
+                    // Exploit Research (Sprint 1 - Priority 1 Features) endpoints
+                    .configure(api::exploit_research::configure)
                     // Start workflow from vulnerability
                     .route("/vulnerabilities/{id}/workflow", web::post().to(api::workflows::start_workflow))
                     // SSO Admin endpoints

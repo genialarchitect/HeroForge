@@ -211,6 +211,7 @@ const Header: React.FC = () => {
 
   // RED TEAM - Offensive Security / Penetration Testing
   const redTeamItems: NavItem[] = [
+    { to: '/exploit-database', icon: <Bug className="h-4 w-4" />, label: 'Exploit Database' },
     { to: '/exploitation', icon: <Target className="h-4 w-4" />, label: 'Exploitation' },
     { to: '/exploitation/password-spray', icon: <Key className="h-4 w-4" />, label: 'Password Spray' },
     { to: '/exploitation/kerberos', icon: <Shield className="h-4 w-4" />, label: 'Kerberoasting' },

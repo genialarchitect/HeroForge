@@ -236,6 +236,8 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     create_white_team_tables(pool).await?;
     // Purple Team Enhancement tables (Phase 5)
     create_purple_team_enhancement_tables(pool).await?;
+    // Exploit Research tables (Sprint 1 - Priority 1 Features)
+    create_exploit_research_tables(pool).await?;
     Ok(())
 }
 
@@ -15849,5 +15851,341 @@ async fn seed_adversary_profiles(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Er
     .await?;
 
     log::info!("Seeded default adversary profiles");
+    Ok(())
+}
+
+/// Create exploit research tables (Sprint 1 - Priority 1 Features)
+async fn create_exploit_research_tables(pool: &SqlitePool) -> Result<()> {
+    // Exploits cache table - stores aggregated exploit data from multiple sources
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS exploits (
+            id TEXT PRIMARY KEY,
+            exploit_db_id TEXT,
+            metasploit_module TEXT,
+            cve_ids TEXT NOT NULL DEFAULT '[]',
+            title TEXT NOT NULL,
+            description TEXT,
+            platform TEXT NOT NULL,
+            architecture TEXT NOT NULL DEFAULT 'unknown',
+            exploit_type TEXT NOT NULL,
+            author TEXT,
+            source_url TEXT,
+            source TEXT NOT NULL,
+            code TEXT,
+            language TEXT,
+            verified INTEGER DEFAULT 0,
+            reliability TEXT NOT NULL DEFAULT 'unknown',
+            tags TEXT DEFAULT '[]',
+            published_date TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Indexes for exploit lookups
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_exploits_exploit_db_id ON exploits(exploit_db_id)"
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_exploits_metasploit_module ON exploits(metasploit_module)"
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_exploits_source ON exploits(source)"
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_exploits_platform ON exploits(platform)"
+    )
+    .execute(pool)
+    .await?;
+
+    // CVE to exploit mapping cache
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS cve_exploit_mappings (
+            id TEXT PRIMARY KEY,
+            cve_id TEXT NOT NULL UNIQUE,
+            exploit_count INTEGER NOT NULL DEFAULT 0,
+            exploit_ids TEXT NOT NULL DEFAULT '[]',
+            has_public_exploit INTEGER NOT NULL DEFAULT 0,
+            has_metasploit_module INTEGER NOT NULL DEFAULT 0,
+            highest_reliability TEXT NOT NULL DEFAULT 'unknown',
+            platforms TEXT NOT NULL DEFAULT '[]',
+            updated_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_cve_exploit_mappings_cve_id ON cve_exploit_mappings(cve_id)"
+    )
+    .execute(pool)
+    .await?;
+
+    // PoC entries table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS poc_entries (
+            id TEXT PRIMARY KEY,
+            cve_id TEXT,
+            exploit_id TEXT,
+            title TEXT NOT NULL,
+            description TEXT,
+            language TEXT NOT NULL,
+            code_path TEXT NOT NULL,
+            author TEXT,
+            status TEXT NOT NULL DEFAULT 'draft',
+            tags TEXT DEFAULT '[]',
+            target_info TEXT,
+            requirements TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_poc_entries_cve_id ON poc_entries(cve_id)"
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_poc_entries_exploit_id ON poc_entries(exploit_id)"
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_poc_entries_status ON poc_entries(status)"
+    )
+    .execute(pool)
+    .await?;
+
+    // PoC versions table for version history
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS poc_versions (
+            id TEXT PRIMARY KEY,
+            poc_id TEXT NOT NULL REFERENCES poc_entries(id) ON DELETE CASCADE,
+            version TEXT NOT NULL,
+            code TEXT NOT NULL,
+            changelog TEXT,
+            created_by TEXT,
+            created_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_poc_versions_poc_id ON poc_versions(poc_id)"
+    )
+    .execute(pool)
+    .await?;
+
+    // PoC test results
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS poc_test_results (
+            id TEXT PRIMARY KEY,
+            poc_id TEXT NOT NULL REFERENCES poc_entries(id) ON DELETE CASCADE,
+            version TEXT NOT NULL,
+            success INTEGER NOT NULL,
+            target_info TEXT NOT NULL,
+            output TEXT,
+            error_message TEXT,
+            execution_time_ms INTEGER,
+            tester TEXT,
+            tested_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_poc_test_results_poc_id ON poc_test_results(poc_id)"
+    )
+    .execute(pool)
+    .await?;
+
+    // Research notes table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS research_notes (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            content TEXT NOT NULL,
+            cve_ids TEXT DEFAULT '[]',
+            exploit_ids TEXT DEFAULT '[]',
+            poc_ids TEXT DEFAULT '[]',
+            tags TEXT DEFAULT '[]',
+            references_json TEXT DEFAULT '[]',
+            visibility TEXT NOT NULL DEFAULT 'private',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_research_notes_user_id ON research_notes(user_id)"
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_research_notes_visibility ON research_notes(visibility)"
+    )
+    .execute(pool)
+    .await?;
+
+    // Research workspaces table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS research_workspaces (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            cve_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            exploits TEXT DEFAULT '[]',
+            pocs TEXT DEFAULT '[]',
+            notes TEXT DEFAULT '[]',
+            external_references TEXT DEFAULT '[]',
+            timeline TEXT DEFAULT '[]',
+            status TEXT NOT NULL DEFAULT 'active',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_research_workspaces_user_id ON research_workspaces(user_id)"
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_research_workspaces_cve_id ON research_workspaces(cve_id)"
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_research_workspaces_status ON research_workspaces(status)"
+    )
+    .execute(pool)
+    .await?;
+
+    // Exploit sync status table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS exploit_sync_status (
+            id TEXT PRIMARY KEY,
+            source TEXT NOT NULL UNIQUE,
+            last_sync_at TEXT,
+            total_exploits INTEGER NOT NULL DEFAULT 0,
+            new_since_last_sync INTEGER NOT NULL DEFAULT 0,
+            sync_in_progress INTEGER NOT NULL DEFAULT 0,
+            last_error TEXT
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Exploit favorites for users
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS exploit_favorites (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            exploit_id TEXT NOT NULL,
+            notes TEXT,
+            created_at TEXT NOT NULL,
+            UNIQUE(user_id, exploit_id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_exploit_favorites_user_id ON exploit_favorites(user_id)"
+    )
+    .execute(pool)
+    .await?;
+
+    // Exploit search history
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS exploit_search_history (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            query TEXT NOT NULL,
+            filters TEXT DEFAULT '{}',
+            result_count INTEGER NOT NULL DEFAULT 0,
+            searched_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_exploit_search_history_user_id ON exploit_search_history(user_id)"
+    )
+    .execute(pool)
+    .await?;
+
+    // Seed initial exploit sync status entries
+    let sources = ["exploit_db", "metasploit", "packetstorm"];
+    for source in sources {
+        let exists: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM exploit_sync_status WHERE source = ?)"
+        )
+        .bind(source)
+        .fetch_one(pool)
+        .await?;
+
+        if !exists {
+            sqlx::query(
+                r#"
+                INSERT INTO exploit_sync_status (id, source, total_exploits, new_since_last_sync, sync_in_progress)
+                VALUES (?, ?, 0, 0, 0)
+                "#
+            )
+            .bind(uuid::Uuid::new_v4().to_string())
+            .bind(source)
+            .execute(pool)
+            .await?;
+        }
+    }
+
+    log::info!("Created exploit research tables");
     Ok(())
 }
