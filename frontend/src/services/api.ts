@@ -3648,4 +3648,261 @@ export const yellowTeamAPI = {
     api.put<StrideThreat>(`/yellow-team/architecture/threats/${threatId}`, { status, mitigation }),
 };
 
+// =============================================================================
+// Exploit Research API
+// =============================================================================
+
+export interface ExploitSearchParams {
+  query?: string;
+  source?: string;
+  platform?: string;
+  exploit_type?: string;
+  limit?: number;
+}
+
+export interface PocEntry {
+  id: string;
+  cve_id?: string;
+  exploit_id?: string;
+  title: string;
+  description?: string;
+  language: string;
+  code_path: string;
+  author?: string;
+  status: string;
+  tags: string[];
+  target_info?: string;
+  requirements?: string[];
+  versions: PocVersion[];
+  test_results: PocTestResult[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PocVersion {
+  version: string;
+  code: string;
+  changelog?: string;
+  created_at: string;
+}
+
+export interface PocTestResult {
+  tested_at: string;
+  success: boolean;
+  target_info: string;
+  output?: string;
+  error?: string;
+  execution_time_ms: number;
+  notes?: string;
+}
+
+export interface CreatePocRequest {
+  title: string;
+  description?: string;
+  code: string;
+  language: string;
+  cve_id?: string;
+  tags?: string[];
+  target_info?: string;
+  requirements?: string[];
+}
+
+export interface ResearchWorkspace {
+  id: string;
+  cve_id: string;
+  title: string;
+  description?: string;
+  status: string;
+  notes: ResearchNote[];
+  linked_exploits: string[];
+  linked_pocs: string[];
+  timeline_events: TimelineEvent[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ResearchNote {
+  id: string;
+  title: string;
+  content: string;
+  note_type: string;
+  references: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TimelineEvent {
+  id: string;
+  event_type: string;
+  title: string;
+  description?: string;
+  user_id: string;
+  created_at: string;
+}
+
+export interface SandboxExecutionRequest {
+  sandbox_type?: string;
+  target_os?: string;
+  target_host?: string;
+  target_port?: number;
+  isolated_network?: boolean;
+  timeout_seconds?: number;
+  additional_args?: string[];
+}
+
+export interface SandboxExecutionResponse {
+  success: boolean;
+  execution_id: string;
+  status: string;
+  result?: SandboxExecutionResult;
+  error?: string;
+}
+
+export interface SandboxExecutionResult {
+  exit_code?: number;
+  stdout: string;
+  stderr: string;
+  execution_time_ms: number;
+  success_detected: boolean;
+  artifacts_collected: string[];
+  network_connections: string[];
+}
+
+export interface SandboxEnvironment {
+  id: string;
+  name: string;
+  sandbox_type: string;
+  os: string;
+  status: string;
+  is_ready: boolean;
+}
+
+export interface EffectivenessScore {
+  total_score: number;
+  rating: string;
+  reliability_score: number;
+  impact_score: number;
+  maturity_score: number;
+  community_score: number;
+  recommendations: string[];
+}
+
+export interface CalculateEffectivenessRequest {
+  complexity?: string;
+  impact_severity?: string;
+  has_documentation?: boolean;
+  version_count?: number;
+  peer_reviewed?: boolean;
+  target_coverage?: number;
+  external_ratings?: { source: string; rating: string; score?: number }[];
+}
+
+export const exploitResearchAPI = {
+  // Exploit Search
+  searchExploits: (params: ExploitSearchParams) =>
+    api.get('/exploit-research/exploits', { params }),
+
+  getExploitsForCve: (cveId: string) =>
+    api.get(`/exploit-research/exploits/cve/${cveId}`),
+
+  getCveMapping: (cveId: string) =>
+    api.get(`/exploit-research/cve-mapping/${cveId}`),
+
+  batchCveMapping: (cveIds: string[]) =>
+    api.post('/exploit-research/cve-mapping/batch', { cve_ids: cveIds }),
+
+  getSyncStatus: () =>
+    api.get('/exploit-research/sync-status'),
+
+  getStats: () =>
+    api.get('/exploit-research/stats'),
+
+  // PoCs
+  listPocs: () =>
+    api.get<{ pocs: PocEntry[]; total: number }>('/exploit-research/pocs'),
+
+  getPoc: (id: string) =>
+    api.get<PocEntry>(`/exploit-research/pocs/${id}`),
+
+  createPoc: (data: CreatePocRequest) =>
+    api.post<{ id: string; poc: PocEntry }>('/exploit-research/pocs', data),
+
+  updatePoc: (id: string, data: Partial<CreatePocRequest>) =>
+    api.put<PocEntry>(`/exploit-research/pocs/${id}`, data),
+
+  deletePoc: (id: string) =>
+    api.delete<void>(`/exploit-research/pocs/${id}`),
+
+  getPocCode: (id: string) =>
+    api.get<{ code: string }>(`/exploit-research/pocs/${id}/code`),
+
+  addPocTestResult: (id: string, result: Partial<PocTestResult>) =>
+    api.post<void>(`/exploit-research/pocs/${id}/test`, result),
+
+  // Sandbox Testing
+  executePocInSandbox: (pocId: string, request: SandboxExecutionRequest) =>
+    api.post<SandboxExecutionResponse>(`/exploit-research/pocs/${pocId}/sandbox`, request),
+
+  getSandboxHistory: (pocId: string) =>
+    api.get(`/exploit-research/pocs/${pocId}/sandbox-history`),
+
+  listSandboxEnvironments: () =>
+    api.get<{ environments: SandboxEnvironment[] }>('/exploit-research/sandbox/environments'),
+
+  // Effectiveness Scoring
+  getPocEffectiveness: (pocId: string) =>
+    api.get<{ score: EffectivenessScore }>(`/exploit-research/pocs/${pocId}/effectiveness`),
+
+  calculatePocEffectiveness: (pocId: string, data: CalculateEffectivenessRequest) =>
+    api.post<{ score: EffectivenessScore }>(`/exploit-research/pocs/${pocId}/effectiveness/calculate`, data),
+
+  // Timeline
+  getPocTimeline: (pocId: string) =>
+    api.get<{ events: TimelineEvent[] }>(`/exploit-research/pocs/${pocId}/timeline`),
+
+  addPocTimelineEvent: (pocId: string, event: { event_type: string; title: string; description?: string }) =>
+    api.post<void>(`/exploit-research/pocs/${pocId}/timeline`, event),
+
+  // Research Notes
+  listNotes: () =>
+    api.get('/exploit-research/notes'),
+
+  getNote: (id: string) =>
+    api.get(`/exploit-research/notes/${id}`),
+
+  createNote: (data: { title: string; content: string; note_type?: string; cve_ids?: string[]; references?: string[] }) =>
+    api.post('/exploit-research/notes', data),
+
+  updateNote: (id: string, data: Partial<{ title: string; content: string; note_type?: string }>) =>
+    api.put(`/exploit-research/notes/${id}`, data),
+
+  deleteNote: (id: string) =>
+    api.delete<void>(`/exploit-research/notes/${id}`),
+
+  // Research Workspaces
+  listWorkspaces: () =>
+    api.get<{ workspaces: ResearchWorkspace[] }>('/exploit-research/workspaces'),
+
+  getWorkspace: (id: string) =>
+    api.get<ResearchWorkspace>(`/exploit-research/workspaces/${id}`),
+
+  createWorkspace: (data: { cve_id: string; title?: string; description?: string }) =>
+    api.post<{ id: string }>('/exploit-research/workspaces', data),
+
+  updateWorkspace: (id: string, data: Partial<{ title: string; description: string; status: string }>) =>
+    api.put<ResearchWorkspace>(`/exploit-research/workspaces/${id}`, data),
+
+  deleteWorkspace: (id: string) =>
+    api.delete<void>(`/exploit-research/workspaces/${id}`),
+
+  getWorkspaceTimeline: (id: string) =>
+    api.get<{ events: TimelineEvent[] }>(`/exploit-research/workspaces/${id}/timeline`),
+
+  exportWorkspace: (id: string) =>
+    api.get(`/exploit-research/workspaces/${id}/export`, { responseType: 'blob' }),
+
+  addItemToWorkspace: (workspaceId: string, data: { item_type: 'exploit' | 'poc' | 'note' | 'reference'; item_id?: string; reference?: string }) =>
+    api.post<void>(`/exploit-research/workspaces/${workspaceId}/items`, data),
+};
+
 export default api;

@@ -16186,6 +16186,135 @@ async fn create_exploit_research_tables(pool: &SqlitePool) -> Result<()> {
         }
     }
 
-    log::info!("Created exploit research tables");
+    // Sprint 2: Sandbox execution tracking
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS sandbox_executions (
+            id TEXT PRIMARY KEY,
+            poc_id TEXT NOT NULL REFERENCES poc_entries(id) ON DELETE CASCADE,
+            user_id TEXT NOT NULL,
+            sandbox_type TEXT NOT NULL,
+            target_os TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            exit_code INTEGER,
+            stdout TEXT,
+            stderr TEXT,
+            duration_ms INTEGER,
+            network_activity TEXT,
+            filesystem_activity TEXT,
+            process_activity TEXT,
+            registry_activity TEXT,
+            api_calls TEXT,
+            screenshots TEXT,
+            artifacts TEXT,
+            success_indicators TEXT,
+            error_message TEXT,
+            config TEXT,
+            started_at TEXT NOT NULL,
+            completed_at TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_sandbox_executions_poc_id ON sandbox_executions(poc_id)"
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_sandbox_executions_user_id ON sandbox_executions(user_id)"
+    )
+    .execute(pool)
+    .await?;
+
+    // Sprint 2: Effectiveness scores table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS poc_effectiveness_scores (
+            id TEXT PRIMARY KEY,
+            poc_id TEXT NOT NULL REFERENCES poc_entries(id) ON DELETE CASCADE,
+            total_score INTEGER NOT NULL,
+            rating TEXT NOT NULL,
+            reliability_score INTEGER NOT NULL,
+            impact_score INTEGER NOT NULL,
+            complexity_penalty INTEGER NOT NULL,
+            maturity_score INTEGER NOT NULL,
+            community_score INTEGER NOT NULL,
+            factors TEXT NOT NULL,
+            recommendations TEXT NOT NULL,
+            input_data TEXT,
+            calculated_at TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_poc_effectiveness_poc_id ON poc_effectiveness_scores(poc_id)"
+    )
+    .execute(pool)
+    .await?;
+
+    // Sprint 2: Development timeline events
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS exploit_timeline_events (
+            id TEXT PRIMARY KEY,
+            poc_id TEXT REFERENCES poc_entries(id) ON DELETE CASCADE,
+            workspace_id TEXT REFERENCES cve_research_workspaces(id) ON DELETE CASCADE,
+            event_type TEXT NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT,
+            metadata TEXT,
+            user_id TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_timeline_events_poc_id ON exploit_timeline_events(poc_id)"
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_timeline_events_workspace_id ON exploit_timeline_events(workspace_id)"
+    )
+    .execute(pool)
+    .await?;
+
+    // Sprint 2: Sandbox environments configuration
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS sandbox_environments (
+            id TEXT PRIMARY KEY,
+            user_id TEXT,
+            name TEXT NOT NULL,
+            sandbox_type TEXT NOT NULL,
+            target_os TEXT NOT NULL,
+            docker_image TEXT,
+            api_endpoint TEXT,
+            api_key TEXT,
+            is_default INTEGER DEFAULT 0,
+            is_enabled INTEGER DEFAULT 1,
+            config TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    log::info!("Created exploit research tables (Sprint 1 + 2)");
     Ok(())
 }

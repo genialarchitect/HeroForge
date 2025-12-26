@@ -71,6 +71,8 @@ const ThreatHuntingPage = lazy(() => import('./pages/ThreatHuntingPage'));
 
 // Exploit Research pages
 const ExploitDatabasePage = lazy(() => import('./pages/ExploitDatabasePage'));
+const PocRepositoryPage = lazy(() => import('./pages/PocRepositoryPage'));
+const ResearchWorkspacePage = lazy(() => import('./pages/ResearchWorkspacePage'));
 
 // CRM pages
 const CrmDashboard = lazy(() => import('./pages/crm/CrmDashboard'));
@@ -553,6 +555,22 @@ function App() {
             element={
               <ProtectedRoute>
                 <ExploitDatabasePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/poc-repository"
+            element={
+              <ProtectedRoute>
+                <PocRepositoryPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/research-workspaces"
+            element={
+              <ProtectedRoute>
+                <ResearchWorkspacePage />
               </ProtectedRoute>
             }
           />
