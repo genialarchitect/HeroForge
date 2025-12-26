@@ -73,6 +73,10 @@ pub mod report_templates;
 pub mod yara;
 pub mod detection_engineering;
 pub mod threat_hunting;
+pub mod devsecops;
+pub mod sbom;
+pub mod threat_modeling;
+pub mod yellow_team;
 
 // Core imports used by this module
 use sqlx::sqlite::SqlitePool;
@@ -208,6 +212,9 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
 
     // Run admin console migrations
     migrations::run_migrations(pool).await?;
+
+    // Run Yellow Team API Security migrations
+    yellow_team::run_migrations(pool).await?;
 
     Ok(())
 }

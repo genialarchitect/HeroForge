@@ -218,6 +218,24 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     // Threat Hunting tables (blue team)
     super::threat_hunting::create_threat_hunting_tables(pool).await?;
     super::threat_hunting::seed_builtin_playbooks(pool).await?;
+    // DevSecOps Dashboard tables (Yellow Team)
+    create_devsecops_tables(pool).await?;
+    // SBOM (Software Bill of Materials) tables (Yellow Team)
+    create_sbom_tables(pool).await?;
+    // SAST (Static Application Security Testing) tables (Yellow Team)
+    create_sast_tables(pool).await?;
+    // API Security tables (Yellow Team)
+    create_api_security_tables(pool).await?;
+    // Architecture Review tables (Yellow Team)
+    create_architecture_tables(pool).await?;
+    // Security Awareness & Training tables (Orange Team)
+    create_orange_team_tables(pool).await?;
+    // Security Automation & Orchestration (SOAR) tables (Green Team)
+    create_green_team_tables(pool).await?;
+    // Governance, Risk & Compliance (GRC) tables (White Team)
+    create_white_team_tables(pool).await?;
+    // Purple Team Enhancement tables (Phase 5)
+    create_purple_team_enhancement_tables(pool).await?;
     Ok(())
 }
 
@@ -13392,5 +13410,2444 @@ async fn create_detection_engineering_tables(pool: &SqlitePool) -> Result<()> {
         .await?;
 
     log::info!("Created detection engineering tables for blue team capabilities");
+    Ok(())
+}
+
+/// Create DevSecOps Dashboard tables (Yellow Team)
+async fn create_devsecops_tables(pool: &SqlitePool) -> Result<()> {
+    // DevSecOps metrics table - daily snapshots of security metrics
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS devsecops_metrics (
+            id TEXT PRIMARY KEY,
+            org_id TEXT,
+            project_id TEXT,
+            metric_date TEXT NOT NULL,
+            mttr_critical_hours REAL,
+            mttr_high_hours REAL,
+            mttr_medium_hours REAL,
+            mttr_low_hours REAL,
+            vulnerability_density REAL NOT NULL DEFAULT 0,
+            fix_rate REAL NOT NULL DEFAULT 0,
+            sla_compliance_rate REAL NOT NULL DEFAULT 0,
+            open_critical INTEGER NOT NULL DEFAULT 0,
+            open_high INTEGER NOT NULL DEFAULT 0,
+            open_medium INTEGER NOT NULL DEFAULT 0,
+            open_low INTEGER NOT NULL DEFAULT 0,
+            security_debt_hours REAL NOT NULL DEFAULT 0,
+            pipeline_pass_rate REAL NOT NULL DEFAULT 0,
+            scan_coverage REAL NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for metrics queries
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_devsecops_metrics_org ON devsecops_metrics(org_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_devsecops_metrics_project ON devsecops_metrics(project_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_devsecops_metrics_date ON devsecops_metrics(metric_date)")
+        .execute(pool)
+        .await?;
+
+    // Pipeline gates configuration table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS devsecops_pipeline_gates (
+            id TEXT PRIMARY KEY,
+            project_id TEXT,
+            name TEXT NOT NULL,
+            description TEXT,
+            rules_json TEXT NOT NULL DEFAULT '[]',
+            is_blocking INTEGER NOT NULL DEFAULT 1,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_devsecops_gates_project ON devsecops_pipeline_gates(project_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_devsecops_gates_active ON devsecops_pipeline_gates(is_active)")
+        .execute(pool)
+        .await?;
+
+    // Gate evaluation history table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS devsecops_gate_evaluations (
+            id TEXT PRIMARY KEY,
+            gate_id TEXT NOT NULL,
+            scan_id TEXT NOT NULL,
+            project_id TEXT,
+            passed INTEGER NOT NULL,
+            rule_results_json TEXT NOT NULL DEFAULT '[]',
+            evaluated_at TEXT NOT NULL,
+            FOREIGN KEY (gate_id) REFERENCES devsecops_pipeline_gates(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_devsecops_evaluations_gate ON devsecops_gate_evaluations(gate_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_devsecops_evaluations_scan ON devsecops_gate_evaluations(scan_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_devsecops_evaluations_date ON devsecops_gate_evaluations(evaluated_at)")
+        .execute(pool)
+        .await?;
+
+    // Finding resolutions table - tracks when findings are resolved for MTTR calculation
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS finding_resolutions (
+            id TEXT PRIMARY KEY,
+            finding_id TEXT NOT NULL,
+            finding_type TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            user_id TEXT,
+            org_id TEXT,
+            project_name TEXT,
+            created_at TEXT NOT NULL,
+            resolved_at TEXT,
+            resolution_hours REAL,
+            source TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_finding_resolutions_user ON finding_resolutions(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_finding_resolutions_severity ON finding_resolutions(severity)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_finding_resolutions_type ON finding_resolutions(finding_type)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_finding_resolutions_resolved ON finding_resolutions(resolved_at)")
+        .execute(pool)
+        .await?;
+
+    // Security coverage table - tracks which security tools are enabled per user/project
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS security_coverage (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            project_name TEXT,
+            sast_enabled INTEGER NOT NULL DEFAULT 0,
+            sbom_generated INTEGER NOT NULL DEFAULT 0,
+            api_security_scanned INTEGER NOT NULL DEFAULT 0,
+            threat_model_exists INTEGER NOT NULL DEFAULT 0,
+            dast_enabled INTEGER NOT NULL DEFAULT 0,
+            container_scanning_enabled INTEGER NOT NULL DEFAULT 0,
+            iac_scanning_enabled INTEGER NOT NULL DEFAULT 0,
+            secret_scanning_enabled INTEGER NOT NULL DEFAULT 0,
+            last_sast_scan TEXT,
+            last_sbom_scan TEXT,
+            last_api_scan TEXT,
+            last_dast_scan TEXT,
+            last_container_scan TEXT,
+            last_iac_scan TEXT,
+            last_secret_scan TEXT,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            UNIQUE(user_id, project_name)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_security_coverage_user ON security_coverage(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_security_coverage_project ON security_coverage(project_name)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created DevSecOps Dashboard tables for Yellow Team capabilities");
+    Ok(())
+}
+
+/// Create SBOM (Software Bill of Materials) tables
+async fn create_sbom_tables(pool: &SqlitePool) -> Result<()> {
+    // Main SBOM records table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS sbom_records (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            project_name TEXT NOT NULL,
+            project_version TEXT,
+            format TEXT NOT NULL DEFAULT 'cyclonedx',
+            stats_json TEXT NOT NULL DEFAULT '{}',
+            source_files_json TEXT NOT NULL DEFAULT '[]',
+            generated_at TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for SBOM records
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sbom_records_user ON sbom_records(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sbom_records_project ON sbom_records(project_name)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sbom_records_generated ON sbom_records(generated_at)")
+        .execute(pool)
+        .await?;
+
+    // SBOM components table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS sbom_components (
+            id TEXT PRIMARY KEY,
+            sbom_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            version TEXT NOT NULL,
+            purl TEXT NOT NULL,
+            component_type TEXT NOT NULL DEFAULT 'library',
+            supplier TEXT,
+            licenses_json TEXT NOT NULL DEFAULT '[]',
+            hashes_json TEXT NOT NULL DEFAULT '{}',
+            description TEXT,
+            dependency_type TEXT NOT NULL DEFAULT 'direct',
+            cpe TEXT,
+            external_refs_json TEXT NOT NULL DEFAULT '[]',
+            FOREIGN KEY (sbom_id) REFERENCES sbom_records(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for SBOM components
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sbom_components_sbom ON sbom_components(sbom_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sbom_components_name ON sbom_components(name)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sbom_components_purl ON sbom_components(purl)")
+        .execute(pool)
+        .await?;
+
+    // SBOM vulnerabilities table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS sbom_vulnerabilities (
+            id TEXT PRIMARY KEY,
+            sbom_id TEXT NOT NULL,
+            component_purl TEXT NOT NULL,
+            cve_id TEXT NOT NULL,
+            cvss_score REAL,
+            severity TEXT NOT NULL DEFAULT 'unknown',
+            description TEXT NOT NULL,
+            fixed_version TEXT,
+            references_json TEXT NOT NULL DEFAULT '[]',
+            FOREIGN KEY (sbom_id) REFERENCES sbom_records(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for SBOM vulnerabilities
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sbom_vulns_sbom ON sbom_vulnerabilities(sbom_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sbom_vulns_component ON sbom_vulnerabilities(component_purl)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sbom_vulns_cve ON sbom_vulnerabilities(cve_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sbom_vulns_severity ON sbom_vulnerabilities(severity)")
+        .execute(pool)
+        .await?;
+
+    // SBOM licenses table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS sbom_licenses (
+            id TEXT PRIMARY KEY,
+            sbom_id TEXT NOT NULL,
+            spdx_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            risk_level TEXT NOT NULL DEFAULT 'unknown',
+            url TEXT,
+            component_count INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY (sbom_id) REFERENCES sbom_records(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for SBOM licenses
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sbom_licenses_sbom ON sbom_licenses(sbom_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sbom_licenses_spdx ON sbom_licenses(spdx_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sbom_licenses_risk ON sbom_licenses(risk_level)")
+        .execute(pool)
+        .await?;
+
+    // SBOM dependencies table (for dependency graph)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS sbom_dependencies (
+            id TEXT PRIMARY KEY,
+            sbom_id TEXT NOT NULL,
+            parent_purl TEXT NOT NULL,
+            child_purl TEXT NOT NULL,
+            dependency_type TEXT NOT NULL DEFAULT 'direct',
+            FOREIGN KEY (sbom_id) REFERENCES sbom_records(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for SBOM dependencies
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sbom_deps_sbom ON sbom_dependencies(sbom_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sbom_deps_parent ON sbom_dependencies(parent_purl)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sbom_deps_child ON sbom_dependencies(child_purl)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created SBOM (Software Bill of Materials) tables for Yellow Team capabilities");
+    Ok(())
+}
+
+/// Create SAST (Static Application Security Testing) tables
+async fn create_sast_tables(pool: &SqlitePool) -> Result<()> {
+    // Main SAST scans table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS sast_scans (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            repository_url TEXT,
+            branch TEXT,
+            languages TEXT NOT NULL DEFAULT '[]',
+            status TEXT NOT NULL DEFAULT 'pending',
+            total_findings INTEGER DEFAULT 0,
+            critical_count INTEGER DEFAULT 0,
+            high_count INTEGER DEFAULT 0,
+            medium_count INTEGER DEFAULT 0,
+            low_count INTEGER DEFAULT 0,
+            info_count INTEGER DEFAULT 0,
+            files_scanned INTEGER DEFAULT 0,
+            lines_analyzed INTEGER DEFAULT 0,
+            error_message TEXT,
+            started_at TEXT,
+            completed_at TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for SAST scans
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sast_scans_user ON sast_scans(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sast_scans_status ON sast_scans(status)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sast_scans_created ON sast_scans(created_at)")
+        .execute(pool)
+        .await?;
+
+    // SAST findings table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS sast_findings (
+            id TEXT PRIMARY KEY,
+            scan_id TEXT NOT NULL,
+            rule_id TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            line_number INTEGER NOT NULL,
+            column_number INTEGER,
+            code_snippet TEXT,
+            severity TEXT NOT NULL,
+            category TEXT NOT NULL,
+            message TEXT NOT NULL,
+            cwe_id TEXT,
+            owasp_category TEXT,
+            remediation TEXT,
+            status TEXT NOT NULL DEFAULT 'open',
+            false_positive INTEGER DEFAULT 0,
+            suppression_reason TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (scan_id) REFERENCES sast_scans(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for SAST findings
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sast_findings_scan ON sast_findings(scan_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sast_findings_rule ON sast_findings(rule_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sast_findings_severity ON sast_findings(severity)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sast_findings_status ON sast_findings(status)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sast_findings_category ON sast_findings(category)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sast_findings_file ON sast_findings(file_path)")
+        .execute(pool)
+        .await?;
+
+    // SAST rules table (custom rules)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS sast_rules (
+            id TEXT PRIMARY KEY,
+            language TEXT NOT NULL,
+            name TEXT NOT NULL,
+            pattern TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            category TEXT NOT NULL,
+            cwe_id TEXT,
+            owasp_category TEXT,
+            description TEXT,
+            remediation TEXT,
+            enabled INTEGER DEFAULT 1,
+            custom INTEGER DEFAULT 0,
+            created_by TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for SAST rules
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sast_rules_language ON sast_rules(language)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sast_rules_severity ON sast_rules(severity)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sast_rules_category ON sast_rules(category)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sast_rules_enabled ON sast_rules(enabled)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sast_rules_custom ON sast_rules(custom)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created SAST (Static Application Security Testing) tables for Yellow Team capabilities");
+    Ok(())
+}
+
+/// Create API Security tables for Yellow Team
+async fn create_api_security_tables(pool: &SqlitePool) -> Result<()> {
+    // API Security Scans table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS api_security_scans (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            api_name TEXT NOT NULL,
+            spec_format TEXT NOT NULL,
+            spec_content TEXT NOT NULL,
+            base_url TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            total_findings INTEGER DEFAULT 0,
+            critical_count INTEGER DEFAULT 0,
+            high_count INTEGER DEFAULT 0,
+            medium_count INTEGER DEFAULT 0,
+            low_count INTEGER DEFAULT 0,
+            auth_issues INTEGER DEFAULT 0,
+            injection_risks INTEGER DEFAULT 0,
+            rate_limit_issues INTEGER DEFAULT 0,
+            started_at TIMESTAMP,
+            completed_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // API Security Findings table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS api_security_findings (
+            id TEXT PRIMARY KEY,
+            scan_id TEXT NOT NULL REFERENCES api_security_scans(id),
+            endpoint TEXT NOT NULL,
+            method TEXT NOT NULL,
+            finding_type TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            category TEXT NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT NOT NULL,
+            remediation TEXT,
+            cwe_id TEXT,
+            owasp_category TEXT,
+            evidence TEXT,
+            false_positive BOOLEAN DEFAULT FALSE,
+            suppressed BOOLEAN DEFAULT FALSE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // API Endpoints table (discovered endpoints)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS api_endpoints (
+            id TEXT PRIMARY KEY,
+            scan_id TEXT NOT NULL REFERENCES api_security_scans(id),
+            path TEXT NOT NULL,
+            method TEXT NOT NULL,
+            operation_id TEXT,
+            summary TEXT,
+            description TEXT,
+            tags TEXT,
+            auth_required BOOLEAN DEFAULT FALSE,
+            auth_types TEXT,
+            rate_limited BOOLEAN DEFAULT FALSE,
+            deprecated BOOLEAN DEFAULT FALSE,
+            parameters_json TEXT,
+            request_body_json TEXT,
+            responses_json TEXT,
+            security_issues_count INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // API Security Rules table (custom rules)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS api_security_rules (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL,
+            category TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            pattern TEXT,
+            pattern_type TEXT NOT NULL,
+            check_type TEXT NOT NULL,
+            enabled BOOLEAN DEFAULT TRUE,
+            custom BOOLEAN DEFAULT FALSE,
+            created_by TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for API Security tables
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_api_security_scans_user ON api_security_scans(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_api_security_scans_status ON api_security_scans(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_api_security_findings_scan ON api_security_findings(scan_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_api_security_findings_severity ON api_security_findings(severity)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_api_endpoints_scan ON api_endpoints(scan_id)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created API Security tables for Yellow Team capabilities");
+    Ok(())
+}
+
+/// Create Architecture Review tables for Yellow Team
+async fn create_architecture_tables(pool: &SqlitePool) -> Result<()> {
+    // Architecture Reviews table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS architecture_reviews (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            project_name TEXT NOT NULL,
+            description TEXT,
+            diagram_data TEXT,
+            status TEXT NOT NULL DEFAULT 'draft',
+            threat_count INTEGER DEFAULT 0,
+            component_count INTEGER DEFAULT 0,
+            data_flow_count INTEGER DEFAULT 0,
+            boundary_count INTEGER DEFAULT 0,
+            recommendation_count INTEGER DEFAULT 0,
+            overall_risk_level TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Architecture Components table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS architecture_components (
+            id TEXT PRIMARY KEY,
+            review_id TEXT NOT NULL REFERENCES architecture_reviews(id),
+            name TEXT NOT NULL,
+            component_type TEXT NOT NULL,
+            description TEXT,
+            trust_level INTEGER DEFAULT 50,
+            data_classification TEXT,
+            external BOOLEAN DEFAULT FALSE,
+            properties_json TEXT,
+            position_x REAL,
+            position_y REAL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Architecture Data Flows table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS architecture_data_flows (
+            id TEXT PRIMARY KEY,
+            review_id TEXT NOT NULL REFERENCES architecture_reviews(id),
+            name TEXT NOT NULL,
+            source_id TEXT NOT NULL REFERENCES architecture_components(id),
+            destination_id TEXT NOT NULL REFERENCES architecture_components(id),
+            protocol TEXT,
+            data_classification TEXT,
+            encrypted BOOLEAN DEFAULT FALSE,
+            authenticated BOOLEAN DEFAULT FALSE,
+            bidirectional BOOLEAN DEFAULT FALSE,
+            description TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Architecture Trust Boundaries table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS architecture_trust_boundaries (
+            id TEXT PRIMARY KEY,
+            review_id TEXT NOT NULL REFERENCES architecture_reviews(id),
+            name TEXT NOT NULL,
+            boundary_type TEXT NOT NULL,
+            trust_level_inside INTEGER NOT NULL,
+            trust_level_outside INTEGER NOT NULL,
+            description TEXT,
+            components_json TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Architecture Threats table (STRIDE)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS architecture_threats (
+            id TEXT PRIMARY KEY,
+            review_id TEXT NOT NULL REFERENCES architecture_reviews(id),
+            stride_category TEXT NOT NULL,
+            component_id TEXT REFERENCES architecture_components(id),
+            data_flow_id TEXT REFERENCES architecture_data_flows(id),
+            title TEXT NOT NULL,
+            threat_description TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            likelihood TEXT NOT NULL,
+            impact TEXT NOT NULL,
+            dread_score INTEGER,
+            mitigations TEXT,
+            status TEXT NOT NULL DEFAULT 'open',
+            assigned_to TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Architecture Recommendations table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS architecture_recommendations (
+            id TEXT PRIMARY KEY,
+            review_id TEXT NOT NULL REFERENCES architecture_reviews(id),
+            title TEXT NOT NULL,
+            description TEXT NOT NULL,
+            priority TEXT NOT NULL,
+            effort TEXT NOT NULL,
+            category TEXT NOT NULL,
+            implementation_steps TEXT,
+            related_threats TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Architecture Review History table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS architecture_review_history (
+            id TEXT PRIMARY KEY,
+            review_id TEXT NOT NULL REFERENCES architecture_reviews(id),
+            action TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            changes_json TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for Architecture tables
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_architecture_reviews_user ON architecture_reviews(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_architecture_reviews_status ON architecture_reviews(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_architecture_components_review ON architecture_components(review_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_architecture_data_flows_review ON architecture_data_flows(review_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_architecture_threats_review ON architecture_threats(review_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_architecture_threats_status ON architecture_threats(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_architecture_recommendations_review ON architecture_recommendations(review_id)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created Architecture Review tables for Yellow Team capabilities");
+    Ok(())
+}
+
+/// Create Orange Team tables (Security Awareness & Training)
+pub async fn create_orange_team_tables(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
+    // Training Courses
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS training_courses (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            description TEXT,
+            category TEXT NOT NULL,
+            difficulty TEXT NOT NULL,
+            duration_minutes INTEGER NOT NULL,
+            passing_score INTEGER DEFAULT 80,
+            points_value INTEGER DEFAULT 100,
+            badge_id TEXT,
+            is_mandatory BOOLEAN DEFAULT FALSE,
+            is_active BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Training Modules
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS training_modules (
+            id TEXT PRIMARY KEY,
+            course_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            content_type TEXT NOT NULL,
+            content_data TEXT NOT NULL,
+            order_index INTEGER NOT NULL,
+            duration_minutes INTEGER NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (course_id) REFERENCES training_courses(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Training Quizzes
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS training_quizzes (
+            id TEXT PRIMARY KEY,
+            course_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            questions_json TEXT NOT NULL,
+            time_limit_minutes INTEGER,
+            randomize_questions BOOLEAN DEFAULT TRUE,
+            show_correct_answers BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (course_id) REFERENCES training_courses(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Training Enrollments
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS training_enrollments (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            course_id TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'enrolled',
+            progress_percent INTEGER DEFAULT 0,
+            quiz_score INTEGER,
+            started_at TIMESTAMP,
+            completed_at TIMESTAMP,
+            certificate_id TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (course_id) REFERENCES training_courses(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Training Certificates
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS training_certificates (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            course_id TEXT NOT NULL,
+            certificate_number TEXT NOT NULL UNIQUE,
+            issued_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            expires_at TIMESTAMP,
+            pdf_path TEXT,
+            FOREIGN KEY (course_id) REFERENCES training_courses(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Training Badges
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS training_badges (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL,
+            icon_url TEXT,
+            category TEXT NOT NULL,
+            points_required INTEGER,
+            criteria_json TEXT,
+            rarity TEXT DEFAULT 'common',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // User Badges
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS user_badges (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            badge_id TEXT NOT NULL,
+            earned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (badge_id) REFERENCES training_badges(id) ON DELETE CASCADE,
+            UNIQUE(user_id, badge_id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // User Points
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS user_points (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL UNIQUE,
+            points INTEGER DEFAULT 0,
+            level INTEGER DEFAULT 1,
+            streak_days INTEGER DEFAULT 0,
+            last_activity_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Point Transactions
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS point_transactions (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            points INTEGER NOT NULL,
+            reason TEXT NOT NULL,
+            reference_id TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Security Challenges
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS security_challenges (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            description TEXT NOT NULL,
+            challenge_type TEXT NOT NULL,
+            difficulty TEXT NOT NULL,
+            points_reward INTEGER NOT NULL,
+            time_limit_minutes INTEGER,
+            max_attempts INTEGER,
+            content_json TEXT NOT NULL,
+            solution_hash TEXT,
+            is_active BOOLEAN DEFAULT TRUE,
+            starts_at TIMESTAMP,
+            ends_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Challenge Attempts
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS challenge_attempts (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            challenge_id TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'attempted',
+            score INTEGER,
+            time_spent_seconds INTEGER,
+            attempts_count INTEGER DEFAULT 1,
+            completed_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (challenge_id) REFERENCES security_challenges(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Phishing Susceptibility
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS phishing_susceptibility (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL UNIQUE,
+            score REAL NOT NULL,
+            click_rate REAL,
+            report_rate REAL,
+            training_completion_rate REAL,
+            last_phished_at TIMESTAMP,
+            last_trained_at TIMESTAMP,
+            risk_level TEXT NOT NULL,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Department Phishing Stats
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS department_phishing_stats (
+            id TEXT PRIMARY KEY,
+            department TEXT NOT NULL UNIQUE,
+            user_count INTEGER NOT NULL,
+            avg_susceptibility REAL,
+            total_clicks INTEGER DEFAULT 0,
+            total_reports INTEGER DEFAULT 0,
+            campaigns_count INTEGER DEFAULT 0,
+            risk_level TEXT NOT NULL,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // JIT Training Triggers
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS jit_training_triggers (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            trigger_type TEXT NOT NULL,
+            training_module_id TEXT NOT NULL,
+            delay_minutes INTEGER DEFAULT 0,
+            is_active BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // JIT Training Assignments
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS jit_training_assignments (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            trigger_id TEXT NOT NULL,
+            training_module_id TEXT NOT NULL,
+            trigger_event_id TEXT,
+            status TEXT NOT NULL DEFAULT 'assigned',
+            assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            due_at TIMESTAMP,
+            completed_at TIMESTAMP,
+            FOREIGN KEY (trigger_id) REFERENCES jit_training_triggers(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Compliance Training Requirements
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS compliance_training_requirements (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            framework TEXT NOT NULL,
+            required_courses TEXT NOT NULL,
+            recurrence_months INTEGER DEFAULT 12,
+            grace_period_days INTEGER DEFAULT 30,
+            is_active BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Compliance Training Status
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS compliance_training_status (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            requirement_id TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            due_date DATE NOT NULL,
+            completed_at TIMESTAMP,
+            next_due_date DATE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (requirement_id) REFERENCES compliance_training_requirements(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for Orange Team tables
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_training_courses_category ON training_courses(category)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_training_modules_course ON training_modules(course_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_training_enrollments_user ON training_enrollments(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_training_enrollments_course ON training_enrollments(course_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_training_enrollments_status ON training_enrollments(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_user_badges_user ON user_badges(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_point_transactions_user ON point_transactions(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_challenge_attempts_user ON challenge_attempts(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_phishing_susceptibility_risk ON phishing_susceptibility(risk_level)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_jit_assignments_user ON jit_training_assignments(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_jit_assignments_status ON jit_training_assignments(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_compliance_status_user ON compliance_training_status(user_id)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created Orange Team tables for Security Awareness & Training");
+    Ok(())
+}
+
+/// Create Green Team tables (Security Automation & Orchestration - SOAR)
+pub async fn create_green_team_tables(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
+    // SOAR Playbooks
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS soar_playbooks (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            category TEXT NOT NULL,
+            trigger_type TEXT NOT NULL,
+            trigger_config TEXT,
+            steps_json TEXT NOT NULL,
+            is_active BOOLEAN DEFAULT TRUE,
+            is_template BOOLEAN DEFAULT FALSE,
+            marketplace_id TEXT,
+            version TEXT DEFAULT '1.0.0',
+            created_by TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Playbook Runs
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS soar_playbook_runs (
+            id TEXT PRIMARY KEY,
+            playbook_id TEXT NOT NULL,
+            trigger_type TEXT NOT NULL,
+            trigger_source TEXT,
+            status TEXT NOT NULL DEFAULT 'running',
+            current_step INTEGER DEFAULT 0,
+            total_steps INTEGER NOT NULL,
+            input_data TEXT,
+            output_data TEXT,
+            error_message TEXT,
+            started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            completed_at TIMESTAMP,
+            duration_seconds INTEGER,
+            FOREIGN KEY (playbook_id) REFERENCES soar_playbooks(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Playbook Steps
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS soar_playbook_steps (
+            id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL,
+            step_index INTEGER NOT NULL,
+            action_type TEXT NOT NULL,
+            action_config TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            input_data TEXT,
+            output_data TEXT,
+            error_message TEXT,
+            started_at TIMESTAMP,
+            completed_at TIMESTAMP,
+            FOREIGN KEY (run_id) REFERENCES soar_playbook_runs(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // SOAR Actions (built-in action definitions)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS soar_actions (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            category TEXT NOT NULL,
+            action_type TEXT NOT NULL,
+            config_schema TEXT NOT NULL,
+            output_schema TEXT,
+            requires_approval BOOLEAN DEFAULT FALSE,
+            timeout_seconds INTEGER DEFAULT 300,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Marketplace Playbooks
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS soar_marketplace_playbooks (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL,
+            author TEXT NOT NULL,
+            category TEXT NOT NULL,
+            tags TEXT,
+            version TEXT NOT NULL,
+            downloads INTEGER DEFAULT 0,
+            rating REAL DEFAULT 0,
+            ratings_count INTEGER DEFAULT 0,
+            playbook_json TEXT NOT NULL,
+            is_verified BOOLEAN DEFAULT FALSE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Marketplace Ratings
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS soar_playbook_ratings (
+            id TEXT PRIMARY KEY,
+            playbook_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
+            review TEXT,
+            helpful_votes INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (playbook_id) REFERENCES soar_marketplace_playbooks(id) ON DELETE CASCADE,
+            UNIQUE(playbook_id, user_id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // SOAR Cases
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS soar_cases (
+            id TEXT PRIMARY KEY,
+            case_number TEXT NOT NULL UNIQUE,
+            title TEXT NOT NULL,
+            description TEXT,
+            severity TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'open',
+            priority TEXT NOT NULL DEFAULT 'medium',
+            case_type TEXT NOT NULL,
+            assignee_id TEXT,
+            source TEXT,
+            source_ref TEXT,
+            tlp TEXT DEFAULT 'amber',
+            tags TEXT,
+            resolution TEXT,
+            resolution_time_hours REAL,
+            created_by TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            resolved_at TIMESTAMP,
+            closed_at TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Case Tasks
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS soar_case_tasks (
+            id TEXT PRIMARY KEY,
+            case_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            priority TEXT NOT NULL DEFAULT 'medium',
+            assignee_id TEXT,
+            due_at TIMESTAMP,
+            completed_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (case_id) REFERENCES soar_cases(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Case Evidence
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS soar_case_evidence (
+            id TEXT PRIMARY KEY,
+            case_id TEXT NOT NULL,
+            evidence_type TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            file_path TEXT,
+            hash_sha256 TEXT,
+            metadata TEXT,
+            collected_by TEXT NOT NULL,
+            collected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (case_id) REFERENCES soar_cases(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Case Comments
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS soar_case_comments (
+            id TEXT PRIMARY KEY,
+            case_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            content TEXT NOT NULL,
+            is_internal BOOLEAN DEFAULT FALSE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (case_id) REFERENCES soar_cases(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Case Timeline
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS soar_case_timeline (
+            id TEXT PRIMARY KEY,
+            case_id TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            event_data TEXT NOT NULL,
+            user_id TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (case_id) REFERENCES soar_cases(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // IOC Feeds
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS soar_ioc_feeds (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            feed_type TEXT NOT NULL,
+            url TEXT NOT NULL,
+            api_key TEXT,
+            poll_interval_minutes INTEGER DEFAULT 60,
+            is_active BOOLEAN DEFAULT TRUE,
+            last_poll_at TIMESTAMP,
+            last_poll_status TEXT,
+            ioc_count INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Automated IOCs
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS soar_automated_iocs (
+            id TEXT PRIMARY KEY,
+            feed_id TEXT NOT NULL,
+            ioc_type TEXT NOT NULL,
+            value TEXT NOT NULL,
+            confidence REAL,
+            severity TEXT,
+            first_seen TIMESTAMP,
+            last_seen TIMESTAMP,
+            tags TEXT,
+            enrichment_data TEXT,
+            is_active BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (feed_id) REFERENCES soar_ioc_feeds(id) ON DELETE CASCADE,
+            UNIQUE(feed_id, ioc_type, value)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Response Metrics (daily aggregates)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS soar_response_metrics (
+            id TEXT PRIMARY KEY,
+            metric_date DATE NOT NULL,
+            total_cases INTEGER DEFAULT 0,
+            cases_opened INTEGER DEFAULT 0,
+            cases_closed INTEGER DEFAULT 0,
+            avg_mttd_minutes REAL,
+            avg_mttr_minutes REAL,
+            avg_mttc_minutes REAL,
+            avg_resolution_hours REAL,
+            sla_met_count INTEGER DEFAULT 0,
+            sla_breached_count INTEGER DEFAULT 0,
+            playbooks_executed INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(metric_date)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // SLA Configurations
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS soar_sla_configs (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            severity TEXT NOT NULL UNIQUE,
+            response_time_minutes INTEGER NOT NULL,
+            containment_time_minutes INTEGER,
+            resolution_time_hours INTEGER NOT NULL,
+            escalation_time_minutes INTEGER,
+            is_active BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Orchestration Integrations
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS soar_integrations (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            integration_type TEXT NOT NULL,
+            endpoint TEXT NOT NULL,
+            api_key TEXT,
+            username TEXT,
+            password TEXT,
+            extra_config TEXT,
+            is_active BOOLEAN DEFAULT TRUE,
+            last_test_at TIMESTAMP,
+            last_test_status TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for Green Team
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_soar_playbooks_category ON soar_playbooks(category)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_soar_playbooks_active ON soar_playbooks(is_active)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_soar_runs_playbook ON soar_playbook_runs(playbook_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_soar_runs_status ON soar_playbook_runs(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_soar_cases_status ON soar_cases(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_soar_cases_severity ON soar_cases(severity)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_soar_cases_assignee ON soar_cases(assignee_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_soar_cases_created ON soar_cases(created_at)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_soar_tasks_case ON soar_case_tasks(case_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_soar_tasks_status ON soar_case_tasks(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_soar_evidence_case ON soar_case_evidence(case_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_soar_comments_case ON soar_case_comments(case_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_soar_timeline_case ON soar_case_timeline(case_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_soar_iocs_feed ON soar_automated_iocs(feed_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_soar_iocs_type ON soar_automated_iocs(ioc_type)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_soar_iocs_value ON soar_automated_iocs(value)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_soar_metrics_date ON soar_response_metrics(metric_date)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_soar_marketplace_category ON soar_marketplace_playbooks(category)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_soar_marketplace_rating ON soar_marketplace_playbooks(rating DESC)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_soar_marketplace_downloads ON soar_marketplace_playbooks(downloads DESC)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created Green Team tables for Security Automation & Orchestration (SOAR)");
+    Ok(())
+}
+
+/// Create White Team (GRC - Governance, Risk & Compliance) tables
+pub async fn create_white_team_tables(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
+    // ============================================================================
+    // Policy Management Tables
+    // ============================================================================
+
+    // Policies table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS grc_policies (
+            id TEXT PRIMARY KEY,
+            policy_number TEXT NOT NULL UNIQUE,
+            title TEXT NOT NULL,
+            category TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'draft',
+            version TEXT NOT NULL DEFAULT '1.0',
+            content TEXT NOT NULL,
+            summary TEXT,
+            owner_id TEXT NOT NULL,
+            effective_date DATE,
+            review_date DATE,
+            expiry_date DATE,
+            parent_policy_id TEXT REFERENCES grc_policies(id),
+            requires_acknowledgment BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Policy versions table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS grc_policy_versions (
+            id TEXT PRIMARY KEY,
+            policy_id TEXT NOT NULL REFERENCES grc_policies(id),
+            version TEXT NOT NULL,
+            content TEXT NOT NULL,
+            change_summary TEXT,
+            created_by TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Policy approvals table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS grc_policy_approvals (
+            id TEXT PRIMARY KEY,
+            policy_id TEXT NOT NULL REFERENCES grc_policies(id),
+            version TEXT NOT NULL,
+            approver_id TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            comments TEXT,
+            decided_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Policy acknowledgments table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS grc_policy_acknowledgments (
+            id TEXT PRIMARY KEY,
+            policy_id TEXT NOT NULL REFERENCES grc_policies(id),
+            user_id TEXT NOT NULL,
+            version TEXT NOT NULL,
+            acknowledged_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            ip_address TEXT,
+            UNIQUE(policy_id, user_id, version)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Policy exceptions table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS grc_policy_exceptions (
+            id TEXT PRIMARY KEY,
+            policy_id TEXT NOT NULL REFERENCES grc_policies(id),
+            title TEXT NOT NULL,
+            description TEXT NOT NULL,
+            justification TEXT NOT NULL,
+            risk_accepted TEXT,
+            compensating_controls TEXT,
+            requestor_id TEXT NOT NULL,
+            approver_id TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            start_date DATE NOT NULL,
+            end_date DATE NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // ============================================================================
+    // Risk Management Tables
+    // ============================================================================
+
+    // Risk register table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS grc_risks (
+            id TEXT PRIMARY KEY,
+            risk_id TEXT NOT NULL UNIQUE,
+            title TEXT NOT NULL,
+            description TEXT NOT NULL,
+            category TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'open',
+            source TEXT,
+            owner_id TEXT NOT NULL,
+            inherent_likelihood INTEGER NOT NULL,
+            inherent_impact INTEGER NOT NULL,
+            inherent_risk_score INTEGER,
+            residual_likelihood INTEGER,
+            residual_impact INTEGER,
+            residual_risk_score INTEGER,
+            fair_analysis TEXT,
+            annualized_loss_expectancy REAL,
+            treatment_strategy TEXT,
+            treatment_plan TEXT,
+            target_date DATE,
+            related_controls TEXT,
+            related_assets TEXT,
+            tags TEXT,
+            last_assessed_at TIMESTAMP,
+            next_review_date DATE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Risk assessments table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS grc_risk_assessments (
+            id TEXT PRIMARY KEY,
+            risk_id TEXT NOT NULL REFERENCES grc_risks(id),
+            assessment_type TEXT NOT NULL,
+            assessor_id TEXT NOT NULL,
+            likelihood INTEGER NOT NULL,
+            impact INTEGER NOT NULL,
+            risk_score INTEGER NOT NULL,
+            likelihood_rationale TEXT,
+            impact_rationale TEXT,
+            threats_identified TEXT,
+            vulnerabilities_identified TEXT,
+            recommendations TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // ============================================================================
+    // Control Framework Tables
+    // ============================================================================
+
+    // Controls table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS grc_controls (
+            id TEXT PRIMARY KEY,
+            control_id TEXT NOT NULL UNIQUE,
+            title TEXT NOT NULL,
+            description TEXT NOT NULL,
+            category TEXT NOT NULL,
+            type TEXT NOT NULL,
+            domain TEXT NOT NULL,
+            owner_id TEXT,
+            implementation_status TEXT NOT NULL DEFAULT 'not_implemented',
+            effectiveness TEXT,
+            testing_frequency TEXT,
+            last_tested_at TIMESTAMP,
+            next_test_date DATE,
+            evidence_requirements TEXT,
+            automation_status TEXT DEFAULT 'manual',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Control framework mappings table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS grc_control_mappings (
+            id TEXT PRIMARY KEY,
+            control_id TEXT NOT NULL REFERENCES grc_controls(id),
+            framework TEXT NOT NULL,
+            framework_control_id TEXT NOT NULL,
+            framework_control_name TEXT,
+            mapping_notes TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(control_id, framework, framework_control_id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Control tests table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS grc_control_tests (
+            id TEXT PRIMARY KEY,
+            control_id TEXT NOT NULL REFERENCES grc_controls(id),
+            test_date DATE NOT NULL,
+            tester_id TEXT NOT NULL,
+            test_type TEXT NOT NULL,
+            test_procedure TEXT NOT NULL,
+            sample_size INTEGER,
+            result TEXT NOT NULL,
+            findings TEXT,
+            evidence_refs TEXT,
+            remediation_required BOOLEAN DEFAULT FALSE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // ============================================================================
+    // Audit Management Tables
+    // ============================================================================
+
+    // Audits table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS grc_audits (
+            id TEXT PRIMARY KEY,
+            audit_number TEXT NOT NULL UNIQUE,
+            title TEXT NOT NULL,
+            audit_type TEXT NOT NULL,
+            scope TEXT NOT NULL,
+            objectives TEXT,
+            status TEXT NOT NULL DEFAULT 'planning',
+            lead_auditor_id TEXT NOT NULL,
+            auditee_id TEXT,
+            planned_start_date DATE,
+            planned_end_date DATE,
+            actual_start_date DATE,
+            actual_end_date DATE,
+            frameworks TEXT,
+            controls_in_scope TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Audit findings table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS grc_audit_findings (
+            id TEXT PRIMARY KEY,
+            audit_id TEXT NOT NULL REFERENCES grc_audits(id),
+            finding_number TEXT NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'open',
+            control_id TEXT,
+            root_cause TEXT,
+            recommendation TEXT NOT NULL,
+            management_response TEXT,
+            remediation_owner_id TEXT,
+            remediation_due_date DATE,
+            remediation_completed_date DATE,
+            evidence_refs TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Audit evidence table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS grc_audit_evidence (
+            id TEXT PRIMARY KEY,
+            audit_id TEXT NOT NULL REFERENCES grc_audits(id),
+            finding_id TEXT REFERENCES grc_audit_findings(id),
+            name TEXT NOT NULL,
+            description TEXT,
+            evidence_type TEXT NOT NULL,
+            file_path TEXT,
+            file_hash TEXT,
+            collected_by TEXT NOT NULL,
+            collected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // ============================================================================
+    // Vendor Risk Management Tables
+    // ============================================================================
+
+    // Vendors table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS grc_vendors (
+            id TEXT PRIMARY KEY,
+            vendor_id TEXT NOT NULL UNIQUE,
+            name TEXT NOT NULL,
+            category TEXT NOT NULL,
+            tier TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'prospective',
+            primary_contact_name TEXT,
+            primary_contact_email TEXT,
+            services_provided TEXT,
+            data_access_level TEXT,
+            data_types_accessed TEXT,
+            contract_start_date DATE,
+            contract_end_date DATE,
+            contract_value REAL,
+            inherent_risk_score INTEGER,
+            residual_risk_score INTEGER,
+            last_assessment_date DATE,
+            next_assessment_date DATE,
+            soc2_report BOOLEAN DEFAULT FALSE,
+            iso_27001_certified BOOLEAN DEFAULT FALSE,
+            other_certifications TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Vendor assessments table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS grc_vendor_assessments (
+            id TEXT PRIMARY KEY,
+            vendor_id TEXT NOT NULL REFERENCES grc_vendors(id),
+            assessment_type TEXT NOT NULL,
+            assessment_date DATE NOT NULL,
+            assessor_id TEXT NOT NULL,
+            questionnaire_id TEXT,
+            questionnaire_score REAL,
+            risk_areas TEXT,
+            findings TEXT,
+            recommendations TEXT,
+            overall_risk_rating TEXT NOT NULL,
+            approval_status TEXT DEFAULT 'pending',
+            approval_notes TEXT,
+            approved_by TEXT,
+            approved_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Vendor questionnaires table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS grc_vendor_questionnaires (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            version TEXT NOT NULL DEFAULT '1.0',
+            questions_json TEXT NOT NULL,
+            scoring_method TEXT DEFAULT 'weighted',
+            is_active BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Vendor questionnaire responses table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS grc_vendor_questionnaire_responses (
+            id TEXT PRIMARY KEY,
+            vendor_id TEXT NOT NULL REFERENCES grc_vendors(id),
+            questionnaire_id TEXT NOT NULL REFERENCES grc_vendor_questionnaires(id),
+            assessment_id TEXT REFERENCES grc_vendor_assessments(id),
+            responses_json TEXT NOT NULL,
+            score REAL,
+            submitted_at TIMESTAMP,
+            reviewed_at TIMESTAMP,
+            reviewed_by TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // ============================================================================
+    // Indexes
+    // ============================================================================
+
+    // Policy indexes
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_grc_policies_status ON grc_policies(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_grc_policies_category ON grc_policies(category)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_grc_policies_owner ON grc_policies(owner_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_grc_policy_versions_policy ON grc_policy_versions(policy_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_grc_policy_approvals_policy ON grc_policy_approvals(policy_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_grc_policy_acks_policy ON grc_policy_acknowledgments(policy_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_grc_policy_acks_user ON grc_policy_acknowledgments(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_grc_policy_exceptions_policy ON grc_policy_exceptions(policy_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_grc_policy_exceptions_status ON grc_policy_exceptions(status)")
+        .execute(pool)
+        .await?;
+
+    // Risk indexes
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_grc_risks_status ON grc_risks(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_grc_risks_category ON grc_risks(category)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_grc_risks_owner ON grc_risks(owner_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_grc_risks_score ON grc_risks(inherent_risk_score DESC)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_grc_risk_assessments_risk ON grc_risk_assessments(risk_id)")
+        .execute(pool)
+        .await?;
+
+    // Control indexes
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_grc_controls_domain ON grc_controls(domain)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_grc_controls_status ON grc_controls(implementation_status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_grc_control_mappings_control ON grc_control_mappings(control_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_grc_control_mappings_framework ON grc_control_mappings(framework)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_grc_control_tests_control ON grc_control_tests(control_id)")
+        .execute(pool)
+        .await?;
+
+    // Audit indexes
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_grc_audits_status ON grc_audits(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_grc_audits_type ON grc_audits(audit_type)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_grc_audit_findings_audit ON grc_audit_findings(audit_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_grc_audit_findings_severity ON grc_audit_findings(severity)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_grc_audit_findings_status ON grc_audit_findings(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_grc_audit_evidence_audit ON grc_audit_evidence(audit_id)")
+        .execute(pool)
+        .await?;
+
+    // Vendor indexes
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_grc_vendors_status ON grc_vendors(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_grc_vendors_tier ON grc_vendors(tier)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_grc_vendors_category ON grc_vendors(category)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_grc_vendor_assessments_vendor ON grc_vendor_assessments(vendor_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_grc_vendor_responses_vendor ON grc_vendor_questionnaire_responses(vendor_id)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created White Team tables for Governance, Risk & Compliance (GRC)");
+    Ok(())
+}
+
+/// Create Purple Team Enhancement tables (Phase 5)
+pub async fn create_purple_team_enhancement_tables(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
+    // Attack Executions table
+    sqlx::query(r#"
+        CREATE TABLE IF NOT EXISTS purple_attack_executions (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            exercise_id TEXT REFERENCES purple_exercises(id),
+            technique_id TEXT NOT NULL,
+            execution_method TEXT NOT NULL,
+            execution_config TEXT,
+            c2_session_id TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            output TEXT,
+            artifacts TEXT,
+            started_at TIMESTAMP,
+            completed_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    "#)
+    .execute(pool)
+    .await?;
+
+    // SIEM Connections table
+    sqlx::query(r#"
+        CREATE TABLE IF NOT EXISTS purple_siem_connections (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            siem_type TEXT NOT NULL,
+            connection_config TEXT NOT NULL,
+            is_active BOOLEAN DEFAULT TRUE,
+            last_test_at TIMESTAMP,
+            last_test_status TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    "#)
+    .execute(pool)
+    .await?;
+
+    // Detection Checks table
+    sqlx::query(r#"
+        CREATE TABLE IF NOT EXISTS purple_detection_checks (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            execution_id TEXT NOT NULL REFERENCES purple_attack_executions(id),
+            siem_connection_id TEXT NOT NULL REFERENCES purple_siem_connections(id),
+            technique_id TEXT NOT NULL,
+            check_query TEXT NOT NULL,
+            expected_alert_type TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            alert_found BOOLEAN DEFAULT FALSE,
+            alert_details TEXT,
+            time_to_detect_seconds INTEGER,
+            checked_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    "#)
+    .execute(pool)
+    .await?;
+
+    // Adversary Profiles table
+    sqlx::query(r#"
+        CREATE TABLE IF NOT EXISTS purple_adversary_profiles (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL,
+            motivation TEXT,
+            target_sectors TEXT,
+            techniques TEXT NOT NULL,
+            ttp_chains TEXT,
+            tools_used TEXT,
+            references_json TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    "#)
+    .execute(pool)
+    .await?;
+
+    // Emulation Campaigns table
+    sqlx::query(r#"
+        CREATE TABLE IF NOT EXISTS purple_emulation_campaigns (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            profile_id TEXT NOT NULL REFERENCES purple_adversary_profiles(id),
+            name TEXT NOT NULL,
+            description TEXT,
+            status TEXT NOT NULL DEFAULT 'draft',
+            phases TEXT NOT NULL,
+            current_phase INTEGER DEFAULT 0,
+            started_at TIMESTAMP,
+            completed_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    "#)
+    .execute(pool)
+    .await?;
+
+    // Generated Detections table
+    sqlx::query(r#"
+        CREATE TABLE IF NOT EXISTS purple_generated_detections (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            technique_id TEXT NOT NULL,
+            detection_type TEXT NOT NULL,
+            rule_content TEXT NOT NULL,
+            rule_metadata TEXT,
+            generation_source TEXT,
+            execution_id TEXT REFERENCES purple_attack_executions(id),
+            validation_status TEXT DEFAULT 'untested',
+            false_positive_rate REAL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    "#)
+    .execute(pool)
+    .await?;
+
+    // Control Validations table
+    sqlx::query(r#"
+        CREATE TABLE IF NOT EXISTS purple_control_validations (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            control_id TEXT NOT NULL,
+            technique_id TEXT NOT NULL,
+            validation_type TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'scheduled',
+            scheduled_at TIMESTAMP,
+            executed_at TIMESTAMP,
+            result TEXT,
+            evidence_refs TEXT,
+            notes TEXT,
+            validated_by TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    "#)
+    .execute(pool)
+    .await?;
+
+    // Validation Schedules table
+    sqlx::query(r#"
+        CREATE TABLE IF NOT EXISTS purple_validation_schedules (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            control_id TEXT NOT NULL,
+            technique_ids TEXT NOT NULL,
+            frequency TEXT NOT NULL,
+            next_run_at TIMESTAMP,
+            last_run_at TIMESTAMP,
+            is_active BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    "#)
+    .execute(pool)
+    .await?;
+
+    // Create indexes
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_purple_executions_user ON purple_attack_executions(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_purple_executions_exercise ON purple_attack_executions(exercise_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_purple_executions_technique ON purple_attack_executions(technique_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_purple_executions_status ON purple_attack_executions(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_purple_siem_user ON purple_siem_connections(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_purple_checks_execution ON purple_detection_checks(execution_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_purple_checks_siem ON purple_detection_checks(siem_connection_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_purple_campaigns_user ON purple_emulation_campaigns(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_purple_campaigns_profile ON purple_emulation_campaigns(profile_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_purple_campaigns_status ON purple_emulation_campaigns(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_purple_detections_user ON purple_generated_detections(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_purple_detections_technique ON purple_generated_detections(technique_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_purple_detections_type ON purple_generated_detections(detection_type)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_purple_validations_user ON purple_control_validations(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_purple_validations_control ON purple_control_validations(control_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_purple_schedules_user ON purple_validation_schedules(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_purple_schedules_control ON purple_validation_schedules(control_id)")
+        .execute(pool)
+        .await?;
+
+    // Seed default adversary profiles
+    seed_adversary_profiles(pool).await?;
+
+    log::info!("Created Purple Team Enhancement tables");
+    Ok(())
+}
+
+/// Seed default adversary profiles (APT29, FIN7, etc.)
+async fn seed_adversary_profiles(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
+    // Check if profiles already exist
+    let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM purple_adversary_profiles")
+        .fetch_one(pool)
+        .await?;
+
+    if count.0 > 0 {
+        return Ok(());
+    }
+
+    // APT29 (Cozy Bear) - Russian state-sponsored espionage
+    sqlx::query(r#"
+        INSERT INTO purple_adversary_profiles (id, name, description, motivation, target_sectors, techniques, ttp_chains, tools_used, references_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    "#)
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind("APT29 (Cozy Bear)")
+    .bind("Russian state-sponsored threat group known for sophisticated cyber espionage campaigns targeting government, diplomatic, and think tank organizations.")
+    .bind("espionage")
+    .bind(r#"["Government","Diplomatic","Think Tanks","Healthcare","Energy"]"#)
+    .bind(r#"["T1566.001","T1059.001","T1547.001","T1071.001","T1027","T1140","T1055","T1083","T1105","T1573"]"#)
+    .bind(r#"[{"name":"Initial Access via Spearphishing","description":"Gain access through targeted phishing emails","techniques":[{"technique_id":"T1566.001","order":1},{"technique_id":"T1059.001","order":2},{"technique_id":"T1547.001","order":3}]}]"#)
+    .bind(r#"["Cobalt Strike","WellMess","WellMail","SUNBURST","Mimikatz"]"#)
+    .bind(r#"["https://attack.mitre.org/groups/G0016/","https://www.cisa.gov/apt29"]"#)
+    .execute(pool)
+    .await?;
+
+    // FIN7 - Financially motivated threat group
+    sqlx::query(r#"
+        INSERT INTO purple_adversary_profiles (id, name, description, motivation, target_sectors, techniques, ttp_chains, tools_used, references_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    "#)
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind("FIN7 (Carbanak)")
+    .bind("Financially motivated threat group known for targeting retail, restaurant, and hospitality sectors for payment card data theft.")
+    .bind("financial")
+    .bind(r#"["Retail","Hospitality","Restaurant","Financial Services"]"#)
+    .bind(r#"["T1566.001","T1204.002","T1059.001","T1059.003","T1547.001","T1055","T1041","T1005","T1560"]"#)
+    .bind(r#"[{"name":"POS Malware Deployment","description":"Target point-of-sale systems for card data","techniques":[{"technique_id":"T1566.001","order":1},{"technique_id":"T1204.002","order":2},{"technique_id":"T1059.001","order":3},{"technique_id":"T1005","order":4}]}]"#)
+    .bind(r#"["Carbanak","GRIFFON","HALFBAKED","Cobalt Strike","Mimikatz"]"#)
+    .bind(r#"["https://attack.mitre.org/groups/G0046/"]"#)
+    .execute(pool)
+    .await?;
+
+    // Lazarus Group - North Korean state-sponsored
+    sqlx::query(r#"
+        INSERT INTO purple_adversary_profiles (id, name, description, motivation, target_sectors, techniques, ttp_chains, tools_used, references_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    "#)
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind("Lazarus Group")
+    .bind("North Korean state-sponsored threat group known for destructive attacks and financial theft including cryptocurrency exchanges.")
+    .bind("financial")
+    .bind(r#"["Financial Services","Cryptocurrency","Technology","Government","Defense"]"#)
+    .bind(r#"["T1566.001","T1059.001","T1059.005","T1547.001","T1071.001","T1027","T1562.001","T1070","T1485"]"#)
+    .bind(r#"[{"name":"Cryptocurrency Exchange Attack","description":"Target cryptocurrency exchanges for theft","techniques":[{"technique_id":"T1566.001","order":1},{"technique_id":"T1059.001","order":2},{"technique_id":"T1005","order":3},{"technique_id":"T1041","order":4}]}]"#)
+    .bind(r#"["HOPLIGHT","ELECTRICFISH","HARDRAIN","Mimikatz","Cobalt Strike"]"#)
+    .bind(r#"["https://attack.mitre.org/groups/G0032/"]"#)
+    .execute(pool)
+    .await?;
+
+    // APT28 (Fancy Bear) - Russian military intelligence
+    sqlx::query(r#"
+        INSERT INTO purple_adversary_profiles (id, name, description, motivation, target_sectors, techniques, ttp_chains, tools_used, references_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    "#)
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind("APT28 (Fancy Bear)")
+    .bind("Russian military intelligence (GRU) threat group known for targeting government, military, and security organizations.")
+    .bind("espionage")
+    .bind(r#"["Government","Military","Defense","Media","Political Organizations"]"#)
+    .bind(r#"["T1566.001","T1566.002","T1059.001","T1547.001","T1078","T1110","T1071.001","T1055","T1003"]"#)
+    .bind(r#"[{"name":"Credential Harvesting Campaign","description":"Harvest credentials through phishing","techniques":[{"technique_id":"T1566.002","order":1},{"technique_id":"T1078","order":2},{"technique_id":"T1003","order":3}]}]"#)
+    .bind(r#"["X-Agent","CHOPSTICK","GAMEFISH","Mimikatz","Responder"]"#)
+    .bind(r#"["https://attack.mitre.org/groups/G0007/"]"#)
+    .execute(pool)
+    .await?;
+
+    // Conti Ransomware Group
+    sqlx::query(r#"
+        INSERT INTO purple_adversary_profiles (id, name, description, motivation, target_sectors, techniques, ttp_chains, tools_used, references_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    "#)
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind("Conti Ransomware")
+    .bind("Prolific ransomware-as-a-service operation known for double extortion tactics targeting critical infrastructure.")
+    .bind("financial")
+    .bind(r#"["Healthcare","Education","Government","Manufacturing","Critical Infrastructure"]"#)
+    .bind(r#"["T1566.001","T1059.001","T1059.003","T1569.002","T1486","T1490","T1021.002","T1003","T1083"]"#)
+    .bind(r#"[{"name":"Ransomware Deployment","description":"Full ransomware attack chain","techniques":[{"technique_id":"T1566.001","order":1},{"technique_id":"T1059.001","order":2},{"technique_id":"T1003","order":3},{"technique_id":"T1021.002","order":4},{"technique_id":"T1486","order":5}]}]"#)
+    .bind(r#"["Cobalt Strike","Mimikatz","ADFind","Rclone","Conti Ransomware"]"#)
+    .bind(r#"["https://www.cisa.gov/conti-ransomware"]"#)
+    .execute(pool)
+    .await?;
+
+    log::info!("Seeded default adversary profiles");
     Ok(())
 }

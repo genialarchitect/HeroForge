@@ -606,6 +606,14 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .configure(api::detection_engineering::configure)
                     // Threat Hunting endpoints (blue team)
                     .configure(api::threat_hunting::configure)
+                    // Yellow Team (DevSecOps) endpoints
+                    .configure(api::yellow_team::configure)
+                    // Orange Team (Security Awareness & Training) endpoints
+                    .configure(api::orange_team::configure)
+                    // Green Team (SOAR - Security Automation & Orchestration) endpoints
+                    .configure(api::green_team::configure)
+                    // White Team (GRC - Governance, Risk & Compliance) endpoints
+                    .configure(api::white_team::configure)
                     // Start workflow from vulnerability
                     .route("/vulnerabilities/{id}/workflow", web::post().to(api::workflows::start_workflow))
                     // SSO Admin endpoints

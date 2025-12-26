@@ -90,6 +90,10 @@ pub mod yara;
 pub mod tls_analysis;
 pub mod detection_engineering;
 pub mod threat_hunting;
+pub mod yellow_team;
+pub mod orange_team;
+pub mod green_team;
+pub mod white_team;
 
 #[cfg(test)]
 mod tests;

@@ -45,6 +45,17 @@ import {
   ArrowRight,
   TrendingUp,
   Wifi,
+  Swords,
+  ShieldAlert,
+  GraduationCap,
+  Workflow,
+  Scale,
+  Eye,
+  Bug,
+  Radar,
+  Play,
+  Cpu,
+  FileWarning,
 } from 'lucide-react';
 
 interface NavItem {
@@ -54,17 +65,79 @@ interface NavItem {
   matchPaths?: string[];
 }
 
+type TeamColor = 'red' | 'blue' | 'purple' | 'yellow' | 'orange' | 'green' | 'white' | 'cyan' | 'default';
+
 interface DropdownMenuProps {
   label: string;
   icon: React.ReactNode;
   items: NavItem[];
   isActive: boolean;
+  teamColor?: TeamColor;
 }
 
-const DropdownMenu: React.FC<DropdownMenuProps> = ({ label, icon, items, isActive }) => {
+// Team color configuration for styling
+const teamColorStyles: Record<TeamColor, { active: string; hover: string; border: string; dot: string }> = {
+  red: {
+    active: 'bg-red-500/10 text-red-600 dark:text-red-400',
+    hover: 'hover:bg-red-500/5 hover:text-red-600 dark:hover:text-red-400',
+    border: 'border-l-red-500',
+    dot: 'bg-red-500',
+  },
+  blue: {
+    active: 'bg-blue-500/10 text-blue-600 dark:text-blue-400',
+    hover: 'hover:bg-blue-500/5 hover:text-blue-600 dark:hover:text-blue-400',
+    border: 'border-l-blue-500',
+    dot: 'bg-blue-500',
+  },
+  purple: {
+    active: 'bg-purple-500/10 text-purple-600 dark:text-purple-400',
+    hover: 'hover:bg-purple-500/5 hover:text-purple-600 dark:hover:text-purple-400',
+    border: 'border-l-purple-500',
+    dot: 'bg-purple-500',
+  },
+  yellow: {
+    active: 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400',
+    hover: 'hover:bg-yellow-500/5 hover:text-yellow-600 dark:hover:text-yellow-400',
+    border: 'border-l-yellow-500',
+    dot: 'bg-yellow-500',
+  },
+  orange: {
+    active: 'bg-orange-500/10 text-orange-600 dark:text-orange-400',
+    hover: 'hover:bg-orange-500/5 hover:text-orange-600 dark:hover:text-orange-400',
+    border: 'border-l-orange-500',
+    dot: 'bg-orange-500',
+  },
+  green: {
+    active: 'bg-green-500/10 text-green-600 dark:text-green-400',
+    hover: 'hover:bg-green-500/5 hover:text-green-600 dark:hover:text-green-400',
+    border: 'border-l-green-500',
+    dot: 'bg-green-500',
+  },
+  white: {
+    active: 'bg-slate-500/10 text-slate-700 dark:text-slate-300',
+    hover: 'hover:bg-slate-500/5 hover:text-slate-700 dark:hover:text-slate-300',
+    border: 'border-l-slate-400',
+    dot: 'bg-slate-400',
+  },
+  cyan: {
+    active: 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400',
+    hover: 'hover:bg-cyan-500/5 hover:text-cyan-600 dark:hover:text-cyan-400',
+    border: 'border-l-cyan-500',
+    dot: 'bg-cyan-500',
+  },
+  default: {
+    active: 'bg-primary/10 text-primary',
+    hover: 'hover:bg-light-hover dark:hover:bg-dark-hover hover:text-slate-900 dark:hover:text-white',
+    border: 'border-l-primary',
+    dot: 'bg-primary',
+  },
+};
+
+const DropdownMenu: React.FC<DropdownMenuProps> = ({ label, icon, items, isActive, teamColor = 'default' }) => {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
+  const colorStyle = teamColorStyles[teamColor];
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -90,17 +163,18 @@ const DropdownMenu: React.FC<DropdownMenuProps> = ({ label, icon, items, isActiv
         onClick={() => setIsOpen(!isOpen)}
         className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm transition-colors ${
           isActive
-            ? 'bg-primary/10 text-primary font-medium'
-            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-light-hover dark:hover:bg-dark-hover'
+            ? `${colorStyle.active} font-medium`
+            : `text-slate-600 dark:text-slate-400 ${colorStyle.hover}`
         }`}
       >
+        <span className={`w-2 h-2 rounded-full ${colorStyle.dot}`} />
         {icon}
         {label}
         <ChevronDown className={`h-3 w-3 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
       {isOpen && (
-        <div className="absolute left-0 mt-1 w-48 bg-light-surface dark:bg-dark-surface border border-light-border dark:border-dark-border rounded-lg shadow-lg py-1 z-50">
+        <div className={`absolute left-0 mt-1 w-52 bg-light-surface dark:bg-dark-surface border border-light-border dark:border-dark-border rounded-lg shadow-lg py-1 z-50 border-l-2 ${colorStyle.border}`}>
           {items.map((item) => (
             <Link
               key={item.to}
@@ -108,8 +182,8 @@ const DropdownMenu: React.FC<DropdownMenuProps> = ({ label, icon, items, isActiv
               onClick={() => setIsOpen(false)}
               className={`flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
                 isItemActive(item)
-                  ? 'bg-primary/10 text-primary font-medium'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-light-hover dark:hover:bg-dark-hover'
+                  ? `${colorStyle.active} font-medium`
+                  : `text-slate-600 dark:text-slate-400 ${colorStyle.hover}`
               }`}
             >
               {item.icon}
@@ -127,37 +201,13 @@ const Header: React.FC = () => {
   const isAdmin = useAuthStore((state) => state.isAdmin);
   const location = useLocation();
 
-  // Define navigation categories
-  const scanningItems: NavItem[] = [
-    { to: '/dashboard', icon: <LayoutDashboard className="h-4 w-4" />, label: 'Scans' },
-    { to: '/discovery', icon: <Globe className="h-4 w-4" />, label: 'Asset Discovery' },
-    { to: '/nuclei', icon: <Zap className="h-4 w-4" />, label: 'Nuclei' },
-    { to: '/compare', icon: <GitCompare className="h-4 w-4" />, label: 'Compare' },
-    { to: '/assets', icon: <Server className="h-4 w-4" />, label: 'Assets' },
-    { to: '/agents', icon: <Radio className="h-4 w-4" />, label: 'Agents' },
-    { to: '/agents/mesh', icon: <Share2 className="h-4 w-4" />, label: 'Mesh Network' },
-    { to: '/webapp-scan', icon: <Search className="h-4 w-4" />, label: 'Web Scan' },
-    { to: '/dns-tools', icon: <Network className="h-4 w-4" />, label: 'DNS Tools' },
-    { to: '/api-security', icon: <FileSearch className="h-4 w-4" />, label: 'API Security' },
-  ];
+  // ===========================================
+  // COLOR TEAM NAVIGATION ORGANIZATION
+  // ===========================================
 
-  const securityItems: NavItem[] = [
-    { to: '/siem', icon: <Activity className="h-4 w-4" />, label: 'SIEM' },
-    { to: '/attack-surface', icon: <Shield className="h-4 w-4" />, label: 'Attack Surface' },
-    { to: '/privesc', icon: <TrendingUp className="h-4 w-4" />, label: 'Privesc Scanner' },
-    { to: '/bloodhound', icon: <GitBranch className="h-4 w-4" />, label: 'BloodHound' },
-    { to: '/phishing', icon: <Target className="h-4 w-4" />, label: 'Phishing' },
-    { to: '/c2', icon: <Radio className="h-4 w-4" />, label: 'C2 Management' },
-    { to: '/wireless', icon: <Wifi className="h-4 w-4" />, label: 'Wireless Security' },
-    { to: '/attack-paths', icon: <Network className="h-4 w-4" />, label: 'Attack Paths' },
-    { to: '/attack-simulation', icon: <Crosshair className="h-4 w-4" />, label: 'Attack Simulation' },
-    { to: '/purple-team', icon: <Shield className="h-4 w-4" />, label: 'Purple Team' },
-    { to: '/container-security', icon: <Box className="h-4 w-4" />, label: 'Containers' },
-    { to: '/iac-security', icon: <FileCode className="h-4 w-4" />, label: 'IaC Security' },
-  ];
-
-  const exploitationItems: NavItem[] = [
-    { to: '/exploitation', icon: <Target className="h-4 w-4" />, label: 'Dashboard' },
+  // RED TEAM - Offensive Security / Penetration Testing
+  const redTeamItems: NavItem[] = [
+    { to: '/exploitation', icon: <Target className="h-4 w-4" />, label: 'Exploitation' },
     { to: '/exploitation/password-spray', icon: <Key className="h-4 w-4" />, label: 'Password Spray' },
     { to: '/exploitation/kerberos', icon: <Shield className="h-4 w-4" />, label: 'Kerberoasting' },
     { to: '/exploitation/asrep-roast', icon: <Unlock className="h-4 w-4" />, label: 'AS-REP Roast' },
@@ -165,26 +215,64 @@ const Header: React.FC = () => {
     { to: '/exploitation/shells', icon: <Terminal className="h-4 w-4" />, label: 'Shell Generator' },
     { to: '/exploitation/credential-dump', icon: <Database className="h-4 w-4" />, label: 'Credential Dump' },
     { to: '/cracking', icon: <Key className="h-4 w-4" />, label: 'Password Cracking' },
-    { to: '/exploitation/priv-esc', icon: <UserCheck className="h-4 w-4" />, label: 'Privilege Escalation' },
-    { to: '/exploitation/persistence', icon: <Lock className="h-4 w-4" />, label: 'Persistence' },
-    { to: '/exploitation/lateral-movement', icon: <ArrowRight className="h-4 w-4" />, label: 'Lateral Movement' },
+    { to: '/privesc', icon: <TrendingUp className="h-4 w-4" />, label: 'Privilege Escalation' },
+    { to: '/bloodhound', icon: <GitBranch className="h-4 w-4" />, label: 'BloodHound AD' },
+    { to: '/phishing', icon: <Target className="h-4 w-4" />, label: 'Phishing Campaigns' },
+    { to: '/c2', icon: <Radio className="h-4 w-4" />, label: 'C2 Management' },
+    { to: '/wireless', icon: <Wifi className="h-4 w-4" />, label: 'Wireless Attacks' },
+    { to: '/attack-simulation', icon: <Crosshair className="h-4 w-4" />, label: 'Attack Simulation' },
   ];
 
-  const complianceItems: NavItem[] = [
+  // BLUE TEAM - Defensive Security / Detection
+  const blueTeamItems: NavItem[] = [
+    { to: '/siem', icon: <Activity className="h-4 w-4" />, label: 'SIEM' },
+    { to: '/agents', icon: <Radio className="h-4 w-4" />, label: 'Scan Agents' },
+    { to: '/agents/mesh', icon: <Share2 className="h-4 w-4" />, label: 'Mesh Network' },
+    { to: '/attack-surface', icon: <Radar className="h-4 w-4" />, label: 'Attack Surface' },
+  ];
+
+  // PURPLE TEAM - Combined Offense/Defense Validation
+  const purpleTeamItems: NavItem[] = [
+    { to: '/purple-team', icon: <Eye className="h-4 w-4" />, label: 'Purple Team' },
+    { to: '/attack-paths', icon: <Network className="h-4 w-4" />, label: 'Attack Paths' },
+  ];
+
+  // YELLOW TEAM - DevSecOps / Security Architecture
+  const yellowTeamItems: NavItem[] = [
+    { to: '/iac-security', icon: <FileCode className="h-4 w-4" />, label: 'IaC Security' },
+    { to: '/container-security', icon: <Box className="h-4 w-4" />, label: 'Container Security' },
+    { to: '/api-security', icon: <FileSearch className="h-4 w-4" />, label: 'API Security' },
+  ];
+
+  // GREEN TEAM - SOAR / Security Automation
+  const greenTeamItems: NavItem[] = [
+    { to: '/workflows', icon: <Workflow className="h-4 w-4" />, label: 'Workflows' },
+    { to: '/remediation', icon: <Layers className="h-4 w-4" />, label: 'Remediation' },
+  ];
+
+  // WHITE TEAM - GRC / Governance, Risk, Compliance
+  const whiteTeamItems: NavItem[] = [
     { to: '/compliance', icon: <ShieldCheck className="h-4 w-4" />, label: 'Compliance' },
     { to: '/evidence', icon: <FileText className="h-4 w-4" />, label: 'Evidence' },
     { to: '/manual-assessments', icon: <ClipboardCheck className="h-4 w-4" />, label: 'Assessments' },
     { to: '/methodology', icon: <BookOpenCheck className="h-4 w-4" />, label: 'Methodology' },
-    { to: '/finding-templates', icon: <FileText className="h-4 w-4" />, label: 'Finding Templates' },
-  ];
-
-  const reportsItems: NavItem[] = [
+    { to: '/finding-templates', icon: <FileWarning className="h-4 w-4" />, label: 'Finding Templates' },
     { to: '/executive-dashboard', icon: <BarChart3 className="h-4 w-4" />, label: 'Executive Dashboard' },
     { to: '/reports', icon: <FileText className="h-4 w-4" />, label: 'Reports' },
-    { to: '/workflows', icon: <GitBranch className="h-4 w-4" />, label: 'Workflows' },
-    { to: '/remediation', icon: <Layers className="h-4 w-4" />, label: 'Remediation' },
   ];
 
+  // RECON - Scanning & Discovery (Cyan)
+  const reconItems: NavItem[] = [
+    { to: '/dashboard', icon: <LayoutDashboard className="h-4 w-4" />, label: 'Scans' },
+    { to: '/discovery', icon: <Globe className="h-4 w-4" />, label: 'Asset Discovery' },
+    { to: '/nuclei', icon: <Zap className="h-4 w-4" />, label: 'Nuclei Scanner' },
+    { to: '/webapp-scan', icon: <Search className="h-4 w-4" />, label: 'Web App Scan' },
+    { to: '/dns-tools', icon: <Network className="h-4 w-4" />, label: 'DNS Tools' },
+    { to: '/compare', icon: <GitCompare className="h-4 w-4" />, label: 'Scan Compare' },
+    { to: '/assets', icon: <Server className="h-4 w-4" />, label: 'Asset Inventory' },
+  ];
+
+  // SYSTEM - Settings & Administration
   const systemItems: NavItem[] = [
     { to: '/settings', icon: <Settings className="h-4 w-4" />, label: 'Settings' },
     { to: '/plugins', icon: <Puzzle className="h-4 w-4" />, label: 'Plugins' },
@@ -192,19 +280,25 @@ const Header: React.FC = () => {
   ];
 
   // Check if any item in a category is active
-  const isScanningActive = scanningItems.some(
+  const isReconActive = reconItems.some(
     item => location.pathname === item.to || location.pathname.startsWith(item.to)
   );
-  const isSecurityActive = securityItems.some(
+  const isRedTeamActive = redTeamItems.some(
     item => location.pathname === item.to || location.pathname.startsWith(item.to)
   );
-  const isExploitationActive = exploitationItems.some(
+  const isBlueTeamActive = blueTeamItems.some(
     item => location.pathname === item.to || location.pathname.startsWith(item.to)
   );
-  const isComplianceActive = complianceItems.some(
+  const isPurpleTeamActive = purpleTeamItems.some(
     item => location.pathname === item.to || location.pathname.startsWith(item.to)
   );
-  const isReportsActive = reportsItems.some(
+  const isYellowTeamActive = yellowTeamItems.some(
+    item => location.pathname === item.to || location.pathname.startsWith(item.to)
+  );
+  const isGreenTeamActive = greenTeamItems.some(
+    item => location.pathname === item.to || location.pathname.startsWith(item.to)
+  );
+  const isWhiteTeamActive = whiteTeamItems.some(
     item => location.pathname === item.to || location.pathname.startsWith(item.to)
   );
   const isSystemActive = systemItems.some(
@@ -227,7 +321,7 @@ const Header: React.FC = () => {
               </div>
             </div>
 
-            {/* Navigation */}
+            {/* Navigation - Organized by Color Teams */}
             {user && (
               <nav className="flex items-center space-x-1">
                 {/* CRM - Standalone */}
@@ -243,52 +337,76 @@ const Header: React.FC = () => {
                   CRM
                 </Link>
 
-                {/* Scanning Dropdown */}
+                {/* Recon - Scanning & Discovery (Cyan) */}
                 <DropdownMenu
-                  label="Scanning"
+                  label="Recon"
                   icon={<Search className="h-4 w-4" />}
-                  items={scanningItems}
-                  isActive={isScanningActive}
+                  items={reconItems}
+                  isActive={isReconActive}
+                  teamColor="cyan"
                 />
 
-                {/* Compliance Dropdown */}
+                {/* Red Team - Offensive Security */}
                 <DropdownMenu
-                  label="Compliance"
-                  icon={<ShieldCheck className="h-4 w-4" />}
-                  items={complianceItems}
-                  isActive={isComplianceActive}
+                  label="Red Team"
+                  icon={<Swords className="h-4 w-4" />}
+                  items={redTeamItems}
+                  isActive={isRedTeamActive}
+                  teamColor="red"
                 />
 
-                {/* Reports Dropdown */}
+                {/* Blue Team - Defensive Security */}
                 <DropdownMenu
-                  label="Reports"
-                  icon={<BarChart3 className="h-4 w-4" />}
-                  items={reportsItems}
-                  isActive={isReportsActive}
+                  label="Blue Team"
+                  icon={<ShieldAlert className="h-4 w-4" />}
+                  items={blueTeamItems}
+                  isActive={isBlueTeamActive}
+                  teamColor="blue"
                 />
 
-                {/* Security Dropdown */}
+                {/* Purple Team - Combined Validation */}
                 <DropdownMenu
-                  label="Security"
-                  icon={<Shield className="h-4 w-4" />}
-                  items={securityItems}
-                  isActive={isSecurityActive}
+                  label="Purple Team"
+                  icon={<Eye className="h-4 w-4" />}
+                  items={purpleTeamItems}
+                  isActive={isPurpleTeamActive}
+                  teamColor="purple"
                 />
 
-                {/* Exploitation Dropdown */}
+                {/* Yellow Team - DevSecOps */}
                 <DropdownMenu
-                  label="Exploitation"
-                  icon={<Target className="h-4 w-4" />}
-                  items={exploitationItems}
-                  isActive={isExploitationActive}
+                  label="Yellow Team"
+                  icon={<Cpu className="h-4 w-4" />}
+                  items={yellowTeamItems}
+                  isActive={isYellowTeamActive}
+                  teamColor="yellow"
                 />
 
-                {/* System Dropdown */}
+                {/* Green Team - SOAR */}
+                <DropdownMenu
+                  label="Green Team"
+                  icon={<Workflow className="h-4 w-4" />}
+                  items={greenTeamItems}
+                  isActive={isGreenTeamActive}
+                  teamColor="green"
+                />
+
+                {/* White Team - GRC */}
+                <DropdownMenu
+                  label="White Team"
+                  icon={<Scale className="h-4 w-4" />}
+                  items={whiteTeamItems}
+                  isActive={isWhiteTeamActive}
+                  teamColor="white"
+                />
+
+                {/* System - Settings & Admin */}
                 <DropdownMenu
                   label="System"
                   icon={<Settings className="h-4 w-4" />}
                   items={systemItems}
                   isActive={isSystemActive}
+                  teamColor="default"
                 />
               </nav>
             )}
