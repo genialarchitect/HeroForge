@@ -5913,3 +5913,113 @@ export interface YellowTeamActivity {
   status: string;
   timestamp: string;
 }
+
+// Binary Analysis Types
+export interface BinarySampleSummary {
+  id: string;
+  filename: string;
+  file_size: number;
+  file_type: string;
+  architecture: string | null;
+  sha256: string;
+  entropy: number;
+  is_packed: boolean;
+  packer_name: string | null;
+  analysis_status: string;
+  strings_count: number;
+  imports_count: number;
+  created_at: string;
+}
+
+export interface BinarySectionInfo {
+  name: string;
+  virtual_address: number;
+  virtual_size: number;
+  raw_size: number;
+  entropy: number;
+  is_executable: boolean;
+  is_writable: boolean;
+}
+
+export interface BinaryPeInfo {
+  machine_type: string | null;
+  subsystem: string | null;
+  is_dll: boolean;
+  is_64bit: boolean;
+  has_debug_info: boolean;
+  has_tls: boolean;
+  has_rich_header: boolean;
+  checksum_valid: boolean;
+  timestamp: string | null;
+  entry_point: number | null;
+  image_base: number | null;
+}
+
+export interface BinaryElfInfo {
+  machine_type: string | null;
+  elf_type: string | null;
+  os_abi: string | null;
+  is_pie: boolean;
+  has_relro: boolean;
+  has_nx: boolean;
+  has_stack_canary: boolean;
+  interpreter: string | null;
+  entry_point: number | null;
+}
+
+export interface BinarySampleDetail {
+  id: string;
+  filename: string;
+  file_size: number;
+  file_type: string;
+  architecture: string | null;
+  md5: string;
+  sha1: string;
+  sha256: string;
+  ssdeep: string | null;
+  imphash: string | null;
+  entropy: number;
+  is_packed: boolean;
+  packer_name: string | null;
+  packer_version: string | null;
+  packer_confidence: number | null;
+  analysis_status: string;
+  strings_count: number;
+  imports_count: number;
+  exports_count: number;
+  sections: BinarySectionInfo[];
+  pe_info: BinaryPeInfo | null;
+  elf_info: BinaryElfInfo | null;
+  created_at: string;
+  analyzed_at: string | null;
+}
+
+export interface BinaryExtractedString {
+  value: string;
+  encoding: string;
+  offset: number;
+  length: number;
+  string_type: string | null;
+  entropy: number | null;
+}
+
+export interface BinaryImport {
+  dll_name: string;
+  functions: string[];
+}
+
+export interface BinaryExport {
+  name: string;
+  ordinal: number;
+  address: number;
+}
+
+export interface BinaryAnalysisStats {
+  total_samples: number;
+  packed_samples: number;
+  pe_samples: number;
+  elf_samples: number;
+  samples_by_type: Record<string, number>;
+  avg_entropy: number;
+  recent_uploads: number;
+}

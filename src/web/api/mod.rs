@@ -11,6 +11,7 @@ pub mod assets;
 pub mod attack_paths;
 pub mod auth;
 pub mod bas;
+pub mod binary_analysis;
 pub mod bloodhound;
 pub mod breach;
 pub mod c2;

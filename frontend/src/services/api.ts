@@ -3905,4 +3905,83 @@ export const exploitResearchAPI = {
     api.post<void>(`/exploit-research/workspaces/${workspaceId}/items`, data),
 };
 
+// Binary Analysis API
+export const binaryAnalysisAPI = {
+  // Upload and analyze a binary sample
+  uploadSample: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post<{ id: string; message: string }>('/binary-analysis/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+
+  // List samples with pagination
+  listSamples: (params?: { limit?: number; offset?: number; file_type?: string; is_packed?: boolean }) =>
+    api.get<BinarySampleSummary[]>('/binary-analysis/samples', { params }),
+
+  // Get sample details
+  getSample: (id: string) =>
+    api.get<BinarySampleDetail>(`/binary-analysis/samples/${id}`),
+
+  // Delete a sample
+  deleteSample: (id: string) =>
+    api.delete<void>(`/binary-analysis/samples/${id}`),
+
+  // Get extracted strings
+  getStrings: (id: string, params?: { limit?: number; min_length?: number; encoding?: string }) =>
+    api.get<{ strings: BinaryExtractedString[] }>(`/binary-analysis/samples/${id}/strings`, { params }),
+
+  // Get imports (PE files)
+  getImports: (id: string) =>
+    api.get<{ imports: BinaryImport[] }>(`/binary-analysis/samples/${id}/imports`),
+
+  // Get exports (PE/ELF files)
+  getExports: (id: string) =>
+    api.get<{ exports: BinaryExport[] }>(`/binary-analysis/samples/${id}/exports`),
+
+  // Get hex dump of a specific region
+  getHexDump: (id: string, offset: number, length: number) =>
+    api.get<{ hex: string; ascii: string; offset: number; length: number }>(
+      `/binary-analysis/samples/${id}/hexdump`,
+      { params: { offset, length } }
+    ),
+
+  // Search for patterns in binary
+  searchPattern: (id: string, pattern: string, patternType: 'hex' | 'string' | 'regex') =>
+    api.post<{ matches: { offset: number; length: number; match: string }[] }>(
+      `/binary-analysis/samples/${id}/search`,
+      { pattern, pattern_type: patternType }
+    ),
+
+  // Get analysis statistics
+  getStats: () =>
+    api.get<BinaryAnalysisStats>('/binary-analysis/stats'),
+
+  // Get YARA matches
+  getYaraMatches: (id: string) =>
+    api.get<{ matches: { rule: string; strings: string[]; meta: Record<string, string> }[] }>(
+      `/binary-analysis/samples/${id}/yara`
+    ),
+
+  // Compare two samples
+  compareSamples: (id1: string, id2: string) =>
+    api.get<{
+      similarity: number;
+      common_strings: number;
+      common_imports: number;
+      entropy_diff: number;
+    }>(`/binary-analysis/compare/${id1}/${id2}`),
+};
+
+// Import types for the API
+import type {
+  BinarySampleSummary,
+  BinarySampleDetail,
+  BinaryExtractedString,
+  BinaryImport,
+  BinaryExport,
+  BinaryAnalysisStats,
+} from '../types';
+
 export default api;

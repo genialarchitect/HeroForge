@@ -74,6 +74,9 @@ const ExploitDatabasePage = lazy(() => import('./pages/ExploitDatabasePage'));
 const PocRepositoryPage = lazy(() => import('./pages/PocRepositoryPage'));
 const ResearchWorkspacePage = lazy(() => import('./pages/ResearchWorkspacePage'));
 
+// Binary Analysis
+const BinaryAnalysisPage = lazy(() => import('./pages/BinaryAnalysisPage'));
+
 // CRM pages
 const CrmDashboard = lazy(() => import('./pages/crm/CrmDashboard'));
 
@@ -571,6 +574,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <ResearchWorkspacePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/binary-analysis"
+            element={
+              <ProtectedRoute>
+                <BinaryAnalysisPage />
               </ProtectedRoute>
             }
           />

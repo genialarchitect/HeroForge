@@ -158,6 +158,11 @@ dirs = "6.0.0"
 quick-xml = "0.38.4"
 tokio-tungstenite = { version = "0.28.0", features = ["native-tls"] }
 
+# Binary analysis
+goblin = "0.9"           # PE/ELF/Mach-O parsing
+memmap2 = "0.9"          # Memory-mapped file access
+entropy = "0.4"          # Entropy calculation
+
 [dev-dependencies]
 mockito = "1.5"
 tokio-test = "0.4"

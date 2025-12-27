@@ -238,6 +238,8 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     create_purple_team_enhancement_tables(pool).await?;
     // Exploit Research tables (Sprint 1 - Priority 1 Features)
     create_exploit_research_tables(pool).await?;
+    // Binary Analysis tables (Sprint 3 - Priority 1 Features)
+    create_binary_analysis_tables(pool).await?;
     Ok(())
 }
 
@@ -16316,5 +16318,277 @@ async fn create_exploit_research_tables(pool: &SqlitePool) -> Result<()> {
     .await?;
 
     log::info!("Created exploit research tables (Sprint 1 + 2)");
+    Ok(())
+}
+
+/// Create binary analysis tables (Sprint 3 - Priority 1 Features)
+async fn create_binary_analysis_tables(pool: &SqlitePool) -> Result<()> {
+    // Binary samples table - stores uploaded/analyzed binaries
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS binary_samples (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            filename TEXT NOT NULL,
+            file_size INTEGER NOT NULL,
+            file_type TEXT NOT NULL,
+            architecture TEXT,
+            md5 TEXT NOT NULL,
+            sha1 TEXT NOT NULL,
+            sha256 TEXT NOT NULL,
+            ssdeep TEXT,
+            imphash TEXT,
+            tlsh TEXT,
+            entropy REAL NOT NULL,
+            is_packed INTEGER DEFAULT 0,
+            packer_name TEXT,
+            packer_version TEXT,
+            packer_confidence REAL,
+            analysis_status TEXT NOT NULL DEFAULT 'pending',
+            strings_count INTEGER DEFAULT 0,
+            imports_count INTEGER DEFAULT 0,
+            exports_count INTEGER DEFAULT 0,
+            pe_machine_type TEXT,
+            pe_subsystem TEXT,
+            pe_is_dll INTEGER,
+            pe_is_64bit INTEGER,
+            pe_has_debug_info INTEGER,
+            pe_has_tls INTEGER,
+            pe_has_rich_header INTEGER,
+            pe_checksum_valid INTEGER,
+            pe_timestamp TEXT,
+            pe_entry_point INTEGER,
+            pe_image_base INTEGER,
+            elf_machine_type TEXT,
+            elf_type TEXT,
+            elf_os_abi TEXT,
+            elf_is_pie INTEGER,
+            elf_has_relro INTEGER,
+            elf_has_nx INTEGER,
+            elf_has_stack_canary INTEGER,
+            elf_interpreter TEXT,
+            elf_entry_point INTEGER,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            analyzed_at TEXT
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Binary sections table - PE/ELF sections
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS binary_sections (
+            id TEXT PRIMARY KEY,
+            sample_id TEXT NOT NULL REFERENCES binary_samples(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            virtual_address INTEGER NOT NULL,
+            virtual_size INTEGER NOT NULL,
+            raw_size INTEGER NOT NULL,
+            raw_offset INTEGER NOT NULL,
+            characteristics INTEGER,
+            entropy REAL NOT NULL,
+            is_executable INTEGER DEFAULT 0,
+            is_writable INTEGER DEFAULT 0,
+            section_hash TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Binary imports table - imported DLLs and functions
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS binary_imports (
+            id TEXT PRIMARY KEY,
+            sample_id TEXT NOT NULL REFERENCES binary_samples(id) ON DELETE CASCADE,
+            dll_name TEXT NOT NULL,
+            function_name TEXT NOT NULL,
+            ordinal INTEGER,
+            is_suspicious INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Binary exports table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS binary_exports (
+            id TEXT PRIMARY KEY,
+            sample_id TEXT NOT NULL REFERENCES binary_samples(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            ordinal INTEGER,
+            address INTEGER NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Binary strings table - extracted strings with categorization
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS binary_strings (
+            id TEXT PRIMARY KEY,
+            sample_id TEXT NOT NULL REFERENCES binary_samples(id) ON DELETE CASCADE,
+            value TEXT NOT NULL,
+            encoding TEXT NOT NULL,
+            offset INTEGER NOT NULL,
+            section_name TEXT,
+            string_type TEXT NOT NULL,
+            is_interesting INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Binary resources table - PE resources
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS binary_resources (
+            id TEXT PRIMARY KEY,
+            sample_id TEXT NOT NULL REFERENCES binary_samples(id) ON DELETE CASCADE,
+            resource_type TEXT NOT NULL,
+            name TEXT NOT NULL,
+            language INTEGER,
+            size INTEGER NOT NULL,
+            entropy REAL,
+            resource_hash TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Binary version info table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS binary_version_info (
+            id TEXT PRIMARY KEY,
+            sample_id TEXT NOT NULL UNIQUE REFERENCES binary_samples(id) ON DELETE CASCADE,
+            file_version TEXT,
+            product_version TEXT,
+            company_name TEXT,
+            product_name TEXT,
+            file_description TEXT,
+            original_filename TEXT,
+            internal_name TEXT,
+            legal_copyright TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Binary certificates table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS binary_certificates (
+            id TEXT PRIMARY KEY,
+            sample_id TEXT NOT NULL REFERENCES binary_samples(id) ON DELETE CASCADE,
+            subject TEXT NOT NULL,
+            issuer TEXT NOT NULL,
+            serial_number TEXT NOT NULL,
+            not_before TEXT NOT NULL,
+            not_after TEXT NOT NULL,
+            is_valid INTEGER DEFAULT 0,
+            signature_algorithm TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Binary ELF symbols table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS binary_elf_symbols (
+            id TEXT PRIMARY KEY,
+            sample_id TEXT NOT NULL REFERENCES binary_samples(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            symbol_type TEXT NOT NULL,
+            binding TEXT NOT NULL,
+            address INTEGER NOT NULL,
+            size INTEGER NOT NULL,
+            section_index INTEGER,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Binary dynamic libraries table (ELF)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS binary_dynamic_libs (
+            id TEXT PRIMARY KEY,
+            sample_id TEXT NOT NULL REFERENCES binary_samples(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            path TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Binary file storage (optional, for storing actual binary content)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS binary_file_storage (
+            id TEXT PRIMARY KEY,
+            sample_id TEXT NOT NULL UNIQUE REFERENCES binary_samples(id) ON DELETE CASCADE,
+            file_data BLOB NOT NULL,
+            storage_method TEXT NOT NULL DEFAULT 'raw',
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for binary analysis
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_binary_samples_user_id ON binary_samples(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_binary_samples_sha256 ON binary_samples(sha256)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_binary_samples_md5 ON binary_samples(md5)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_binary_samples_imphash ON binary_samples(imphash)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_binary_sections_sample_id ON binary_sections(sample_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_binary_imports_sample_id ON binary_imports(sample_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_binary_imports_dll_name ON binary_imports(dll_name)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_binary_strings_sample_id ON binary_strings(sample_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_binary_strings_type ON binary_strings(string_type)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created binary analysis tables (Sprint 3)");
     Ok(())
 }

@@ -9,6 +9,7 @@ use std::time::Duration;
 mod agents;
 mod ai;
 mod asm;
+mod binary_analysis;
 mod compliance;
 mod config;
 mod cracking;
