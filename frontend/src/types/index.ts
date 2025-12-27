@@ -6023,3 +6023,157 @@ export interface BinaryAnalysisStats {
   avg_entropy: number;
   recent_uploads: number;
 }
+
+// ==================== Fuzzing Types ====================
+
+export type FuzzTargetType = 'protocol' | 'http' | 'file' | 'api' | 'binary';
+export type FuzzerType = 'mutation' | 'generation' | 'grammar' | 'template';
+export type FuzzingCampaignStatus = 'pending' | 'running' | 'paused' | 'completed' | 'failed';
+export type CrashType = 'segfault' | 'heap_overflow' | 'stack_overflow' | 'use_after_free' | 'double_free' | 'null_deref' | 'assertion' | 'timeout' | 'unknown';
+export type Exploitability = 'high' | 'medium' | 'low' | 'unknown';
+export type MutationStrategy = 'bit_flip' | 'byte_flip' | 'arithmetic' | 'interesting_values' | 'havoc' | 'splice' | 'dictionary';
+
+export interface FuzzingCampaign {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string | null;
+  target_type: FuzzTargetType;
+  fuzzer_type: FuzzerType;
+  target_config: FuzzTargetConfig;
+  fuzzer_config: FuzzerConfig;
+  status: FuzzingCampaignStatus;
+  iterations: number;
+  crashes_found: number;
+  unique_crashes: number;
+  coverage_percent: number | null;
+  last_crash_at: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FuzzTargetConfig {
+  // Protocol target
+  host?: string;
+  port?: number;
+  protocol?: 'tcp' | 'udp';
+  // HTTP target
+  url?: string;
+  method?: string;
+  headers?: Record<string, string>;
+  // File target
+  file_path?: string;
+  command?: string;
+  args?: string[];
+}
+
+export interface FuzzerConfig {
+  max_iterations?: number;
+  timeout_ms?: number;
+  mutation_strategies?: MutationStrategy[];
+  dictionary?: string[];
+  seed_inputs?: string[];
+  template_id?: string;
+  grammar_rules?: string;
+}
+
+export interface FuzzingCrash {
+  id: string;
+  campaign_id: string;
+  crash_type: CrashType;
+  crash_hash: string;
+  input_data: string; // base64 encoded
+  output: string | null;
+  stack_trace: string | null;
+  registers: Record<string, string> | null;
+  exploitability: Exploitability;
+  iteration: number;
+  is_unique: boolean;
+  is_minimized: boolean;
+  minimized_input: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface FuzzingCoverage {
+  campaign_id: string;
+  edge_coverage: number;
+  block_coverage: number;
+  total_edges: number;
+  total_blocks: number;
+  coverage_percent: number;
+  new_edges_found: number;
+  updated_at: string;
+}
+
+export interface FuzzingTemplate {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string | null;
+  target_type: FuzzTargetType;
+  template_data: string; // JSON
+  is_public: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FuzzingSeed {
+  id: string;
+  campaign_id: string;
+  data: string; // base64 encoded
+  source: 'initial' | 'corpus' | 'crash';
+  coverage_contribution: number | null;
+  created_at: string;
+}
+
+export interface FuzzingStats {
+  total_campaigns: number;
+  active_campaigns: number;
+  total_crashes: number;
+  unique_crashes: number;
+  total_iterations: number;
+  avg_coverage: number;
+  crashes_by_type: Record<string, number>;
+  crashes_by_exploitability: Record<string, number>;
+}
+
+export interface FuzzingDictionary {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string | null;
+  entries: string[];
+  created_at: string;
+}
+
+export interface CreateFuzzingCampaignRequest {
+  name: string;
+  description?: string;
+  target_type: FuzzTargetType;
+  fuzzer_type: FuzzerType;
+  target_config: FuzzTargetConfig;
+  fuzzer_config: FuzzerConfig;
+}
+
+export interface UpdateFuzzingCampaignRequest {
+  name?: string;
+  description?: string;
+  fuzzer_config?: FuzzerConfig;
+}
+
+export interface CreateFuzzingTemplateRequest {
+  name: string;
+  description?: string;
+  target_type: FuzzTargetType;
+  template_data: string;
+  is_public?: boolean;
+}
+
+export interface CreateFuzzingDictionaryRequest {
+  name: string;
+  description?: string;
+  entries: string[];
+}

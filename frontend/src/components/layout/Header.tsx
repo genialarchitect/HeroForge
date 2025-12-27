@@ -218,6 +218,7 @@ const Header: React.FC = () => {
     { to: '/poc-repository', icon: <Code className="h-4 w-4" />, label: 'PoC Repository' },
     { to: '/research-workspaces', icon: <Folder className="h-4 w-4" />, label: 'Research Workspaces' },
     { to: '/binary-analysis', icon: <Binary className="h-4 w-4" />, label: 'Binary Analysis' },
+    { to: '/fuzzing', icon: <Zap className="h-4 w-4" />, label: 'Fuzzing' },
     { to: '/exploitation', icon: <Target className="h-4 w-4" />, label: 'Exploitation' },
     { to: '/exploitation/password-spray', icon: <Key className="h-4 w-4" />, label: 'Password Spray' },
     { to: '/exploitation/kerberos', icon: <Shield className="h-4 w-4" />, label: 'Kerberoasting' },

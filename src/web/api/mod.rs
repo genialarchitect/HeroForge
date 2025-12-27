@@ -35,6 +35,7 @@ pub mod email_security;
 pub mod exclusions;
 pub mod finding_templates;
 pub mod forensics;
+pub mod fuzzing;
 pub mod git_recon;
 pub mod iac;
 pub mod ids;

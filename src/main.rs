@@ -18,6 +18,7 @@ mod db;
 mod email;
 mod email_validation;
 mod forensics;
+mod fuzzing;
 mod incident_response;
 mod detection_engineering;
 mod integrations;

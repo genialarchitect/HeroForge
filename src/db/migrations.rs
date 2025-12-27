@@ -240,6 +240,8 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     create_exploit_research_tables(pool).await?;
     // Binary Analysis tables (Sprint 3 - Priority 1 Features)
     create_binary_analysis_tables(pool).await?;
+    // Fuzzing tables (Sprint 4 - Priority 1 Features)
+    create_fuzzing_tables(pool).await?;
     Ok(())
 }
 
@@ -16590,5 +16592,199 @@ async fn create_binary_analysis_tables(pool: &SqlitePool) -> Result<()> {
         .await?;
 
     log::info!("Created binary analysis tables (Sprint 3)");
+    Ok(())
+}
+
+/// Create fuzzing framework tables (Sprint 4 - Priority 1 Features)
+async fn create_fuzzing_tables(pool: &SqlitePool) -> Result<()> {
+    // Fuzzing campaigns table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS fuzzing_campaigns (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            target_type TEXT NOT NULL,
+            fuzzer_type TEXT NOT NULL,
+            target_config TEXT NOT NULL,
+            fuzzer_config TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'created',
+            total_iterations INTEGER NOT NULL DEFAULT 0,
+            crashes_found INTEGER NOT NULL DEFAULT 0,
+            unique_crashes INTEGER NOT NULL DEFAULT 0,
+            coverage_percent REAL,
+            execs_per_sec REAL,
+            started_at TEXT,
+            completed_at TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Fuzzing crashes table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS fuzzing_crashes (
+            id TEXT PRIMARY KEY,
+            campaign_id TEXT NOT NULL REFERENCES fuzzing_campaigns(id) ON DELETE CASCADE,
+            crash_type TEXT NOT NULL,
+            crash_hash TEXT NOT NULL,
+            exploitability TEXT NOT NULL,
+            input_data BLOB NOT NULL,
+            input_size INTEGER NOT NULL,
+            stack_trace TEXT,
+            registers TEXT,
+            signal INTEGER,
+            exit_code INTEGER,
+            stderr_output TEXT,
+            reproduced INTEGER NOT NULL DEFAULT 0,
+            reproduction_count INTEGER NOT NULL DEFAULT 0,
+            minimized_input BLOB,
+            notes TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Fuzzing coverage table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS fuzzing_coverage (
+            id TEXT PRIMARY KEY,
+            campaign_id TEXT NOT NULL REFERENCES fuzzing_campaigns(id) ON DELETE CASCADE,
+            timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+            total_edges INTEGER NOT NULL DEFAULT 0,
+            covered_edges INTEGER NOT NULL DEFAULT 0,
+            coverage_percent REAL NOT NULL DEFAULT 0,
+            new_edges_this_session INTEGER NOT NULL DEFAULT 0,
+            total_blocks INTEGER,
+            covered_blocks INTEGER,
+            edge_hits TEXT
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Fuzzing templates table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS fuzzing_templates (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            target_type TEXT NOT NULL,
+            template_content TEXT NOT NULL,
+            fuzz_points TEXT NOT NULL,
+            is_public INTEGER NOT NULL DEFAULT 0,
+            usage_count INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Fuzzing seeds table (corpus)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS fuzzing_seeds (
+            id TEXT PRIMARY KEY,
+            campaign_id TEXT NOT NULL REFERENCES fuzzing_campaigns(id) ON DELETE CASCADE,
+            seed_hash TEXT NOT NULL,
+            seed_data BLOB NOT NULL,
+            size INTEGER NOT NULL,
+            origin TEXT NOT NULL,
+            coverage_edges INTEGER,
+            is_interesting INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Fuzzing statistics table (time series)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS fuzzing_stats (
+            id TEXT PRIMARY KEY,
+            campaign_id TEXT NOT NULL REFERENCES fuzzing_campaigns(id) ON DELETE CASCADE,
+            timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+            total_execs INTEGER NOT NULL DEFAULT 0,
+            execs_per_sec REAL NOT NULL DEFAULT 0,
+            total_crashes INTEGER NOT NULL DEFAULT 0,
+            unique_crashes INTEGER NOT NULL DEFAULT 0,
+            hangs INTEGER NOT NULL DEFAULT 0,
+            coverage_percent REAL NOT NULL DEFAULT 0,
+            new_edges INTEGER NOT NULL DEFAULT 0,
+            pending_inputs INTEGER NOT NULL DEFAULT 0,
+            stability REAL NOT NULL DEFAULT 100
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Fuzzing dictionaries table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS fuzzing_dictionaries (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            category TEXT NOT NULL,
+            entries TEXT NOT NULL,
+            is_public INTEGER NOT NULL DEFAULT 0,
+            usage_count INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_fuzzing_campaigns_user_id ON fuzzing_campaigns(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_fuzzing_campaigns_status ON fuzzing_campaigns(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_fuzzing_crashes_campaign_id ON fuzzing_crashes(campaign_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_fuzzing_crashes_crash_hash ON fuzzing_crashes(crash_hash)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_fuzzing_crashes_exploitability ON fuzzing_crashes(exploitability)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_fuzzing_coverage_campaign_id ON fuzzing_coverage(campaign_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_fuzzing_seeds_campaign_id ON fuzzing_seeds(campaign_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_fuzzing_stats_campaign_id ON fuzzing_stats(campaign_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_fuzzing_templates_user_id ON fuzzing_templates(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_fuzzing_dictionaries_user_id ON fuzzing_dictionaries(user_id)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created fuzzing tables (Sprint 4)");
     Ok(())
 }

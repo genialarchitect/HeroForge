@@ -3982,6 +3982,114 @@ import type {
   BinaryImport,
   BinaryExport,
   BinaryAnalysisStats,
+  FuzzingCampaign,
+  FuzzingCrash,
+  FuzzingCoverage,
+  FuzzingTemplate,
+  FuzzingSeed,
+  FuzzingStats,
+  FuzzingDictionary,
+  CreateFuzzingCampaignRequest,
+  UpdateFuzzingCampaignRequest,
+  CreateFuzzingTemplateRequest,
+  CreateFuzzingDictionaryRequest,
 } from '../types';
+
+// Fuzzing API
+export const fuzzingAPI = {
+  // Campaign CRUD
+  listCampaigns: (params?: { limit?: number; offset?: number; status?: string }) =>
+    api.get<FuzzingCampaign[]>('/fuzzing/campaigns', { params }),
+
+  createCampaign: (data: CreateFuzzingCampaignRequest) =>
+    api.post<FuzzingCampaign>('/fuzzing/campaigns', data),
+
+  getCampaign: (id: string) =>
+    api.get<FuzzingCampaign>(`/fuzzing/campaigns/${id}`),
+
+  updateCampaign: (id: string, data: UpdateFuzzingCampaignRequest) =>
+    api.put<FuzzingCampaign>(`/fuzzing/campaigns/${id}`, data),
+
+  deleteCampaign: (id: string) =>
+    api.delete<void>(`/fuzzing/campaigns/${id}`),
+
+  // Campaign control
+  startCampaign: (id: string) =>
+    api.post<{ message: string }>(`/fuzzing/campaigns/${id}/start`),
+
+  stopCampaign: (id: string) =>
+    api.post<{ message: string }>(`/fuzzing/campaigns/${id}/stop`),
+
+  getCampaignStatus: (id: string) =>
+    api.get<{ status: string; iterations: number; crashes_found: number; coverage_percent: number | null }>(
+      `/fuzzing/campaigns/${id}/status`
+    ),
+
+  // Crashes
+  listCrashes: (campaignId: string, params?: { limit?: number; offset?: number; crash_type?: string; is_unique?: boolean }) =>
+    api.get<FuzzingCrash[]>(`/fuzzing/campaigns/${campaignId}/crashes`, { params }),
+
+  getCrash: (campaignId: string, crashId: string) =>
+    api.get<FuzzingCrash>(`/fuzzing/campaigns/${campaignId}/crashes/${crashId}`),
+
+  updateCrash: (campaignId: string, crashId: string, data: { notes?: string }) =>
+    api.put<FuzzingCrash>(`/fuzzing/campaigns/${campaignId}/crashes/${crashId}`, data),
+
+  reproduceCrash: (campaignId: string, crashId: string) =>
+    api.post<{ success: boolean; output: string; reproduced: boolean }>(
+      `/fuzzing/campaigns/${campaignId}/crashes/${crashId}/reproduce`
+    ),
+
+  minimizeCrash: (campaignId: string, crashId: string) =>
+    api.post<{ minimized_input: string; reduction_percent: number }>(
+      `/fuzzing/campaigns/${campaignId}/crashes/${crashId}/minimize`
+    ),
+
+  // Coverage
+  getCoverage: (campaignId: string) =>
+    api.get<FuzzingCoverage>(`/fuzzing/campaigns/${campaignId}/coverage`),
+
+  // Seeds
+  listSeeds: (campaignId: string) =>
+    api.get<FuzzingSeed[]>(`/fuzzing/campaigns/${campaignId}/seeds`),
+
+  addSeed: (campaignId: string, data: { data: string; source?: string }) =>
+    api.post<FuzzingSeed>(`/fuzzing/campaigns/${campaignId}/seeds`, data),
+
+  // Statistics
+  getStats: () =>
+    api.get<FuzzingStats>('/fuzzing/stats'),
+
+  getOverview: () =>
+    api.get<{ stats: FuzzingStats; recent_campaigns: FuzzingCampaign[]; recent_crashes: FuzzingCrash[] }>(
+      '/fuzzing/overview'
+    ),
+
+  // Templates
+  listTemplates: (params?: { target_type?: string }) =>
+    api.get<FuzzingTemplate[]>('/fuzzing/templates', { params }),
+
+  createTemplate: (data: CreateFuzzingTemplateRequest) =>
+    api.post<FuzzingTemplate>('/fuzzing/templates', data),
+
+  getTemplate: (id: string) =>
+    api.get<FuzzingTemplate>(`/fuzzing/templates/${id}`),
+
+  deleteTemplate: (id: string) =>
+    api.delete<void>(`/fuzzing/templates/${id}`),
+
+  // Dictionaries
+  listDictionaries: () =>
+    api.get<FuzzingDictionary[]>('/fuzzing/dictionaries'),
+
+  createDictionary: (data: CreateFuzzingDictionaryRequest) =>
+    api.post<FuzzingDictionary>('/fuzzing/dictionaries', data),
+
+  getDictionary: (id: string) =>
+    api.get<FuzzingDictionary>(`/fuzzing/dictionaries/${id}`),
+
+  deleteDictionary: (id: string) =>
+    api.delete<void>(`/fuzzing/dictionaries/${id}`),
+};
 
 export default api;

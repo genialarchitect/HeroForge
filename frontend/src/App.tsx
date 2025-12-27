@@ -77,6 +77,9 @@ const ResearchWorkspacePage = lazy(() => import('./pages/ResearchWorkspacePage')
 // Binary Analysis
 const BinaryAnalysisPage = lazy(() => import('./pages/BinaryAnalysisPage'));
 
+// Fuzzing
+const FuzzingPage = lazy(() => import('./pages/FuzzingPage'));
+
 // CRM pages
 const CrmDashboard = lazy(() => import('./pages/crm/CrmDashboard'));
 
@@ -582,6 +585,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <BinaryAnalysisPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/fuzzing"
+            element={
+              <ProtectedRoute>
+                <FuzzingPage />
               </ProtectedRoute>
             }
           />

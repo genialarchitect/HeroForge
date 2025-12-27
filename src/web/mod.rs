@@ -624,6 +624,8 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .configure(api::exploit_research::configure)
                     // Binary Analysis (Sprint 3 - Priority 1 Features) endpoints
                     .configure(api::binary_analysis::configure)
+                    // Fuzzing Framework (Sprint 4 - Priority 1 Features) endpoints
+                    .configure(api::fuzzing::configure)
                     // Start workflow from vulnerability
                     .route("/vulnerabilities/{id}/workflow", web::post().to(api::workflows::start_workflow))
                     // SSO Admin endpoints
