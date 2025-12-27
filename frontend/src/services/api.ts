@@ -4185,6 +4185,154 @@ export interface AnalysisResult {
   message: string;
 }
 
+// Sandbox Types
+export type SandboxType = 'cuckoo' | 'anyrun' | 'hybrid_analysis';
+export type SandboxStatus = 'pending' | 'running' | 'completed' | 'failed' | 'timeout' | 'cancelled';
+export type SandboxVerdict = 'malicious' | 'suspicious' | 'clean' | 'unknown';
+
+export interface SandboxConfig {
+  id: string;
+  name: string;
+  sandbox_type: string;
+  api_url: string;
+  is_default: boolean;
+  is_active: boolean;
+  timeout_seconds: number;
+  created_at: string;
+}
+
+export interface SandboxSubmission {
+  id: string;
+  sample_id: string;
+  sandbox_type: string;
+  sandbox_task_id: string;
+  status: string;
+  submitted_at: string;
+  // Extended fields from results (may be null if not completed)
+  sample_filename?: string;
+  sample_sha256?: string;
+  verdict?: string;
+  threat_score?: number;
+  report_url?: string;
+  completed_at?: string;
+}
+
+// Aggregated sandbox stats
+export interface SandboxStatsAggregate {
+  total_submissions: number;
+  pending_submissions: number;
+  running_submissions: number;
+  completed_submissions: number;
+  failed_submissions: number;
+  malicious_count: number;
+  suspicious_count: number;
+  clean_count: number;
+  by_type: SandboxStats[];
+}
+
+export interface SandboxSubmissionOptions {
+  timeout?: number;
+  enable_network?: boolean;
+  environment?: string;
+  arguments?: string;
+  password?: string;
+  internet_access?: boolean;
+  tags?: string[];
+  priority?: number;
+}
+
+export interface SandboxResult {
+  id: string;
+  sample_id: string;
+  sandbox_type: string;
+  status: string;
+  verdict: string;
+  score: number;
+  processes_count: number;
+  network_iocs_count: number;
+  file_iocs_count: number;
+  dropped_files_count: number;
+  signatures_count: number;
+  mitre_techniques: string[];
+  submitted_at: string;
+  completed_at?: string;
+  analysis_duration_seconds: number;
+}
+
+export interface SandboxProcess {
+  pid: number;
+  ppid: number;
+  name: string;
+  path?: string;
+  command_line?: string;
+  username?: string;
+  is_injected: boolean;
+  is_suspicious: boolean;
+}
+
+export interface SandboxDroppedFile {
+  filename: string;
+  path: string;
+  file_type?: string;
+  size: number;
+  md5: string;
+  sha256: string;
+  is_executable: boolean;
+  is_suspicious: boolean;
+  detection?: string;
+}
+
+export interface SandboxSignature {
+  name: string;
+  description: string;
+  severity: string;
+  category: string;
+  families: string[];
+  mitre_techniques: string[];
+}
+
+export interface SandboxScreenshot {
+  id: string;
+  timestamp?: string;
+  url?: string;
+  thumbnail_url?: string;
+}
+
+export interface SandboxEnvironment {
+  id: string;
+  name: string;
+  os: string;
+  os_version?: string;
+  architecture: string;
+  available: boolean;
+  description?: string;
+}
+
+export interface SandboxStats {
+  sandbox_type: string;
+  total_submissions: number;
+  pending: number;
+  running: number;
+  completed: number;
+  failed: number;
+  malicious: number;
+  suspicious: number;
+  clean: number;
+  average_analysis_time_seconds: number;
+}
+
+export interface SandboxComparison {
+  consensus_verdict: string;
+  average_score: number;
+  sandbox_count: number;
+  verdicts: { sandbox_type: string; verdict: string }[];
+  scores: { sandbox_type: string; score: number }[];
+  common_signatures: string[];
+  common_mitre_techniques: string[];
+  total_network_iocs: number;
+  total_file_iocs: number;
+}
+
 export const malwareAnalysisAPI = {
   // Stats & Dashboard
   getStats: () =>
@@ -4279,6 +4427,77 @@ export const malwareAnalysisAPI = {
 
   cancelQueueItem: (id: string) =>
     api.post<void>(`/malware-analysis/queue/${id}/cancel`),
+};
+
+// Sandbox API
+export const sandboxAPI = {
+  // Configuration
+  listConfigs: () =>
+    api.get<SandboxConfig[]>('/sandbox/configs'),
+
+  createConfig: (data: { name: string; sandbox_type: SandboxType; api_url: string; api_key?: string; is_default?: boolean; timeout_seconds?: number }) =>
+    api.post<{ id: string; message: string }>('/sandbox/configs', data),
+
+  getConfig: (id: string) =>
+    api.get<SandboxConfig>(`/sandbox/configs/${id}`),
+
+  updateConfig: (id: string, data: { name: string; sandbox_type: SandboxType; api_url: string; api_key?: string; is_default?: boolean; timeout_seconds?: number }) =>
+    api.put<{ message: string }>(`/sandbox/configs/${id}`, data),
+
+  deleteConfig: (id: string) =>
+    api.delete<{ message: string }>(`/sandbox/configs/${id}`),
+
+  testConnection: (id: string) =>
+    api.post<{ success: boolean; message: string; environments_count?: number }>(`/sandbox/configs/${id}/test`),
+
+  // Submissions
+  submitSample: (data: { sample_id: string; sandbox_config_id: string; options?: SandboxSubmissionOptions }) =>
+    api.post<SandboxSubmission>('/sandbox/submit', data),
+
+  listSubmissions: (params?: { limit?: number; offset?: number; sandbox_type?: string; status?: string }) =>
+    api.get<SandboxSubmission[]>('/sandbox/submissions', { params }),
+
+  getSubmission: (id: string) =>
+    api.get<SandboxSubmission>(`/sandbox/submissions/${id}`),
+
+  getStatus: (id: string) =>
+    api.get<{ submission_id: string; status: string; progress?: number; message?: string }>(`/sandbox/submissions/${id}/status`),
+
+  getResults: (id: string) =>
+    api.get<SandboxResult>(`/sandbox/submissions/${id}/results`),
+
+  getProcesses: (id: string) =>
+    api.get<SandboxProcess[]>(`/sandbox/submissions/${id}/processes`),
+
+  getScreenshots: (id: string) =>
+    api.get<SandboxScreenshot[]>(`/sandbox/submissions/${id}/screenshots`),
+
+  getDroppedFiles: (id: string) =>
+    api.get<SandboxDroppedFile[]>(`/sandbox/submissions/${id}/dropped`),
+
+  getSignatures: (id: string) =>
+    api.get<SandboxSignature[]>(`/sandbox/submissions/${id}/signatures`),
+
+  getIocs: (id: string) =>
+    api.get<{ network_iocs: unknown[]; file_iocs: unknown[] }>(`/sandbox/submissions/${id}/iocs`),
+
+  // Comparison
+  compareSubmissions: (submission_ids: string[]) =>
+    api.post<SandboxComparison>('/sandbox/compare', { submission_ids }),
+
+  // Environments
+  listEnvironments: () =>
+    api.get<SandboxEnvironment[]>('/sandbox/environments'),
+
+  getEnvironmentsForConfig: (configId: string) =>
+    api.get<SandboxEnvironment[]>(`/sandbox/environments/${configId}`),
+
+  // Statistics
+  getStats: () =>
+    api.get<SandboxStats[]>('/sandbox/stats'),
+
+  getStatsByType: (sandboxType: string) =>
+    api.get<SandboxStats>(`/sandbox/stats/${sandboxType}`),
 };
 
 export default api;

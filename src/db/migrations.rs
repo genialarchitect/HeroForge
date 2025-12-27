@@ -244,6 +244,8 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     create_fuzzing_tables(pool).await?;
     // Malware Analysis tables (Sprint 5 - Priority 1 Features)
     create_malware_analysis_tables(pool).await?;
+    // Sandbox Integration tables (Sprint 6 - Priority 1 Features)
+    create_sandbox_tables(pool).await?;
     Ok(())
 }
 
@@ -17124,5 +17126,302 @@ async fn create_malware_analysis_tables(pool: &SqlitePool) -> Result<()> {
         .await?;
 
     log::info!("Created malware analysis tables (Sprint 5)");
+    Ok(())
+}
+
+/// Create sandbox integration tables (Sprint 6 - Priority 1 Features)
+async fn create_sandbox_tables(pool: &SqlitePool) -> Result<()> {
+    // Sandbox configurations
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS sandbox_configs (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            sandbox_type TEXT NOT NULL,
+            name TEXT NOT NULL,
+            api_url TEXT,
+            api_key_encrypted TEXT NOT NULL,
+            is_active BOOLEAN DEFAULT TRUE,
+            is_default BOOLEAN DEFAULT FALSE,
+            timeout_seconds INTEGER DEFAULT 300,
+            default_environment TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Migration: Fix old sandbox_configs table with wrong column names
+    // Try to add new columns if they don't exist (for existing databases)
+    let _ = sqlx::query("ALTER TABLE sandbox_configs ADD COLUMN api_url TEXT")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE sandbox_configs ADD COLUMN is_default BOOLEAN DEFAULT FALSE")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE sandbox_configs ADD COLUMN timeout_seconds INTEGER DEFAULT 300")
+        .execute(pool)
+        .await;
+    // Copy data from old columns to new columns if old columns exist
+    let _ = sqlx::query("UPDATE sandbox_configs SET api_url = base_url WHERE api_url IS NULL AND base_url IS NOT NULL")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("UPDATE sandbox_configs SET timeout_seconds = default_timeout WHERE timeout_seconds IS NULL AND default_timeout IS NOT NULL")
+        .execute(pool)
+        .await;
+
+    // Sandbox submissions
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS sandbox_submissions (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            sample_id TEXT REFERENCES malware_samples(id) ON DELETE SET NULL,
+            sandbox_type TEXT NOT NULL,
+            sandbox_task_id TEXT NOT NULL,
+            config_id TEXT REFERENCES sandbox_configs(id) ON DELETE SET NULL,
+            filename TEXT NOT NULL,
+            file_hash TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            options_json TEXT,
+            submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            completed_at TIMESTAMP,
+            error_message TEXT
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Sandbox results
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS sandbox_results (
+            id TEXT PRIMARY KEY,
+            submission_id TEXT NOT NULL REFERENCES sandbox_submissions(id) ON DELETE CASCADE,
+            sample_id TEXT REFERENCES malware_samples(id) ON DELETE SET NULL,
+            sandbox_type TEXT NOT NULL,
+            sandbox_task_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            verdict TEXT NOT NULL,
+            score INTEGER NOT NULL DEFAULT 0,
+            analysis_duration_seconds INTEGER,
+            processes_json TEXT,
+            network_activity_json TEXT,
+            file_activity_json TEXT,
+            registry_activity_json TEXT,
+            dropped_files_json TEXT,
+            signatures_json TEXT,
+            mitre_techniques_json TEXT,
+            screenshots_json TEXT,
+            raw_report TEXT,
+            submitted_at TIMESTAMP,
+            completed_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Sandbox network IOCs
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS sandbox_network_iocs (
+            id TEXT PRIMARY KEY,
+            result_id TEXT NOT NULL REFERENCES sandbox_results(id) ON DELETE CASCADE,
+            ioc_type TEXT NOT NULL,
+            value TEXT NOT NULL,
+            context TEXT,
+            first_seen TIMESTAMP,
+            last_seen TIMESTAMP,
+            count INTEGER DEFAULT 1,
+            is_c2 BOOLEAN DEFAULT FALSE,
+            threat_intel_hit BOOLEAN DEFAULT FALSE,
+            threat_intel_source TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(result_id, ioc_type, value)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Sandbox file IOCs
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS sandbox_file_iocs (
+            id TEXT PRIMARY KEY,
+            result_id TEXT NOT NULL REFERENCES sandbox_results(id) ON DELETE CASCADE,
+            ioc_type TEXT NOT NULL,
+            value TEXT NOT NULL,
+            path TEXT,
+            context TEXT,
+            is_dropped BOOLEAN DEFAULT FALSE,
+            threat_intel_hit BOOLEAN DEFAULT FALSE,
+            detection_name TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(result_id, ioc_type, value)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Sandbox dropped files
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS sandbox_dropped_files (
+            id TEXT PRIMARY KEY,
+            result_id TEXT NOT NULL REFERENCES sandbox_results(id) ON DELETE CASCADE,
+            filename TEXT NOT NULL,
+            path TEXT NOT NULL,
+            file_type TEXT,
+            size INTEGER NOT NULL,
+            md5 TEXT NOT NULL,
+            sha256 TEXT NOT NULL,
+            ssdeep TEXT,
+            entropy REAL,
+            is_executable BOOLEAN DEFAULT FALSE,
+            is_suspicious BOOLEAN DEFAULT FALSE,
+            detection TEXT,
+            yara_matches_json TEXT,
+            download_url TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Sandbox process trees
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS sandbox_processes (
+            id TEXT PRIMARY KEY,
+            result_id TEXT NOT NULL REFERENCES sandbox_results(id) ON DELETE CASCADE,
+            pid INTEGER NOT NULL,
+            ppid INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            path TEXT,
+            command_line TEXT,
+            username TEXT,
+            integrity_level TEXT,
+            is_injected BOOLEAN DEFAULT FALSE,
+            is_suspicious BOOLEAN DEFAULT FALSE,
+            start_time TIMESTAMP,
+            end_time TIMESTAMP,
+            api_calls_json TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Sandbox signatures/detections
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS sandbox_signatures (
+            id TEXT PRIMARY KEY,
+            result_id TEXT NOT NULL REFERENCES sandbox_results(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            description TEXT,
+            severity TEXT NOT NULL,
+            category TEXT,
+            families_json TEXT,
+            mitre_techniques_json TEXT,
+            references_json TEXT,
+            indicators_json TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Sandbox comparisons
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS sandbox_comparisons (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            sample_id TEXT REFERENCES malware_samples(id) ON DELETE SET NULL,
+            result_ids_json TEXT NOT NULL,
+            consensus_verdict TEXT NOT NULL,
+            average_score INTEGER NOT NULL,
+            sandbox_count INTEGER NOT NULL,
+            verdicts_json TEXT NOT NULL,
+            scores_json TEXT NOT NULL,
+            common_signatures_json TEXT,
+            common_mitre_json TEXT,
+            total_network_iocs INTEGER DEFAULT 0,
+            total_file_iocs INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sandbox_configs_user_id ON sandbox_configs(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sandbox_configs_type ON sandbox_configs(sandbox_type)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sandbox_submissions_user_id ON sandbox_submissions(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sandbox_submissions_sample_id ON sandbox_submissions(sample_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sandbox_submissions_status ON sandbox_submissions(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sandbox_submissions_task_id ON sandbox_submissions(sandbox_task_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sandbox_results_submission_id ON sandbox_results(submission_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sandbox_results_sample_id ON sandbox_results(sample_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sandbox_results_verdict ON sandbox_results(verdict)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sandbox_network_iocs_result_id ON sandbox_network_iocs(result_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sandbox_network_iocs_type ON sandbox_network_iocs(ioc_type)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sandbox_file_iocs_result_id ON sandbox_file_iocs(result_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sandbox_dropped_files_result_id ON sandbox_dropped_files(result_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sandbox_dropped_files_sha256 ON sandbox_dropped_files(sha256)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sandbox_processes_result_id ON sandbox_processes(result_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sandbox_signatures_result_id ON sandbox_signatures(result_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sandbox_comparisons_user_id ON sandbox_comparisons(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sandbox_comparisons_sample_id ON sandbox_comparisons(sample_id)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created sandbox integration tables (Sprint 6)");
     Ok(())
 }
