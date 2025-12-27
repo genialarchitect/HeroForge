@@ -246,6 +246,8 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     create_malware_analysis_tables(pool).await?;
     // Sandbox Integration tables (Sprint 6 - Priority 1 Features)
     create_sandbox_tables(pool).await?;
+    // Dynamic Analysis tables (Sprint 7 - Priority 1 Features)
+    create_dynamic_analysis_tables(pool).await?;
     Ok(())
 }
 
@@ -17423,5 +17425,655 @@ async fn create_sandbox_tables(pool: &SqlitePool) -> Result<()> {
         .await?;
 
     log::info!("Created sandbox integration tables (Sprint 6)");
+    Ok(())
+}
+
+/// Create dynamic analysis tables (Sprint 7 - Priority 1 Features)
+pub async fn create_dynamic_analysis_tables(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
+    // Dynamic Analysis Sessions - Main session tracking
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS dynamic_analysis_sessions (
+            id TEXT PRIMARY KEY,
+            sample_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            environment TEXT NOT NULL,
+            os_type TEXT NOT NULL,
+            os_version TEXT,
+            architecture TEXT NOT NULL DEFAULT 'x64',
+            analysis_timeout_secs INTEGER NOT NULL DEFAULT 300,
+            network_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+            human_interaction BOOLEAN NOT NULL DEFAULT FALSE,
+            status TEXT NOT NULL DEFAULT 'pending',
+            started_at TIMESTAMP,
+            completed_at TIMESTAMP,
+            execution_time_secs INTEGER,
+            error_message TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (sample_id) REFERENCES malware_samples(id),
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Dynamic Analysis Results - Aggregated analysis results
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS dynamic_analysis_results (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL UNIQUE,
+            verdict TEXT NOT NULL DEFAULT 'unknown',
+            verdict_classification TEXT NOT NULL DEFAULT 'unknown',
+            threat_score INTEGER NOT NULL DEFAULT 0,
+            confidence REAL NOT NULL DEFAULT 0.0,
+            threat_categories TEXT,
+            summary TEXT,
+            process_count INTEGER NOT NULL DEFAULT 0,
+            api_call_count INTEGER NOT NULL DEFAULT 0,
+            network_connection_count INTEGER NOT NULL DEFAULT 0,
+            file_operation_count INTEGER NOT NULL DEFAULT 0,
+            registry_operation_count INTEGER NOT NULL DEFAULT 0,
+            dropped_file_count INTEGER NOT NULL DEFAULT 0,
+            anti_analysis_technique_count INTEGER NOT NULL DEFAULT 0,
+            ioc_count INTEGER NOT NULL DEFAULT 0,
+            persistence_detected BOOLEAN NOT NULL DEFAULT FALSE,
+            code_injection_detected BOOLEAN NOT NULL DEFAULT FALSE,
+            c2_communication_detected BOOLEAN NOT NULL DEFAULT FALSE,
+            ransomware_behavior_detected BOOLEAN NOT NULL DEFAULT FALSE,
+            data_exfiltration_detected BOOLEAN NOT NULL DEFAULT FALSE,
+            mitre_techniques TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (session_id) REFERENCES dynamic_analysis_sessions(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Dynamic Processes - Process monitoring data
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS dynamic_processes (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            pid INTEGER NOT NULL,
+            parent_pid INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            path TEXT,
+            command_line TEXT,
+            username TEXT,
+            integrity_level TEXT,
+            is_injected BOOLEAN NOT NULL DEFAULT FALSE,
+            is_hollowed BOOLEAN NOT NULL DEFAULT FALSE,
+            is_suspicious BOOLEAN NOT NULL DEFAULT FALSE,
+            suspicion_reasons TEXT,
+            injected_modules TEXT,
+            started_at TIMESTAMP NOT NULL,
+            terminated_at TIMESTAMP,
+            exit_code INTEGER,
+            cpu_usage REAL,
+            memory_usage INTEGER,
+            children_count INTEGER NOT NULL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (session_id) REFERENCES dynamic_analysis_sessions(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Dynamic API Calls - API/syscall monitoring
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS dynamic_api_calls (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            process_id TEXT NOT NULL,
+            pid INTEGER NOT NULL,
+            process_name TEXT NOT NULL,
+            module TEXT NOT NULL,
+            function TEXT NOT NULL,
+            arguments TEXT,
+            return_value TEXT,
+            timestamp TIMESTAMP NOT NULL,
+            api_category TEXT NOT NULL,
+            severity TEXT NOT NULL DEFAULT 'info',
+            is_hooked BOOLEAN NOT NULL DEFAULT FALSE,
+            mitre_techniques TEXT,
+            call_stack TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (session_id) REFERENCES dynamic_analysis_sessions(id) ON DELETE CASCADE,
+            FOREIGN KEY (process_id) REFERENCES dynamic_processes(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Dynamic Network Activity - Network monitoring
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS dynamic_network_activity (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            process_id TEXT,
+            pid INTEGER NOT NULL,
+            process_name TEXT NOT NULL,
+            protocol TEXT NOT NULL,
+            local_address TEXT,
+            local_port INTEGER,
+            remote_address TEXT NOT NULL,
+            remote_port INTEGER NOT NULL,
+            direction TEXT NOT NULL,
+            bytes_sent INTEGER NOT NULL DEFAULT 0,
+            bytes_received INTEGER NOT NULL DEFAULT 0,
+            packet_count INTEGER NOT NULL DEFAULT 0,
+            timestamp TIMESTAMP NOT NULL,
+            is_suspicious BOOLEAN NOT NULL DEFAULT FALSE,
+            suspicion_reason TEXT,
+            geo_location TEXT,
+            asn TEXT,
+            dns_query_id TEXT,
+            http_request_id TEXT,
+            tls_info TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (session_id) REFERENCES dynamic_analysis_sessions(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Dynamic DNS Queries
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS dynamic_dns_queries (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            network_activity_id TEXT,
+            query_name TEXT NOT NULL,
+            query_type TEXT NOT NULL,
+            response_ips TEXT,
+            response_cnames TEXT,
+            is_dga BOOLEAN NOT NULL DEFAULT FALSE,
+            dga_score REAL,
+            timestamp TIMESTAMP NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (session_id) REFERENCES dynamic_analysis_sessions(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Dynamic HTTP Requests
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS dynamic_http_requests (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            network_activity_id TEXT,
+            method TEXT NOT NULL,
+            url TEXT NOT NULL,
+            host TEXT NOT NULL,
+            path TEXT NOT NULL,
+            user_agent TEXT,
+            headers TEXT,
+            body TEXT,
+            response_status INTEGER,
+            response_headers TEXT,
+            response_body_preview TEXT,
+            content_type TEXT,
+            is_suspicious BOOLEAN NOT NULL DEFAULT FALSE,
+            timestamp TIMESTAMP NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (session_id) REFERENCES dynamic_analysis_sessions(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Dynamic File Operations
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS dynamic_file_operations (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            process_id TEXT,
+            pid INTEGER NOT NULL,
+            process_name TEXT NOT NULL,
+            operation_type TEXT NOT NULL,
+            path TEXT NOT NULL,
+            new_path TEXT,
+            file_size INTEGER,
+            file_hash TEXT,
+            timestamp TIMESTAMP NOT NULL,
+            is_suspicious BOOLEAN NOT NULL DEFAULT FALSE,
+            suspicion_reason TEXT,
+            is_ransomware_indicator BOOLEAN NOT NULL DEFAULT FALSE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (session_id) REFERENCES dynamic_analysis_sessions(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Dynamic Registry Operations (Windows)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS dynamic_registry_operations (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            process_id TEXT,
+            pid INTEGER NOT NULL,
+            process_name TEXT NOT NULL,
+            operation_type TEXT NOT NULL,
+            key_path TEXT NOT NULL,
+            value_name TEXT,
+            value_type TEXT,
+            value_data TEXT,
+            old_value_data TEXT,
+            timestamp TIMESTAMP NOT NULL,
+            is_suspicious BOOLEAN NOT NULL DEFAULT FALSE,
+            suspicion_reason TEXT,
+            is_persistence BOOLEAN NOT NULL DEFAULT FALSE,
+            persistence_type TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (session_id) REFERENCES dynamic_analysis_sessions(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Dynamic Behavior Events - Timeline events
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS dynamic_behavior_events (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            pid INTEGER NOT NULL,
+            process_name TEXT NOT NULL,
+            description TEXT NOT NULL,
+            severity TEXT NOT NULL DEFAULT 'info',
+            timestamp TIMESTAMP NOT NULL,
+            details TEXT,
+            mitre_techniques TEXT,
+            related_events TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (session_id) REFERENCES dynamic_analysis_sessions(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Dynamic Dropped Files
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS dynamic_dropped_files (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            process_id TEXT,
+            pid INTEGER NOT NULL,
+            process_name TEXT NOT NULL,
+            path TEXT NOT NULL,
+            original_name TEXT,
+            size INTEGER NOT NULL,
+            md5 TEXT,
+            sha1 TEXT,
+            sha256 TEXT NOT NULL,
+            file_type TEXT,
+            mime_type TEXT,
+            is_executable BOOLEAN NOT NULL DEFAULT FALSE,
+            is_suspicious BOOLEAN NOT NULL DEFAULT FALSE,
+            yara_matches TEXT,
+            dropped_at TIMESTAMP NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (session_id) REFERENCES dynamic_analysis_sessions(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Dynamic Memory Dumps
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS dynamic_memory_dumps (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            process_id TEXT,
+            pid INTEGER NOT NULL,
+            process_name TEXT NOT NULL,
+            dump_type TEXT NOT NULL,
+            base_address TEXT,
+            region_size INTEGER NOT NULL,
+            protection TEXT,
+            file_path TEXT NOT NULL,
+            sha256 TEXT NOT NULL,
+            strings_extracted INTEGER NOT NULL DEFAULT 0,
+            yara_matches TEXT,
+            captured_at TIMESTAMP NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (session_id) REFERENCES dynamic_analysis_sessions(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Dynamic Screenshots
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS dynamic_screenshots (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            width INTEGER NOT NULL,
+            height INTEGER NOT NULL,
+            format TEXT NOT NULL DEFAULT 'png',
+            file_size INTEGER NOT NULL,
+            sha256 TEXT NOT NULL,
+            ocr_text TEXT,
+            captured_at TIMESTAMP NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (session_id) REFERENCES dynamic_analysis_sessions(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Dynamic Anti-Analysis Techniques
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS dynamic_anti_analysis (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            technique_type TEXT NOT NULL,
+            technique_name TEXT NOT NULL,
+            description TEXT NOT NULL,
+            severity TEXT NOT NULL DEFAULT 'medium',
+            confidence REAL NOT NULL DEFAULT 0.0,
+            evidence TEXT,
+            mitre_technique TEXT,
+            detected_at TIMESTAMP NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (session_id) REFERENCES dynamic_analysis_sessions(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Dynamic IOCs - Extracted indicators of compromise
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS dynamic_iocs (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            ioc_type TEXT NOT NULL,
+            value TEXT NOT NULL,
+            context TEXT,
+            source TEXT NOT NULL,
+            confidence REAL NOT NULL DEFAULT 0.0,
+            is_malicious BOOLEAN NOT NULL DEFAULT FALSE,
+            tags TEXT,
+            first_seen TIMESTAMP NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (session_id) REFERENCES dynamic_analysis_sessions(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Dynamic Persistence Locations
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS dynamic_persistence (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            process_id TEXT,
+            persistence_type TEXT NOT NULL,
+            location TEXT NOT NULL,
+            value TEXT,
+            description TEXT NOT NULL,
+            mitre_technique TEXT,
+            severity TEXT NOT NULL DEFAULT 'high',
+            detected_at TIMESTAMP NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (session_id) REFERENCES dynamic_analysis_sessions(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Dynamic Mutex/Event Objects
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS dynamic_mutexes (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            process_id TEXT,
+            pid INTEGER NOT NULL,
+            process_name TEXT NOT NULL,
+            operation TEXT NOT NULL,
+            name TEXT NOT NULL,
+            is_known_malware BOOLEAN NOT NULL DEFAULT FALSE,
+            malware_family TEXT,
+            timestamp TIMESTAMP NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (session_id) REFERENCES dynamic_analysis_sessions(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // API Hook Patterns - Configurable patterns for detection
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS dynamic_api_hook_patterns (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            module TEXT NOT NULL,
+            function TEXT NOT NULL,
+            pattern_type TEXT NOT NULL,
+            category TEXT NOT NULL,
+            severity TEXT NOT NULL DEFAULT 'medium',
+            description TEXT NOT NULL,
+            mitre_techniques TEXT,
+            os_type TEXT NOT NULL DEFAULT 'windows',
+            enabled BOOLEAN NOT NULL DEFAULT TRUE,
+            custom BOOLEAN NOT NULL DEFAULT FALSE,
+            created_by TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(module, function, os_type)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // C2 Communication Patterns
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS dynamic_c2_patterns (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            pattern_type TEXT NOT NULL,
+            confidence REAL NOT NULL,
+            beacon_interval_avg REAL,
+            beacon_interval_stddev REAL,
+            beacon_count INTEGER,
+            remote_addresses TEXT NOT NULL,
+            ports TEXT NOT NULL,
+            protocol TEXT NOT NULL,
+            user_agent TEXT,
+            evidence TEXT,
+            detected_at TIMESTAMP NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (session_id) REFERENCES dynamic_analysis_sessions(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Ransomware Indicators
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS dynamic_ransomware_indicators (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            indicator_type TEXT NOT NULL,
+            description TEXT NOT NULL,
+            affected_paths TEXT,
+            file_count INTEGER,
+            encrypted_extensions TEXT,
+            ransom_note_content TEXT,
+            bitcoin_addresses TEXT,
+            contact_info TEXT,
+            confidence REAL NOT NULL,
+            detected_at TIMESTAMP NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (session_id) REFERENCES dynamic_analysis_sessions(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for dynamic analysis tables
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dynamic_sessions_sample_id ON dynamic_analysis_sessions(sample_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dynamic_sessions_user_id ON dynamic_analysis_sessions(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dynamic_sessions_status ON dynamic_analysis_sessions(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dynamic_results_session_id ON dynamic_analysis_results(session_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dynamic_results_verdict ON dynamic_analysis_results(verdict)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dynamic_processes_session_id ON dynamic_processes(session_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dynamic_processes_pid ON dynamic_processes(pid)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dynamic_api_calls_session_id ON dynamic_api_calls(session_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dynamic_api_calls_process_id ON dynamic_api_calls(process_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dynamic_api_calls_function ON dynamic_api_calls(function)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dynamic_api_calls_category ON dynamic_api_calls(api_category)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dynamic_network_session_id ON dynamic_network_activity(session_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dynamic_network_remote_addr ON dynamic_network_activity(remote_address)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dynamic_dns_session_id ON dynamic_dns_queries(session_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dynamic_dns_query_name ON dynamic_dns_queries(query_name)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dynamic_http_session_id ON dynamic_http_requests(session_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dynamic_http_host ON dynamic_http_requests(host)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dynamic_files_session_id ON dynamic_file_operations(session_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dynamic_files_path ON dynamic_file_operations(path)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dynamic_registry_session_id ON dynamic_registry_operations(session_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dynamic_registry_key_path ON dynamic_registry_operations(key_path)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dynamic_events_session_id ON dynamic_behavior_events(session_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dynamic_events_type ON dynamic_behavior_events(event_type)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dynamic_events_timestamp ON dynamic_behavior_events(timestamp)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dynamic_dropped_session_id ON dynamic_dropped_files(session_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dynamic_dropped_sha256 ON dynamic_dropped_files(sha256)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dynamic_memory_session_id ON dynamic_memory_dumps(session_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dynamic_screenshots_session_id ON dynamic_screenshots(session_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dynamic_anti_analysis_session_id ON dynamic_anti_analysis(session_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dynamic_anti_analysis_type ON dynamic_anti_analysis(technique_type)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dynamic_iocs_session_id ON dynamic_iocs(session_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dynamic_iocs_type ON dynamic_iocs(ioc_type)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dynamic_iocs_value ON dynamic_iocs(value)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dynamic_persistence_session_id ON dynamic_persistence(session_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dynamic_mutexes_session_id ON dynamic_mutexes(session_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dynamic_mutexes_name ON dynamic_mutexes(name)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dynamic_c2_session_id ON dynamic_c2_patterns(session_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dynamic_ransomware_session_id ON dynamic_ransomware_indicators(session_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dynamic_hook_patterns_module ON dynamic_api_hook_patterns(module)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dynamic_hook_patterns_function ON dynamic_api_hook_patterns(function)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created dynamic analysis tables (Sprint 7)");
     Ok(())
 }

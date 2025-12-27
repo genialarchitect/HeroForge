@@ -90,6 +90,7 @@ pub mod scanner_import;
 pub mod integrations_bots;
 pub mod tunneling;
 pub mod malware_analysis;
+pub mod sandbox;
 pub mod yara;
 pub mod tls_analysis;
 pub mod detection_engineering;
