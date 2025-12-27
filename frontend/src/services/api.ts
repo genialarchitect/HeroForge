@@ -4092,4 +4092,193 @@ export const fuzzingAPI = {
     api.delete<void>(`/fuzzing/dictionaries/${id}`),
 };
 
+// === Malware Analysis API ===
+export interface MalwareSample {
+  id: string;
+  original_filename: string;
+  file_type: string;
+  file_size: number;
+  md5: string;
+  sha1?: string;
+  sha256: string;
+  ssdeep?: string;
+  mime_type?: string;
+  entropy: number;
+  source: string;
+  source_url?: string;
+  tags: string[];
+  notes?: string;
+  is_malicious?: boolean;
+  threat_score?: number;
+  classification?: string;
+  family?: string;
+  first_seen: string;
+  last_analyzed?: string;
+  analysis_count: number;
+  created_at: string;
+}
+
+export interface MalwareStats {
+  total_samples: number;
+  samples_analyzed: number;
+  samples_malicious: number;
+  samples_clean: number;
+  samples_pending: number;
+  total_iocs: number;
+  total_yara_rules: number;
+  yara_matches_total: number;
+  classifications: { classification: string; count: number }[];
+  file_types: { file_type: string; count: number }[];
+  recent_samples: MalwareSample[];
+}
+
+export interface YaraRule {
+  id: string;
+  name: string;
+  description?: string;
+  category: string;
+  rule_content?: string;
+  tags: string[];
+  severity: string;
+  is_enabled: boolean;
+  is_builtin: boolean;
+  match_count: number;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface MalwareIoc {
+  id: string;
+  sample_id: string;
+  sample_filename?: string;
+  sample_sha256?: string;
+  ioc_type: string;
+  value: string;
+  context?: string;
+  confidence: number;
+  threat_intel_hit?: boolean;
+  created_at: string;
+}
+
+export interface MalwareQueueItem {
+  id: string;
+  sample_id: string;
+  sample_filename: string;
+  sample_sha256: string;
+  analysis_types: string;
+  priority: number;
+  status: string;
+  attempts: number;
+  error_message?: string;
+  created_at: string;
+}
+
+export interface AnalysisResult {
+  analysis_id: string;
+  threat_score: number;
+  classification: string;
+  family?: string;
+  yara_matches: number;
+  iocs_extracted: number;
+  suspicious_patterns: number;
+  packer_detected: boolean;
+  message: string;
+}
+
+export const malwareAnalysisAPI = {
+  // Stats & Dashboard
+  getStats: () =>
+    api.get<MalwareStats>('/malware-analysis/stats'),
+
+  getDashboard: () =>
+    api.get<MalwareStats>('/malware-analysis/dashboard'),
+
+  // Samples
+  listSamples: (params?: { file_type?: string; classification?: string; is_malicious?: boolean; search?: string; limit?: number; offset?: number }) =>
+    api.get<MalwareSample[]>('/malware-analysis/samples', { params }),
+
+  uploadSample: (formData: FormData) =>
+    api.post<{ id: string; sha256: string; md5: string; file_type: string; message: string }>('/malware-analysis/samples', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+
+  getSample: (id: string) =>
+    api.get<MalwareSample & { static_analysis?: unknown; yara_matches: unknown[]; iocs: unknown[] }>(`/malware-analysis/samples/${id}`),
+
+  deleteSample: (id: string) =>
+    api.delete<void>(`/malware-analysis/samples/${id}`),
+
+  analyzeSample: (id: string) =>
+    api.post<AnalysisResult>(`/malware-analysis/samples/${id}/analyze`),
+
+  reanalyzeSample: (id: string) =>
+    api.post<AnalysisResult>(`/malware-analysis/samples/${id}/reanalyze`),
+
+  downloadSample: (id: string) =>
+    api.get<Blob>(`/malware-analysis/samples/${id}/download`, { responseType: 'blob' }),
+
+  getSampleStrings: (id: string) =>
+    api.get<unknown[]>(`/malware-analysis/samples/${id}/strings`),
+
+  getSampleImports: (id: string) =>
+    api.get<unknown[]>(`/malware-analysis/samples/${id}/imports`),
+
+  getSampleIocs: (id: string) =>
+    api.get<MalwareIoc[]>(`/malware-analysis/samples/${id}/iocs`),
+
+  getYaraMatches: (id: string) =>
+    api.get<unknown[]>(`/malware-analysis/samples/${id}/yara-matches`),
+
+  getClassification: (id: string) =>
+    api.get<{ classification: string; family?: string; confidence: number; threat_score: number; reasoning?: string[] }>(`/malware-analysis/samples/${id}/classification`),
+
+  updateTags: (id: string, tags: string[]) =>
+    api.put<void>(`/malware-analysis/samples/${id}/tags`, { tags }),
+
+  searchSamples: (params: { query?: string; hash?: string; file_type?: string; classification?: string; min_threat_score?: number; max_threat_score?: number; limit?: number }) =>
+    api.post<MalwareSample[]>('/malware-analysis/samples/search', params),
+
+  lookupSample: (hash: string) =>
+    api.post<{ found: boolean; sample?: MalwareSample }>('/malware-analysis/samples/lookup', { hash }),
+
+  // YARA Rules
+  listYaraRules: (params?: { category?: string; include_builtin?: boolean }) =>
+    api.get<YaraRule[]>('/malware-analysis/yara/rules', { params }),
+
+  createYaraRule: (data: { name: string; description?: string; category: string; rule_content: string; tags: string[]; severity?: string }) =>
+    api.post<{ id: string; message: string }>('/malware-analysis/yara/rules', data),
+
+  getYaraRule: (id: string) =>
+    api.get<YaraRule>(`/malware-analysis/yara/rules/${id}`),
+
+  updateYaraRule: (id: string, data: { name: string; description?: string; category: string; rule_content: string; tags: string[]; severity?: string }) =>
+    api.put<void>(`/malware-analysis/yara/rules/${id}`, data),
+
+  deleteYaraRule: (id: string) =>
+    api.delete<void>(`/malware-analysis/yara/rules/${id}`),
+
+  toggleYaraRule: (id: string) =>
+    api.post<void>(`/malware-analysis/yara/rules/${id}/toggle`),
+
+  scanWithYara: (sampleId: string) =>
+    api.post<AnalysisResult>('/malware-analysis/yara/scan', { sample_id: sampleId }),
+
+  // IOCs
+  listIocs: (params?: { ioc_type?: string; limit?: number; offset?: number }) =>
+    api.get<MalwareIoc[]>('/malware-analysis/iocs', { params }),
+
+  searchIocs: (value: string, iocType?: string) =>
+    api.post<MalwareIoc[]>('/malware-analysis/iocs/search', { value, ioc_type: iocType }),
+
+  exportIocs: (params?: { format?: string; ioc_type?: string }) =>
+    api.get('/malware-analysis/iocs/export', { params, responseType: params?.format === 'csv' ? 'blob' : 'json' }),
+
+  // Analysis Queue
+  listQueue: () =>
+    api.get<MalwareQueueItem[]>('/malware-analysis/queue'),
+
+  cancelQueueItem: (id: string) =>
+    api.post<void>(`/malware-analysis/queue/${id}/cancel`),
+};
+
 export default api;

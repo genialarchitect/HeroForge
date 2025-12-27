@@ -242,6 +242,8 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     create_binary_analysis_tables(pool).await?;
     // Fuzzing tables (Sprint 4 - Priority 1 Features)
     create_fuzzing_tables(pool).await?;
+    // Malware Analysis tables (Sprint 5 - Priority 1 Features)
+    create_malware_analysis_tables(pool).await?;
     Ok(())
 }
 
@@ -16786,5 +16788,341 @@ async fn create_fuzzing_tables(pool: &SqlitePool) -> Result<()> {
         .await?;
 
     log::info!("Created fuzzing tables (Sprint 4)");
+    Ok(())
+}
+
+/// Create Malware Analysis tables (Sprint 5 - Priority 1 Features)
+async fn create_malware_analysis_tables(pool: &SqlitePool) -> Result<()> {
+    // Malware samples - main table for uploaded samples
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS malware_samples (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            original_filename TEXT NOT NULL,
+            file_size INTEGER NOT NULL,
+            md5 TEXT NOT NULL,
+            sha1 TEXT NOT NULL,
+            sha256 TEXT NOT NULL UNIQUE,
+            ssdeep TEXT,
+            file_type TEXT NOT NULL,
+            mime_type TEXT,
+            entropy REAL NOT NULL,
+            storage_path TEXT NOT NULL,
+            source TEXT NOT NULL,
+            source_url TEXT,
+            tags TEXT,
+            notes TEXT,
+            is_malicious INTEGER,
+            threat_score INTEGER,
+            classification TEXT,
+            family TEXT,
+            first_seen TEXT NOT NULL DEFAULT (datetime('now')),
+            last_analyzed TEXT,
+            analysis_count INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Static analysis results
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS malware_static_analysis (
+            id TEXT PRIMARY KEY,
+            sample_id TEXT NOT NULL REFERENCES malware_samples(id) ON DELETE CASCADE,
+            analysis_type TEXT NOT NULL,
+            file_type TEXT NOT NULL,
+            pe_info TEXT,
+            elf_info TEXT,
+            imports TEXT,
+            exports TEXT,
+            strings_count INTEGER NOT NULL DEFAULT 0,
+            strings_interesting TEXT,
+            yara_matches TEXT,
+            packer_detected TEXT,
+            compiler_detected TEXT,
+            certificates TEXT,
+            resources TEXT,
+            suspicious_patterns TEXT,
+            iocs TEXT,
+            classification_result TEXT,
+            threat_score INTEGER,
+            analysis_duration_ms INTEGER,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // YARA rules - user-defined and built-in rules
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS yara_rules (
+            id TEXT PRIMARY KEY,
+            user_id TEXT,
+            name TEXT NOT NULL,
+            description TEXT,
+            category TEXT NOT NULL,
+            rule_content TEXT NOT NULL,
+            tags TEXT,
+            metadata TEXT,
+            severity TEXT NOT NULL DEFAULT 'medium',
+            is_enabled INTEGER NOT NULL DEFAULT 1,
+            is_builtin INTEGER NOT NULL DEFAULT 0,
+            match_count INTEGER NOT NULL DEFAULT 0,
+            last_match_at TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(user_id, name)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // YARA rule matches - track which rules matched which samples
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS yara_rule_matches (
+            id TEXT PRIMARY KEY,
+            sample_id TEXT NOT NULL REFERENCES malware_samples(id) ON DELETE CASCADE,
+            rule_id TEXT NOT NULL REFERENCES yara_rules(id) ON DELETE CASCADE,
+            rule_name TEXT NOT NULL,
+            rule_namespace TEXT,
+            tags TEXT,
+            matched_strings TEXT,
+            match_offset INTEGER,
+            matched_at TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(sample_id, rule_id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Extracted IOCs
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS malware_iocs (
+            id TEXT PRIMARY KEY,
+            sample_id TEXT NOT NULL REFERENCES malware_samples(id) ON DELETE CASCADE,
+            ioc_type TEXT NOT NULL,
+            value TEXT NOT NULL,
+            context TEXT,
+            confidence REAL NOT NULL DEFAULT 0.5,
+            is_defanged INTEGER NOT NULL DEFAULT 0,
+            first_seen TEXT NOT NULL DEFAULT (datetime('now')),
+            threat_intel_hit INTEGER NOT NULL DEFAULT 0,
+            threat_intel_source TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(sample_id, ioc_type, value)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Packer detection results
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS malware_packer_detections (
+            id TEXT PRIMARY KEY,
+            sample_id TEXT NOT NULL REFERENCES malware_samples(id) ON DELETE CASCADE,
+            packer_name TEXT NOT NULL,
+            packer_version TEXT,
+            detection_method TEXT NOT NULL,
+            confidence REAL NOT NULL,
+            indicators TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(sample_id, packer_name)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Suspicious API patterns detected
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS malware_api_patterns (
+            id TEXT PRIMARY KEY,
+            sample_id TEXT NOT NULL REFERENCES malware_samples(id) ON DELETE CASCADE,
+            pattern_name TEXT NOT NULL,
+            pattern_type TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            description TEXT NOT NULL,
+            indicators TEXT,
+            mitre_techniques TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Embedded resources extracted
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS malware_resources (
+            id TEXT PRIMARY KEY,
+            sample_id TEXT NOT NULL REFERENCES malware_samples(id) ON DELETE CASCADE,
+            resource_type TEXT NOT NULL,
+            name TEXT NOT NULL,
+            language TEXT,
+            size INTEGER NOT NULL,
+            entropy REAL NOT NULL,
+            md5 TEXT NOT NULL,
+            sha256 TEXT NOT NULL,
+            file_type TEXT,
+            is_suspicious INTEGER NOT NULL DEFAULT 0,
+            extracted_path TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Certificate analysis results
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS malware_certificates (
+            id TEXT PRIMARY KEY,
+            sample_id TEXT NOT NULL REFERENCES malware_samples(id) ON DELETE CASCADE,
+            subject TEXT NOT NULL,
+            issuer TEXT NOT NULL,
+            serial_number TEXT NOT NULL,
+            not_before TEXT NOT NULL,
+            not_after TEXT NOT NULL,
+            is_valid INTEGER NOT NULL DEFAULT 0,
+            is_trusted INTEGER NOT NULL DEFAULT 0,
+            is_expired INTEGER NOT NULL DEFAULT 0,
+            signature_algorithm TEXT NOT NULL,
+            thumbprint_sha1 TEXT NOT NULL,
+            thumbprint_sha256 TEXT NOT NULL,
+            is_self_signed INTEGER NOT NULL DEFAULT 0,
+            known_malware_cert TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Classification history
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS malware_classifications (
+            id TEXT PRIMARY KEY,
+            sample_id TEXT NOT NULL REFERENCES malware_samples(id) ON DELETE CASCADE,
+            classification TEXT NOT NULL,
+            family TEXT,
+            confidence REAL NOT NULL,
+            threat_score INTEGER NOT NULL,
+            reasoning TEXT,
+            related_samples TEXT,
+            classified_by TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Analysis queue for async processing
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS malware_analysis_queue (
+            id TEXT PRIMARY KEY,
+            sample_id TEXT NOT NULL REFERENCES malware_samples(id) ON DELETE CASCADE,
+            user_id TEXT NOT NULL,
+            analysis_types TEXT NOT NULL,
+            priority INTEGER NOT NULL DEFAULT 5,
+            status TEXT NOT NULL DEFAULT 'pending',
+            attempts INTEGER NOT NULL DEFAULT 0,
+            max_attempts INTEGER NOT NULL DEFAULT 3,
+            error_message TEXT,
+            started_at TEXT,
+            completed_at TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Sample relationships (parent/child, similar samples)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS malware_sample_relationships (
+            id TEXT PRIMARY KEY,
+            sample_id TEXT NOT NULL REFERENCES malware_samples(id) ON DELETE CASCADE,
+            related_sample_id TEXT NOT NULL REFERENCES malware_samples(id) ON DELETE CASCADE,
+            relationship_type TEXT NOT NULL,
+            confidence REAL NOT NULL DEFAULT 1.0,
+            notes TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(sample_id, related_sample_id, relationship_type)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_malware_samples_user_id ON malware_samples(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_malware_samples_sha256 ON malware_samples(sha256)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_malware_samples_md5 ON malware_samples(md5)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_malware_samples_file_type ON malware_samples(file_type)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_malware_samples_classification ON malware_samples(classification)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_malware_samples_threat_score ON malware_samples(threat_score)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_malware_static_analysis_sample_id ON malware_static_analysis(sample_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_yara_rules_user_id ON yara_rules(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_yara_rules_category ON yara_rules(category)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_yara_rule_matches_sample_id ON yara_rule_matches(sample_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_yara_rule_matches_rule_id ON yara_rule_matches(rule_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_malware_iocs_sample_id ON malware_iocs(sample_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_malware_iocs_ioc_type ON malware_iocs(ioc_type)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_malware_iocs_value ON malware_iocs(value)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_malware_analysis_queue_status ON malware_analysis_queue(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_malware_analysis_queue_priority ON malware_analysis_queue(priority)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created malware analysis tables (Sprint 5)");
     Ok(())
 }

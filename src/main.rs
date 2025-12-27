@@ -22,6 +22,7 @@ mod fuzzing;
 mod incident_response;
 mod detection_engineering;
 mod integrations;
+mod malware_analysis;
 mod notifications;
 mod output;
 mod password_validation;
