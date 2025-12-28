@@ -247,6 +247,7 @@ const Header: React.FC = () => {
     { to: '/incident-response', icon: <AlertCircle className="h-4 w-4" />, label: 'Incident Response' },
     { to: '/detection-engineering', icon: <ScanSearch className="h-4 w-4" />, label: 'Detection Engineering' },
     { to: '/threat-hunting', icon: <Fingerprint className="h-4 w-4" />, label: 'Threat Hunting' },
+    { to: '/threat-intel', icon: <ShieldAlert className="h-4 w-4" />, label: 'Threat Intel' },
     { to: '/agents', icon: <Radio className="h-4 w-4" />, label: 'Scan Agents' },
     { to: '/agents/mesh', icon: <Share2 className="h-4 w-4" />, label: 'Mesh Network' },
     { to: '/attack-surface', icon: <Radar className="h-4 w-4" />, label: 'Attack Surface' },

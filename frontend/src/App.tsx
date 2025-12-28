@@ -68,6 +68,7 @@ const ForensicsPage = lazy(() => import('./pages/ForensicsPage'));
 const IncidentResponsePage = lazy(() => import('./pages/IncidentResponsePage'));
 const DetectionEngineeringPage = lazy(() => import('./pages/DetectionEngineeringPage'));
 const ThreatHuntingPage = lazy(() => import('./pages/ThreatHuntingPage'));
+const ThreatIntelPage = lazy(() => import('./pages/ThreatIntelPage'));
 
 // Exploit Research pages
 const ExploitDatabasePage = lazy(() => import('./pages/ExploitDatabasePage'));
@@ -570,6 +571,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <ThreatHuntingPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/threat-intel"
+            element={
+              <ProtectedRoute>
+                <ThreatIntelPage />
               </ProtectedRoute>
             }
           />

@@ -4500,4 +4500,264 @@ export const sandboxAPI = {
     api.get<SandboxStats>(`/sandbox/stats/${sandboxType}`),
 };
 
+// ============================================================================
+// Extended Threat Intelligence API - MISP, STIX, TAXII, Threat Actors
+// ============================================================================
+
+export interface MispServer {
+  id: string;
+  name: string;
+  url: string;
+  api_key?: string;
+  enabled: boolean;
+  last_sync_at?: string;
+  last_sync_status?: string;
+  events_synced: number;
+  created_at: string;
+}
+
+export interface MispEvent {
+  id: string;
+  server_id: string;
+  misp_event_id: string;
+  misp_uuid: string;
+  org_name: string;
+  info: string;
+  threat_level: string;
+  analysis_status: string;
+  date: string;
+  published: boolean;
+  attribute_count: number;
+  tags: string[];
+  synced_at: string;
+}
+
+export interface MispAttribute {
+  id: string;
+  event_id: string;
+  category: string;
+  attr_type: string;
+  value: string;
+  to_ids: boolean;
+  comment?: string;
+}
+
+export interface TaxiiServer {
+  id: string;
+  name: string;
+  url: string;
+  username?: string;
+  version: string;
+  enabled: boolean;
+  last_poll_at?: string;
+  last_poll_status?: string;
+  objects_synced: number;
+  created_at: string;
+}
+
+export interface TaxiiCollection {
+  id: string;
+  server_id: string;
+  collection_id: string;
+  title: string;
+  description?: string;
+  can_read: boolean;
+  can_write: boolean;
+  objects_count: number;
+  last_polled_at?: string;
+}
+
+export interface StixBundle {
+  id: string;
+  name: string;
+  source: string;
+  source_id?: string;
+  spec_version: string;
+  objects_count: number;
+  created_at: string;
+}
+
+export interface StixObject {
+  id: string;
+  bundle_id: string;
+  stix_id: string;
+  stix_type: string;
+  name?: string;
+  description?: string;
+  created: string;
+  modified: string;
+  raw_json: string;
+}
+
+export interface ThreatActorSummary {
+  id: string;
+  name: string;
+  aliases: string[];
+  actor_type: string;
+  country?: string;
+  motivation: string;
+  active: boolean;
+  sophistication: number;
+  first_seen?: string;
+  last_seen?: string;
+  target_sectors: string[];
+  campaign_count: number;
+}
+
+export interface ThreatActorDetail extends ThreatActorSummary {
+  description?: string;
+  resource_level: number;
+  target_countries: string[];
+  ttps: string[];
+  tools: string[];
+  malware: string[];
+  infrastructure?: unknown;
+  external_references: ExternalReference[];
+  campaigns: CampaignSummary[];
+  mitre_groups: string[];
+}
+
+export interface ExternalReference {
+  source: string;
+  url?: string;
+  external_id?: string;
+  description?: string;
+}
+
+export interface CampaignSummary {
+  id: string;
+  name: string;
+  description?: string;
+  first_seen?: string;
+  last_seen?: string;
+  status: string;
+  target_count: number;
+}
+
+export interface IocCorrelation {
+  ioc_type: string;
+  ioc_value: string;
+  source_type: string;
+  source_id: string;
+  source_name: string;
+  confidence: number;
+  threat_level?: string;
+}
+
+export interface CorrelationResult {
+  iocs_checked: number;
+  correlations_found: number;
+  correlations: IocCorrelation[];
+}
+
+export interface ThreatIntelStats {
+  misp_servers: number;
+  misp_events: number;
+  misp_attributes: number;
+  taxii_servers: number;
+  taxii_collections: number;
+  stix_bundles: number;
+  stix_objects: number;
+  threat_actors: number;
+  campaigns: number;
+}
+
+export const extendedThreatIntelAPI = {
+  // Dashboard
+  getStats: () =>
+    api.get<ThreatIntelStats>('/threat-intel/dashboard/stats'),
+
+  // MISP Servers
+  listMispServers: () =>
+    api.get<MispServer[]>('/threat-intel/misp/servers'),
+
+  addMispServer: (data: { name: string; url: string; api_key: string }) =>
+    api.post<MispServer>('/threat-intel/misp/servers', data),
+
+  updateMispServer: (id: string, data: { name?: string; url?: string; api_key?: string; enabled?: boolean }) =>
+    api.put<MispServer>(`/threat-intel/misp/servers/${id}`, data),
+
+  deleteMispServer: (id: string) =>
+    api.delete(`/threat-intel/misp/servers/${id}`),
+
+  testMispServer: (id: string) =>
+    api.post<{ success: boolean; message: string }>(`/threat-intel/misp/servers/${id}/test`),
+
+  syncMispServer: (id: string) =>
+    api.post<{ success: boolean; message: string; events_synced?: number }>(`/threat-intel/misp/servers/${id}/sync`),
+
+  listMispEvents: (params?: { server_id?: string; limit?: number }) =>
+    api.get<MispEvent[]>('/threat-intel/misp/events', { params }),
+
+  getMispEvent: (id: string) =>
+    api.get<MispEvent>(`/threat-intel/misp/events/${id}`),
+
+  getMispEventAttributes: (id: string) =>
+    api.get<MispAttribute[]>(`/threat-intel/misp/events/${id}/attributes`),
+
+  searchMispAttributes: (query: string) =>
+    api.get<MispAttribute[]>('/threat-intel/misp/attributes/search', { params: { query } }),
+
+  // TAXII Servers
+  listTaxiiServers: () =>
+    api.get<TaxiiServer[]>('/threat-intel/taxii/servers'),
+
+  addTaxiiServer: (data: { name: string; url: string; username?: string; password?: string; version?: string }) =>
+    api.post<TaxiiServer>('/threat-intel/taxii/servers', data),
+
+  updateTaxiiServer: (id: string, data: { name?: string; url?: string; username?: string; password?: string; enabled?: boolean }) =>
+    api.put<TaxiiServer>(`/threat-intel/taxii/servers/${id}`, data),
+
+  deleteTaxiiServer: (id: string) =>
+    api.delete(`/threat-intel/taxii/servers/${id}`),
+
+  testTaxiiServer: (id: string) =>
+    api.post<{ success: boolean; message: string }>(`/threat-intel/taxii/servers/${id}/test`),
+
+  discoverTaxiiCollections: (id: string) =>
+    api.post<{ success: boolean; collections_found?: number }>(`/threat-intel/taxii/servers/${id}/discover`),
+
+  listTaxiiCollections: (serverId: string) =>
+    api.get<TaxiiCollection[]>(`/threat-intel/taxii/servers/${serverId}/collections`),
+
+  pollTaxiiCollection: (serverId: string, collectionId: string) =>
+    api.post<{ success: boolean; objects_retrieved?: number }>(`/threat-intel/taxii/servers/${serverId}/collections/${collectionId}/poll`),
+
+  // STIX Objects
+  listStixBundles: (params?: { source?: string; limit?: number }) =>
+    api.get<StixBundle[]>('/threat-intel/stix/bundles', { params }),
+
+  getStixBundle: (id: string) =>
+    api.get<StixBundle>(`/threat-intel/stix/bundles/${id}`),
+
+  getStixBundleObjects: (id: string, params?: { type?: string; limit?: number }) =>
+    api.get<StixObject[]>(`/threat-intel/stix/bundles/${id}/objects`, { params }),
+
+  importStixBundle: (data: { name: string; content: string }) =>
+    api.post<{ success: boolean; bundle_id?: string; objects_imported?: number }>('/threat-intel/stix/bundles/import', data),
+
+  exportStixBundle: (bundleId: string) =>
+    api.get<{ bundle: string }>(`/threat-intel/stix/bundles/${bundleId}/export`),
+
+  listStixObjects: (params?: { type?: string; name?: string; limit?: number }) =>
+    api.get<StixObject[]>('/threat-intel/stix/objects', { params }),
+
+  getStixObject: (id: string) =>
+    api.get<StixObject>(`/threat-intel/stix/objects/${id}`),
+
+  // Threat Actors
+  listThreatActors: (params?: { actor_type?: string; country?: string; motivation?: string; name?: string; active_only?: boolean; limit?: number }) =>
+    api.get<ThreatActorSummary[]>('/threat-intel/threat-actors', { params }),
+
+  getThreatActor: (id: string) =>
+    api.get<ThreatActorDetail>(`/threat-intel/threat-actors/${id}`),
+
+  searchThreatActors: (query: string) =>
+    api.get<ThreatActorSummary[]>('/threat-intel/threat-actors/search', { params: { query } }),
+
+  // IOC Correlation
+  correlateIocs: (data: { iocs?: { ioc_type: string; value: string }[]; scan_id?: string }) =>
+    api.post<CorrelationResult>('/threat-intel/correlate', data),
+};
+
 export default api;
