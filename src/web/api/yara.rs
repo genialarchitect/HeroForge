@@ -1570,6 +1570,661 @@ fn convert_match(m: &YaraMatch) -> MatchResponse {
 }
 
 // ============================================================================
+// Memory Scanning Types and Handlers
+// ============================================================================
+
+/// Request to scan a memory dump file
+#[derive(Debug, Deserialize)]
+pub struct MemoryScanRequest {
+    /// Path to the memory dump file
+    pub path: String,
+    /// Name for the scan
+    pub name: Option<String>,
+    /// Rule IDs to use (empty = all enabled rules)
+    #[serde(default)]
+    pub rule_ids: Vec<String>,
+    /// Scan options
+    #[serde(default)]
+    pub options: MemoryScanOptionsRequest,
+}
+
+/// Memory scan options request
+#[derive(Debug, Default, Deserialize)]
+pub struct MemoryScanOptionsRequest {
+    pub max_region_size: Option<u64>,
+    pub min_region_size: Option<u64>,
+    pub only_executable: Option<bool>,
+    pub only_writable: Option<bool>,
+    pub calculate_entropy: Option<bool>,
+    pub flag_rwx_regions: Option<bool>,
+}
+
+/// Memory scan result response
+#[derive(Debug, Serialize)]
+pub struct MemoryScanResponse {
+    pub id: String,
+    pub format: String,
+    pub dump_size: u64,
+    pub region_count: usize,
+    pub bytes_scanned: u64,
+    pub matches: Vec<MemoryMatchResponse>,
+    pub suspicious_regions: Vec<MemoryRegionResponse>,
+    pub scan_time_ms: u64,
+    pub errors: Vec<String>,
+}
+
+/// Memory match response
+#[derive(Debug, Serialize)]
+pub struct MemoryMatchResponse {
+    pub rule_name: String,
+    pub region: MemoryRegionResponse,
+    pub matched_strings: Vec<MemoryMatchedStringResponse>,
+    pub tags: Vec<String>,
+}
+
+/// Memory region response
+#[derive(Debug, Serialize)]
+pub struct MemoryRegionResponse {
+    pub base_address: String,
+    pub size: u64,
+    pub protection: String,
+    pub state: String,
+    pub memory_type: String,
+    pub module_name: Option<String>,
+    pub entropy: Option<f64>,
+}
+
+/// Memory matched string response
+#[derive(Debug, Serialize)]
+pub struct MemoryMatchedStringResponse {
+    pub identifier: String,
+    pub virtual_address: String,
+    pub file_offset: u64,
+    pub length: usize,
+    pub data: String,
+}
+
+/// Scan a memory dump file
+pub async fn scan_memory_dump(
+    pool: web::Data<SqlitePool>,
+    claims: auth::Claims,
+    req: web::Json<MemoryScanRequest>,
+) -> Result<HttpResponse> {
+    use crate::scanner::yara::{MemoryScanner, MemoryScanOptions};
+
+    // Validate path exists
+    let path = std::path::Path::new(&req.path);
+    if !path.exists() {
+        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "Memory dump file not found"
+        })));
+    }
+
+    // Load rules
+    let rules = load_rules_for_scan(pool.get_ref(), Some(&claims.sub)).await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+    // Build scan options
+    let options = MemoryScanOptions {
+        max_region_size: req.options.max_region_size.unwrap_or(100 * 1024 * 1024),
+        min_region_size: req.options.min_region_size.unwrap_or(64),
+        only_executable: req.options.only_executable.unwrap_or(false),
+        only_writable: req.options.only_writable.unwrap_or(false),
+        calculate_entropy: req.options.calculate_entropy.unwrap_or(true),
+        flag_rwx_regions: req.options.flag_rwx_regions.unwrap_or(true),
+        ..Default::default()
+    };
+
+    // Create memory scanner
+    let mut scanner = MemoryScanner::with_options(options);
+
+    // Collect rule names before moving rules
+    let rules_used: Vec<String> = rules.iter().map(|r| r.name.clone()).collect();
+
+    scanner.load_rules(rules)
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+    // Perform scan
+    let result = scanner.scan_file(&req.path).await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+    // Create scan record
+    let scan_id = db::create_yara_memory_scan(
+        pool.get_ref(),
+        &claims.sub,
+        req.name.as_deref(),
+        &result.format.to_string(),
+        Some(&req.path),
+        None, // process_id
+        None, // process_name
+        &rules_used,
+    ).await
+    .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+    // Update scan status to completed with results
+    let _ = db::update_yara_memory_scan_status(
+        pool.get_ref(),
+        &scan_id,
+        "completed",
+        Some(result.matches.len() as i32),
+        Some(result.region_count as i32),
+        Some(result.dump_size as i64),
+        None, // error_message
+    ).await;
+
+    // Build response
+    let response = MemoryScanResponse {
+        id: scan_id,
+        format: result.format.to_string(),
+        dump_size: result.dump_size,
+        region_count: result.region_count,
+        bytes_scanned: result.bytes_scanned,
+        matches: result.matches.iter().map(|m| MemoryMatchResponse {
+            rule_name: m.rule_name.clone(),
+            region: MemoryRegionResponse {
+                base_address: format!("0x{:x}", m.region.base_address),
+                size: m.region.size,
+                protection: m.region.protection.to_string_short(),
+                state: m.region.state.to_string(),
+                memory_type: m.region.memory_type.to_string(),
+                module_name: m.region.module_name.clone(),
+                entropy: m.region.entropy,
+            },
+            matched_strings: m.matched_strings.iter().map(|s| MemoryMatchedStringResponse {
+                identifier: s.identifier.clone(),
+                virtual_address: format!("0x{:x}", s.virtual_address),
+                file_offset: s.file_offset,
+                length: s.length,
+                data: s.data.clone(),
+            }).collect(),
+            tags: m.tags.clone(),
+        }).collect(),
+        suspicious_regions: result.suspicious_regions.iter().map(|r| MemoryRegionResponse {
+            base_address: format!("0x{:x}", r.base_address),
+            size: r.size,
+            protection: r.protection.to_string_short(),
+            state: r.state.to_string(),
+            memory_type: r.memory_type.to_string(),
+            module_name: r.module_name.clone(),
+            entropy: r.entropy,
+        }).collect(),
+        scan_time_ms: result.scan_time_ms,
+        errors: result.errors,
+    };
+
+    Ok(HttpResponse::Ok().json(response))
+}
+
+/// List memory scans
+pub async fn list_memory_scans(
+    pool: web::Data<SqlitePool>,
+    claims: auth::Claims,
+    query: web::Query<ScanQuery>,
+) -> Result<HttpResponse> {
+    let scans = db::list_yara_memory_scans(
+        pool.get_ref(),
+        &claims.sub,
+        query.limit.unwrap_or(50),
+        query.offset.unwrap_or(0),
+    )
+    .await
+    .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "scans": scans
+    })))
+}
+
+/// Get memory scan details
+pub async fn get_memory_scan(
+    pool: web::Data<SqlitePool>,
+    claims: auth::Claims,
+    path: web::Path<String>,
+) -> Result<HttpResponse> {
+    let scan_id = path.into_inner();
+
+    let scan = db::get_yara_memory_scan(pool.get_ref(), &scan_id)
+        .await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+    match scan {
+        Some(s) => {
+            if s.user_id != claims.sub {
+                return Ok(HttpResponse::Forbidden().json(serde_json::json!({
+                    "error": "Access denied"
+                })));
+            }
+
+            Ok(HttpResponse::Ok().json(serde_json::json!({
+                "scan": s
+            })))
+        }
+        None => Ok(HttpResponse::NotFound().json(serde_json::json!({
+            "error": "Memory scan not found"
+        }))),
+    }
+}
+
+// ============================================================================
+// File Monitor Types and Handlers
+// ============================================================================
+
+/// Request to create a file monitor
+#[derive(Debug, Deserialize)]
+pub struct CreateFileMonitorRequest {
+    pub name: String,
+    pub paths: Vec<String>,
+    pub recursive: Option<bool>,
+    #[serde(default)]
+    pub include_extensions: Vec<String>,
+    #[serde(default)]
+    pub exclude_extensions: Vec<String>,
+    #[serde(default)]
+    pub exclude_paths: Vec<String>,
+    pub max_file_size: Option<u64>,
+    #[serde(default)]
+    pub rule_ids: Vec<String>,
+    pub alert_on_create: Option<bool>,
+    pub alert_on_modify: Option<bool>,
+    pub alert_on_access: Option<bool>,
+}
+
+/// File monitor response
+#[derive(Debug, Serialize)]
+pub struct FileMonitorResponse {
+    pub id: String,
+    pub name: String,
+    pub paths: Vec<String>,
+    pub recursive: bool,
+    pub status: String,
+    pub enabled: bool,
+    pub events_scanned: i64,
+    pub alerts_generated: i64,
+    pub created_at: String,
+}
+
+/// Create a file monitor
+pub async fn create_file_monitor(
+    pool: web::Data<SqlitePool>,
+    claims: auth::Claims,
+    req: web::Json<CreateFileMonitorRequest>,
+) -> Result<HttpResponse> {
+    // Validate paths exist
+    for path in &req.paths {
+        let p = std::path::Path::new(path);
+        if !p.exists() {
+            return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+                "error": format!("Path does not exist: {}", path)
+            })));
+        }
+    }
+
+    let paths_json = serde_json::to_string(&req.paths).unwrap_or_default();
+    let include_ext_json = serde_json::to_string(&req.include_extensions).unwrap_or_default();
+    let exclude_ext_json = serde_json::to_string(&req.exclude_extensions).unwrap_or_default();
+    let exclude_paths_json = serde_json::to_string(&req.exclude_paths).unwrap_or_default();
+    let rule_ids_json = serde_json::to_string(&req.rule_ids).unwrap_or_default();
+
+    let monitor_id = db::create_yara_file_monitor_extended(
+        pool.get_ref(),
+        &claims.sub,
+        &req.name,
+        &paths_json,
+        req.recursive.unwrap_or(true),
+        &include_ext_json,
+        &exclude_ext_json,
+        &exclude_paths_json,
+        req.max_file_size.unwrap_or(50 * 1024 * 1024) as i64,
+        &rule_ids_json,
+        req.alert_on_create.unwrap_or(true),
+        req.alert_on_modify.unwrap_or(true),
+        req.alert_on_access.unwrap_or(false),
+    ).await
+    .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+    Ok(HttpResponse::Created().json(serde_json::json!({
+        "id": monitor_id,
+        "message": "File monitor created"
+    })))
+}
+
+/// List file monitors
+pub async fn list_file_monitors(
+    pool: web::Data<SqlitePool>,
+    claims: auth::Claims,
+) -> Result<HttpResponse> {
+    let monitors = db::list_yara_file_monitors(pool.get_ref(), &claims.sub)
+        .await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "monitors": monitors
+    })))
+}
+
+/// Get file monitor details
+pub async fn get_file_monitor(
+    pool: web::Data<SqlitePool>,
+    claims: auth::Claims,
+    path: web::Path<String>,
+) -> Result<HttpResponse> {
+    let monitor_id = path.into_inner();
+
+    let monitor = db::get_yara_file_monitor(pool.get_ref(), &monitor_id)
+        .await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+    match monitor {
+        Some(m) => {
+            if m.user_id != claims.sub {
+                return Ok(HttpResponse::Forbidden().json(serde_json::json!({
+                    "error": "Access denied"
+                })));
+            }
+
+            // Get recent alerts
+            let alerts = db::get_yara_monitor_alerts_simple(pool.get_ref(), &monitor_id, Some(50), None)
+                .await
+                .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+            Ok(HttpResponse::Ok().json(serde_json::json!({
+                "monitor": m,
+                "alerts": alerts
+            })))
+        }
+        None => Ok(HttpResponse::NotFound().json(serde_json::json!({
+            "error": "File monitor not found"
+        }))),
+    }
+}
+
+/// Start/stop a file monitor
+pub async fn update_file_monitor_status(
+    pool: web::Data<SqlitePool>,
+    claims: auth::Claims,
+    path: web::Path<String>,
+    req: web::Json<HashMap<String, String>>,
+) -> Result<HttpResponse> {
+    let monitor_id = path.into_inner();
+
+    let monitor = db::get_yara_file_monitor(pool.get_ref(), &monitor_id)
+        .await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+    match monitor {
+        Some(m) => {
+            if m.user_id != claims.sub {
+                return Ok(HttpResponse::Forbidden().json(serde_json::json!({
+                    "error": "Access denied"
+                })));
+            }
+
+            let status = req.get("status").map(|s| s.as_str()).unwrap_or("stopped");
+
+            db::update_yara_file_monitor_status_simple(pool.get_ref(), &monitor_id, status)
+                .await
+                .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+            Ok(HttpResponse::Ok().json(serde_json::json!({
+                "message": format!("Monitor status updated to {}", status)
+            })))
+        }
+        None => Ok(HttpResponse::NotFound().json(serde_json::json!({
+            "error": "File monitor not found"
+        }))),
+    }
+}
+
+/// Delete a file monitor
+pub async fn delete_file_monitor(
+    pool: web::Data<SqlitePool>,
+    claims: auth::Claims,
+    path: web::Path<String>,
+) -> Result<HttpResponse> {
+    let monitor_id = path.into_inner();
+
+    let monitor = db::get_yara_file_monitor(pool.get_ref(), &monitor_id)
+        .await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+    match monitor {
+        Some(m) => {
+            if m.user_id != claims.sub {
+                return Ok(HttpResponse::Forbidden().json(serde_json::json!({
+                    "error": "Access denied"
+                })));
+            }
+
+            db::delete_yara_file_monitor_simple(pool.get_ref(), &monitor_id)
+                .await
+                .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+            Ok(HttpResponse::Ok().json(serde_json::json!({
+                "message": "File monitor deleted"
+            })))
+        }
+        None => Ok(HttpResponse::NotFound().json(serde_json::json!({
+            "error": "File monitor not found"
+        }))),
+    }
+}
+
+/// Get file monitor alerts
+pub async fn get_file_monitor_alerts(
+    pool: web::Data<SqlitePool>,
+    claims: auth::Claims,
+    path: web::Path<String>,
+    query: web::Query<ScanQuery>,
+) -> Result<HttpResponse> {
+    let monitor_id = path.into_inner();
+
+    let monitor = db::get_yara_file_monitor(pool.get_ref(), &monitor_id)
+        .await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+    match monitor {
+        Some(m) => {
+            if m.user_id != claims.sub {
+                return Ok(HttpResponse::Forbidden().json(serde_json::json!({
+                    "error": "Access denied"
+                })));
+            }
+
+            let alerts = db::get_yara_monitor_alerts_simple(pool.get_ref(), &monitor_id, query.limit, query.offset)
+                .await
+                .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+            Ok(HttpResponse::Ok().json(serde_json::json!({
+                "alerts": alerts
+            })))
+        }
+        None => Ok(HttpResponse::NotFound().json(serde_json::json!({
+            "error": "File monitor not found"
+        }))),
+    }
+}
+
+/// Acknowledge an alert
+pub async fn acknowledge_alert(
+    pool: web::Data<SqlitePool>,
+    claims: auth::Claims,
+    path: web::Path<String>,
+    req: web::Json<HashMap<String, String>>,
+) -> Result<HttpResponse> {
+    let alert_id = path.into_inner();
+
+    let notes = req.get("notes").map(|s| s.as_str());
+
+    db::acknowledge_yara_monitor_alert(pool.get_ref(), &alert_id, &claims.sub, notes)
+        .await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "message": "Alert acknowledged"
+    })))
+}
+
+// ============================================================================
+// Rule Effectiveness Types and Handlers
+// ============================================================================
+
+/// Rule effectiveness score response
+#[derive(Debug, Serialize)]
+pub struct RuleEffectivenessResponse {
+    pub rule_id: String,
+    pub rule_name: String,
+    pub score: f64,
+    pub grade: String,
+    pub total_matches: i64,
+    pub true_positives: i64,
+    pub false_positives: i64,
+    pub pending_verification: i64,
+    pub false_positive_rate: f64,
+    pub true_positive_rate: f64,
+    pub avg_scan_time_ms: f64,
+    pub trend: f64,
+    pub confidence: f64,
+    pub last_match_at: Option<String>,
+    pub calculated_at: String,
+}
+
+/// Request to verify a match
+#[derive(Debug, Deserialize)]
+pub struct VerifyMatchRequest {
+    pub status: String,  // "true_positive", "false_positive", "inconclusive"
+    pub notes: Option<String>,
+}
+
+/// Get rule effectiveness scores
+pub async fn get_rule_effectiveness(
+    pool: web::Data<SqlitePool>,
+    claims: auth::Claims,
+) -> Result<HttpResponse> {
+    let scores = db::get_all_yara_rule_effectiveness(pool.get_ref(), &claims.sub)
+        .await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+    let response: Vec<RuleEffectivenessResponse> = scores.iter().map(|s| {
+        use crate::scanner::yara::effectiveness::EffectivenessGrade;
+
+        let total_verified = s.true_positives + s.false_positives;
+        let fp_rate = if total_verified > 0 {
+            s.false_positives as f64 / total_verified as f64
+        } else {
+            0.0
+        };
+        let tp_rate = if total_verified > 0 {
+            s.true_positives as f64 / total_verified as f64
+        } else {
+            0.0
+        };
+
+        RuleEffectivenessResponse {
+            rule_id: s.rule_id.clone(),
+            rule_name: s.rule_name.clone().unwrap_or_default(),
+            score: s.score,
+            grade: EffectivenessGrade::from_score(s.score).to_string(),
+            total_matches: s.total_matches,
+            true_positives: s.true_positives,
+            false_positives: s.false_positives,
+            pending_verification: s.pending_verification,
+            false_positive_rate: fp_rate,
+            true_positive_rate: tp_rate,
+            avg_scan_time_ms: s.avg_scan_time_ms,
+            trend: s.trend,
+            confidence: s.confidence,
+            last_match_at: s.last_match_at.map(|d| d.to_rfc3339()),
+            calculated_at: s.calculated_at.to_rfc3339(),
+        }
+    }).collect();
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "scores": response
+    })))
+}
+
+/// Get effectiveness for a specific rule
+pub async fn get_rule_effectiveness_detail(
+    pool: web::Data<SqlitePool>,
+    claims: auth::Claims,
+    path: web::Path<String>,
+) -> Result<HttpResponse> {
+    let rule_id = path.into_inner();
+
+    let effectiveness = db::get_yara_rule_effectiveness(pool.get_ref(), &rule_id)
+        .await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+    let history = db::get_yara_rule_effectiveness_history(pool.get_ref(), &rule_id, 30)
+        .await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "effectiveness": effectiveness,
+        "history": history
+    })))
+}
+
+/// Verify a match (mark as true/false positive)
+pub async fn verify_match(
+    pool: web::Data<SqlitePool>,
+    claims: auth::Claims,
+    path: web::Path<String>,
+    req: web::Json<VerifyMatchRequest>,
+) -> Result<HttpResponse> {
+    let match_id = path.into_inner();
+
+    let status = match req.status.as_str() {
+        "true_positive" => "true_positive",
+        "false_positive" => "false_positive",
+        "inconclusive" => "inconclusive",
+        _ => return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "Invalid status. Must be: true_positive, false_positive, or inconclusive"
+        }))),
+    };
+
+    db::mark_yara_match_verification_extended(
+        pool.get_ref(),
+        &match_id,
+        status,
+        &claims.sub,
+        req.notes.as_deref(),
+    )
+    .await
+    .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "message": format!("Match marked as {}", status)
+    })))
+}
+
+/// Get rules needing review (low effectiveness or high FP rate)
+pub async fn get_rules_needing_review(
+    pool: web::Data<SqlitePool>,
+    claims: auth::Claims,
+) -> Result<HttpResponse> {
+    let rules = db::get_yara_rules_needing_review(pool.get_ref(), &claims.sub, 70.0, 0.15)
+        .await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "rules": rules
+    })))
+}
+
+/// Get effectiveness summary
+pub async fn get_effectiveness_summary(
+    pool: web::Data<SqlitePool>,
+    claims: auth::Claims,
+) -> Result<HttpResponse> {
+    let summary = db::get_yara_effectiveness_summary(pool.get_ref(), &claims.sub)
+        .await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+    Ok(HttpResponse::Ok().json(summary))
+}
+
+// ============================================================================
 // Route Configuration
 // ============================================================================
 
@@ -1599,6 +2254,24 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/validate", web::post().to(validate_rule_endpoint))
             // Community Sources
             .route("/community/sources", web::get().to(get_community_sources))
-            .route("/community/fetch/{source_id}", web::post().to(fetch_community_source)),
+            .route("/community/fetch/{source_id}", web::post().to(fetch_community_source))
+            // Memory Scanning (Sprint 1)
+            .route("/memory/scan", web::post().to(scan_memory_dump))
+            .route("/memory/scans", web::get().to(list_memory_scans))
+            .route("/memory/scans/{id}", web::get().to(get_memory_scan))
+            // File Monitors (Sprint 1)
+            .route("/monitors", web::post().to(create_file_monitor))
+            .route("/monitors", web::get().to(list_file_monitors))
+            .route("/monitors/{id}", web::get().to(get_file_monitor))
+            .route("/monitors/{id}/status", web::put().to(update_file_monitor_status))
+            .route("/monitors/{id}", web::delete().to(delete_file_monitor))
+            .route("/monitors/{id}/alerts", web::get().to(get_file_monitor_alerts))
+            .route("/alerts/{id}/acknowledge", web::post().to(acknowledge_alert))
+            // Rule Effectiveness (Sprint 1)
+            .route("/effectiveness", web::get().to(get_rule_effectiveness))
+            .route("/effectiveness/summary", web::get().to(get_effectiveness_summary))
+            .route("/effectiveness/review", web::get().to(get_rules_needing_review))
+            .route("/effectiveness/{id}", web::get().to(get_rule_effectiveness_detail))
+            .route("/matches/{id}/verify", web::post().to(verify_match)),
     );
 }

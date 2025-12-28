@@ -4,12 +4,16 @@
 //! - File scanning with pattern matching
 //! - Directory scanning (recursive)
 //! - Byte buffer scanning for in-memory analysis
+//! - Memory dump scanning (minidump, ELF core, raw)
 //! - Custom rule compilation and validation
 //! - Built-in rules for common malware families
 
 #![allow(dead_code)]
 
 pub mod rules;
+pub mod memory_scanner;
+pub mod file_monitor;
+pub mod effectiveness;
 
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Utc};
@@ -1068,6 +1072,40 @@ pub async fn scan_bytes(data: &[u8], rules: &[YaraRule]) -> Result<Vec<YaraMatch
     scanner.add_rules(rules.to_vec());
     scanner.scan_bytes(data).await
 }
+
+/// Scan a memory dump file with the provided rules
+pub async fn scan_memory_dump(path: &str, rules: Vec<YaraRule>) -> Result<memory_scanner::MemoryScanResult> {
+    let mut scanner = memory_scanner::MemoryScanner::new();
+    scanner.load_rules(rules)?;
+    scanner.scan_file(path).await
+}
+
+/// Scan memory bytes with the provided rules
+pub async fn scan_memory_bytes(data: &[u8], rules: Vec<YaraRule>) -> Result<memory_scanner::MemoryScanResult> {
+    let mut scanner = memory_scanner::MemoryScanner::new();
+    scanner.load_rules(rules)?;
+    scanner.scan_bytes(data).await
+}
+
+// Re-export memory scanner types
+pub use memory_scanner::{
+    MemoryScanner, MemoryScanResult, MemoryScanOptions,
+    MemoryRegion, MemoryProtection, MemoryState, MemoryType,
+    MemoryDumpFormat, MemoryYaraMatch, MemoryMatchedString,
+};
+
+// Re-export file monitor types
+pub use file_monitor::{
+    FileMonitor, FileMonitorConfig, FileMonitorStats, FileMonitorAlert,
+    MonitorManager, MonitorStatus, FileEventType, AlertSeverity,
+};
+
+// Re-export effectiveness types
+pub use effectiveness::{
+    EffectivenessCalculator, EffectivenessTracker, EffectivenessConfig,
+    RuleEffectivenessScore, RuleMatchStats, EffectivenessGrade,
+    MatchEvent, VerificationStatus, EffectivenessDataPoint, EffectivenessSummary,
+};
 
 // ============================================================================
 // Tests

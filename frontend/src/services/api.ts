@@ -2622,7 +2622,204 @@ export const siemFullAPI = {
   // Statistics
   getStats: () =>
     api.get<SiemStatsResponse>('/siem/stats'),
+
+  // =========================================================================
+  // Sigma Rules (Sprint 2 Enhancements)
+  // =========================================================================
+
+  // Sigma Rule CRUD
+  listSigmaRules: (params?: { enabled?: boolean; severity?: string; category?: string }) =>
+    api.get<SigmaRuleResponse[]>('/siem/sigma/rules', { params }),
+
+  createSigmaRule: (data: CreateSigmaRuleRequest) =>
+    api.post<SigmaRuleResponse>('/siem/sigma/rules', data),
+
+  getSigmaRule: (id: string) =>
+    api.get<SigmaRuleResponse>(`/siem/sigma/rules/${id}`),
+
+  updateSigmaRule: (id: string, data: UpdateSigmaRuleRequest) =>
+    api.put<SigmaRuleResponse>(`/siem/sigma/rules/${id}`, data),
+
+  deleteSigmaRule: (id: string) =>
+    api.delete<{ message: string }>(`/siem/sigma/rules/${id}`),
+
+  // Backend Conversion (Sprint 2)
+  convertSigmaRule: (data: ConvertSigmaRuleRequest) =>
+    api.post<SigmaConversionResponse>('/siem/sigma/convert', data),
+
+  convertSigmaRuleAll: (data: ConvertSigmaRuleAllRequest) =>
+    api.post<SigmaConversionAllResponse>('/siem/sigma/convert-all', data),
+
+  // Rule Testing (Sprint 2)
+  testSigmaRuleWithStorage: (id: string, data: TestSigmaRuleRequest) =>
+    api.post<SigmaRuleTestResult>(`/siem/sigma/rules/${id}/test`, data),
+
+  getSigmaRuleTestResults: (id: string) =>
+    api.get<SigmaRuleTestResult[]>(`/siem/sigma/rules/${id}/test-results`),
+
+  updateTestResult: (id: string, data: UpdateTestResultRequest) =>
+    api.put<SigmaRuleTestResult>(`/siem/sigma/test-results/${id}`, data),
+
+  // ATT&CK Coverage (Sprint 2)
+  getAttackCoverage: () =>
+    api.get<AttackCoverageResponse>('/siem/sigma/coverage'),
+
+  // Tuning Recommendations (Sprint 2)
+  getTuningRecommendations: () =>
+    api.get<RuleTuningRecommendation[]>('/siem/sigma/tuning/recommendations'),
+
+  // Rule Chains (Sprint 2)
+  listRuleChains: () =>
+    api.get<SigmaRuleChain[]>('/siem/sigma/chains'),
+
+  createRuleChain: (data: CreateRuleChainRequest) =>
+    api.post<SigmaRuleChain>('/siem/sigma/chains', data),
+
+  deleteRuleChain: (id: string) =>
+    api.delete<{ message: string }>(`/siem/sigma/chains/${id}`),
 };
+
+// ============================================================================
+// Sigma Types (Sprint 2)
+// ============================================================================
+
+export interface SigmaRuleResponse {
+  id: string;
+  name: string;
+  description: string;
+  content: string;
+  severity: string;
+  status: string;
+  enabled: boolean;
+  logsource_category: string;
+  logsource_product: string;
+  tags: string[];
+  mitre_attack_ids: string[];
+  false_positive_count: number;
+  true_positive_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateSigmaRuleRequest {
+  name: string;
+  description?: string;
+  content: string;
+  severity?: string;
+  enabled?: boolean;
+  tags?: string[];
+}
+
+export interface UpdateSigmaRuleRequest {
+  name?: string;
+  description?: string;
+  content?: string;
+  severity?: string;
+  enabled?: boolean;
+  tags?: string[];
+}
+
+export interface ConvertSigmaRuleRequest {
+  rule_id?: string;
+  rule_content?: string;
+  backend: 'splunk' | 'elastic_lucene' | 'elastic_eql' | 'microsoft_sentinel' | 'qradar_aql' | 'logpoint' | 'crowdstrike';
+  field_mappings?: Record<string, string>;
+}
+
+export interface ConvertSigmaRuleAllRequest {
+  rule_id?: string;
+  rule_content?: string;
+}
+
+export interface SigmaConversionResponse {
+  backend: string;
+  query: string;
+  warnings: string[];
+  errors: string[];
+  field_mappings_used: string[];
+}
+
+export interface SigmaConversionAllResponse {
+  conversions: SigmaConversionResponse[];
+}
+
+export interface TestSigmaRuleRequest {
+  test_name: string;
+  sample_logs: string[];
+  expected_matches?: number;
+}
+
+export interface SigmaTestMatch {
+  log_index: number;
+  message: string;
+}
+
+export interface SigmaRuleTestResult {
+  id: string;
+  sigma_rule_id: string;
+  test_name: string;
+  sample_logs: string[];
+  expected_matches: number | null;
+  actual_matches: number;
+  match_details: SigmaTestMatch[];
+  passed: boolean;
+  execution_time_ms: number;
+  tested_at: string;
+  tested_by: string | null;
+}
+
+export interface UpdateTestResultRequest {
+  notes?: string;
+  verified?: boolean;
+}
+
+export interface TechniqueCoverageEntry {
+  technique_id: string;
+  technique_name: string;
+  tactic: string;
+  rule_count: number;
+  rules: string[];
+}
+
+export interface AttackCoverageResponse {
+  total_techniques_covered: number;
+  total_rules: number;
+  coverage_by_tactic: Record<string, number>;
+  techniques: TechniqueCoverageEntry[];
+}
+
+export interface RuleTuningRecommendation {
+  rule_id: string;
+  rule_name: string;
+  recommendation_type: string;
+  description: string;
+  current_value: string | null;
+  suggested_value: string | null;
+  false_positive_count: number;
+  true_positive_count: number;
+  fp_rate: number;
+}
+
+export interface SigmaRuleChain {
+  id: string;
+  name: string;
+  description: string | null;
+  rule_ids: string[];
+  chain_logic: string;
+  time_window_secs: number;
+  enabled: boolean;
+  created_at: string;
+  created_by: string;
+}
+
+export interface CreateRuleChainRequest {
+  name: string;
+  description?: string;
+  rule_ids: string[];
+  chain_logic: string;
+  time_window_secs: number;
+  enabled?: boolean;
+}
 
 // ============================================================================
 // Exploitation Framework API
@@ -4758,6 +4955,289 @@ export const extendedThreatIntelAPI = {
   // IOC Correlation
   correlateIocs: (data: { iocs?: { ioc_type: string; value: string }[]; scan_id?: string }) =>
     api.post<CorrelationResult>('/threat-intel/correlate', data),
+
+  // Sprint 12: Campaigns
+  listCampaigns: () =>
+    api.get<ThreatCampaign[]>('/threat-intel/campaigns'),
+
+  getCampaign: (id: string) =>
+    api.get<ThreatCampaignDetail>(`/threat-intel/campaigns/${id}`),
+
+  createCampaign: (data: CreateThreatCampaignRequest) =>
+    api.post<ThreatCampaign>('/threat-intel/campaigns', data),
+
+  updateCampaign: (id: string, data: CreateThreatCampaignRequest) =>
+    api.put<ThreatCampaign>(`/threat-intel/campaigns/${id}`, data),
+
+  deleteCampaign: (id: string) =>
+    api.delete(`/threat-intel/campaigns/${id}`),
+
+  // Sprint 12: Diamond Model
+  listDiamondEvents: (params?: { campaign_id?: string; limit?: number }) =>
+    api.get<DiamondEvent[]>('/threat-intel/diamond/events', { params }),
+
+  getDiamondEvent: (id: string) =>
+    api.get<DiamondEvent>(`/threat-intel/diamond/events/${id}`),
+
+  createDiamondEvent: (data: CreateDiamondEventRequest) =>
+    api.post<DiamondEvent>('/threat-intel/diamond/events', data),
+
+  // Sprint 12: Kill Chain
+  getKillChainAnalysis: (campaignId: string) =>
+    api.get<KillChainAnalysis>(`/threat-intel/kill-chain/${campaignId}`),
+
+  getKillChainPhases: () =>
+    api.get<KillChainPhaseInfo[]>('/threat-intel/kill-chain/phases'),
+
+  // Sprint 12: Intelligence Requirements
+  listIntelRequirements: (params?: { status?: string; priority?: string }) =>
+    api.get<IntelligenceRequirement[]>('/threat-intel/requirements', { params }),
+
+  createIntelRequirement: (data: CreateIntelRequirementRequest) =>
+    api.post<IntelligenceRequirement>('/threat-intel/requirements', data),
+
+  updateIntelRequirement: (id: string, data: UpdateIntelRequirementRequest) =>
+    api.put<IntelligenceRequirement>(`/threat-intel/requirements/${id}`, data),
+
+  deleteIntelRequirement: (id: string) =>
+    api.delete(`/threat-intel/requirements/${id}`),
+
+  // Sprint 12: Threat Briefings
+  generateThreatBriefing: (data: GenerateBriefingRequest) =>
+    api.post<ThreatBriefing>('/threat-intel/briefings/generate', data),
+
+  getLatestBriefing: () =>
+    api.get<ThreatBriefing>('/threat-intel/briefings/latest'),
 };
+
+// Sprint 12: Threat Campaign Types
+export interface ThreatCampaign {
+  id: string;
+  name: string;
+  threat_actor_id?: string;
+  description?: string;
+  objective?: string;
+  first_seen?: string;
+  last_seen?: string;
+  status: string;
+  created_at: string;
+}
+
+export interface ThreatCampaignDetail extends ThreatCampaign {
+  threat_actor_name?: string;
+  confidence: number;
+  targets: CampaignTarget[];
+  ttps: string[];
+  iocs: CampaignIoc[];
+  timeline_events: CampaignTimelineEvent[];
+  attribution_confidence: number;
+}
+
+export interface CampaignTarget {
+  target_type: string;
+  value: string;
+  sector?: string;
+  country?: string;
+}
+
+export interface CampaignIoc {
+  ioc_type: string;
+  value: string;
+  first_seen?: string;
+  last_seen?: string;
+  confidence: number;
+}
+
+export interface CampaignTimelineEvent {
+  timestamp: string;
+  event_type: string;
+  description: string;
+  references: string[];
+}
+
+export interface CreateThreatCampaignRequest {
+  name: string;
+  threat_actor_id?: string;
+  description?: string;
+  objective?: string;
+  first_seen?: string;
+  status?: string;
+  targets?: CampaignTarget[];
+  ttps?: string[];
+}
+
+// Sprint 12: Diamond Model Types
+export interface DiamondEvent {
+  id: string;
+  campaign_id?: string;
+  adversary: DiamondVertex;
+  capability: DiamondVertex;
+  infrastructure: DiamondVertex;
+  victim: DiamondVertex;
+  timestamp?: string;
+  phase?: string;
+  confidence: number;
+  notes?: string;
+  created_at: string;
+}
+
+export interface DiamondVertex {
+  name?: string;
+  vertex_type?: string;
+  attributes: Record<string, string>;
+  confidence: number;
+}
+
+export interface CreateDiamondEventRequest {
+  campaign_id?: string;
+  adversary: DiamondVertex;
+  capability: DiamondVertex;
+  infrastructure: DiamondVertex;
+  victim: DiamondVertex;
+  timestamp?: string;
+  phase?: string;
+  notes?: string;
+}
+
+// Sprint 12: Kill Chain Types
+export interface KillChainAnalysis {
+  campaign_id: string;
+  campaign_name: string;
+  phases: KillChainPhase[];
+  coverage: number;
+  detected_techniques: number;
+  total_techniques: number;
+}
+
+export interface KillChainPhase {
+  phase: string;
+  phase_name: string;
+  order: number;
+  techniques: KillChainTechnique[];
+  coverage: number;
+}
+
+export interface KillChainTechnique {
+  technique_id: string;
+  technique_name: string;
+  detected: boolean;
+  detection_source?: string;
+  timestamp?: string;
+  evidence?: string;
+}
+
+export interface KillChainPhaseInfo {
+  phase: string;
+  phase_name: string;
+  order: number;
+  description: string;
+}
+
+// Sprint 12: Intelligence Requirements Types
+export interface IntelligenceRequirement {
+  id: string;
+  title: string;
+  description?: string;
+  priority: string;
+  category: string;
+  status: string;
+  source?: string;
+  stakeholders?: string[];
+  keywords?: string[];
+  deadline?: string;
+  related_actors?: string[];
+  related_campaigns?: string[];
+  answer?: string;
+  answered_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateIntelRequirementRequest {
+  title: string;
+  description?: string;
+  priority?: string;
+  category?: string;
+  source?: string;
+  stakeholders?: string[];
+  keywords?: string[];
+  deadline?: string;
+}
+
+export interface UpdateIntelRequirementRequest {
+  title?: string;
+  description?: string;
+  priority?: string;
+  status?: string;
+  answer?: string;
+}
+
+// Sprint 12: Threat Briefing Types
+export interface ThreatBriefing {
+  id: string;
+  title: string;
+  executive_summary: string;
+  threat_landscape: ThreatLandscape;
+  top_actors: ThreatActorBrief[];
+  active_campaigns: CampaignBrief[];
+  key_iocs: KeyIoc[];
+  risk_assessment: RiskAssessment;
+  recommendations: string[];
+  generated_at: string;
+  period_start: string;
+  period_end: string;
+}
+
+export interface ThreatLandscape {
+  overall_threat_level: string;
+  trending_ttps: string[];
+  targeted_sectors: SectorThreat[];
+  geographic_focus: string[];
+}
+
+export interface SectorThreat {
+  sector: string;
+  threat_level: string;
+  campaigns_targeting: number;
+}
+
+export interface ThreatActorBrief {
+  id: string;
+  name: string;
+  aliases: string[];
+  motivation: string;
+  recent_activity: string;
+  threat_level: string;
+  key_ttps: string[];
+}
+
+export interface CampaignBrief {
+  id: string;
+  name: string;
+  actor_name?: string;
+  targets: string[];
+  status: string;
+  last_activity?: string;
+}
+
+export interface KeyIoc {
+  ioc_type: string;
+  value: string;
+  associated_actors: string[];
+  first_seen: string;
+}
+
+export interface RiskAssessment {
+  overall_risk: string;
+  risk_factors: string[];
+  priority_actions: string[];
+}
+
+export interface GenerateBriefingRequest {
+  title?: string;
+  period_days?: number;
+  focus_sectors?: string[];
+  focus_actors?: string[];
+}
 
 export default api;

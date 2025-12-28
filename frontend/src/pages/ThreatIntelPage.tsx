@@ -36,6 +36,11 @@ import {
   ChevronRight,
   Copy,
   BarChart3,
+  Crosshair,
+  GitBranch,
+  ClipboardList,
+  FileBarChart,
+  Diamond,
 } from 'lucide-react';
 import Layout from '../components/layout/Layout';
 import {
@@ -49,9 +54,15 @@ import {
   ThreatActorSummary,
   ThreatActorDetail,
   ThreatIntelStats,
+  ThreatCampaign,
+  ThreatCampaignDetail,
+  DiamondEvent,
+  KillChainAnalysis,
+  IntelligenceRequirement,
+  ThreatBriefing,
 } from '../services/api';
 
-type TabType = 'dashboard' | 'misp' | 'taxii' | 'stix' | 'actors' | 'correlate';
+type TabType = 'dashboard' | 'misp' | 'taxii' | 'stix' | 'actors' | 'correlate' | 'campaigns' | 'diamond' | 'killchain' | 'requirements' | 'briefings';
 
 // ============================================================================
 // Main Component
@@ -66,6 +77,11 @@ export default function ThreatIntelPage() {
     { id: 'taxii' as TabType, label: 'TAXII', icon: Server },
     { id: 'stix' as TabType, label: 'STIX Objects', icon: FileText },
     { id: 'actors' as TabType, label: 'Threat Actors', icon: Users },
+    { id: 'campaigns' as TabType, label: 'Campaigns', icon: Crosshair },
+    { id: 'diamond' as TabType, label: 'Diamond Model', icon: Diamond },
+    { id: 'killchain' as TabType, label: 'Kill Chain', icon: GitBranch },
+    { id: 'requirements' as TabType, label: 'Intel Reqs', icon: ClipboardList },
+    { id: 'briefings' as TabType, label: 'Briefings', icon: FileBarChart },
     { id: 'correlate' as TabType, label: 'IOC Correlation', icon: Zap },
   ];
 
@@ -108,6 +124,11 @@ export default function ThreatIntelPage() {
         {activeTab === 'taxii' && <TaxiiTab />}
         {activeTab === 'stix' && <StixTab />}
         {activeTab === 'actors' && <ThreatActorsTab />}
+        {activeTab === 'campaigns' && <CampaignsTab />}
+        {activeTab === 'diamond' && <DiamondModelTab />}
+        {activeTab === 'killchain' && <KillChainTab />}
+        {activeTab === 'requirements' && <IntelRequirementsTab />}
+        {activeTab === 'briefings' && <BriefingsTab />}
         {activeTab === 'correlate' && <CorrelationTab />}
       </div>
     </Layout>
@@ -1728,6 +1749,889 @@ function CorrelationTab() {
               ))}
             </div>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// Sprint 12: Campaigns Tab
+// ============================================================================
+
+function CampaignsTab() {
+  const queryClient = useQueryClient();
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [selectedCampaign, setSelectedCampaign] = useState<ThreatCampaign | null>(null);
+
+  const { data: campaigns, isLoading } = useQuery({
+    queryKey: ['threat-campaigns'],
+    queryFn: () => extendedThreatIntelAPI.listCampaigns(),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => extendedThreatIntelAPI.deleteCampaign(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['threat-campaigns'] });
+      toast.success('Campaign deleted');
+    },
+    onError: () => toast.error('Failed to delete campaign'),
+  });
+
+  const getStatusBadge = (status: string) => {
+    const colors: Record<string, string> = {
+      active: 'bg-red-900 text-red-300',
+      suspected: 'bg-yellow-900 text-yellow-300',
+      historical: 'bg-gray-700 text-gray-300',
+      attributed: 'bg-blue-900 text-blue-300',
+    };
+    return colors[status] || 'bg-gray-700 text-gray-300';
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <RefreshCw className="h-8 w-8 text-cyan-400 animate-spin" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-between items-center">
+        <h2 className="text-lg font-semibold text-white">Threat Campaigns</h2>
+        <button
+          onClick={() => setShowAddModal(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700"
+        >
+          <Plus className="h-4 w-4" />
+          Add Campaign
+        </button>
+      </div>
+
+      <div className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+        <table className="w-full">
+          <thead className="bg-gray-900">
+            <tr>
+              <th className="text-left p-4 text-gray-400 font-medium">Name</th>
+              <th className="text-left p-4 text-gray-400 font-medium">Actor</th>
+              <th className="text-left p-4 text-gray-400 font-medium">Status</th>
+              <th className="text-left p-4 text-gray-400 font-medium">First Seen</th>
+              <th className="text-left p-4 text-gray-400 font-medium">Last Seen</th>
+              <th className="text-right p-4 text-gray-400 font-medium">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-700">
+            {campaigns?.data?.map((campaign) => (
+              <tr key={campaign.id} className="hover:bg-gray-750">
+                <td className="p-4">
+                  <button
+                    onClick={() => setSelectedCampaign(campaign)}
+                    className="text-cyan-400 hover:text-cyan-300 font-medium"
+                  >
+                    {campaign.name}
+                  </button>
+                </td>
+                <td className="p-4 text-gray-300">{campaign.threat_actor_id || '-'}</td>
+                <td className="p-4">
+                  <span className={`px-2 py-1 rounded text-xs ${getStatusBadge(campaign.status)}`}>
+                    {campaign.status}
+                  </span>
+                </td>
+                <td className="p-4 text-gray-400 text-sm">
+                  {campaign.first_seen ? new Date(campaign.first_seen).toLocaleDateString() : '-'}
+                </td>
+                <td className="p-4 text-gray-400 text-sm">
+                  {campaign.last_seen ? new Date(campaign.last_seen).toLocaleDateString() : '-'}
+                </td>
+                <td className="p-4 text-right">
+                  <button
+                    onClick={() => deleteMutation.mutate(campaign.id)}
+                    className="p-2 text-gray-400 hover:text-red-400"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {(!campaigns?.data || campaigns.data.length === 0) && (
+              <tr>
+                <td colSpan={6} className="p-8 text-center text-gray-400">
+                  No campaigns found. Add your first campaign to start tracking threat activity.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Campaign Add Modal would go here */}
+      {showAddModal && (
+        <CampaignModal
+          onClose={() => setShowAddModal(false)}
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ['threat-campaigns'] });
+            setShowAddModal(false);
+          }}
+        />
+      )}
+
+      {/* Campaign Detail Modal */}
+      {selectedCampaign && (
+        <CampaignDetailModal
+          campaign={selectedCampaign}
+          onClose={() => setSelectedCampaign(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function CampaignModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [status, setStatus] = useState('suspected');
+
+  const createMutation = useMutation({
+    mutationFn: () =>
+      extendedThreatIntelAPI.createCampaign({ name, description, status }),
+    onSuccess: () => {
+      toast.success('Campaign created');
+      onSuccess();
+    },
+    onError: () => toast.error('Failed to create campaign'),
+  });
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-gray-800 rounded-lg p-6 w-full max-w-lg border border-gray-700">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-semibold text-white">Add Campaign</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-white">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Name</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white"
+              placeholder="Campaign name"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Description</label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white h-24"
+              placeholder="Campaign description"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Status</label>
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+              className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white"
+            >
+              <option value="suspected">Suspected</option>
+              <option value="active">Active</option>
+              <option value="historical">Historical</option>
+              <option value="attributed">Attributed</option>
+            </select>
+          </div>
+          <button
+            onClick={() => createMutation.mutate()}
+            disabled={!name || createMutation.isPending}
+            className="w-full bg-cyan-600 text-white py-2 rounded-lg hover:bg-cyan-700 disabled:opacity-50"
+          >
+            {createMutation.isPending ? 'Creating...' : 'Create Campaign'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CampaignDetailModal({ campaign, onClose }: { campaign: ThreatCampaign; onClose: () => void }) {
+  const { data: detail, isLoading } = useQuery({
+    queryKey: ['campaign-detail', campaign.id],
+    queryFn: () => extendedThreatIntelAPI.getCampaign(campaign.id),
+  });
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-gray-800 rounded-lg p-6 w-full max-w-3xl border border-gray-700 max-h-[80vh] overflow-y-auto">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-semibold text-white">{campaign.name}</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-white">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        {isLoading ? (
+          <div className="flex justify-center py-8">
+            <RefreshCw className="h-6 w-6 text-cyan-400 animate-spin" />
+          </div>
+        ) : (
+          <div className="space-y-6">
+            <div>
+              <h4 className="text-sm text-gray-400 mb-1">Description</h4>
+              <p className="text-white">{detail?.data?.description || 'No description'}</p>
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <h4 className="text-sm text-gray-400 mb-1">Status</h4>
+                <p className="text-white capitalize">{detail?.data?.status}</p>
+              </div>
+              <div>
+                <h4 className="text-sm text-gray-400 mb-1">Confidence</h4>
+                <p className="text-white">{detail?.data?.confidence || 0}%</p>
+              </div>
+              <div>
+                <h4 className="text-sm text-gray-400 mb-1">Threat Actor</h4>
+                <p className="text-white">{detail?.data?.threat_actor_name || 'Unknown'}</p>
+              </div>
+            </div>
+            {detail?.data?.ttps && detail.data.ttps.length > 0 && (
+              <div>
+                <h4 className="text-sm text-gray-400 mb-2">TTPs</h4>
+                <div className="flex flex-wrap gap-2">
+                  {detail.data.ttps.map((ttp) => (
+                    <span key={ttp} className="px-2 py-1 bg-purple-900 text-purple-300 rounded text-sm">
+                      {ttp}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {detail?.data?.iocs && detail.data.iocs.length > 0 && (
+              <div>
+                <h4 className="text-sm text-gray-400 mb-2">IOCs ({detail.data.iocs.length})</h4>
+                <div className="space-y-2 max-h-40 overflow-y-auto">
+                  {detail.data.iocs.map((ioc, i) => (
+                    <div key={i} className="flex items-center gap-2 text-sm">
+                      <span className="px-2 py-0.5 bg-cyan-900 text-cyan-300 rounded text-xs">
+                        {ioc.ioc_type}
+                      </span>
+                      <span className="text-white font-mono">{ioc.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// Sprint 12: Diamond Model Tab
+// ============================================================================
+
+function DiamondModelTab() {
+  const queryClient = useQueryClient();
+  const [showAddModal, setShowAddModal] = useState(false);
+
+  const { data: events, isLoading } = useQuery({
+    queryKey: ['diamond-events'],
+    queryFn: () => extendedThreatIntelAPI.listDiamondEvents({ limit: 50 }),
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <RefreshCw className="h-8 w-8 text-cyan-400 animate-spin" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-lg font-semibold text-white">Diamond Model Events</h2>
+          <p className="text-sm text-gray-400">
+            Analyze intrusions using Adversary, Capability, Infrastructure, and Victim vertices
+          </p>
+        </div>
+        <button
+          onClick={() => setShowAddModal(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700"
+        >
+          <Plus className="h-4 w-4" />
+          Add Event
+        </button>
+      </div>
+
+      <div className="grid gap-4">
+        {events?.data?.map((event) => (
+          <div key={event.id} className="bg-gray-800 rounded-lg border border-gray-700 p-4">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <Diamond className="h-5 w-5 text-cyan-400" />
+                <span className="text-white font-medium">Event {event.id.slice(0, 8)}</span>
+                {event.phase && (
+                  <span className="px-2 py-0.5 bg-purple-900 text-purple-300 rounded text-xs">
+                    {event.phase}
+                  </span>
+                )}
+              </div>
+              <span className="text-gray-400 text-sm">
+                Confidence: {event.confidence}%
+              </span>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <DiamondVertex label="Adversary" vertex={event.adversary} color="red" />
+              <DiamondVertex label="Capability" vertex={event.capability} color="yellow" />
+              <DiamondVertex label="Infrastructure" vertex={event.infrastructure} color="blue" />
+              <DiamondVertex label="Victim" vertex={event.victim} color="green" />
+            </div>
+            {event.notes && (
+              <p className="mt-3 text-sm text-gray-400">{event.notes}</p>
+            )}
+          </div>
+        ))}
+        {(!events?.data || events.data.length === 0) && (
+          <div className="bg-gray-800 rounded-lg border border-gray-700 p-8 text-center">
+            <Diamond className="h-12 w-12 text-gray-600 mx-auto mb-4" />
+            <p className="text-gray-400">No Diamond Model events recorded yet.</p>
+            <p className="text-sm text-gray-500 mt-1">
+              Create your first event to start analyzing intrusions.
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DiamondVertex({ label, vertex, color }: { label: string; vertex: { name?: string; vertex_type?: string; confidence: number }; color: string }) {
+  const colorClasses: Record<string, string> = {
+    red: 'border-red-500 bg-red-900/20',
+    yellow: 'border-yellow-500 bg-yellow-900/20',
+    blue: 'border-blue-500 bg-blue-900/20',
+    green: 'border-green-500 bg-green-900/20',
+  };
+  return (
+    <div className={`p-3 rounded-lg border ${colorClasses[color]}`}>
+      <div className="text-xs text-gray-400 mb-1">{label}</div>
+      <div className="text-white font-medium">{vertex.name || 'Unknown'}</div>
+      {vertex.vertex_type && (
+        <div className="text-xs text-gray-400 mt-1">{vertex.vertex_type}</div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// Sprint 12: Kill Chain Tab
+// ============================================================================
+
+function KillChainTab() {
+  const [selectedCampaignId, setSelectedCampaignId] = useState<string>('');
+
+  const { data: campaigns } = useQuery({
+    queryKey: ['threat-campaigns'],
+    queryFn: () => extendedThreatIntelAPI.listCampaigns(),
+  });
+
+  const { data: analysis, isLoading } = useQuery({
+    queryKey: ['kill-chain', selectedCampaignId],
+    queryFn: () => extendedThreatIntelAPI.getKillChainAnalysis(selectedCampaignId),
+    enabled: !!selectedCampaignId,
+  });
+
+  const { data: phases } = useQuery({
+    queryKey: ['kill-chain-phases'],
+    queryFn: () => extendedThreatIntelAPI.getKillChainPhases(),
+  });
+
+  const phaseColors: Record<string, string> = {
+    recon: 'bg-blue-600',
+    weaponization: 'bg-purple-600',
+    delivery: 'bg-yellow-600',
+    exploitation: 'bg-orange-600',
+    installation: 'bg-red-600',
+    c2: 'bg-pink-600',
+    actions: 'bg-gray-600',
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-white">Cyber Kill Chain Analysis</h2>
+          <p className="text-sm text-gray-400">
+            Visualize attack progression through Lockheed Martin's Cyber Kill Chain
+          </p>
+        </div>
+        <select
+          value={selectedCampaignId}
+          onChange={(e) => setSelectedCampaignId(e.target.value)}
+          className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white"
+        >
+          <option value="">Select a campaign</option>
+          {campaigns?.data?.map((c) => (
+            <option key={c.id} value={c.id}>{c.name}</option>
+          ))}
+        </select>
+      </div>
+
+      {!selectedCampaignId ? (
+        <div className="bg-gray-800 rounded-lg border border-gray-700 p-8 text-center">
+          <GitBranch className="h-12 w-12 text-gray-600 mx-auto mb-4" />
+          <p className="text-gray-400">Select a campaign to view its Kill Chain analysis</p>
+        </div>
+      ) : isLoading ? (
+        <div className="flex justify-center py-8">
+          <RefreshCw className="h-8 w-8 text-cyan-400 animate-spin" />
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {/* Coverage Summary */}
+          <div className="bg-gray-800 rounded-lg border border-gray-700 p-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-white font-medium">{analysis?.data?.campaign_name}</h3>
+              <div className="text-cyan-400 text-lg font-bold">
+                {analysis?.data?.coverage?.toFixed(0)}% Coverage
+              </div>
+            </div>
+            <div className="w-full bg-gray-700 rounded-full h-2">
+              <div
+                className="bg-cyan-500 h-2 rounded-full"
+                style={{ width: `${analysis?.data?.coverage || 0}%` }}
+              />
+            </div>
+          </div>
+
+          {/* Kill Chain Phases */}
+          <div className="flex gap-1">
+            {analysis?.data?.phases?.map((phase) => (
+              <div
+                key={phase.phase}
+                className={`flex-1 rounded-lg p-4 ${phaseColors[phase.phase] || 'bg-gray-600'} bg-opacity-30 border border-gray-700`}
+              >
+                <div className="text-xs text-gray-400 mb-1">Phase {phase.order}</div>
+                <div className="text-white font-medium mb-2">{phase.phase_name}</div>
+                <div className="text-sm">
+                  {phase.techniques.length > 0 ? (
+                    <div className="flex items-center gap-1 text-green-400">
+                      <CheckCircle className="h-4 w-4" />
+                      {phase.techniques.length} detected
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1 text-gray-500">
+                      <XCircle className="h-4 w-4" />
+                      No activity
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// Sprint 12: Intelligence Requirements Tab
+// ============================================================================
+
+function IntelRequirementsTab() {
+  const queryClient = useQueryClient();
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [filter, setFilter] = useState('all');
+
+  const { data: requirements, isLoading } = useQuery({
+    queryKey: ['intel-requirements', filter],
+    queryFn: () => extendedThreatIntelAPI.listIntelRequirements(
+      filter !== 'all' ? { status: filter } : undefined
+    ),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => extendedThreatIntelAPI.deleteIntelRequirement(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['intel-requirements'] });
+      toast.success('Requirement deleted');
+    },
+  });
+
+  const getPriorityBadge = (priority: string) => {
+    const colors: Record<string, string> = {
+      critical: 'bg-red-900 text-red-300',
+      high: 'bg-orange-900 text-orange-300',
+      medium: 'bg-yellow-900 text-yellow-300',
+      low: 'bg-blue-900 text-blue-300',
+    };
+    return colors[priority] || 'bg-gray-700 text-gray-300';
+  };
+
+  const getStatusBadge = (status: string) => {
+    const colors: Record<string, string> = {
+      open: 'bg-blue-900 text-blue-300',
+      in_progress: 'bg-yellow-900 text-yellow-300',
+      answered: 'bg-green-900 text-green-300',
+      closed: 'bg-gray-700 text-gray-300',
+    };
+    return colors[status] || 'bg-gray-700 text-gray-300';
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <RefreshCw className="h-8 w-8 text-cyan-400 animate-spin" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-lg font-semibold text-white">Intelligence Requirements</h2>
+          <p className="text-sm text-gray-400">Track strategic, operational, and tactical intelligence needs</p>
+        </div>
+        <div className="flex gap-2">
+          <select
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white"
+          >
+            <option value="all">All Status</option>
+            <option value="open">Open</option>
+            <option value="in_progress">In Progress</option>
+            <option value="answered">Answered</option>
+            <option value="closed">Closed</option>
+          </select>
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700"
+          >
+            <Plus className="h-4 w-4" />
+            Add Requirement
+          </button>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        {requirements?.data?.map((req) => (
+          <div key={req.id} className="bg-gray-800 rounded-lg border border-gray-700 p-4">
+            <div className="flex items-start justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <span className={`px-2 py-0.5 rounded text-xs ${getPriorityBadge(req.priority)}`}>
+                  {req.priority}
+                </span>
+                <span className={`px-2 py-0.5 rounded text-xs ${getStatusBadge(req.status)}`}>
+                  {req.status.replace('_', ' ')}
+                </span>
+                <span className="px-2 py-0.5 bg-gray-700 text-gray-300 rounded text-xs capitalize">
+                  {req.category}
+                </span>
+              </div>
+              <button
+                onClick={() => deleteMutation.mutate(req.id)}
+                className="p-1 text-gray-400 hover:text-red-400"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+            <h3 className="text-white font-medium mb-1">{req.title}</h3>
+            {req.description && (
+              <p className="text-sm text-gray-400 mb-2">{req.description}</p>
+            )}
+            {req.deadline && (
+              <div className="flex items-center gap-1 text-sm text-gray-500">
+                <Clock className="h-4 w-4" />
+                Due: {new Date(req.deadline).toLocaleDateString()}
+              </div>
+            )}
+            {req.answer && (
+              <div className="mt-3 p-3 bg-gray-900 rounded-lg">
+                <div className="text-xs text-gray-400 mb-1">Answer</div>
+                <p className="text-white text-sm">{req.answer}</p>
+              </div>
+            )}
+          </div>
+        ))}
+        {(!requirements?.data || requirements.data.length === 0) && (
+          <div className="bg-gray-800 rounded-lg border border-gray-700 p-8 text-center">
+            <ClipboardList className="h-12 w-12 text-gray-600 mx-auto mb-4" />
+            <p className="text-gray-400">No intelligence requirements found.</p>
+          </div>
+        )}
+      </div>
+
+      {showAddModal && (
+        <IntelRequirementModal
+          onClose={() => setShowAddModal(false)}
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ['intel-requirements'] });
+            setShowAddModal(false);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function IntelRequirementModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [priority, setPriority] = useState('medium');
+  const [category, setCategory] = useState('operational');
+
+  const createMutation = useMutation({
+    mutationFn: () =>
+      extendedThreatIntelAPI.createIntelRequirement({ title, description, priority, category }),
+    onSuccess: () => {
+      toast.success('Requirement created');
+      onSuccess();
+    },
+    onError: () => toast.error('Failed to create requirement'),
+  });
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-gray-800 rounded-lg p-6 w-full max-w-lg border border-gray-700">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-semibold text-white">Add Intelligence Requirement</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-white">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Title</label>
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white"
+              placeholder="What do you need to know?"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Description</label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white h-24"
+              placeholder="Additional context..."
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">Priority</label>
+              <select
+                value={priority}
+                onChange={(e) => setPriority(e.target.value)}
+                className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white"
+              >
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+                <option value="critical">Critical</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">Category</label>
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white"
+              >
+                <option value="strategic">Strategic</option>
+                <option value="operational">Operational</option>
+                <option value="tactical">Tactical</option>
+              </select>
+            </div>
+          </div>
+          <button
+            onClick={() => createMutation.mutate()}
+            disabled={!title || createMutation.isPending}
+            className="w-full bg-cyan-600 text-white py-2 rounded-lg hover:bg-cyan-700 disabled:opacity-50"
+          >
+            {createMutation.isPending ? 'Creating...' : 'Create Requirement'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// Sprint 12: Briefings Tab
+// ============================================================================
+
+function BriefingsTab() {
+  const queryClient = useQueryClient();
+  const [periodDays, setPeriodDays] = useState(30);
+
+  const { data: latestBriefing, isLoading: loadingLatest } = useQuery({
+    queryKey: ['latest-briefing'],
+    queryFn: () => extendedThreatIntelAPI.getLatestBriefing(),
+  });
+
+  const generateMutation = useMutation({
+    mutationFn: () =>
+      extendedThreatIntelAPI.generateThreatBriefing({ period_days: periodDays }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['latest-briefing'] });
+      toast.success('Briefing generated successfully');
+    },
+    onError: () => toast.error('Failed to generate briefing'),
+  });
+
+  const getRiskColor = (level: string) => {
+    const colors: Record<string, string> = {
+      critical: 'text-red-400',
+      high: 'text-orange-400',
+      medium: 'text-yellow-400',
+      low: 'text-green-400',
+    };
+    return colors[level] || 'text-gray-400';
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-lg font-semibold text-white">Threat Briefings</h2>
+          <p className="text-sm text-gray-400">Generate executive-level threat intelligence briefings</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <select
+            value={periodDays}
+            onChange={(e) => setPeriodDays(Number(e.target.value))}
+            className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white"
+          >
+            <option value={7}>Last 7 days</option>
+            <option value={30}>Last 30 days</option>
+            <option value={90}>Last 90 days</option>
+          </select>
+          <button
+            onClick={() => generateMutation.mutate()}
+            disabled={generateMutation.isPending}
+            className="flex items-center gap-2 px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 disabled:opacity-50"
+          >
+            {generateMutation.isPending ? (
+              <RefreshCw className="h-4 w-4 animate-spin" />
+            ) : (
+              <FileBarChart className="h-4 w-4" />
+            )}
+            Generate Briefing
+          </button>
+        </div>
+      </div>
+
+      {loadingLatest ? (
+        <div className="flex justify-center py-8">
+          <RefreshCw className="h-8 w-8 text-cyan-400 animate-spin" />
+        </div>
+      ) : latestBriefing?.data ? (
+        <div className="space-y-6">
+          {/* Header */}
+          <div className="bg-gray-800 rounded-lg border border-gray-700 p-6">
+            <div className="flex justify-between items-start mb-4">
+              <div>
+                <h3 className="text-xl font-semibold text-white">{latestBriefing.data.title}</h3>
+                <p className="text-sm text-gray-400 mt-1">
+                  Period: {new Date(latestBriefing.data.period_start).toLocaleDateString()} - {new Date(latestBriefing.data.period_end).toLocaleDateString()}
+                </p>
+              </div>
+              <div className={`text-lg font-bold ${getRiskColor(latestBriefing.data.risk_assessment?.overall_risk || 'medium')}`}>
+                {latestBriefing.data.risk_assessment?.overall_risk?.toUpperCase()} RISK
+              </div>
+            </div>
+            <div className="prose prose-invert max-w-none">
+              <p className="text-gray-300">{latestBriefing.data.executive_summary}</p>
+            </div>
+          </div>
+
+          {/* Threat Landscape */}
+          {latestBriefing.data.threat_landscape && (
+            <div className="bg-gray-800 rounded-lg border border-gray-700 p-6">
+              <h4 className="text-lg font-medium text-white mb-4">Threat Landscape</h4>
+              <div className="grid md:grid-cols-2 gap-4">
+                {latestBriefing.data.threat_landscape.trending_ttps?.length > 0 && (
+                  <div>
+                    <div className="text-sm text-gray-400 mb-2">Trending TTPs</div>
+                    <div className="flex flex-wrap gap-2">
+                      {latestBriefing.data.threat_landscape.trending_ttps.map((ttp) => (
+                        <span key={ttp} className="px-2 py-1 bg-purple-900 text-purple-300 rounded text-sm">
+                          {ttp}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {latestBriefing.data.threat_landscape.geographic_focus?.length > 0 && (
+                  <div>
+                    <div className="text-sm text-gray-400 mb-2">Geographic Focus</div>
+                    <div className="flex flex-wrap gap-2">
+                      {latestBriefing.data.threat_landscape.geographic_focus.map((geo) => (
+                        <span key={geo} className="px-2 py-1 bg-blue-900 text-blue-300 rounded text-sm">
+                          {geo}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Top Actors */}
+          {latestBriefing.data.top_actors?.length > 0 && (
+            <div className="bg-gray-800 rounded-lg border border-gray-700 p-6">
+              <h4 className="text-lg font-medium text-white mb-4">Top Threat Actors</h4>
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {latestBriefing.data.top_actors.map((actor) => (
+                  <div key={actor.id} className="bg-gray-900 rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-white font-medium">{actor.name}</span>
+                      <span className={`text-sm ${getRiskColor(actor.threat_level)}`}>
+                        {actor.threat_level}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-400">{actor.motivation}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Recommendations */}
+          {latestBriefing.data.recommendations?.length > 0 && (
+            <div className="bg-gray-800 rounded-lg border border-gray-700 p-6">
+              <h4 className="text-lg font-medium text-white mb-4">Recommendations</h4>
+              <ul className="space-y-2">
+                {latestBriefing.data.recommendations.map((rec, i) => (
+                  <li key={i} className="flex items-start gap-2">
+                    <CheckCircle className="h-5 w-5 text-cyan-400 mt-0.5 flex-shrink-0" />
+                    <span className="text-gray-300">{rec}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="bg-gray-800 rounded-lg border border-gray-700 p-8 text-center">
+          <FileBarChart className="h-12 w-12 text-gray-600 mx-auto mb-4" />
+          <p className="text-gray-400">No briefings generated yet.</p>
+          <p className="text-sm text-gray-500 mt-1">
+            Click "Generate Briefing" to create your first threat intelligence briefing.
+          </p>
         </div>
       )}
     </div>

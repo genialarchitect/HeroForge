@@ -87,6 +87,9 @@ const MalwareAnalysisPage = lazy(() => import('./pages/MalwareAnalysisPage'));
 // YARA Rule Management
 const YaraPage = lazy(() => import('./pages/YaraPage'));
 
+// Sigma Rules (Sprint 2)
+const SigmaRulesPage = lazy(() => import('./pages/SigmaRulesPage'));
+
 // Traffic Analysis
 const TrafficAnalysisPage = lazy(() => import('./pages/TrafficAnalysisPage'));
 
@@ -635,6 +638,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <YaraPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/sigma-rules"
+            element={
+              <ProtectedRoute>
+                <SigmaRulesPage />
               </ProtectedRoute>
             }
           />

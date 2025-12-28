@@ -243,6 +243,7 @@ const Header: React.FC = () => {
     { to: '/siem', icon: <Activity className="h-4 w-4" />, label: 'SIEM' },
     { to: '/traffic-analysis', icon: <Network className="h-4 w-4" />, label: 'Traffic Analysis' },
     { to: '/yara', icon: <Braces className="h-4 w-4" />, label: 'YARA Rules' },
+    { to: '/sigma-rules', icon: <FileCode className="h-4 w-4" />, label: 'Sigma Rules' },
     { to: '/forensics', icon: <HardDrive className="h-4 w-4" />, label: 'Forensics' },
     { to: '/incident-response', icon: <AlertCircle className="h-4 w-4" />, label: 'Incident Response' },
     { to: '/detection-engineering', icon: <ScanSearch className="h-4 w-4" />, label: 'Detection Engineering' },

@@ -57,6 +57,7 @@ pub mod dashboard;
 pub mod ingestion;
 pub mod parser;
 pub mod sigma;
+pub mod sigma_converter;
 pub mod storage;
 pub mod types;
 
@@ -79,6 +80,13 @@ pub use types::{
 pub use sigma::{
     CompiledSigmaRule, SigmaParser, SigmaRule, SigmaSeverity, SigmaStatus,
     ValidationResult as SigmaValidationResult,
+};
+
+// Re-export Sigma converter types
+#[allow(unused_imports)]
+pub use sigma_converter::{
+    ConversionResult, FieldMappings, SigmaBackend, SigmaConverter,
+    convert_to_all_backends,
 };
 
 // Re-export correlation types

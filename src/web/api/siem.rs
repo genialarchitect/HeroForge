@@ -18,6 +18,7 @@ use crate::siem::{
     AlertStatus, LogFormat, LogSource, LogSourceStatus, RuleStatus, RuleType,
     SiemAlert, SiemRule, SiemSeverity, TransportProtocol,
     sigma::{SigmaParser, CompiledSigmaRule, validate_sigma_rule, get_builtin_rules, SigmaSeverity},
+    sigma_converter::{SigmaBackend, SigmaConverter, ConversionResult, FieldMappings, convert_to_all_backends},
     correlation::{CorrelationRule, CorrelationRuleType, CorrelationConditions, get_builtin_correlation_rules},
     dashboard::{SavedSearch, SiemDashboard, DashboardWidget, WidgetType, WidgetPosition, WidgetConfig, AlertWorkflow, TimeRange, get_default_dashboard},
 };
@@ -218,10 +219,170 @@ pub struct SigmaTestResponse {
     pub matches: Vec<SigmaTestMatch>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SigmaTestMatch {
     pub log_index: usize,
     pub message: String,
+}
+
+// =============================================================================
+// Sigma Backend Conversion Types (Sprint 2)
+// =============================================================================
+
+/// Request to convert a Sigma rule to a specific backend
+#[derive(Debug, Deserialize)]
+pub struct ConvertSigmaRuleRequest {
+    pub yaml_content: String,
+    pub backend: String,
+    #[serde(default)]
+    pub field_mappings: Option<std::collections::HashMap<String, String>>,
+}
+
+/// Request to convert a Sigma rule to all backends
+#[derive(Debug, Deserialize)]
+pub struct ConvertSigmaRuleAllRequest {
+    pub yaml_content: String,
+    #[serde(default)]
+    pub field_mappings: Option<std::collections::HashMap<String, String>>,
+}
+
+/// Response for single backend conversion
+#[derive(Debug, Serialize)]
+pub struct SigmaConversionResponse {
+    pub backend: String,
+    pub query: String,
+    pub is_valid: bool,
+    pub errors: Vec<String>,
+    pub warnings: Vec<String>,
+    pub field_mappings_used: std::collections::HashMap<String, String>,
+    pub unsupported_features: Vec<String>,
+}
+
+/// Response for all backends conversion
+#[derive(Debug, Serialize)]
+pub struct SigmaConversionAllResponse {
+    pub rule_id: String,
+    pub rule_title: String,
+    pub conversions: Vec<SigmaConversionResponse>,
+}
+
+/// Request to test a Sigma rule with storage
+#[derive(Debug, Deserialize)]
+pub struct TestSigmaRuleWithStorageRequest {
+    pub sample_logs: Vec<serde_json::Value>,
+    #[serde(default)]
+    pub store_result: bool,
+    #[serde(default)]
+    pub description: Option<String>,
+}
+
+/// Response for enhanced Sigma rule testing
+#[derive(Debug, Serialize)]
+pub struct SigmaRuleTestResultResponse {
+    pub id: String,
+    pub rule_id: String,
+    pub rule_title: String,
+    pub total_logs_tested: usize,
+    pub match_count: usize,
+    pub matches: Vec<SigmaTestMatch>,
+    pub false_positive_count: i64,
+    pub true_positive_count: i64,
+    pub test_duration_ms: i64,
+    pub tested_at: String,
+    pub description: Option<String>,
+}
+
+/// Request to mark test result as TP/FP
+#[derive(Debug, Deserialize)]
+pub struct UpdateTestResultRequest {
+    pub result_type: String, // "true_positive" or "false_positive"
+    pub notes: Option<String>,
+}
+
+/// ATT&CK technique coverage entry
+#[derive(Debug, Serialize)]
+pub struct TechniqueCoverageEntry {
+    pub technique_id: String,
+    pub technique_name: String,
+    pub tactic: String,
+    pub rule_count: i64,
+    pub rules: Vec<CoveringRuleInfo>,
+}
+
+/// Info about a rule covering a technique
+#[derive(Debug, Serialize)]
+pub struct CoveringRuleInfo {
+    pub rule_id: String,
+    pub rule_name: String,
+    pub level: String,
+}
+
+/// ATT&CK coverage response
+#[derive(Debug, Serialize)]
+pub struct AttackCoverageResponse {
+    pub total_techniques_covered: usize,
+    pub total_rules: usize,
+    pub coverage_by_tactic: std::collections::HashMap<String, TacticCoverage>,
+    pub techniques: Vec<TechniqueCoverageEntry>,
+}
+
+/// Coverage stats for a single tactic
+#[derive(Debug, Serialize)]
+pub struct TacticCoverage {
+    pub tactic_name: String,
+    pub techniques_covered: usize,
+    pub total_rules: usize,
+}
+
+/// Rule tuning recommendation
+#[derive(Debug, Serialize)]
+pub struct RuleTuningRecommendation {
+    pub rule_id: String,
+    pub rule_name: String,
+    pub recommendation_type: String, // "disable", "tune_threshold", "add_exclusion", "review"
+    pub reason: String,
+    pub false_positive_rate: f64,
+    pub suggested_actions: Vec<String>,
+}
+
+/// Rule tuning recommendations response
+#[derive(Debug, Serialize)]
+pub struct TuningRecommendationsResponse {
+    pub recommendations: Vec<RuleTuningRecommendation>,
+    pub total_rules_analyzed: usize,
+    pub rules_needing_tuning: usize,
+}
+
+/// Query parameters for listing test results
+#[derive(Debug, Deserialize)]
+pub struct TestResultsQuery {
+    pub limit: Option<u32>,
+    pub offset: Option<u32>,
+}
+
+/// Sigma rule chain definition
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SigmaRuleChain {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub rule_ids: Vec<String>,
+    pub chain_logic: String, // "sequence" or "parallel"
+    pub time_window_secs: i64,
+    pub enabled: bool,
+    pub created_at: String,
+    pub created_by: String,
+}
+
+/// Request to create a rule chain
+#[derive(Debug, Deserialize)]
+pub struct CreateRuleChainRequest {
+    pub name: String,
+    pub description: Option<String>,
+    pub rule_ids: Vec<String>,
+    pub chain_logic: String,
+    pub time_window_secs: i64,
+    pub enabled: Option<bool>,
 }
 
 // =============================================================================
@@ -1803,6 +1964,716 @@ pub async fn get_builtin_sigma_rules(
 }
 
 // =============================================================================
+// Sigma Backend Conversion Endpoints (Sprint 2)
+// =============================================================================
+
+/// Convert a Sigma rule to a specific backend query language
+pub async fn convert_sigma_rule(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    request: web::Json<ConvertSigmaRuleRequest>,
+) -> Result<HttpResponse> {
+    // Parse the Sigma rule
+    let parsed = SigmaParser::parse(&request.yaml_content).map_err(|e| {
+        actix_web::error::ErrorBadRequest(format!("Invalid Sigma rule: {}", e))
+    })?;
+
+    let compiled = CompiledSigmaRule::compile(parsed.clone()).map_err(|e| {
+        actix_web::error::ErrorBadRequest(format!("Failed to compile rule: {}", e))
+    })?;
+
+    // Parse the backend
+    let backend: SigmaBackend = request.backend.parse().map_err(|e: anyhow::Error| {
+        actix_web::error::ErrorBadRequest(format!("Invalid backend: {}", e))
+    })?;
+
+    // Build field mappings
+    let mut mappings = FieldMappings::default();
+    if let Some(ref custom_mappings) = request.field_mappings {
+        for (k, v) in custom_mappings {
+            mappings.field_map.insert(k.clone(), v.clone());
+        }
+    }
+
+    // Convert
+    let converter = SigmaConverter::new(backend).with_field_mappings(mappings);
+    let result = converter.convert(&parsed, &compiled);
+
+    // Store conversion in database
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = Utc::now();
+
+    let _ = sqlx::query(
+        r#"
+        INSERT OR REPLACE INTO sigma_conversions (id, sigma_rule_id, backend, converted_query, field_mappings, conversion_errors, conversion_warnings, is_valid, last_converted_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        "#,
+    )
+    .bind(&id)
+    .bind(&parsed.id)
+    .bind(backend.to_string())
+    .bind(&result.query)
+    .bind(serde_json::to_string(&result.field_mappings_used).unwrap_or_default())
+    .bind(serde_json::to_string(&result.errors).unwrap_or_default())
+    .bind(serde_json::to_string(&result.warnings).unwrap_or_default())
+    .bind(result.is_valid)
+    .bind(now.to_rfc3339())
+    .execute(pool.get_ref())
+    .await;
+
+    Ok(HttpResponse::Ok().json(SigmaConversionResponse {
+        backend: backend.to_string(),
+        query: result.query,
+        is_valid: result.is_valid,
+        errors: result.errors,
+        warnings: result.warnings,
+        field_mappings_used: result.field_mappings_used,
+        unsupported_features: result.unsupported_features,
+    }))
+}
+
+/// Convert a Sigma rule to all supported backends
+pub async fn convert_sigma_rule_all(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    request: web::Json<ConvertSigmaRuleAllRequest>,
+) -> Result<HttpResponse> {
+    // Parse the Sigma rule
+    let parsed = SigmaParser::parse(&request.yaml_content).map_err(|e| {
+        actix_web::error::ErrorBadRequest(format!("Invalid Sigma rule: {}", e))
+    })?;
+
+    let compiled = CompiledSigmaRule::compile(parsed.clone()).map_err(|e| {
+        actix_web::error::ErrorBadRequest(format!("Failed to compile rule: {}", e))
+    })?;
+
+    // Note: Custom field mappings are ignored for batch conversion
+    // since convert_to_all_backends uses default mappings
+
+    // Convert to all backends
+    let results = convert_to_all_backends(&parsed, &compiled);
+
+    // Store conversions in database
+    let now = Utc::now();
+    for result in &results {
+        let id = uuid::Uuid::new_v4().to_string();
+        let _ = sqlx::query(
+            r#"
+            INSERT OR REPLACE INTO sigma_conversions (id, sigma_rule_id, backend, converted_query, field_mappings, conversion_errors, conversion_warnings, is_valid, last_converted_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(&id)
+        .bind(&parsed.id)
+        .bind(result.backend.to_string())
+        .bind(&result.query)
+        .bind(serde_json::to_string(&result.field_mappings_used).unwrap_or_default())
+        .bind(serde_json::to_string(&result.errors).unwrap_or_default())
+        .bind(serde_json::to_string(&result.warnings).unwrap_or_default())
+        .bind(result.is_valid)
+        .bind(now.to_rfc3339())
+        .execute(pool.get_ref())
+        .await;
+    }
+
+    let conversions: Vec<SigmaConversionResponse> = results.into_iter().map(|r| {
+        SigmaConversionResponse {
+            backend: r.backend.to_string(),
+            query: r.query,
+            is_valid: r.is_valid,
+            errors: r.errors,
+            warnings: r.warnings,
+            field_mappings_used: r.field_mappings_used,
+            unsupported_features: r.unsupported_features,
+        }
+    }).collect();
+
+    Ok(HttpResponse::Ok().json(SigmaConversionAllResponse {
+        rule_id: parsed.id,
+        rule_title: parsed.title,
+        conversions,
+    }))
+}
+
+/// Test a Sigma rule with result storage
+pub async fn test_sigma_rule_with_storage(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    path: web::Path<String>,
+    request: web::Json<TestSigmaRuleWithStorageRequest>,
+) -> Result<HttpResponse> {
+    let rule_id = path.into_inner();
+    let start_time = std::time::Instant::now();
+
+    // Get the rule from database
+    let row: Option<SigmaRuleRow> = sqlx::query_as(
+        "SELECT * FROM sigma_rules WHERE id = ?"
+    )
+    .bind(&rule_id)
+    .fetch_optional(pool.get_ref())
+    .await
+    .map_err(|e| {
+        log::error!("Failed to fetch Sigma rule: {}", e);
+        actix_web::error::ErrorInternalServerError("Failed to fetch rule")
+    })?;
+
+    let row = row.ok_or_else(|| actix_web::error::ErrorNotFound("Sigma rule not found"))?;
+
+    // Parse and compile the rule
+    let parsed = SigmaParser::parse(&row.yaml_content).map_err(|e| {
+        actix_web::error::ErrorBadRequest(format!("Invalid Sigma rule: {}", e))
+    })?;
+
+    let compiled = CompiledSigmaRule::compile(parsed.clone()).map_err(|e| {
+        actix_web::error::ErrorBadRequest(format!("Failed to compile rule: {}", e))
+    })?;
+
+    // Test against sample logs
+    let mut matches = Vec::new();
+    for (index, log) in request.sample_logs.iter().enumerate() {
+        let message = log.get("message")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+
+        let mut entry = crate::siem::LogEntry::new(
+            "test".to_string(),
+            message.clone(),
+            serde_json::to_string(log).unwrap_or_default(),
+        );
+
+        if let Some(obj) = log.as_object() {
+            for (k, v) in obj {
+                entry.structured_data.insert(k.clone(), v.clone());
+            }
+        }
+
+        if compiled.evaluate(&entry) {
+            matches.push(SigmaTestMatch {
+                log_index: index,
+                message,
+            });
+        }
+    }
+
+    let duration_ms = start_time.elapsed().as_millis() as i64;
+    let now = Utc::now();
+    let test_id = uuid::Uuid::new_v4().to_string();
+
+    // Store result if requested
+    if request.store_result {
+        let sample_logs_json = serde_json::to_string(&request.sample_logs).unwrap_or_default();
+        let matches_json = serde_json::to_string(&matches).unwrap_or_default();
+
+        let test_name = request.description.clone().unwrap_or_else(|| format!("Test at {}", now.format("%Y-%m-%d %H:%M")));
+        sqlx::query(
+            r#"
+            INSERT INTO sigma_rule_tests (
+                id, sigma_rule_id, test_name, test_type, sample_logs,
+                expected_matches, actual_matches, match_details, execution_time_ms,
+                test_status, tested_by, tested_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(&test_id)
+        .bind(&rule_id)
+        .bind(&test_name)
+        .bind("positive") // test_type
+        .bind(&sample_logs_json)
+        .bind(matches.len() as i64) // expected_matches
+        .bind(matches.len() as i64) // actual_matches
+        .bind(&matches_json) // match_details
+        .bind(duration_ms)
+        .bind("completed") // test_status
+        .bind(&claims.sub)
+        .bind(now.to_rfc3339())
+        .execute(pool.get_ref())
+        .await
+        .map_err(|e| {
+            log::error!("Failed to store test result: {}", e);
+            actix_web::error::ErrorInternalServerError("Failed to store test result")
+        })?;
+    }
+
+    Ok(HttpResponse::Ok().json(SigmaRuleTestResultResponse {
+        id: test_id,
+        rule_id: parsed.id,
+        rule_title: parsed.title,
+        total_logs_tested: request.sample_logs.len(),
+        match_count: matches.len(),
+        matches,
+        false_positive_count: 0,
+        true_positive_count: 0,
+        test_duration_ms: duration_ms,
+        tested_at: now.to_rfc3339(),
+        description: request.description.clone(),
+    }))
+}
+
+/// Get test results for a Sigma rule
+pub async fn get_sigma_rule_test_results(
+    pool: web::Data<SqlitePool>,
+    _claims: web::ReqData<auth::Claims>,
+    path: web::Path<String>,
+    query: web::Query<TestResultsQuery>,
+) -> Result<HttpResponse> {
+    let rule_id = path.into_inner();
+    let limit = query.limit.unwrap_or(20) as i64;
+    let offset = query.offset.unwrap_or(0) as i64;
+
+    let rows: Vec<SigmaRuleTestRow> = sqlx::query_as(
+        r#"
+        SELECT id, sigma_rule_id, test_name, sample_logs, actual_matches, match_details,
+               execution_time_ms, test_status, tested_at, tested_by
+        FROM sigma_rule_tests
+        WHERE sigma_rule_id = ?
+        ORDER BY tested_at DESC
+        LIMIT ? OFFSET ?
+        "#,
+    )
+    .bind(&rule_id)
+    .bind(limit)
+    .bind(offset)
+    .fetch_all(pool.get_ref())
+    .await
+    .map_err(|e| {
+        log::error!("Failed to fetch test results: {}", e);
+        actix_web::error::ErrorInternalServerError("Failed to fetch test results")
+    })?;
+
+    let results: Vec<SigmaRuleTestResultResponse> = rows.into_iter().map(|r| {
+        let matches: Vec<SigmaTestMatch> = r.match_details.as_ref()
+            .and_then(|m| serde_json::from_str(m).ok())
+            .unwrap_or_default();
+        SigmaRuleTestResultResponse {
+            id: r.id,
+            rule_id: r.sigma_rule_id,
+            rule_title: String::new(), // Would need a join to get this
+            total_logs_tested: serde_json::from_str::<Vec<serde_json::Value>>(&r.sample_logs)
+                .map(|v| v.len()).unwrap_or(0),
+            match_count: r.actual_matches.unwrap_or(0) as usize,
+            matches,
+            false_positive_count: 0, // Not tracked in this schema
+            true_positive_count: 0,  // Not tracked in this schema
+            test_duration_ms: r.execution_time_ms.unwrap_or(0),
+            tested_at: r.tested_at.unwrap_or_default(),
+            description: Some(r.test_name),
+        }
+    }).collect();
+
+    Ok(HttpResponse::Ok().json(results))
+}
+
+/// Update test result with TP/FP classification
+pub async fn update_test_result(
+    pool: web::Data<SqlitePool>,
+    _claims: web::ReqData<auth::Claims>,
+    path: web::Path<String>,
+    request: web::Json<UpdateTestResultRequest>,
+) -> Result<HttpResponse> {
+    let test_id = path.into_inner();
+
+    let column = match request.result_type.as_str() {
+        "true_positive" => "true_positive_count",
+        "false_positive" => "false_positive_count",
+        _ => return Err(actix_web::error::ErrorBadRequest("Invalid result_type")),
+    };
+
+    let sql = format!(
+        "UPDATE sigma_rule_tests SET {} = {} + 1 WHERE id = ?",
+        column, column
+    );
+
+    sqlx::query(&sql)
+        .bind(&test_id)
+        .execute(pool.get_ref())
+        .await
+        .map_err(|e| {
+            log::error!("Failed to update test result: {}", e);
+            actix_web::error::ErrorInternalServerError("Failed to update test result")
+        })?;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({ "success": true })))
+}
+
+/// Get ATT&CK technique coverage from Sigma rules
+pub async fn get_attack_coverage(
+    pool: web::Data<SqlitePool>,
+    _claims: web::ReqData<auth::Claims>,
+) -> Result<HttpResponse> {
+    // Get all enabled Sigma rules with their techniques
+    let rows: Vec<SigmaRuleCoverageRow> = sqlx::query_as(
+        r#"
+        SELECT id, name, level, mitre_techniques, mitre_tactics
+        FROM sigma_rules
+        WHERE enabled = 1
+        "#,
+    )
+    .fetch_all(pool.get_ref())
+    .await
+    .map_err(|e| {
+        log::error!("Failed to fetch Sigma rules: {}", e);
+        actix_web::error::ErrorInternalServerError("Failed to fetch rules")
+    })?;
+
+    // Build coverage map
+    let mut technique_map: std::collections::HashMap<String, Vec<CoveringRuleInfo>> = std::collections::HashMap::new();
+    let mut tactic_counts: std::collections::HashMap<String, (usize, usize)> = std::collections::HashMap::new();
+
+    for row in &rows {
+        let techniques: Vec<String> = serde_json::from_str(&row.mitre_techniques).unwrap_or_default();
+        let tactics: Vec<String> = serde_json::from_str(&row.mitre_tactics).unwrap_or_default();
+
+        for technique in &techniques {
+            technique_map.entry(technique.clone()).or_default().push(CoveringRuleInfo {
+                rule_id: row.id.clone(),
+                rule_name: row.name.clone(),
+                level: row.level.clone(),
+            });
+        }
+
+        for tactic in &tactics {
+            let entry = tactic_counts.entry(tactic.clone()).or_insert((0, 0));
+            entry.1 += 1; // total rules
+        }
+    }
+
+    // Count unique techniques per tactic
+    for (technique, _) in &technique_map {
+        // Map technique to tactic (simplified - in reality would use a proper mapping)
+        let tactic = get_tactic_for_technique(technique);
+        if let Some(entry) = tactic_counts.get_mut(&tactic) {
+            entry.0 += 1; // techniques covered
+        }
+    }
+
+    let coverage_by_tactic: std::collections::HashMap<String, TacticCoverage> = tactic_counts
+        .into_iter()
+        .map(|(tactic, (techniques, rules))| {
+            (tactic.clone(), TacticCoverage {
+                tactic_name: tactic,
+                techniques_covered: techniques,
+                total_rules: rules,
+            })
+        })
+        .collect();
+
+    let techniques: Vec<TechniqueCoverageEntry> = technique_map
+        .into_iter()
+        .map(|(technique_id, rules)| {
+            TechniqueCoverageEntry {
+                technique_id: technique_id.clone(),
+                technique_name: get_technique_name(&technique_id),
+                tactic: get_tactic_for_technique(&technique_id),
+                rule_count: rules.len() as i64,
+                rules,
+            }
+        })
+        .collect();
+
+    Ok(HttpResponse::Ok().json(AttackCoverageResponse {
+        total_techniques_covered: techniques.len(),
+        total_rules: rows.len(),
+        coverage_by_tactic,
+        techniques,
+    }))
+}
+
+/// Get tuning recommendations based on FP analysis
+pub async fn get_tuning_recommendations(
+    pool: web::Data<SqlitePool>,
+    _claims: web::ReqData<auth::Claims>,
+) -> Result<HttpResponse> {
+    // Get rules with high false positive rates
+    let rows: Vec<SigmaRuleTuningRow> = sqlx::query_as(
+        r#"
+        SELECT
+            sr.id, sr.name, sr.level, sr.trigger_count,
+            COALESCE(SUM(st.false_positive_count), 0) as total_fp,
+            COALESCE(SUM(st.true_positive_count), 0) as total_tp,
+            COALESCE(SUM(st.match_count), 0) as total_matches
+        FROM sigma_rules sr
+        LEFT JOIN sigma_rule_tests st ON sr.id = st.rule_id
+        WHERE sr.enabled = 1
+        GROUP BY sr.id, sr.name, sr.level, sr.trigger_count
+        HAVING total_matches > 0
+        ORDER BY (CAST(total_fp AS REAL) / NULLIF(total_matches, 0)) DESC
+        "#,
+    )
+    .fetch_all(pool.get_ref())
+    .await
+    .map_err(|e| {
+        log::error!("Failed to fetch tuning data: {}", e);
+        actix_web::error::ErrorInternalServerError("Failed to fetch tuning data")
+    })?;
+
+    let mut recommendations = Vec::new();
+    let total_rules = rows.len();
+
+    for row in rows {
+        let total_matches = row.total_matches.max(1) as f64;
+        let fp_rate = row.total_fp as f64 / total_matches;
+
+        if fp_rate > 0.5 {
+            let (rec_type, reason, actions) = if fp_rate > 0.9 {
+                (
+                    "disable",
+                    format!("Rule has {}% false positive rate", (fp_rate * 100.0) as i32),
+                    vec![
+                        "Consider disabling this rule".to_string(),
+                        "Review rule logic for overly broad matches".to_string(),
+                    ],
+                )
+            } else if fp_rate > 0.7 {
+                (
+                    "tune_threshold",
+                    format!("Rule has {}% false positive rate", (fp_rate * 100.0) as i32),
+                    vec![
+                        "Add more specific detection criteria".to_string(),
+                        "Consider adding exclusion patterns".to_string(),
+                        "Review logsource filtering".to_string(),
+                    ],
+                )
+            } else {
+                (
+                    "review",
+                    format!("Rule has {}% false positive rate", (fp_rate * 100.0) as i32),
+                    vec![
+                        "Review recent false positive matches".to_string(),
+                        "Consider environment-specific exclusions".to_string(),
+                    ],
+                )
+            };
+
+            recommendations.push(RuleTuningRecommendation {
+                rule_id: row.id,
+                rule_name: row.name,
+                recommendation_type: rec_type.to_string(),
+                reason,
+                false_positive_rate: fp_rate,
+                suggested_actions: actions,
+            });
+        }
+    }
+
+    let rules_needing_tuning = recommendations.len();
+
+    Ok(HttpResponse::Ok().json(TuningRecommendationsResponse {
+        recommendations,
+        total_rules_analyzed: total_rules,
+        rules_needing_tuning,
+    }))
+}
+
+/// Create a Sigma rule chain
+pub async fn create_rule_chain(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    request: web::Json<CreateRuleChainRequest>,
+) -> Result<HttpResponse> {
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = Utc::now();
+    let enabled = request.enabled.unwrap_or(true);
+    let rule_ids_json = serde_json::to_string(&request.rule_ids).unwrap_or_default();
+
+    sqlx::query(
+        r#"
+        INSERT INTO sigma_rule_chains (
+            id, name, description, rule_ids, chain_condition,
+            time_window_secs, severity, enabled, user_id, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, 'high', ?, ?, datetime('now'))
+        "#,
+    )
+    .bind(&id)
+    .bind(&request.name)
+    .bind(&request.description)
+    .bind(&rule_ids_json)
+    .bind(&request.chain_logic) // maps to chain_condition column
+    .bind(request.time_window_secs)
+    .bind(enabled)
+    .bind(&claims.sub)
+    .execute(pool.get_ref())
+    .await
+    .map_err(|e| {
+        log::error!("Failed to create rule chain: {}", e);
+        actix_web::error::ErrorInternalServerError("Failed to create rule chain")
+    })?;
+
+    Ok(HttpResponse::Created().json(SigmaRuleChain {
+        id,
+        name: request.name.clone(),
+        description: request.description.clone(),
+        rule_ids: request.rule_ids.clone(),
+        chain_logic: request.chain_logic.clone(),
+        time_window_secs: request.time_window_secs,
+        enabled,
+        created_at: now.to_rfc3339(),
+        created_by: claims.sub.clone(),
+    }))
+}
+
+/// List Sigma rule chains
+pub async fn list_rule_chains(
+    pool: web::Data<SqlitePool>,
+    _claims: web::ReqData<auth::Claims>,
+) -> Result<HttpResponse> {
+    let rows: Vec<SigmaRuleChainRow> = sqlx::query_as(
+        r#"
+        SELECT id, name, description, rule_ids, chain_condition,
+               time_window_secs, enabled, user_id, created_at
+        FROM sigma_rule_chains
+        ORDER BY created_at DESC
+        "#
+    )
+    .fetch_all(pool.get_ref())
+    .await
+    .map_err(|e| {
+        log::error!("Failed to fetch rule chains: {}", e);
+        actix_web::error::ErrorInternalServerError("Failed to fetch rule chains")
+    })?;
+
+    let chains: Vec<SigmaRuleChain> = rows.into_iter().map(|r| {
+        SigmaRuleChain {
+            id: r.id,
+            name: r.name,
+            description: r.description,
+            rule_ids: serde_json::from_str(&r.rule_ids).unwrap_or_default(),
+            chain_logic: r.chain_condition, // DB column is chain_condition
+            time_window_secs: r.time_window_secs,
+            enabled: r.enabled,
+            created_at: r.created_at,
+            created_by: r.user_id.unwrap_or_default(), // DB column is user_id
+        }
+    }).collect();
+
+    Ok(HttpResponse::Ok().json(chains))
+}
+
+/// Delete a Sigma rule chain
+pub async fn delete_rule_chain(
+    pool: web::Data<SqlitePool>,
+    _claims: web::ReqData<auth::Claims>,
+    path: web::Path<String>,
+) -> Result<HttpResponse> {
+    let id = path.into_inner();
+
+    sqlx::query("DELETE FROM sigma_rule_chains WHERE id = ?")
+        .bind(&id)
+        .execute(pool.get_ref())
+        .await
+        .map_err(|e| {
+            log::error!("Failed to delete rule chain: {}", e);
+            actix_web::error::ErrorInternalServerError("Failed to delete rule chain")
+        })?;
+
+    Ok(HttpResponse::NoContent().finish())
+}
+
+// Helper row types for queries
+#[derive(sqlx::FromRow)]
+struct SigmaRuleTestRow {
+    id: String,
+    sigma_rule_id: String,
+    test_name: String,
+    sample_logs: String,
+    actual_matches: Option<i64>,
+    match_details: Option<String>,
+    execution_time_ms: Option<i64>,
+    #[allow(dead_code)]
+    test_status: String,
+    tested_at: Option<String>,
+    #[allow(dead_code)]
+    tested_by: Option<String>,
+}
+
+#[derive(sqlx::FromRow)]
+struct SigmaRuleCoverageRow {
+    id: String,
+    name: String,
+    level: String,
+    mitre_techniques: String,
+    mitre_tactics: String,
+}
+
+#[derive(sqlx::FromRow)]
+struct SigmaRuleTuningRow {
+    id: String,
+    name: String,
+    #[allow(dead_code)]
+    level: String,
+    #[allow(dead_code)]
+    trigger_count: i64,
+    total_fp: i64,
+    #[allow(dead_code)]
+    total_tp: i64,
+    total_matches: i64,
+}
+
+#[derive(sqlx::FromRow)]
+struct SigmaRuleChainRow {
+    id: String,
+    name: String,
+    description: Option<String>,
+    rule_ids: String,
+    chain_condition: String,
+    time_window_secs: i64,
+    enabled: bool,
+    user_id: Option<String>,
+    created_at: String,
+}
+
+/// Helper function to map technique to tactic
+fn get_tactic_for_technique(technique_id: &str) -> String {
+    // Simplified mapping - in production would use a complete MITRE ATT&CK database
+    if technique_id.starts_with("T1059") || technique_id.starts_with("T1204") {
+        "execution".to_string()
+    } else if technique_id.starts_with("T1547") || technique_id.starts_with("T1053") {
+        "persistence".to_string()
+    } else if technique_id.starts_with("T1548") || technique_id.starts_with("T1134") {
+        "privilege_escalation".to_string()
+    } else if technique_id.starts_with("T1562") || technique_id.starts_with("T1070") {
+        "defense_evasion".to_string()
+    } else if technique_id.starts_with("T1003") || technique_id.starts_with("T1558") {
+        "credential_access".to_string()
+    } else if technique_id.starts_with("T1087") || technique_id.starts_with("T1018") {
+        "discovery".to_string()
+    } else if technique_id.starts_with("T1021") || technique_id.starts_with("T1570") {
+        "lateral_movement".to_string()
+    } else if technique_id.starts_with("T1560") || technique_id.starts_with("T1005") {
+        "collection".to_string()
+    } else if technique_id.starts_with("T1071") || technique_id.starts_with("T1095") {
+        "command_and_control".to_string()
+    } else if technique_id.starts_with("T1041") || technique_id.starts_with("T1048") {
+        "exfiltration".to_string()
+    } else if technique_id.starts_with("T1190") || technique_id.starts_with("T1566") {
+        "initial_access".to_string()
+    } else {
+        "unknown".to_string()
+    }
+}
+
+/// Helper function to get technique name
+fn get_technique_name(technique_id: &str) -> String {
+    // Simplified - in production would use a complete MITRE ATT&CK database
+    match technique_id {
+        "T1059.001" => "PowerShell".to_string(),
+        "T1059.003" => "Windows Command Shell".to_string(),
+        "T1003.001" => "LSASS Memory".to_string(),
+        "T1003.002" => "Security Account Manager".to_string(),
+        "T1547.001" => "Registry Run Keys".to_string(),
+        "T1053.005" => "Scheduled Task".to_string(),
+        "T1070.001" => "Clear Windows Event Logs".to_string(),
+        "T1562.001" => "Disable or Modify Tools".to_string(),
+        "T1021.001" => "Remote Desktop Protocol".to_string(),
+        "T1021.002" => "SMB/Windows Admin Shares".to_string(),
+        "T1071.001" => "Web Protocols".to_string(),
+        "T1566.001" => "Spearphishing Attachment".to_string(),
+        "T1190" => "Exploit Public-Facing Application".to_string(),
+        _ => technique_id.to_string(),
+    }
+}
+
+// =============================================================================
 // Correlation Rule Endpoints
 // =============================================================================
 
@@ -2312,6 +3183,21 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/sigma/validate", web::post().to(validate_sigma))
             .route("/sigma/test", web::post().to(test_sigma_rule))
             .route("/sigma/builtin", web::get().to(get_builtin_sigma_rules))
+            // Sigma Backend Conversion (Sprint 2)
+            .route("/sigma/convert", web::post().to(convert_sigma_rule))
+            .route("/sigma/convert-all", web::post().to(convert_sigma_rule_all))
+            // Sigma Rule Testing with Storage (Sprint 2)
+            .route("/sigma/rules/{id}/test", web::post().to(test_sigma_rule_with_storage))
+            .route("/sigma/rules/{id}/test-results", web::get().to(get_sigma_rule_test_results))
+            .route("/sigma/test-results/{id}", web::put().to(update_test_result))
+            // Sigma ATT&CK Coverage (Sprint 2)
+            .route("/sigma/coverage", web::get().to(get_attack_coverage))
+            // Sigma Tuning Recommendations (Sprint 2)
+            .route("/sigma/tuning/recommendations", web::get().to(get_tuning_recommendations))
+            // Sigma Rule Chains (Sprint 2)
+            .route("/sigma/chains", web::get().to(list_rule_chains))
+            .route("/sigma/chains", web::post().to(create_rule_chain))
+            .route("/sigma/chains/{id}", web::delete().to(delete_rule_chain))
             // Correlation Rules
             .route("/correlation/rules", web::get().to(list_correlation_rules))
             .route("/correlation/rules", web::post().to(create_correlation_rule))

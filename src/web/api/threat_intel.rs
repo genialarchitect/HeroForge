@@ -926,6 +926,240 @@ pub struct ThreatLevelCount {
 }
 
 // ============================================================================
+// Sprint 12: Diamond Model Types
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiamondEvent {
+    pub id: String,
+    pub campaign_id: Option<String>,
+    pub adversary: DiamondVertex,
+    pub capability: DiamondVertex,
+    pub infrastructure: DiamondVertex,
+    pub victim: DiamondVertex,
+    pub timestamp: Option<String>,
+    pub phase: Option<String>,
+    pub confidence: i32,
+    pub notes: Option<String>,
+    pub meta_features: DiamondMetaFeatures,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiamondVertex {
+    pub id: Option<String>,
+    pub name: String,
+    pub vertex_type: String,
+    pub properties: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiamondMetaFeatures {
+    pub direction: Option<String>,  // adversary-to-victim, victim-to-adversary
+    pub methodology: Option<String>,
+    pub resources: Option<String>,
+    pub result: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateDiamondEventRequest {
+    pub campaign_id: Option<String>,
+    pub adversary_name: String,
+    pub adversary_properties: Option<serde_json::Value>,
+    pub capability_name: String,
+    pub capability_properties: Option<serde_json::Value>,
+    pub infrastructure_name: String,
+    pub infrastructure_properties: Option<serde_json::Value>,
+    pub victim_name: String,
+    pub victim_properties: Option<serde_json::Value>,
+    pub timestamp: Option<String>,
+    pub phase: Option<String>,
+    pub confidence: Option<i32>,
+    pub notes: Option<String>,
+}
+
+// ============================================================================
+// Sprint 12: Kill Chain Types
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize)]
+pub struct KillChainAnalysis {
+    pub campaign_id: String,
+    pub campaign_name: String,
+    pub phases: Vec<KillChainPhase>,
+    pub coverage: f64,
+    pub detected_techniques: i32,
+    pub total_techniques: i32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct KillChainPhase {
+    pub phase: String,
+    pub phase_name: String,
+    pub order: i32,
+    pub techniques: Vec<KillChainTechnique>,
+    pub coverage: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct KillChainTechnique {
+    pub technique_id: String,
+    pub technique_name: String,
+    pub detected: bool,
+    pub detection_source: Option<String>,
+    pub timestamp: Option<String>,
+    pub evidence: Option<String>,
+}
+
+// Lockheed Martin Cyber Kill Chain phases
+pub const KILL_CHAIN_PHASES: &[(&str, &str, i32)] = &[
+    ("recon", "Reconnaissance", 1),
+    ("weaponization", "Weaponization", 2),
+    ("delivery", "Delivery", 3),
+    ("exploitation", "Exploitation", 4),
+    ("installation", "Installation", 5),
+    ("c2", "Command & Control", 6),
+    ("actions", "Actions on Objectives", 7),
+];
+
+// ============================================================================
+// Sprint 12: Intelligence Requirements Types
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IntelligenceRequirement {
+    pub id: String,
+    pub title: String,
+    pub description: Option<String>,
+    pub priority: String,  // critical, high, medium, low
+    pub category: String,  // strategic, operational, tactical
+    pub status: String,    // open, in_progress, answered, closed
+    pub requester: Option<String>,
+    pub due_date: Option<String>,
+    pub answer: Option<String>,
+    pub answered_at: Option<String>,
+    pub answered_by: Option<String>,
+    pub linked_actors: Vec<String>,
+    pub linked_campaigns: Vec<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateIntelRequirementRequest {
+    pub title: String,
+    pub description: Option<String>,
+    pub priority: String,
+    pub category: String,
+    pub requester: Option<String>,
+    pub due_date: Option<String>,
+    pub linked_actors: Option<Vec<String>>,
+    pub linked_campaigns: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateIntelRequirementRequest {
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub priority: Option<String>,
+    pub status: Option<String>,
+    pub answer: Option<String>,
+    pub linked_actors: Option<Vec<String>>,
+    pub linked_campaigns: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct IntelRequirementQuery {
+    pub status: Option<String>,
+    pub priority: Option<String>,
+    pub category: Option<String>,
+    pub limit: Option<i32>,
+}
+
+// ============================================================================
+// Sprint 12: Threat Briefing Types
+// ============================================================================
+
+#[derive(Debug, Serialize)]
+pub struct ThreatBriefing {
+    pub id: String,
+    pub title: String,
+    pub executive_summary: String,
+    pub generated_at: String,
+    pub period_start: String,
+    pub period_end: String,
+    pub threat_landscape: ThreatLandscape,
+    pub top_actors: Vec<ThreatActorBrief>,
+    pub active_campaigns: Vec<CampaignBrief>,
+    pub key_iocs: Vec<KeyIoc>,
+    pub recommendations: Vec<String>,
+    pub risk_assessment: RiskAssessment,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ThreatLandscape {
+    pub overall_threat_level: String,  // low, medium, high, critical
+    pub trend: String,                  // increasing, stable, decreasing
+    pub top_targeted_sectors: Vec<SectorThreat>,
+    pub emerging_threats: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SectorThreat {
+    pub sector: String,
+    pub threat_level: String,
+    pub active_actors: i32,
+    pub recent_incidents: i32,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ThreatActorBrief {
+    pub id: String,
+    pub name: String,
+    pub aliases: Vec<String>,
+    pub motivation: String,
+    pub recent_activity: String,
+    pub threat_level: String,
+    pub key_ttps: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CampaignBrief {
+    pub id: String,
+    pub name: String,
+    pub actor_name: Option<String>,
+    pub target_sectors: Vec<String>,
+    pub status: String,
+    pub last_activity: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct KeyIoc {
+    pub ioc_type: String,
+    pub value: String,
+    pub threat_level: String,
+    pub associated_actor: Option<String>,
+    pub first_seen: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RiskAssessment {
+    pub overall_risk: String,
+    pub likelihood: String,
+    pub impact: String,
+    pub key_risks: Vec<String>,
+    pub mitigations: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GenerateBriefingRequest {
+    pub title: Option<String>,
+    pub period_days: Option<i32>,
+    pub focus_sectors: Option<Vec<String>>,
+    pub focus_actors: Option<Vec<String>>,
+}
+
+// ============================================================================
 // MISP Server Management Endpoints
 // ============================================================================
 
@@ -2282,6 +2516,924 @@ pub async fn list_campaigns(
     })))
 }
 
+/// POST /api/threat-intel/campaigns
+/// Create a new campaign
+pub async fn create_campaign(
+    claims: web::ReqData<Claims>,
+    pool: web::Data<SqlitePool>,
+    body: web::Json<CreateCampaignRequest>,
+) -> Result<HttpResponse> {
+    let user_id = &claims.sub;
+    let req = body.into_inner();
+    let id = Uuid::new_v4().to_string();
+    let now = Utc::now().to_rfc3339();
+
+    let targets_json = req.targets.as_ref()
+        .map(|t| serde_json::to_string(t).unwrap_or_default());
+    let ttps_json = req.ttps.as_ref()
+        .map(|t| serde_json::to_string(t).unwrap_or_default());
+
+    sqlx::query(
+        r#"
+        INSERT INTO campaigns (id, user_id, name, threat_actor_id, description, objective,
+            first_seen, last_seen, status, targets_json, ttps_json, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        "#,
+    )
+    .bind(&id)
+    .bind(user_id)
+    .bind(&req.name)
+    .bind(&req.threat_actor_id)
+    .bind(&req.description)
+    .bind(&req.objective)
+    .bind(&req.first_seen)
+    .bind(&req.first_seen) // last_seen = first_seen initially
+    .bind(req.status.as_deref().unwrap_or("active"))
+    .bind(&targets_json)
+    .bind(&ttps_json)
+    .bind(&now)
+    .bind(&now)
+    .execute(pool.get_ref())
+    .await
+    .map_err(|e| {
+        error!("Failed to create campaign: {}", e);
+        actix_web::error::ErrorInternalServerError("Failed to create campaign")
+    })?;
+
+    Ok(HttpResponse::Created().json(serde_json::json!({
+        "id": id,
+        "name": req.name,
+        "message": "Campaign created successfully"
+    })))
+}
+
+/// GET /api/threat-intel/campaigns/{id}
+/// Get campaign details
+pub async fn get_campaign(
+    _claims: web::ReqData<Claims>,
+    pool: web::Data<SqlitePool>,
+    path: web::Path<String>,
+) -> Result<HttpResponse> {
+    let campaign_id = path.into_inner();
+
+    let campaign: Option<(String, String, Option<String>, Option<String>, Option<String>,
+        Option<String>, Option<String>, String, Option<String>, Option<String>, String, String)> =
+        sqlx::query_as(
+            r#"
+            SELECT id, name, threat_actor_id, description, objective,
+                first_seen, last_seen, status, targets_json, ttps_json, created_at, updated_at
+            FROM campaigns
+            WHERE id = ?
+            "#,
+        )
+        .bind(&campaign_id)
+        .fetch_optional(pool.get_ref())
+        .await
+        .map_err(|e| {
+            error!("Failed to get campaign: {}", e);
+            actix_web::error::ErrorInternalServerError("Failed to get campaign")
+        })?;
+
+    if let Some(c) = campaign {
+        let targets: Vec<CampaignTarget> = c.8.as_ref()
+            .and_then(|s| serde_json::from_str(s).ok())
+            .unwrap_or_default();
+        let ttps: Vec<String> = c.9.as_ref()
+            .and_then(|s| serde_json::from_str(s).ok())
+            .unwrap_or_default();
+
+        // Get associated IOCs
+        let iocs: Vec<CampaignIoc> = sqlx::query_as::<_, (String, String, Option<i32>, Option<String>, Option<String>)>(
+            "SELECT ioc_type, ioc_value, confidence, first_seen, last_seen FROM campaign_iocs WHERE campaign_id = ?"
+        )
+        .bind(&campaign_id)
+        .fetch_all(pool.get_ref())
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|row| CampaignIoc {
+            ioc_type: row.0,
+            value: row.1,
+            confidence: row.2.unwrap_or(50),
+            first_seen: row.3,
+            last_seen: row.4,
+        })
+        .collect();
+
+        // Get threat actor name if available
+        let threat_actor_name: Option<String> = if let Some(ref actor_id) = c.2 {
+            sqlx::query_scalar("SELECT name FROM threat_actors WHERE id = ?")
+                .bind(actor_id)
+                .fetch_optional(pool.get_ref())
+                .await
+                .ok()
+                .flatten()
+        } else {
+            None
+        };
+
+        // Get timeline events
+        let timeline_events: Vec<TimelineEvent> = sqlx::query_as::<_, (String, String, String, Option<String>)>(
+            "SELECT timestamp, event_type, description, references FROM campaign_timeline WHERE campaign_id = ? ORDER BY timestamp DESC"
+        )
+        .bind(&campaign_id)
+        .fetch_all(pool.get_ref())
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|row| TimelineEvent {
+            timestamp: row.0,
+            event_type: row.1,
+            description: row.2,
+            references: row.3.map(|r| serde_json::from_str(&r).unwrap_or_default()).unwrap_or_default(),
+        })
+        .collect();
+
+        let detail = CampaignDetail {
+            id: c.0,
+            name: c.1,
+            threat_actor_id: c.2,
+            threat_actor_name,
+            description: c.3,
+            objective: c.4,
+            first_seen: c.5,
+            last_seen: c.6,
+            status: c.7,
+            confidence: 75,
+            targets,
+            ttps,
+            iocs,
+            timeline_events,
+            attribution_confidence: 75,
+        };
+
+        Ok(HttpResponse::Ok().json(detail))
+    } else {
+        Ok(HttpResponse::NotFound().json(serde_json::json!({
+            "error": "Campaign not found"
+        })))
+    }
+}
+
+/// PUT /api/threat-intel/campaigns/{id}
+/// Update campaign
+pub async fn update_campaign(
+    _claims: web::ReqData<Claims>,
+    pool: web::Data<SqlitePool>,
+    path: web::Path<String>,
+    body: web::Json<CreateCampaignRequest>,
+) -> Result<HttpResponse> {
+    let campaign_id = path.into_inner();
+    let req = body.into_inner();
+    let now = Utc::now().to_rfc3339();
+
+    let targets_json = req.targets.as_ref()
+        .map(|t| serde_json::to_string(t).unwrap_or_default());
+    let ttps_json = req.ttps.as_ref()
+        .map(|t| serde_json::to_string(t).unwrap_or_default());
+
+    let result = sqlx::query(
+        r#"
+        UPDATE campaigns SET
+            name = ?, threat_actor_id = ?, description = ?, objective = ?,
+            first_seen = COALESCE(?, first_seen), status = COALESCE(?, status),
+            targets_json = COALESCE(?, targets_json), ttps_json = COALESCE(?, ttps_json),
+            updated_at = ?
+        WHERE id = ?
+        "#,
+    )
+    .bind(&req.name)
+    .bind(&req.threat_actor_id)
+    .bind(&req.description)
+    .bind(&req.objective)
+    .bind(&req.first_seen)
+    .bind(&req.status)
+    .bind(&targets_json)
+    .bind(&ttps_json)
+    .bind(&now)
+    .bind(&campaign_id)
+    .execute(pool.get_ref())
+    .await
+    .map_err(|e| {
+        error!("Failed to update campaign: {}", e);
+        actix_web::error::ErrorInternalServerError("Failed to update campaign")
+    })?;
+
+    if result.rows_affected() == 0 {
+        return Ok(HttpResponse::NotFound().json(serde_json::json!({
+            "error": "Campaign not found"
+        })));
+    }
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "id": campaign_id,
+        "message": "Campaign updated successfully"
+    })))
+}
+
+/// DELETE /api/threat-intel/campaigns/{id}
+/// Delete campaign
+pub async fn delete_campaign(
+    _claims: web::ReqData<Claims>,
+    pool: web::Data<SqlitePool>,
+    path: web::Path<String>,
+) -> Result<HttpResponse> {
+    let campaign_id = path.into_inner();
+
+    // Delete associated IOCs first
+    let _ = sqlx::query("DELETE FROM campaign_iocs WHERE campaign_id = ?")
+        .bind(&campaign_id)
+        .execute(pool.get_ref())
+        .await;
+
+    let result = sqlx::query("DELETE FROM campaigns WHERE id = ?")
+        .bind(&campaign_id)
+        .execute(pool.get_ref())
+        .await
+        .map_err(|e| {
+            error!("Failed to delete campaign: {}", e);
+            actix_web::error::ErrorInternalServerError("Failed to delete campaign")
+        })?;
+
+    if result.rows_affected() == 0 {
+        return Ok(HttpResponse::NotFound().json(serde_json::json!({
+            "error": "Campaign not found"
+        })));
+    }
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "message": "Campaign deleted successfully"
+    })))
+}
+
+// ============================================================================
+// Sprint 12: Diamond Model Endpoints
+// ============================================================================
+
+/// POST /api/threat-intel/diamond/events
+/// Create a Diamond Model event
+pub async fn create_diamond_event(
+    claims: web::ReqData<Claims>,
+    pool: web::Data<SqlitePool>,
+    body: web::Json<CreateDiamondEventRequest>,
+) -> Result<HttpResponse> {
+    let user_id = &claims.sub;
+    let req = body.into_inner();
+    let id = Uuid::new_v4().to_string();
+    let now = Utc::now().to_rfc3339();
+
+    let adversary = DiamondVertex {
+        id: Some(Uuid::new_v4().to_string()),
+        name: req.adversary_name,
+        vertex_type: "adversary".to_string(),
+        properties: req.adversary_properties.unwrap_or(serde_json::json!({})),
+    };
+    let capability = DiamondVertex {
+        id: Some(Uuid::new_v4().to_string()),
+        name: req.capability_name,
+        vertex_type: "capability".to_string(),
+        properties: req.capability_properties.unwrap_or(serde_json::json!({})),
+    };
+    let infrastructure = DiamondVertex {
+        id: Some(Uuid::new_v4().to_string()),
+        name: req.infrastructure_name,
+        vertex_type: "infrastructure".to_string(),
+        properties: req.infrastructure_properties.unwrap_or(serde_json::json!({})),
+    };
+    let victim = DiamondVertex {
+        id: Some(Uuid::new_v4().to_string()),
+        name: req.victim_name,
+        vertex_type: "victim".to_string(),
+        properties: req.victim_properties.unwrap_or(serde_json::json!({})),
+    };
+
+    let event = DiamondEvent {
+        id: id.clone(),
+        campaign_id: req.campaign_id.clone(),
+        adversary: adversary.clone(),
+        capability: capability.clone(),
+        infrastructure: infrastructure.clone(),
+        victim: victim.clone(),
+        timestamp: req.timestamp.clone(),
+        phase: req.phase.clone(),
+        confidence: req.confidence.unwrap_or(50),
+        notes: req.notes.clone(),
+        meta_features: DiamondMetaFeatures {
+            direction: Some("adversary-to-victim".to_string()),
+            methodology: None,
+            resources: None,
+            result: None,
+        },
+        created_at: now.clone(),
+    };
+
+    let event_json = serde_json::to_string(&event).unwrap_or_default();
+
+    sqlx::query(
+        r#"
+        INSERT INTO diamond_events (id, user_id, campaign_id, adversary_json, capability_json,
+            infrastructure_json, victim_json, timestamp, phase, confidence, notes, event_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        "#,
+    )
+    .bind(&id)
+    .bind(user_id)
+    .bind(&req.campaign_id)
+    .bind(serde_json::to_string(&adversary).ok())
+    .bind(serde_json::to_string(&capability).ok())
+    .bind(serde_json::to_string(&infrastructure).ok())
+    .bind(serde_json::to_string(&victim).ok())
+    .bind(&req.timestamp)
+    .bind(&req.phase)
+    .bind(req.confidence.unwrap_or(50))
+    .bind(&req.notes)
+    .bind(&event_json)
+    .bind(&now)
+    .execute(pool.get_ref())
+    .await
+    .map_err(|e| {
+        error!("Failed to create diamond event: {}", e);
+        actix_web::error::ErrorInternalServerError("Failed to create diamond event")
+    })?;
+
+    Ok(HttpResponse::Created().json(event))
+}
+
+/// GET /api/threat-intel/diamond/events
+/// List Diamond Model events
+pub async fn list_diamond_events(
+    _claims: web::ReqData<Claims>,
+    pool: web::Data<SqlitePool>,
+    query: web::Query<CampaignQuery>,
+) -> Result<HttpResponse> {
+    let campaign_filter = query.threat_actor_id.as_ref(); // reuse for campaign_id filter
+    let limit = query.limit.unwrap_or(50);
+
+    let events: Vec<DiamondEvent> = if let Some(campaign_id) = campaign_filter {
+        sqlx::query_as::<_, (String,)>(
+            "SELECT event_json FROM diamond_events WHERE campaign_id = ? ORDER BY timestamp DESC LIMIT ?"
+        )
+        .bind(campaign_id)
+        .bind(limit)
+        .fetch_all(pool.get_ref())
+        .await
+        .unwrap_or_default()
+    } else {
+        sqlx::query_as::<_, (String,)>(
+            "SELECT event_json FROM diamond_events ORDER BY timestamp DESC LIMIT ?"
+        )
+        .bind(limit)
+        .fetch_all(pool.get_ref())
+        .await
+        .unwrap_or_default()
+    }
+    .into_iter()
+    .filter_map(|row| serde_json::from_str(&row.0).ok())
+    .collect();
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "events": events,
+        "total": events.len()
+    })))
+}
+
+/// GET /api/threat-intel/diamond/events/{id}
+/// Get Diamond Model event details
+pub async fn get_diamond_event(
+    _claims: web::ReqData<Claims>,
+    pool: web::Data<SqlitePool>,
+    path: web::Path<String>,
+) -> Result<HttpResponse> {
+    let event_id = path.into_inner();
+
+    let event: Option<(String,)> = sqlx::query_as(
+        "SELECT event_json FROM diamond_events WHERE id = ?"
+    )
+    .bind(&event_id)
+    .fetch_optional(pool.get_ref())
+    .await
+    .map_err(|e| {
+        error!("Failed to get diamond event: {}", e);
+        actix_web::error::ErrorInternalServerError("Failed to get diamond event")
+    })?;
+
+    if let Some(e) = event {
+        let parsed: DiamondEvent = serde_json::from_str(&e.0).map_err(|_| {
+            actix_web::error::ErrorInternalServerError("Failed to parse diamond event")
+        })?;
+        Ok(HttpResponse::Ok().json(parsed))
+    } else {
+        Ok(HttpResponse::NotFound().json(serde_json::json!({
+            "error": "Diamond event not found"
+        })))
+    }
+}
+
+// ============================================================================
+// Sprint 12: Kill Chain Endpoints
+// ============================================================================
+
+/// GET /api/threat-intel/kill-chain/{campaign_id}
+/// Get Kill Chain analysis for a campaign
+pub async fn get_kill_chain_analysis(
+    _claims: web::ReqData<Claims>,
+    pool: web::Data<SqlitePool>,
+    path: web::Path<String>,
+) -> Result<HttpResponse> {
+    let campaign_id = path.into_inner();
+
+    // Get campaign name
+    let campaign: Option<(String, String)> = sqlx::query_as(
+        "SELECT id, name FROM campaigns WHERE id = ?"
+    )
+    .bind(&campaign_id)
+    .fetch_optional(pool.get_ref())
+    .await
+    .map_err(|e| {
+        error!("Failed to get campaign: {}", e);
+        actix_web::error::ErrorInternalServerError("Failed to get campaign")
+    })?;
+
+    let (cid, cname) = match campaign {
+        Some(c) => c,
+        None => return Ok(HttpResponse::NotFound().json(serde_json::json!({
+            "error": "Campaign not found"
+        }))),
+    };
+
+    // Get techniques detected for this campaign from diamond events
+    let techniques: Vec<(Option<String>, Option<String>, Option<String>)> = sqlx::query_as(
+        r#"
+        SELECT phase, timestamp, notes
+        FROM diamond_events
+        WHERE campaign_id = ?
+        ORDER BY timestamp ASC
+        "#
+    )
+    .bind(&campaign_id)
+    .fetch_all(pool.get_ref())
+    .await
+    .unwrap_or_default();
+
+    // Build kill chain phases
+    let phases: Vec<KillChainPhase> = KILL_CHAIN_PHASES.iter().map(|(phase_id, phase_name, order)| {
+        let phase_techniques: Vec<KillChainTechnique> = techniques.iter()
+            .filter(|(p, _, _)| p.as_ref().map(|pp: &String| pp.to_lowercase().contains(*phase_id)).unwrap_or(false))
+            .map(|(_, ts, notes)| KillChainTechnique {
+                technique_id: format!("KC-{}", order),
+                technique_name: format!("{} activity", phase_name),
+                detected: true,
+                detection_source: Some("diamond_event".to_string()),
+                timestamp: ts.clone(),
+                evidence: notes.clone(),
+            })
+            .collect();
+
+        let coverage = if phase_techniques.is_empty() { 0.0 } else { 100.0 };
+
+        KillChainPhase {
+            phase: phase_id.to_string(),
+            phase_name: phase_name.to_string(),
+            order: *order,
+            techniques: phase_techniques,
+            coverage,
+        }
+    }).collect();
+
+    let detected = phases.iter().filter(|p| !p.techniques.is_empty()).count();
+    let total = phases.len();
+    let coverage = (detected as f64 / total as f64) * 100.0;
+
+    let analysis = KillChainAnalysis {
+        campaign_id: cid,
+        campaign_name: cname,
+        phases,
+        coverage,
+        detected_techniques: detected as i32,
+        total_techniques: total as i32,
+    };
+
+    Ok(HttpResponse::Ok().json(analysis))
+}
+
+/// GET /api/threat-intel/kill-chain/phases
+/// Get Kill Chain phase definitions
+pub async fn get_kill_chain_phases(
+    _claims: web::ReqData<Claims>,
+) -> Result<HttpResponse> {
+    let phases: Vec<serde_json::Value> = KILL_CHAIN_PHASES.iter().map(|(id, name, order)| {
+        serde_json::json!({
+            "id": id,
+            "name": name,
+            "order": order
+        })
+    }).collect();
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "phases": phases,
+        "total": phases.len()
+    })))
+}
+
+// ============================================================================
+// Sprint 12: Intelligence Requirements Endpoints
+// ============================================================================
+
+/// GET /api/threat-intel/requirements
+/// List intelligence requirements
+pub async fn list_intel_requirements(
+    claims: web::ReqData<Claims>,
+    pool: web::Data<SqlitePool>,
+    query: web::Query<IntelRequirementQuery>,
+) -> Result<HttpResponse> {
+    let user_id = &claims.sub;
+    let limit = query.limit.unwrap_or(50);
+
+    let mut sql = String::from(
+        r#"SELECT id, title, description, priority, category, status, requester,
+            due_date, answer, answered_at, answered_by, linked_actors, linked_campaigns,
+            created_at, updated_at
+        FROM intelligence_requirements
+        WHERE user_id = ?"#
+    );
+
+    if query.status.is_some() {
+        sql.push_str(" AND status = ?");
+    }
+    if query.priority.is_some() {
+        sql.push_str(" AND priority = ?");
+    }
+    if query.category.is_some() {
+        sql.push_str(" AND category = ?");
+    }
+    sql.push_str(" ORDER BY created_at DESC LIMIT ?");
+
+    let mut q = sqlx::query_as::<_, (String, String, Option<String>, String, String, String,
+        Option<String>, Option<String>, Option<String>, Option<String>, Option<String>,
+        Option<String>, Option<String>, String, String)>(&sql)
+        .bind(user_id);
+
+    if let Some(status) = &query.status {
+        q = q.bind(status);
+    }
+    if let Some(priority) = &query.priority {
+        q = q.bind(priority);
+    }
+    if let Some(category) = &query.category {
+        q = q.bind(category);
+    }
+    q = q.bind(limit);
+
+    let requirements: Vec<IntelligenceRequirement> = q
+        .fetch_all(pool.get_ref())
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|row| IntelligenceRequirement {
+            id: row.0,
+            title: row.1,
+            description: row.2,
+            priority: row.3,
+            category: row.4,
+            status: row.5,
+            requester: row.6,
+            due_date: row.7,
+            answer: row.8,
+            answered_at: row.9,
+            answered_by: row.10,
+            linked_actors: row.11.and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default(),
+            linked_campaigns: row.12.and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default(),
+            created_at: row.13,
+            updated_at: row.14,
+        })
+        .collect();
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "requirements": requirements,
+        "total": requirements.len()
+    })))
+}
+
+/// POST /api/threat-intel/requirements
+/// Create intelligence requirement
+pub async fn create_intel_requirement(
+    claims: web::ReqData<Claims>,
+    pool: web::Data<SqlitePool>,
+    body: web::Json<CreateIntelRequirementRequest>,
+) -> Result<HttpResponse> {
+    let user_id = &claims.sub;
+    let req = body.into_inner();
+    let id = Uuid::new_v4().to_string();
+    let now = Utc::now().to_rfc3339();
+
+    let linked_actors_json = req.linked_actors.as_ref()
+        .map(|a| serde_json::to_string(a).unwrap_or_default());
+    let linked_campaigns_json = req.linked_campaigns.as_ref()
+        .map(|c| serde_json::to_string(c).unwrap_or_default());
+
+    sqlx::query(
+        r#"
+        INSERT INTO intelligence_requirements (id, user_id, title, description, priority, category,
+            status, requester, due_date, linked_actors, linked_campaigns, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?)
+        "#,
+    )
+    .bind(&id)
+    .bind(user_id)
+    .bind(&req.title)
+    .bind(&req.description)
+    .bind(&req.priority)
+    .bind(&req.category)
+    .bind(&req.requester)
+    .bind(&req.due_date)
+    .bind(&linked_actors_json)
+    .bind(&linked_campaigns_json)
+    .bind(&now)
+    .bind(&now)
+    .execute(pool.get_ref())
+    .await
+    .map_err(|e| {
+        error!("Failed to create intel requirement: {}", e);
+        actix_web::error::ErrorInternalServerError("Failed to create intel requirement")
+    })?;
+
+    Ok(HttpResponse::Created().json(serde_json::json!({
+        "id": id,
+        "title": req.title,
+        "message": "Intelligence requirement created successfully"
+    })))
+}
+
+/// PUT /api/threat-intel/requirements/{id}
+/// Update intelligence requirement
+pub async fn update_intel_requirement(
+    claims: web::ReqData<Claims>,
+    pool: web::Data<SqlitePool>,
+    path: web::Path<String>,
+    body: web::Json<UpdateIntelRequirementRequest>,
+) -> Result<HttpResponse> {
+    let user_id = &claims.sub;
+    let req_id = path.into_inner();
+    let req = body.into_inner();
+    let now = Utc::now().to_rfc3339();
+
+    // Check if answering
+    let answered_at = if req.answer.is_some() && req.status.as_deref() == Some("answered") {
+        Some(now.clone())
+    } else {
+        None
+    };
+    let answered_by = if answered_at.is_some() {
+        Some(user_id.clone())
+    } else {
+        None
+    };
+
+    let linked_actors_json = req.linked_actors.as_ref()
+        .map(|a| serde_json::to_string(a).unwrap_or_default());
+    let linked_campaigns_json = req.linked_campaigns.as_ref()
+        .map(|c| serde_json::to_string(c).unwrap_or_default());
+
+    let result = sqlx::query(
+        r#"
+        UPDATE intelligence_requirements SET
+            title = COALESCE(?, title),
+            description = COALESCE(?, description),
+            priority = COALESCE(?, priority),
+            status = COALESCE(?, status),
+            answer = COALESCE(?, answer),
+            answered_at = COALESCE(?, answered_at),
+            answered_by = COALESCE(?, answered_by),
+            linked_actors = COALESCE(?, linked_actors),
+            linked_campaigns = COALESCE(?, linked_campaigns),
+            updated_at = ?
+        WHERE id = ? AND user_id = ?
+        "#,
+    )
+    .bind(&req.title)
+    .bind(&req.description)
+    .bind(&req.priority)
+    .bind(&req.status)
+    .bind(&req.answer)
+    .bind(&answered_at)
+    .bind(&answered_by)
+    .bind(&linked_actors_json)
+    .bind(&linked_campaigns_json)
+    .bind(&now)
+    .bind(&req_id)
+    .bind(user_id)
+    .execute(pool.get_ref())
+    .await
+    .map_err(|e| {
+        error!("Failed to update intel requirement: {}", e);
+        actix_web::error::ErrorInternalServerError("Failed to update intel requirement")
+    })?;
+
+    if result.rows_affected() == 0 {
+        return Ok(HttpResponse::NotFound().json(serde_json::json!({
+            "error": "Intelligence requirement not found"
+        })));
+    }
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "id": req_id,
+        "message": "Intelligence requirement updated successfully"
+    })))
+}
+
+/// DELETE /api/threat-intel/requirements/{id}
+/// Delete intelligence requirement
+pub async fn delete_intel_requirement(
+    claims: web::ReqData<Claims>,
+    pool: web::Data<SqlitePool>,
+    path: web::Path<String>,
+) -> Result<HttpResponse> {
+    let user_id = &claims.sub;
+    let req_id = path.into_inner();
+
+    let result = sqlx::query("DELETE FROM intelligence_requirements WHERE id = ? AND user_id = ?")
+        .bind(&req_id)
+        .bind(user_id)
+        .execute(pool.get_ref())
+        .await
+        .map_err(|e| {
+            error!("Failed to delete intel requirement: {}", e);
+            actix_web::error::ErrorInternalServerError("Failed to delete intel requirement")
+        })?;
+
+    if result.rows_affected() == 0 {
+        return Ok(HttpResponse::NotFound().json(serde_json::json!({
+            "error": "Intelligence requirement not found"
+        })));
+    }
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "message": "Intelligence requirement deleted successfully"
+    })))
+}
+
+// ============================================================================
+// Sprint 12: Threat Briefing Endpoints
+// ============================================================================
+
+/// POST /api/threat-intel/briefings/generate
+/// Generate a threat briefing
+pub async fn generate_threat_briefing(
+    _claims: web::ReqData<Claims>,
+    pool: web::Data<SqlitePool>,
+    body: web::Json<GenerateBriefingRequest>,
+) -> Result<HttpResponse> {
+    let req = body.into_inner();
+    let id = Uuid::new_v4().to_string();
+    let now = Utc::now();
+    let period_days = req.period_days.unwrap_or(30);
+    let period_start = (now - chrono::Duration::days(period_days as i64)).to_rfc3339();
+    let period_end = now.to_rfc3339();
+
+    // Get active campaigns
+    let campaigns: Vec<CampaignBrief> = sqlx::query_as::<_, (String, String, Option<String>, Option<String>, String, Option<String>)>(
+        r#"
+        SELECT c.id, c.name, c.threat_actor_id, c.targets_json, c.status, c.last_seen
+        FROM campaigns c
+        WHERE c.status = 'active' OR c.last_seen >= ?
+        ORDER BY c.last_seen DESC
+        LIMIT 10
+        "#
+    )
+    .bind(&period_start)
+    .fetch_all(pool.get_ref())
+    .await
+    .unwrap_or_default()
+    .into_iter()
+    .map(|row| {
+        let targets: Vec<String> = row.3.as_ref()
+            .and_then(|s| serde_json::from_str::<Vec<CampaignTarget>>(s).ok())
+            .map(|ts| ts.into_iter().filter_map(|t| t.sector).collect())
+            .unwrap_or_default();
+        CampaignBrief {
+            id: row.0,
+            name: row.1,
+            actor_name: row.2,
+            target_sectors: targets,
+            status: row.4,
+            last_activity: row.5,
+        }
+    })
+    .collect();
+
+    // Get built-in threat actors
+    let db = ThreatActorDatabase::new();
+    let top_actors: Vec<ThreatActorBrief> = db.all_actors().iter().take(5).map(|a| {
+        ThreatActorBrief {
+            id: a.name.clone(),
+            name: a.name.clone(),
+            aliases: a.aliases.clone(),
+            motivation: format!("{:?}", a.motivation),
+            recent_activity: "Active".to_string(),
+            threat_level: if a.sophistication >= 8 { "high".to_string() } else { "medium".to_string() },
+            key_ttps: a.ttps.iter().take(5).cloned().collect(),
+        }
+    }).collect();
+
+    // Generate executive summary
+    let executive_summary = format!(
+        "This threat briefing covers the period from {} to {}. \
+        {} active threat campaigns were identified, with {} known threat actors of concern. \
+        The overall threat landscape remains elevated with nation-state actors continuing \
+        targeted operations against critical infrastructure and government sectors.",
+        &period_start[..10], &period_end[..10],
+        campaigns.len(), top_actors.len()
+    );
+
+    // Build threat landscape
+    let threat_landscape = ThreatLandscape {
+        overall_threat_level: "high".to_string(),
+        trend: "stable".to_string(),
+        top_targeted_sectors: vec![
+            SectorThreat { sector: "Government".to_string(), threat_level: "high".to_string(), active_actors: 3, recent_incidents: 5 },
+            SectorThreat { sector: "Technology".to_string(), threat_level: "high".to_string(), active_actors: 4, recent_incidents: 8 },
+            SectorThreat { sector: "Healthcare".to_string(), threat_level: "medium".to_string(), active_actors: 2, recent_incidents: 3 },
+            SectorThreat { sector: "Financial".to_string(), threat_level: "high".to_string(), active_actors: 3, recent_incidents: 6 },
+        ],
+        emerging_threats: vec![
+            "Increased ransomware-as-a-service activity".to_string(),
+            "Supply chain compromise attempts".to_string(),
+            "Zero-day exploitation in network appliances".to_string(),
+        ],
+    };
+
+    // Risk assessment
+    let risk_assessment = RiskAssessment {
+        overall_risk: "high".to_string(),
+        likelihood: "likely".to_string(),
+        impact: "significant".to_string(),
+        key_risks: vec![
+            "Targeted attacks on critical infrastructure".to_string(),
+            "Data exfiltration from sensitive systems".to_string(),
+            "Ransomware deployment in enterprise networks".to_string(),
+        ],
+        mitigations: vec![
+            "Implement network segmentation".to_string(),
+            "Enable multi-factor authentication".to_string(),
+            "Deploy endpoint detection and response".to_string(),
+            "Conduct regular security awareness training".to_string(),
+        ],
+    };
+
+    let briefing = ThreatBriefing {
+        id,
+        title: req.title.unwrap_or_else(|| format!("Threat Briefing - {}", &period_end[..10])),
+        executive_summary,
+        generated_at: now.to_rfc3339(),
+        period_start,
+        period_end,
+        threat_landscape,
+        top_actors,
+        active_campaigns: campaigns,
+        key_iocs: Vec::new(), // Would populate from IOC correlations
+        recommendations: vec![
+            "Prioritize patching of internet-facing systems".to_string(),
+            "Review access controls for privileged accounts".to_string(),
+            "Update threat detection rules for identified TTPs".to_string(),
+            "Conduct tabletop exercises for incident response".to_string(),
+        ],
+        risk_assessment,
+    };
+
+    Ok(HttpResponse::Ok().json(briefing))
+}
+
+/// GET /api/threat-intel/briefings/latest
+/// Get the latest threat briefing summary
+pub async fn get_latest_briefing(
+    _claims: web::ReqData<Claims>,
+    pool: web::Data<SqlitePool>,
+) -> Result<HttpResponse> {
+    // Return a quick summary based on current data
+    let campaign_count: i32 = sqlx::query_scalar("SELECT COUNT(*) FROM campaigns WHERE status = 'active'")
+        .fetch_one(pool.get_ref())
+        .await
+        .unwrap_or(0);
+
+    let ioc_count: i32 = sqlx::query_scalar("SELECT COUNT(*) FROM ioc_correlations")
+        .fetch_one(pool.get_ref())
+        .await
+        .unwrap_or(0);
+
+    let db = ThreatActorDatabase::new();
+    let actor_count = db.all_actors().len();
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "summary": {
+            "active_campaigns": campaign_count,
+            "tracked_actors": actor_count,
+            "ioc_correlations": ioc_count,
+            "threat_level": "high",
+            "last_updated": Utc::now().to_rfc3339()
+        }
+    })))
+}
+
 // ============================================================================
 // IOC Correlation Endpoints
 // ============================================================================
@@ -2626,8 +3778,27 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/actors/{id}", web::get().to(get_threat_actor))
             // Campaign endpoints
             .route("/campaigns", web::get().to(list_campaigns))
+            .route("/campaigns", web::post().to(create_campaign))
+            .route("/campaigns/{id}", web::get().to(get_campaign))
+            .route("/campaigns/{id}", web::put().to(update_campaign))
+            .route("/campaigns/{id}", web::delete().to(delete_campaign))
             // IOC Correlation endpoints
             .route("/correlate", web::post().to(correlate_iocs))
-            .route("/correlations", web::get().to(list_correlations)),
+            .route("/correlations", web::get().to(list_correlations))
+            // Sprint 12: Diamond Model endpoints
+            .route("/diamond/events", web::post().to(create_diamond_event))
+            .route("/diamond/events", web::get().to(list_diamond_events))
+            .route("/diamond/events/{id}", web::get().to(get_diamond_event))
+            // Sprint 12: Kill Chain endpoints
+            .route("/kill-chain/{campaign_id}", web::get().to(get_kill_chain_analysis))
+            .route("/kill-chain/phases", web::get().to(get_kill_chain_phases))
+            // Sprint 12: Intelligence Requirements endpoints
+            .route("/requirements", web::get().to(list_intel_requirements))
+            .route("/requirements", web::post().to(create_intel_requirement))
+            .route("/requirements/{id}", web::put().to(update_intel_requirement))
+            .route("/requirements/{id}", web::delete().to(delete_intel_requirement))
+            // Sprint 12: Threat Briefing endpoints
+            .route("/briefings/generate", web::post().to(generate_threat_briefing))
+            .route("/briefings/latest", web::get().to(get_latest_briefing)),
     );
 }

@@ -33,11 +33,21 @@ import {
   ExternalLink,
   Settings,
   Database,
+  Activity,
+  TrendingUp,
+  Target,
+  Pause,
+  Bell,
+  ThumbsUp,
+  ThumbsDown,
+  HelpCircle,
+  Award,
+  Cpu,
 } from 'lucide-react';
 import Layout from '../components/layout/Layout';
 import api from '../services/api';
 
-type TabType = 'dashboard' | 'rules' | 'builder' | 'community' | 'scans';
+type TabType = 'dashboard' | 'rules' | 'builder' | 'community' | 'scans' | 'monitors' | 'effectiveness';
 
 // ============================================================================
 // Types
@@ -111,6 +121,83 @@ interface ValidationResult {
   warnings: string[];
 }
 
+// File Monitor Types
+interface FileMonitor {
+  id: string;
+  name: string;
+  watch_path: string;
+  recursive: boolean;
+  file_patterns: string[];
+  rule_ids: string[];
+  status: 'active' | 'paused' | 'stopped' | 'error';
+  alerts_count: number;
+  last_alert_at?: string;
+  error_message?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface MonitorAlert {
+  id: string;
+  monitor_id: string;
+  file_path: string;
+  file_hash?: string;
+  rule_name: string;
+  matched_strings: string[];
+  event_type: 'created' | 'modified' | 'renamed' | 'deleted';
+  severity: string;
+  acknowledged: boolean;
+  acknowledged_by?: string;
+  acknowledged_at?: string;
+  created_at: string;
+}
+
+// Memory Scan Types
+interface MemoryScan {
+  id: string;
+  name: string;
+  dump_type: 'windows_minidump' | 'linux_elf_core' | 'raw_dump';
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  rules_used: string[];
+  regions_scanned: number;
+  matches_found: number;
+  high_entropy_regions: number;
+  suspicious_strings_found: number;
+  started_at?: string;
+  completed_at?: string;
+  error_message?: string;
+  created_at: string;
+}
+
+// Rule Effectiveness Types
+interface RuleEffectiveness {
+  id: string;
+  rule_id: string;
+  rule_name: string;
+  category: string;
+  true_positives: number;
+  false_positives: number;
+  total_matches: number;
+  effectiveness_score: number;
+  grade: 'A' | 'B' | 'C' | 'D' | 'F';
+  confidence: 'high' | 'medium' | 'low';
+  last_match_at?: string;
+  needs_review: boolean;
+  review_reason?: string;
+  updated_at: string;
+}
+
+interface EffectivenessSummary {
+  total_rules: number;
+  rules_with_data: number;
+  avg_effectiveness_score: number;
+  total_true_positives: number;
+  total_false_positives: number;
+  rules_needing_review: number;
+  grade_distribution: Record<string, number>;
+  confidence_distribution: Record<string, number>;
+}
+
 // Visual Builder Types
 interface StringDefinition {
   identifier: string;
@@ -174,6 +261,32 @@ const yaraAPI = {
     api.post<{ rules_fetched: number }>(`/detection/yara/community/fetch/${sourceId}`).then(r => r.data),
   importRules: (data: { content: string; source?: string; category?: string; overwrite_existing: boolean }) =>
     api.post<{ imported: number; skipped: number; errors: string[] }>('/detection/yara/rules/import', data).then(r => r.data),
+
+  // File Monitors (Sprint 1)
+  listMonitors: () => api.get<FileMonitor[]>('/detection/yara/monitors').then(r => r.data),
+  createMonitor: (data: { name: string; watch_path: string; recursive?: boolean; file_patterns?: string[]; rule_ids?: string[] }) =>
+    api.post<FileMonitor>('/detection/yara/monitors', data).then(r => r.data),
+  getMonitor: (id: string) => api.get<FileMonitor>(`/detection/yara/monitors/${id}`).then(r => r.data),
+  updateMonitorStatus: (id: string, status: string) =>
+    api.put(`/detection/yara/monitors/${id}/status`, { status }).then(r => r.data),
+  deleteMonitor: (id: string) => api.delete(`/detection/yara/monitors/${id}`),
+  getMonitorAlerts: (monitorId: string) => api.get<MonitorAlert[]>(`/detection/yara/monitors/${monitorId}/alerts`).then(r => r.data),
+  acknowledgeAlert: (alertId: string) => api.post(`/detection/yara/alerts/${alertId}/acknowledge`).then(r => r.data),
+
+  // Memory Scanning (Sprint 1)
+  listMemoryScans: () => api.get<MemoryScan[]>('/detection/yara/memory/scans').then(r => r.data),
+  scanMemoryDump: (data: FormData) => api.post<MemoryScan>('/detection/yara/memory/scan', data, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }).then(r => r.data),
+  getMemoryScan: (id: string) => api.get<MemoryScan>(`/detection/yara/memory/scans/${id}`).then(r => r.data),
+
+  // Rule Effectiveness (Sprint 1)
+  getEffectiveness: () => api.get<RuleEffectiveness[]>('/detection/yara/effectiveness').then(r => r.data),
+  getEffectivenessSummary: () => api.get<EffectivenessSummary>('/detection/yara/effectiveness/summary').then(r => r.data),
+  getRulesNeedingReview: () => api.get<RuleEffectiveness[]>('/detection/yara/effectiveness/review').then(r => r.data),
+  getRuleEffectivenessDetail: (ruleId: string) => api.get<RuleEffectiveness>(`/detection/yara/effectiveness/${ruleId}`).then(r => r.data),
+  verifyMatch: (matchId: string, data: { is_true_positive: boolean; notes?: string }) =>
+    api.post(`/detection/yara/matches/${matchId}/verify`, data).then(r => r.data),
 };
 
 // ============================================================================
@@ -193,6 +306,24 @@ const statusColors: Record<string, { bg: string; text: string }> = {
   running: { bg: 'bg-blue-500/20', text: 'text-blue-400' },
   completed: { bg: 'bg-green-500/20', text: 'text-green-400' },
   failed: { bg: 'bg-red-500/20', text: 'text-red-400' },
+  active: { bg: 'bg-green-500/20', text: 'text-green-400' },
+  paused: { bg: 'bg-yellow-500/20', text: 'text-yellow-400' },
+  stopped: { bg: 'bg-gray-500/20', text: 'text-gray-400' },
+  error: { bg: 'bg-red-500/20', text: 'text-red-400' },
+};
+
+const gradeColors: Record<string, { bg: string; text: string }> = {
+  A: { bg: 'bg-green-500/20', text: 'text-green-400' },
+  B: { bg: 'bg-lime-500/20', text: 'text-lime-400' },
+  C: { bg: 'bg-yellow-500/20', text: 'text-yellow-400' },
+  D: { bg: 'bg-orange-500/20', text: 'text-orange-400' },
+  F: { bg: 'bg-red-500/20', text: 'text-red-400' },
+};
+
+const confidenceColors: Record<string, { bg: string; text: string }> = {
+  high: { bg: 'bg-green-500/20', text: 'text-green-400' },
+  medium: { bg: 'bg-yellow-500/20', text: 'text-yellow-400' },
+  low: { bg: 'bg-gray-500/20', text: 'text-gray-400' },
 };
 
 const categoryColors: Record<string, { bg: string; text: string }> = {
@@ -234,6 +365,25 @@ function CategoryBadge({ category }: { category: string }) {
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${colors.bg} ${colors.text}`}>
       {category}
+    </span>
+  );
+}
+
+function GradeBadge({ grade }: { grade: string }) {
+  const colors = gradeColors[grade.toUpperCase()] || gradeColors.F;
+  return (
+    <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-lg font-bold ${colors.bg} ${colors.text}`}>
+      {grade}
+    </span>
+  );
+}
+
+function ConfidenceBadge({ confidence }: { confidence: string }) {
+  const colors = confidenceColors[confidence.toLowerCase()] || confidenceColors.low;
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${colors.bg} ${colors.text}`}>
+      <Target className="h-3 w-3" />
+      {confidence}
     </span>
   );
 }
@@ -1091,6 +1241,398 @@ function ScansTab() {
 }
 
 // ============================================================================
+// Monitors Tab (Sprint 1)
+// ============================================================================
+
+function MonitorsTab() {
+  const queryClient = useQueryClient();
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [selectedMonitor, setSelectedMonitor] = useState<FileMonitor | null>(null);
+
+  const { data: monitors, isLoading } = useQuery({
+    queryKey: ['yara', 'monitors'],
+    queryFn: yaraAPI.listMonitors,
+    refetchInterval: 10000, // Poll every 10s for status updates
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: yaraAPI.deleteMonitor,
+    onSuccess: () => {
+      toast.success('Monitor deleted');
+      queryClient.invalidateQueries({ queryKey: ['yara', 'monitors'] });
+    },
+    onError: () => toast.error('Failed to delete monitor'),
+  });
+
+  const statusMutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      yaraAPI.updateMonitorStatus(id, status),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['yara', 'monitors'] });
+    },
+    onError: () => toast.error('Failed to update status'),
+  });
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'active': return <Activity className="h-4 w-4 animate-pulse" />;
+      case 'paused': return <Pause className="h-4 w-4" />;
+      case 'stopped': return <XCircle className="h-4 w-4" />;
+      case 'error': return <AlertTriangle className="h-4 w-4" />;
+      default: return <HelpCircle className="h-4 w-4" />;
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-lg font-semibold text-white">File System Monitors</h2>
+          <p className="text-sm text-gray-400">Real-time YARA scanning of file system changes</p>
+        </div>
+        <button
+          onClick={() => setShowCreateModal(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg"
+        >
+          <Plus className="h-4 w-4" />
+          New Monitor
+        </button>
+      </div>
+
+      {/* Monitors List */}
+      {isLoading ? (
+        <div className="flex justify-center py-12">
+          <RefreshCw className="h-8 w-8 animate-spin text-cyan-400" />
+        </div>
+      ) : monitors && monitors.length > 0 ? (
+        <div className="grid gap-4">
+          {monitors.map(monitor => (
+            <div key={monitor.id} className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+              <div className="flex items-start justify-between">
+                <div className="flex items-start gap-4">
+                  <div className={`p-2 rounded-lg ${
+                    monitor.status === 'active' ? 'bg-green-500/20' :
+                    monitor.status === 'paused' ? 'bg-yellow-500/20' :
+                    monitor.status === 'error' ? 'bg-red-500/20' : 'bg-gray-500/20'
+                  }`}>
+                    {getStatusIcon(monitor.status)}
+                  </div>
+                  <div>
+                    <h3 className="text-white font-medium">{monitor.name}</h3>
+                    <p className="text-gray-400 text-sm flex items-center gap-1">
+                      <FolderOpen className="h-3 w-3" />
+                      {monitor.watch_path}
+                      {monitor.recursive && <span className="text-cyan-400">(recursive)</span>}
+                    </p>
+                    <div className="flex items-center gap-4 mt-2 text-sm">
+                      <span className="text-gray-500">
+                        {monitor.file_patterns?.length || 0} patterns
+                      </span>
+                      <span className="text-gray-500">
+                        {monitor.rule_ids?.length || 0} rules
+                      </span>
+                      {monitor.alerts_count > 0 && (
+                        <span className="flex items-center gap-1 text-red-400">
+                          <Bell className="h-3 w-3" />
+                          {monitor.alerts_count} alerts
+                        </span>
+                      )}
+                    </div>
+                    {monitor.error_message && (
+                      <p className="text-red-400 text-sm mt-2">{monitor.error_message}</p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <StatusBadge status={monitor.status} />
+                  <div className="flex items-center gap-1">
+                    {monitor.status === 'active' ? (
+                      <button
+                        onClick={() => statusMutation.mutate({ id: monitor.id, status: 'paused' })}
+                        className="p-1 text-gray-400 hover:text-yellow-400"
+                        title="Pause"
+                      >
+                        <Pause className="h-4 w-4" />
+                      </button>
+                    ) : monitor.status !== 'error' ? (
+                      <button
+                        onClick={() => statusMutation.mutate({ id: monitor.id, status: 'active' })}
+                        className="p-1 text-gray-400 hover:text-green-400"
+                        title="Start"
+                      >
+                        <Play className="h-4 w-4" />
+                      </button>
+                    ) : null}
+                    <button
+                      onClick={() => setSelectedMonitor(monitor)}
+                      className="p-1 text-gray-400 hover:text-white"
+                      title="View Alerts"
+                    >
+                      <Eye className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => deleteMutation.mutate(monitor.id)}
+                      className="p-1 text-gray-400 hover:text-red-400"
+                      title="Delete"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="text-center py-12 bg-gray-800 border border-gray-700 rounded-lg">
+          <Activity className="h-12 w-12 text-gray-600 mx-auto mb-4" />
+          <p className="text-gray-400">No file monitors configured</p>
+          <p className="text-gray-500 text-sm mt-1">Create a monitor to scan files in real-time</p>
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="mt-4 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg"
+          >
+            Create First Monitor
+          </button>
+        </div>
+      )}
+
+      {/* Create Monitor Modal */}
+      {showCreateModal && (
+        <CreateMonitorModal onClose={() => setShowCreateModal(false)} />
+      )}
+
+      {/* Monitor Alerts Modal */}
+      {selectedMonitor && (
+        <MonitorAlertsModal monitor={selectedMonitor} onClose={() => setSelectedMonitor(null)} />
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// Effectiveness Tab (Sprint 1)
+// ============================================================================
+
+function EffectivenessTab() {
+  const queryClient = useQueryClient();
+  const [showReviewOnly, setShowReviewOnly] = useState(false);
+
+  const { data: summary, isLoading: loadingSummary } = useQuery({
+    queryKey: ['yara', 'effectiveness', 'summary'],
+    queryFn: yaraAPI.getEffectivenessSummary,
+  });
+
+  const { data: effectiveness, isLoading: loadingEffectiveness } = useQuery({
+    queryKey: ['yara', 'effectiveness', { reviewOnly: showReviewOnly }],
+    queryFn: showReviewOnly ? yaraAPI.getRulesNeedingReview : yaraAPI.getEffectiveness,
+  });
+
+  const isLoading = loadingSummary || loadingEffectiveness;
+
+  return (
+    <div className="space-y-6">
+      {/* Summary Cards */}
+      {summary && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-cyan-500/20 rounded-lg">
+                <Award className="h-5 w-5 text-cyan-400" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-white">
+                  {Math.round(summary.avg_effectiveness_score)}%
+                </p>
+                <p className="text-sm text-gray-400">Avg Effectiveness</p>
+              </div>
+            </div>
+          </div>
+          <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-green-500/20 rounded-lg">
+                <ThumbsUp className="h-5 w-5 text-green-400" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-white">{summary.total_true_positives}</p>
+                <p className="text-sm text-gray-400">True Positives</p>
+              </div>
+            </div>
+          </div>
+          <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-red-500/20 rounded-lg">
+                <ThumbsDown className="h-5 w-5 text-red-400" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-white">{summary.total_false_positives}</p>
+                <p className="text-sm text-gray-400">False Positives</p>
+              </div>
+            </div>
+          </div>
+          <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-yellow-500/20 rounded-lg">
+                <AlertTriangle className="h-5 w-5 text-yellow-400" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-white">{summary.rules_needing_review}</p>
+                <p className="text-sm text-gray-400">Need Review</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Grade Distribution */}
+      {summary && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+            <h3 className="text-lg font-semibold text-white mb-4">Grade Distribution</h3>
+            <div className="flex items-end gap-4 h-32">
+              {['A', 'B', 'C', 'D', 'F'].map(grade => {
+                const count = summary.grade_distribution[grade] || 0;
+                const maxCount = Math.max(...Object.values(summary.grade_distribution), 1);
+                const height = (count / maxCount) * 100;
+                const colors = gradeColors[grade];
+                return (
+                  <div key={grade} className="flex-1 flex flex-col items-center gap-1">
+                    <span className="text-xs text-gray-400">{count}</span>
+                    <div
+                      className={`w-full ${colors.bg} rounded-t transition-all`}
+                      style={{ height: `${Math.max(height, 4)}%` }}
+                    />
+                    <span className={`text-sm font-semibold ${colors.text}`}>{grade}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+            <h3 className="text-lg font-semibold text-white mb-4">Confidence Distribution</h3>
+            <div className="space-y-3">
+              {['high', 'medium', 'low'].map(confidence => {
+                const count = summary.confidence_distribution[confidence] || 0;
+                const total = Object.values(summary.confidence_distribution).reduce((a, b) => a + b, 0) || 1;
+                const percentage = (count / total) * 100;
+                const colors = confidenceColors[confidence];
+                return (
+                  <div key={confidence}>
+                    <div className="flex justify-between text-sm mb-1">
+                      <span className={colors.text}>{confidence.charAt(0).toUpperCase() + confidence.slice(1)}</span>
+                      <span className="text-gray-400">{count} rules</span>
+                    </div>
+                    <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full ${colors.bg} transition-all`}
+                        style={{ width: `${percentage}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Filter Toggle */}
+      <div className="flex items-center gap-4">
+        <label className="flex items-center gap-2 text-gray-300 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={showReviewOnly}
+            onChange={(e) => setShowReviewOnly(e.target.checked)}
+            className="rounded border-gray-600"
+          />
+          Show only rules needing review
+        </label>
+      </div>
+
+      {/* Rules Effectiveness Table */}
+      {isLoading ? (
+        <div className="flex justify-center py-12">
+          <RefreshCw className="h-8 w-8 animate-spin text-cyan-400" />
+        </div>
+      ) : effectiveness && effectiveness.length > 0 ? (
+        <div className="bg-gray-800 border border-gray-700 rounded-lg overflow-hidden">
+          <table className="w-full">
+            <thead className="bg-gray-900">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Rule</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Category</th>
+                <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase">Grade</th>
+                <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase">Score</th>
+                <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase">TP / FP</th>
+                <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase">Confidence</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-700">
+              {effectiveness.map(rule => (
+                <tr key={rule.id} className={`hover:bg-gray-750 ${rule.needs_review ? 'bg-yellow-500/5' : ''}`}>
+                  <td className="px-4 py-3">
+                    <p className="text-white font-medium">{rule.rule_name}</p>
+                    {rule.last_match_at && (
+                      <p className="text-gray-500 text-xs">
+                        Last match: {new Date(rule.last_match_at).toLocaleDateString()}
+                      </p>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <CategoryBadge category={rule.category || 'generic'} />
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <GradeBadge grade={rule.grade} />
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <span className={`text-lg font-semibold ${
+                      rule.effectiveness_score >= 80 ? 'text-green-400' :
+                      rule.effectiveness_score >= 60 ? 'text-yellow-400' : 'text-red-400'
+                    }`}>
+                      {Math.round(rule.effectiveness_score)}%
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <span className="text-green-400">{rule.true_positives}</span>
+                    <span className="text-gray-500 mx-1">/</span>
+                    <span className="text-red-400">{rule.false_positives}</span>
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <ConfidenceBadge confidence={rule.confidence} />
+                  </td>
+                  <td className="px-4 py-3">
+                    {rule.needs_review ? (
+                      <div className="flex items-center gap-1 text-yellow-400 text-sm">
+                        <AlertTriangle className="h-4 w-4" />
+                        <span>{rule.review_reason || 'Needs Review'}</span>
+                      </div>
+                    ) : (
+                      <span className="text-green-400 text-sm flex items-center gap-1">
+                        <CheckCircle className="h-4 w-4" />
+                        Good
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="text-center py-12 bg-gray-800 border border-gray-700 rounded-lg">
+          <TrendingUp className="h-12 w-12 text-gray-600 mx-auto mb-4" />
+          <p className="text-gray-400">No effectiveness data yet</p>
+          <p className="text-gray-500 text-sm mt-1">Run scans and verify matches to build effectiveness metrics</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
 // Modal Components
 // ============================================================================
 
@@ -1397,6 +1939,260 @@ function ScanDetailsModal({ scan, onClose }: { scan: YaraScan; onClose: () => vo
   );
 }
 
+function CreateMonitorModal({ onClose }: { onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const [name, setName] = useState('');
+  const [watchPath, setWatchPath] = useState('');
+  const [recursive, setRecursive] = useState(true);
+  const [patterns, setPatterns] = useState('');
+
+  const { data: rules } = useQuery({
+    queryKey: ['yara', 'rules'],
+    queryFn: () => yaraAPI.listRules(),
+  });
+
+  const [selectedRules, setSelectedRules] = useState<string[]>([]);
+
+  const createMutation = useMutation({
+    mutationFn: yaraAPI.createMonitor,
+    onSuccess: () => {
+      toast.success('Monitor created');
+      queryClient.invalidateQueries({ queryKey: ['yara', 'monitors'] });
+      onClose();
+    },
+    onError: (err: Error) => toast.error(err.message || 'Failed to create monitor'),
+  });
+
+  const handleSubmit = () => {
+    if (!name || !watchPath) {
+      toast.error('Name and watch path are required');
+      return;
+    }
+    createMutation.mutate({
+      name,
+      watch_path: watchPath,
+      recursive,
+      file_patterns: patterns ? patterns.split(',').map(p => p.trim()).filter(Boolean) : undefined,
+      rule_ids: selectedRules.length > 0 ? selectedRules : undefined,
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-gray-800 rounded-lg w-full max-w-lg max-h-[80vh] overflow-hidden">
+        <div className="flex items-center justify-between p-4 border-b border-gray-700">
+          <h3 className="text-lg font-semibold text-white">Create File Monitor</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-white">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="p-4 space-y-4 overflow-y-auto max-h-[60vh]">
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Monitor Name *</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g., Downloads Folder Monitor"
+              className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Watch Path *</label>
+            <input
+              type="text"
+              value={watchPath}
+              onChange={(e) => setWatchPath(e.target.value)}
+              placeholder="/path/to/watch"
+              className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">File Patterns (comma-separated)</label>
+            <input
+              type="text"
+              value={patterns}
+              onChange={(e) => setPatterns(e.target.value)}
+              placeholder="*.exe, *.dll, *.pdf"
+              className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white"
+            />
+            <p className="text-xs text-gray-500 mt-1">Leave empty to match all files</p>
+          </div>
+          <label className="flex items-center gap-2 text-gray-300">
+            <input
+              type="checkbox"
+              checked={recursive}
+              onChange={(e) => setRecursive(e.target.checked)}
+              className="rounded border-gray-600"
+            />
+            Watch subdirectories recursively
+          </label>
+          <div>
+            <label className="block text-sm text-gray-400 mb-2">YARA Rules to Use</label>
+            <div className="max-h-40 overflow-y-auto bg-gray-900 border border-gray-700 rounded-lg p-2">
+              {rules && rules.length > 0 ? (
+                <div className="space-y-1">
+                  {rules.filter(r => r.enabled).map(rule => (
+                    <label key={rule.id} className="flex items-center gap-2 text-gray-300 text-sm cursor-pointer hover:bg-gray-800 p-1 rounded">
+                      <input
+                        type="checkbox"
+                        checked={selectedRules.includes(rule.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedRules([...selectedRules, rule.id]);
+                          } else {
+                            setSelectedRules(selectedRules.filter(id => id !== rule.id));
+                          }
+                        }}
+                        className="rounded border-gray-600"
+                      />
+                      <span className="flex-1">{rule.name}</span>
+                      <CategoryBadge category={rule.category || 'generic'} />
+                    </label>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-gray-500 text-sm text-center py-4">No enabled rules available</p>
+              )}
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              {selectedRules.length === 0 ? 'All enabled rules will be used' : `${selectedRules.length} rules selected`}
+            </p>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 p-4 border-t border-gray-700">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={!name || !watchPath || createMutation.isPending}
+            className="flex items-center gap-2 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 disabled:bg-cyan-800 text-white rounded-lg"
+          >
+            {createMutation.isPending && <RefreshCw className="h-4 w-4 animate-spin" />}
+            Create Monitor
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MonitorAlertsModal({ monitor, onClose }: { monitor: FileMonitor; onClose: () => void }) {
+  const queryClient = useQueryClient();
+
+  const { data: alerts, isLoading } = useQuery({
+    queryKey: ['yara', 'monitor', monitor.id, 'alerts'],
+    queryFn: () => yaraAPI.getMonitorAlerts(monitor.id),
+    refetchInterval: 5000,
+  });
+
+  const acknowledgeMutation = useMutation({
+    mutationFn: yaraAPI.acknowledgeAlert,
+    onSuccess: () => {
+      toast.success('Alert acknowledged');
+      queryClient.invalidateQueries({ queryKey: ['yara', 'monitor', monitor.id, 'alerts'] });
+    },
+  });
+
+  const eventTypeColors: Record<string, { bg: string; text: string }> = {
+    created: { bg: 'bg-green-500/20', text: 'text-green-400' },
+    modified: { bg: 'bg-yellow-500/20', text: 'text-yellow-400' },
+    renamed: { bg: 'bg-blue-500/20', text: 'text-blue-400' },
+    deleted: { bg: 'bg-red-500/20', text: 'text-red-400' },
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-gray-800 rounded-lg w-full max-w-3xl max-h-[80vh] overflow-hidden">
+        <div className="flex items-center justify-between p-4 border-b border-gray-700">
+          <div>
+            <h3 className="text-lg font-semibold text-white">{monitor.name} - Alerts</h3>
+            <p className="text-sm text-gray-400">{monitor.watch_path}</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-white">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="p-4 overflow-y-auto max-h-[60vh]">
+          {isLoading ? (
+            <div className="flex justify-center py-12">
+              <RefreshCw className="h-6 w-6 animate-spin text-cyan-400" />
+            </div>
+          ) : alerts && alerts.length > 0 ? (
+            <div className="space-y-3">
+              {alerts.map(alert => {
+                const eventColors = eventTypeColors[alert.event_type] || eventTypeColors.modified;
+                return (
+                  <div
+                    key={alert.id}
+                    className={`bg-gray-900 border rounded-lg p-3 ${alert.acknowledged ? 'border-gray-700 opacity-60' : 'border-red-500/30'}`}
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-cyan-400 font-medium">{alert.rule_name}</span>
+                          <span className={`text-xs px-2 py-0.5 rounded ${eventColors.bg} ${eventColors.text}`}>
+                            {alert.event_type}
+                          </span>
+                          <SeverityBadge severity={alert.severity || 'medium'} />
+                        </div>
+                        <p className="text-gray-300 text-sm truncate">{alert.file_path}</p>
+                        {alert.file_hash && (
+                          <p className="text-gray-500 text-xs mt-1 font-mono">MD5: {alert.file_hash}</p>
+                        )}
+                        {alert.matched_strings && alert.matched_strings.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            {alert.matched_strings.slice(0, 5).map((s, i) => (
+                              <span key={i} className="px-1.5 py-0.5 bg-gray-800 text-gray-400 rounded text-xs font-mono">
+                                {s}
+                              </span>
+                            ))}
+                            {alert.matched_strings.length > 5 && (
+                              <span className="text-gray-500 text-xs">+{alert.matched_strings.length - 5} more</span>
+                            )}
+                          </div>
+                        )}
+                        <p className="text-gray-500 text-xs mt-2">
+                          {new Date(alert.created_at).toLocaleString()}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {alert.acknowledged ? (
+                          <span className="text-gray-500 text-xs flex items-center gap-1">
+                            <CheckCircle className="h-3 w-3" />
+                            Ack'd
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => acknowledgeMutation.mutate(alert.id)}
+                            disabled={acknowledgeMutation.isPending}
+                            className="px-2 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded text-xs"
+                          >
+                            Acknowledge
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="text-center py-12 text-gray-500">
+              <Bell className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <p>No alerts for this monitor</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ============================================================================
 // Main Component
 // ============================================================================
@@ -1410,6 +2206,8 @@ export default function YaraPage() {
     { id: 'builder', label: 'Visual Builder', icon: <Code className="h-4 w-4" /> },
     { id: 'community', label: 'Community', icon: <Globe className="h-4 w-4" /> },
     { id: 'scans', label: 'Scans', icon: <Search className="h-4 w-4" /> },
+    { id: 'monitors', label: 'Monitors', icon: <Activity className="h-4 w-4" /> },
+    { id: 'effectiveness', label: 'Effectiveness', icon: <TrendingUp className="h-4 w-4" /> },
   ];
 
   return (
@@ -1455,6 +2253,8 @@ export default function YaraPage() {
           {activeTab === 'builder' && <BuilderTab />}
           {activeTab === 'community' && <CommunityTab />}
           {activeTab === 'scans' && <ScansTab />}
+          {activeTab === 'monitors' && <MonitorsTab />}
+          {activeTab === 'effectiveness' && <EffectivenessTab />}
         </div>
       </div>
     </Layout>

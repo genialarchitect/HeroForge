@@ -254,6 +254,8 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     create_misp_stix_tables(pool).await?;
     // Threat Actor & Campaign Tracking tables (Sprint 12 - Priority 1 Features)
     create_threat_actor_tables(pool).await?;
+    // Sprint 2 (Priority 2): Sigma Rule Engine Enhancement
+    create_sigma_enhancement_sprint2_tables(pool).await?;
     Ok(())
 }
 
@@ -18768,33 +18770,23 @@ async fn create_threat_actor_tables(pool: &SqlitePool) -> Result<()> {
     // Campaigns
     sqlx::query(
         r#"
-        CREATE TABLE IF NOT EXISTS threat_campaigns (
+        CREATE TABLE IF NOT EXISTS campaigns (
             id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
             name TEXT NOT NULL,
-            aliases TEXT,
-            description TEXT NOT NULL,
-            threat_actors TEXT,
-            objective TEXT NOT NULL,
+            threat_actor_id TEXT,
+            description TEXT,
+            objective TEXT,
+            first_seen TEXT,
+            last_seen TEXT,
             status TEXT NOT NULL DEFAULT 'active',
-            start_date TEXT,
-            end_date TEXT,
-            target_sectors TEXT,
-            target_countries TEXT,
-            target_organizations TEXT,
-            ttps TEXT,
-            malware TEXT,
-            tools TEXT,
-            infrastructure TEXT,
-            victims TEXT,
-            timeline TEXT,
-            iocs TEXT,
-            reference_urls TEXT,
+            targets_json TEXT,
+            ttps_json TEXT,
             confidence REAL DEFAULT 0.0,
             tags TEXT,
-            custom BOOLEAN DEFAULT FALSE,
-            created_by TEXT,
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
-            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         )
         "#,
     )
@@ -18814,7 +18806,7 @@ async fn create_threat_actor_tables(pool: &SqlitePool) -> Result<()> {
             last_seen TEXT,
             context TEXT,
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
-            FOREIGN KEY (campaign_id) REFERENCES threat_campaigns(id) ON DELETE CASCADE
+            FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE
         )
         "#,
     )
@@ -18834,7 +18826,7 @@ async fn create_threat_actor_tables(pool: &SqlitePool) -> Result<()> {
             iocs TEXT,
             source TEXT,
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
-            FOREIGN KEY (campaign_id) REFERENCES threat_campaigns(id) ON DELETE CASCADE
+            FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE
         )
         "#,
     )
@@ -18885,7 +18877,7 @@ async fn create_threat_actor_tables(pool: &SqlitePool) -> Result<()> {
             context TEXT,
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
             FOREIGN KEY (actor_id) REFERENCES threat_actors(id) ON DELETE SET NULL,
-            FOREIGN KEY (campaign_id) REFERENCES threat_campaigns(id) ON DELETE SET NULL
+            FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE SET NULL
         )
         "#,
     )
@@ -18939,7 +18931,116 @@ async fn create_threat_actor_tables(pool: &SqlitePool) -> Result<()> {
     .execute(pool)
     .await?;
 
+    // Sprint 12: Diamond Model Events
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS diamond_events (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            campaign_id TEXT,
+            adversary_name TEXT,
+            adversary_type TEXT,
+            adversary_aliases TEXT,
+            adversary_confidence INTEGER DEFAULT 50,
+            capability_name TEXT,
+            capability_type TEXT,
+            capability_malware_families TEXT,
+            capability_tools TEXT,
+            capability_confidence INTEGER DEFAULT 50,
+            infrastructure_type TEXT,
+            infrastructure_values TEXT,
+            infrastructure_hosting TEXT,
+            infrastructure_confidence INTEGER DEFAULT 50,
+            victim_name TEXT,
+            victim_sector TEXT,
+            victim_country TEXT,
+            victim_organization_size TEXT,
+            victim_confidence INTEGER DEFAULT 50,
+            timestamp TEXT,
+            phase TEXT,
+            overall_confidence INTEGER DEFAULT 50,
+            notes TEXT,
+            external_references TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Sprint 12: Intelligence Requirements
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS intelligence_requirements (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT,
+            priority TEXT NOT NULL DEFAULT 'medium',
+            category TEXT NOT NULL DEFAULT 'operational',
+            status TEXT NOT NULL DEFAULT 'open',
+            source TEXT,
+            stakeholders TEXT,
+            keywords TEXT,
+            deadline TEXT,
+            related_actors TEXT,
+            related_campaigns TEXT,
+            answer TEXT,
+            answered_at TEXT,
+            answered_by TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Sprint 12: Threat Briefings
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS threat_briefings (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            executive_summary TEXT NOT NULL,
+            threat_landscape_json TEXT,
+            top_actors_json TEXT,
+            active_campaigns_json TEXT,
+            key_iocs_json TEXT,
+            risk_assessment_json TEXT,
+            recommendations TEXT,
+            generated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            period_start TEXT,
+            period_end TEXT,
+            classification TEXT DEFAULT 'internal',
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
     // Create indexes
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_diamond_events_user ON diamond_events(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_diamond_events_campaign ON diamond_events(campaign_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_intel_requirements_user ON intelligence_requirements(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_intel_requirements_status ON intelligence_requirements(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_threat_briefings_user ON threat_briefings(user_id)")
+        .execute(pool)
+        .await?;
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_threat_actors_name ON threat_actors(name)")
         .execute(pool)
         .await?;
@@ -18958,10 +19059,10 @@ async fn create_threat_actor_tables(pool: &SqlitePool) -> Result<()> {
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_threat_infra_value ON threat_actor_infrastructure(value)")
         .execute(pool)
         .await?;
-    sqlx::query("CREATE INDEX IF NOT EXISTS idx_threat_campaigns_name ON threat_campaigns(name)")
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_campaigns_name ON campaigns(name)")
         .execute(pool)
         .await?;
-    sqlx::query("CREATE INDEX IF NOT EXISTS idx_threat_campaigns_status ON threat_campaigns(status)")
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_campaigns_status ON campaigns(status)")
         .execute(pool)
         .await?;
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_campaign_iocs_campaign ON campaign_iocs(campaign_id)")
@@ -18996,5 +19097,281 @@ async fn create_threat_actor_tables(pool: &SqlitePool) -> Result<()> {
         .await?;
 
     log::info!("Created threat actor & campaign tracking tables (Sprint 12)");
+    Ok(())
+}
+
+/// Sprint 2 (Priority 2): Sigma Rule Engine Enhancement
+/// Adds backend conversion, rule testing, rule chains, ATT&CK coverage, and tuning recommendations
+async fn create_sigma_enhancement_sprint2_tables(pool: &SqlitePool) -> Result<()> {
+    // Sigma rule conversions - Store converted rules for different SIEM backends
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS sigma_conversions (
+            id TEXT PRIMARY KEY,
+            sigma_rule_id TEXT NOT NULL,
+            backend TEXT NOT NULL,
+            converted_query TEXT NOT NULL,
+            field_mappings TEXT NOT NULL DEFAULT '{}',
+            conversion_errors TEXT NOT NULL DEFAULT '[]',
+            conversion_warnings TEXT NOT NULL DEFAULT '[]',
+            is_valid INTEGER NOT NULL DEFAULT 1,
+            last_converted_at TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (sigma_rule_id) REFERENCES sigma_rules(id) ON DELETE CASCADE,
+            UNIQUE(sigma_rule_id, backend)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sigma_conversions_rule ON sigma_conversions(sigma_rule_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sigma_conversions_backend ON sigma_conversions(backend)")
+        .execute(pool)
+        .await?;
+
+    // Sigma rule tests - Store test results for rule validation
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS sigma_rule_tests (
+            id TEXT PRIMARY KEY,
+            sigma_rule_id TEXT NOT NULL,
+            test_name TEXT NOT NULL,
+            test_type TEXT NOT NULL DEFAULT 'positive',
+            sample_logs TEXT NOT NULL,
+            expected_matches INTEGER NOT NULL DEFAULT 1,
+            actual_matches INTEGER,
+            match_details TEXT,
+            execution_time_ms INTEGER,
+            test_status TEXT NOT NULL DEFAULT 'pending',
+            error_message TEXT,
+            tested_by TEXT,
+            tested_at TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (sigma_rule_id) REFERENCES sigma_rules(id) ON DELETE CASCADE,
+            FOREIGN KEY (tested_by) REFERENCES users(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sigma_rule_tests_rule ON sigma_rule_tests(sigma_rule_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sigma_rule_tests_status ON sigma_rule_tests(test_status)")
+        .execute(pool)
+        .await?;
+
+    // Sigma rule chains - Combine multiple rules into composite detections
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS sigma_rule_chains (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            rule_ids TEXT NOT NULL,
+            chain_condition TEXT NOT NULL DEFAULT 'all',
+            time_window_secs INTEGER NOT NULL DEFAULT 300,
+            severity TEXT NOT NULL DEFAULT 'high',
+            mitre_tactics TEXT NOT NULL DEFAULT '[]',
+            mitre_techniques TEXT NOT NULL DEFAULT '[]',
+            enabled INTEGER NOT NULL DEFAULT 0,
+            trigger_count INTEGER NOT NULL DEFAULT 0,
+            last_triggered TEXT,
+            user_id TEXT,
+            organization_id TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sigma_rule_chains_name ON sigma_rule_chains(name)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sigma_rule_chains_enabled ON sigma_rule_chains(enabled)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sigma_rule_chains_user ON sigma_rule_chains(user_id)")
+        .execute(pool)
+        .await?;
+
+    // Sigma ATT&CK technique coverage - Track which techniques have detection rules
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS sigma_technique_coverage (
+            id TEXT PRIMARY KEY,
+            technique_id TEXT NOT NULL,
+            technique_name TEXT NOT NULL,
+            tactic TEXT NOT NULL,
+            sigma_rule_id TEXT,
+            coverage_status TEXT NOT NULL DEFAULT 'not_covered',
+            detection_quality TEXT DEFAULT 'unknown',
+            last_tested TEXT,
+            test_result TEXT,
+            notes TEXT,
+            user_id TEXT,
+            organization_id TEXT,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (sigma_rule_id) REFERENCES sigma_rules(id) ON DELETE SET NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE SET NULL,
+            UNIQUE(technique_id, sigma_rule_id, organization_id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sigma_coverage_technique ON sigma_technique_coverage(technique_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sigma_coverage_tactic ON sigma_technique_coverage(tactic)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sigma_coverage_status ON sigma_technique_coverage(coverage_status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sigma_coverage_org ON sigma_technique_coverage(organization_id)")
+        .execute(pool)
+        .await?;
+
+    // Sigma tuning recommendations - FP analysis and rule improvement suggestions
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS sigma_tuning_recommendations (
+            id TEXT PRIMARY KEY,
+            sigma_rule_id TEXT NOT NULL,
+            recommendation_type TEXT NOT NULL,
+            severity TEXT NOT NULL DEFAULT 'info',
+            title TEXT NOT NULL,
+            description TEXT NOT NULL,
+            suggested_change TEXT,
+            current_value TEXT,
+            recommended_value TEXT,
+            false_positive_count INTEGER NOT NULL DEFAULT 0,
+            true_positive_count INTEGER NOT NULL DEFAULT 0,
+            fp_rate REAL,
+            confidence REAL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            applied_at TEXT,
+            applied_by TEXT,
+            dismissed_at TEXT,
+            dismissed_by TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (sigma_rule_id) REFERENCES sigma_rules(id) ON DELETE CASCADE,
+            FOREIGN KEY (applied_by) REFERENCES users(id) ON DELETE SET NULL,
+            FOREIGN KEY (dismissed_by) REFERENCES users(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sigma_tuning_rule ON sigma_tuning_recommendations(sigma_rule_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sigma_tuning_type ON sigma_tuning_recommendations(recommendation_type)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sigma_tuning_status ON sigma_tuning_recommendations(status)")
+        .execute(pool)
+        .await?;
+
+    // Sigma rule match feedback - Track TP/FP feedback for tuning
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS sigma_match_feedback (
+            id TEXT PRIMARY KEY,
+            sigma_rule_id TEXT NOT NULL,
+            alert_id TEXT,
+            is_true_positive INTEGER NOT NULL,
+            feedback_notes TEXT,
+            matched_log TEXT,
+            matched_fields TEXT,
+            feedback_by TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (sigma_rule_id) REFERENCES sigma_rules(id) ON DELETE CASCADE,
+            FOREIGN KEY (feedback_by) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sigma_feedback_rule ON sigma_match_feedback(sigma_rule_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sigma_feedback_tp ON sigma_match_feedback(is_true_positive)")
+        .execute(pool)
+        .await?;
+
+    // Sigma rule performance metrics - Track execution performance
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS sigma_rule_performance (
+            id TEXT PRIMARY KEY,
+            sigma_rule_id TEXT NOT NULL,
+            metric_date TEXT NOT NULL,
+            executions INTEGER NOT NULL DEFAULT 0,
+            total_logs_processed INTEGER NOT NULL DEFAULT 0,
+            total_matches INTEGER NOT NULL DEFAULT 0,
+            avg_execution_time_ms REAL,
+            max_execution_time_ms INTEGER,
+            min_execution_time_ms INTEGER,
+            error_count INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (sigma_rule_id) REFERENCES sigma_rules(id) ON DELETE CASCADE,
+            UNIQUE(sigma_rule_id, metric_date)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sigma_perf_rule ON sigma_rule_performance(sigma_rule_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sigma_perf_date ON sigma_rule_performance(metric_date)")
+        .execute(pool)
+        .await?;
+
+    // Add columns to sigma_rules for enhanced tracking
+    let _ = sqlx::query("ALTER TABLE sigma_rules ADD COLUMN version INTEGER NOT NULL DEFAULT 1")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE sigma_rules ADD COLUMN previous_version_id TEXT REFERENCES sigma_rules(id)")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE sigma_rules ADD COLUMN detection_language TEXT NOT NULL DEFAULT 'sigma'")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE sigma_rules ADD COLUMN performance_score REAL")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE sigma_rules ADD COLUMN complexity_score INTEGER")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE sigma_rules ADD COLUMN last_tested TEXT")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE sigma_rules ADD COLUMN test_coverage REAL")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE sigma_rules ADD COLUMN fp_rate REAL")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE sigma_rules ADD COLUMN maintainer TEXT")
+        .execute(pool)
+        .await;
+
+    log::info!("Created Sigma Rule Engine Enhancement tables (Sprint 2 - Priority 2)");
     Ok(())
 }
