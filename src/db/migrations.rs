@@ -248,6 +248,12 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     create_sandbox_tables(pool).await?;
     // Dynamic Analysis tables (Sprint 7 - Priority 1 Features)
     create_dynamic_analysis_tables(pool).await?;
+    // Traffic Analysis tables (Sprint 9-10 - Priority 1 Features)
+    create_traffic_analysis_tables(pool).await?;
+    // MISP & STIX Integration tables (Sprint 11 - Priority 1 Features)
+    create_misp_stix_tables(pool).await?;
+    // Threat Actor & Campaign Tracking tables (Sprint 12 - Priority 1 Features)
+    create_threat_actor_tables(pool).await?;
     Ok(())
 }
 
@@ -18075,5 +18081,920 @@ pub async fn create_dynamic_analysis_tables(pool: &sqlx::SqlitePool) -> Result<(
         .await?;
 
     log::info!("Created dynamic analysis tables (Sprint 7)");
+    Ok(())
+}
+
+/// Create Traffic Analysis tables (Sprint 9-10 - Priority 1 Features)
+async fn create_traffic_analysis_tables(pool: &SqlitePool) -> Result<()> {
+    // PCAP Captures table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS traffic_captures (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            file_path TEXT NOT NULL,
+            file_size INTEGER NOT NULL,
+            file_hash TEXT NOT NULL,
+            capture_type TEXT NOT NULL DEFAULT 'pcap',
+            total_packets INTEGER DEFAULT 0,
+            total_bytes INTEGER DEFAULT 0,
+            start_time TEXT,
+            end_time TEXT,
+            duration_seconds REAL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            analysis_config TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Traffic Sessions (reconstructed from packets)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS traffic_sessions (
+            id TEXT PRIMARY KEY,
+            capture_id TEXT NOT NULL,
+            session_key TEXT NOT NULL,
+            protocol TEXT NOT NULL,
+            src_ip TEXT NOT NULL,
+            src_port INTEGER,
+            dst_ip TEXT NOT NULL,
+            dst_port INTEGER,
+            start_time TEXT NOT NULL,
+            end_time TEXT,
+            duration_seconds REAL,
+            packets_sent INTEGER DEFAULT 0,
+            packets_received INTEGER DEFAULT 0,
+            bytes_sent INTEGER DEFAULT 0,
+            bytes_received INTEGER DEFAULT 0,
+            state TEXT,
+            application_protocol TEXT,
+            ja3_fingerprint TEXT,
+            ja3s_fingerprint TEXT,
+            server_name TEXT,
+            is_encrypted BOOLEAN DEFAULT FALSE,
+            is_suspicious BOOLEAN DEFAULT FALSE,
+            suspicion_reasons TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (capture_id) REFERENCES traffic_captures(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Protocol Analysis Results
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS traffic_protocol_analysis (
+            id TEXT PRIMARY KEY,
+            capture_id TEXT NOT NULL,
+            session_id TEXT,
+            protocol TEXT NOT NULL,
+            analysis_type TEXT NOT NULL,
+            findings TEXT NOT NULL,
+            severity TEXT,
+            confidence REAL DEFAULT 0.0,
+            indicators TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (capture_id) REFERENCES traffic_captures(id) ON DELETE CASCADE,
+            FOREIGN KEY (session_id) REFERENCES traffic_sessions(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // IDS Alerts
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS traffic_ids_alerts (
+            id TEXT PRIMARY KEY,
+            capture_id TEXT NOT NULL,
+            session_id TEXT,
+            rule_id TEXT NOT NULL,
+            rule_name TEXT NOT NULL,
+            rule_category TEXT,
+            severity TEXT NOT NULL,
+            message TEXT NOT NULL,
+            src_ip TEXT,
+            src_port INTEGER,
+            dst_ip TEXT,
+            dst_port INTEGER,
+            protocol TEXT,
+            payload_excerpt TEXT,
+            matched_content TEXT,
+            timestamp TEXT NOT NULL,
+            false_positive BOOLEAN DEFAULT FALSE,
+            acknowledged BOOLEAN DEFAULT FALSE,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (capture_id) REFERENCES traffic_captures(id) ON DELETE CASCADE,
+            FOREIGN KEY (session_id) REFERENCES traffic_sessions(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Beacon Detection Results
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS traffic_beacon_detections (
+            id TEXT PRIMARY KEY,
+            capture_id TEXT NOT NULL,
+            src_ip TEXT NOT NULL,
+            dst_ip TEXT NOT NULL,
+            dst_port INTEGER NOT NULL,
+            connection_count INTEGER NOT NULL,
+            avg_interval_seconds REAL NOT NULL,
+            interval_variance REAL NOT NULL,
+            avg_bytes_per_connection REAL,
+            jitter_percentage REAL NOT NULL,
+            beacon_score REAL NOT NULL,
+            is_likely_beacon BOOLEAN NOT NULL,
+            first_seen TEXT NOT NULL,
+            last_seen TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (capture_id) REFERENCES traffic_captures(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Carved Files
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS traffic_carved_files (
+            id TEXT PRIMARY KEY,
+            capture_id TEXT NOT NULL,
+            session_id TEXT,
+            file_name TEXT,
+            file_type TEXT NOT NULL,
+            mime_type TEXT,
+            file_size INTEGER NOT NULL,
+            file_hash TEXT NOT NULL,
+            file_path TEXT,
+            src_ip TEXT,
+            dst_ip TEXT,
+            extraction_method TEXT NOT NULL,
+            is_malicious BOOLEAN DEFAULT FALSE,
+            malware_family TEXT,
+            yara_matches TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (capture_id) REFERENCES traffic_captures(id) ON DELETE CASCADE,
+            FOREIGN KEY (session_id) REFERENCES traffic_sessions(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // DNS Queries from traffic
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS traffic_dns_queries (
+            id TEXT PRIMARY KEY,
+            capture_id TEXT NOT NULL,
+            session_id TEXT,
+            query_name TEXT NOT NULL,
+            query_type TEXT NOT NULL,
+            response_code TEXT,
+            answers TEXT,
+            ttl INTEGER,
+            is_dga_suspicious BOOLEAN DEFAULT FALSE,
+            dga_score REAL,
+            is_tunneling_suspicious BOOLEAN DEFAULT FALSE,
+            timestamp TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (capture_id) REFERENCES traffic_captures(id) ON DELETE CASCADE,
+            FOREIGN KEY (session_id) REFERENCES traffic_sessions(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // HTTP Transactions from traffic
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS traffic_http_transactions (
+            id TEXT PRIMARY KEY,
+            capture_id TEXT NOT NULL,
+            session_id TEXT,
+            method TEXT NOT NULL,
+            host TEXT NOT NULL,
+            uri TEXT NOT NULL,
+            user_agent TEXT,
+            content_type TEXT,
+            request_body_excerpt TEXT,
+            status_code INTEGER,
+            response_content_type TEXT,
+            response_body_excerpt TEXT,
+            is_suspicious BOOLEAN DEFAULT FALSE,
+            suspicion_reasons TEXT,
+            timestamp TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (capture_id) REFERENCES traffic_captures(id) ON DELETE CASCADE,
+            FOREIGN KEY (session_id) REFERENCES traffic_sessions(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // TLS/SSL Analysis
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS traffic_tls_analysis (
+            id TEXT PRIMARY KEY,
+            capture_id TEXT NOT NULL,
+            session_id TEXT,
+            tls_version TEXT,
+            cipher_suite TEXT,
+            server_name TEXT,
+            ja3_fingerprint TEXT,
+            ja3s_fingerprint TEXT,
+            ja3_known_match TEXT,
+            certificate_subject TEXT,
+            certificate_issuer TEXT,
+            certificate_valid_from TEXT,
+            certificate_valid_to TEXT,
+            is_self_signed BOOLEAN DEFAULT FALSE,
+            is_expired BOOLEAN DEFAULT FALSE,
+            is_suspicious BOOLEAN DEFAULT FALSE,
+            suspicion_reasons TEXT,
+            timestamp TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (capture_id) REFERENCES traffic_captures(id) ON DELETE CASCADE,
+            FOREIGN KEY (session_id) REFERENCES traffic_sessions(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Note: ja3_fingerprints table already exists in create_tls_analysis_tables migration
+    // with a different schema (hash instead of fingerprint). Use that table instead.
+
+    // IDS Rules (custom rules)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS custom_ids_rules (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            rule_content TEXT NOT NULL,
+            rule_format TEXT NOT NULL DEFAULT 'suricata',
+            category TEXT,
+            severity TEXT NOT NULL DEFAULT 'medium',
+            enabled BOOLEAN DEFAULT TRUE,
+            hit_count INTEGER DEFAULT 0,
+            last_hit_at TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_traffic_captures_user ON traffic_captures(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_traffic_captures_status ON traffic_captures(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_traffic_sessions_capture ON traffic_sessions(capture_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_traffic_sessions_src_ip ON traffic_sessions(src_ip)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_traffic_sessions_dst_ip ON traffic_sessions(dst_ip)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_traffic_sessions_ja3 ON traffic_sessions(ja3_fingerprint)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_traffic_ids_alerts_capture ON traffic_ids_alerts(capture_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_traffic_ids_alerts_severity ON traffic_ids_alerts(severity)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_traffic_beacon_capture ON traffic_beacon_detections(capture_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_traffic_carved_capture ON traffic_carved_files(capture_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_traffic_dns_capture ON traffic_dns_queries(capture_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_traffic_dns_query_name ON traffic_dns_queries(query_name)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_traffic_http_capture ON traffic_http_transactions(capture_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_traffic_tls_capture ON traffic_tls_analysis(capture_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_traffic_tls_ja3 ON traffic_tls_analysis(ja3_fingerprint)")
+        .execute(pool)
+        .await?;
+    // Note: ja3_fingerprints index already exists in create_tls_analysis_tables migration
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_custom_ids_rules_user ON custom_ids_rules(user_id)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created traffic analysis tables (Sprint 9-10)");
+    Ok(())
+}
+
+/// Create MISP & STIX Integration tables (Sprint 11 - Priority 1 Features)
+async fn create_misp_stix_tables(pool: &SqlitePool) -> Result<()> {
+    // MISP Server Configurations
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS misp_servers (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            url TEXT NOT NULL,
+            api_key TEXT NOT NULL,
+            verify_ssl BOOLEAN DEFAULT TRUE,
+            is_active BOOLEAN DEFAULT TRUE,
+            auto_sync BOOLEAN DEFAULT FALSE,
+            sync_interval_hours INTEGER DEFAULT 24,
+            last_sync_at TEXT,
+            last_sync_status TEXT,
+            events_synced INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // MISP Events (cached)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS misp_events (
+            id TEXT PRIMARY KEY,
+            server_id TEXT NOT NULL,
+            misp_event_id TEXT NOT NULL,
+            misp_uuid TEXT NOT NULL,
+            org_name TEXT,
+            info TEXT NOT NULL,
+            threat_level TEXT,
+            analysis_status TEXT,
+            date TEXT,
+            published BOOLEAN DEFAULT FALSE,
+            attribute_count INTEGER DEFAULT 0,
+            galaxy_cluster_count INTEGER DEFAULT 0,
+            tags TEXT,
+            synced_at TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (server_id) REFERENCES misp_servers(id) ON DELETE CASCADE,
+            UNIQUE(server_id, misp_event_id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // MISP Attributes (cached)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS misp_attributes (
+            id TEXT PRIMARY KEY,
+            event_id TEXT NOT NULL,
+            misp_attribute_id TEXT NOT NULL,
+            misp_uuid TEXT NOT NULL,
+            category TEXT NOT NULL,
+            attribute_type TEXT NOT NULL,
+            value TEXT NOT NULL,
+            to_ids BOOLEAN DEFAULT FALSE,
+            comment TEXT,
+            first_seen TEXT,
+            last_seen TEXT,
+            tags TEXT,
+            synced_at TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (event_id) REFERENCES misp_events(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // TAXII Server Configurations
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS taxii_servers (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            url TEXT NOT NULL,
+            version TEXT NOT NULL DEFAULT '2.1',
+            username TEXT,
+            password TEXT,
+            api_key TEXT,
+            is_active BOOLEAN DEFAULT TRUE,
+            auto_poll BOOLEAN DEFAULT FALSE,
+            poll_interval_hours INTEGER DEFAULT 24,
+            last_poll_at TEXT,
+            last_poll_status TEXT,
+            objects_received INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // TAXII Collections (discovered from servers)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS taxii_collections (
+            id TEXT PRIMARY KEY,
+            server_id TEXT NOT NULL,
+            collection_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT,
+            can_read BOOLEAN DEFAULT TRUE,
+            can_write BOOLEAN DEFAULT FALSE,
+            media_types TEXT,
+            subscribed BOOLEAN DEFAULT FALSE,
+            last_poll_at TEXT,
+            objects_count INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (server_id) REFERENCES taxii_servers(id) ON DELETE CASCADE,
+            UNIQUE(server_id, collection_id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // STIX Objects (cached from TAXII and other sources)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS stix_objects (
+            id TEXT PRIMARY KEY,
+            stix_id TEXT NOT NULL UNIQUE,
+            stix_type TEXT NOT NULL,
+            spec_version TEXT NOT NULL DEFAULT '2.1',
+            created TEXT NOT NULL,
+            modified TEXT NOT NULL,
+            name TEXT,
+            description TEXT,
+            labels TEXT,
+            confidence INTEGER,
+            lang TEXT,
+            external_references TEXT,
+            object_marking_refs TEXT,
+            granular_markings TEXT,
+            revoked BOOLEAN DEFAULT FALSE,
+            custom_properties TEXT,
+            raw_json TEXT NOT NULL,
+            source_type TEXT NOT NULL,
+            source_id TEXT,
+            synced_at TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // STIX Relationships
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS stix_relationships (
+            id TEXT PRIMARY KEY,
+            stix_id TEXT NOT NULL UNIQUE,
+            relationship_type TEXT NOT NULL,
+            source_ref TEXT NOT NULL,
+            target_ref TEXT NOT NULL,
+            description TEXT,
+            start_time TEXT,
+            stop_time TEXT,
+            created TEXT NOT NULL,
+            modified TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // STIX Sightings
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS stix_sightings (
+            id TEXT PRIMARY KEY,
+            stix_id TEXT NOT NULL UNIQUE,
+            sighting_of_ref TEXT NOT NULL,
+            observed_data_refs TEXT,
+            where_sighted_refs TEXT,
+            first_seen TEXT,
+            last_seen TEXT,
+            count INTEGER DEFAULT 1,
+            summary BOOLEAN DEFAULT FALSE,
+            description TEXT,
+            created TEXT NOT NULL,
+            modified TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // IOC Correlation Cache (linking MISP/STIX IOCs to our data)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ioc_correlations (
+            id TEXT PRIMARY KEY,
+            ioc_type TEXT NOT NULL,
+            ioc_value TEXT NOT NULL,
+            source_type TEXT NOT NULL,
+            source_id TEXT NOT NULL,
+            matched_entity_type TEXT NOT NULL,
+            matched_entity_id TEXT NOT NULL,
+            confidence REAL DEFAULT 0.0,
+            context TEXT,
+            first_seen TEXT NOT NULL,
+            last_seen TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(ioc_type, ioc_value, source_type, source_id, matched_entity_type, matched_entity_id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_misp_servers_user ON misp_servers(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_misp_events_server ON misp_events(server_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_misp_events_uuid ON misp_events(misp_uuid)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_misp_attributes_event ON misp_attributes(event_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_misp_attributes_type ON misp_attributes(attribute_type)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_misp_attributes_value ON misp_attributes(value)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_taxii_servers_user ON taxii_servers(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_taxii_collections_server ON taxii_collections(server_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_stix_objects_type ON stix_objects(stix_type)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_stix_objects_stix_id ON stix_objects(stix_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_stix_relationships_source ON stix_relationships(source_ref)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_stix_relationships_target ON stix_relationships(target_ref)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_stix_sightings_ref ON stix_sightings(sighting_of_ref)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ioc_correlations_value ON ioc_correlations(ioc_value)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ioc_correlations_entity ON ioc_correlations(matched_entity_type, matched_entity_id)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created MISP & STIX integration tables (Sprint 11)");
+    Ok(())
+}
+
+/// Create Threat Actor & Campaign Tracking tables (Sprint 12 - Priority 1 Features)
+async fn create_threat_actor_tables(pool: &SqlitePool) -> Result<()> {
+    // Threat Actor Profiles
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS threat_actors (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            aliases TEXT,
+            actor_type TEXT NOT NULL,
+            country TEXT,
+            sponsor TEXT,
+            motivation TEXT NOT NULL,
+            secondary_motivations TEXT,
+            description TEXT NOT NULL,
+            first_seen TEXT,
+            last_seen TEXT,
+            active BOOLEAN DEFAULT TRUE,
+            sophistication INTEGER DEFAULT 5,
+            resource_level INTEGER DEFAULT 5,
+            target_sectors TEXT,
+            target_countries TEXT,
+            ttps TEXT,
+            malware_families TEXT,
+            tools TEXT,
+            infrastructure TEXT,
+            reference_urls TEXT,
+            mitre_id TEXT,
+            attribution_confidence REAL DEFAULT 0.0,
+            tracking_status TEXT NOT NULL DEFAULT 'active',
+            tags TEXT,
+            custom BOOLEAN DEFAULT FALSE,
+            created_by TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Threat Actor Infrastructure
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS threat_actor_infrastructure (
+            id TEXT PRIMARY KEY,
+            actor_id TEXT NOT NULL,
+            infra_type TEXT NOT NULL,
+            value TEXT NOT NULL,
+            first_seen TEXT,
+            last_seen TEXT,
+            active BOOLEAN DEFAULT TRUE,
+            confidence REAL DEFAULT 0.0,
+            campaigns TEXT,
+            source TEXT,
+            notes TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (actor_id) REFERENCES threat_actors(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Campaigns
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS threat_campaigns (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            aliases TEXT,
+            description TEXT NOT NULL,
+            threat_actors TEXT,
+            objective TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'active',
+            start_date TEXT,
+            end_date TEXT,
+            target_sectors TEXT,
+            target_countries TEXT,
+            target_organizations TEXT,
+            ttps TEXT,
+            malware TEXT,
+            tools TEXT,
+            infrastructure TEXT,
+            victims TEXT,
+            timeline TEXT,
+            iocs TEXT,
+            reference_urls TEXT,
+            confidence REAL DEFAULT 0.0,
+            tags TEXT,
+            custom BOOLEAN DEFAULT FALSE,
+            created_by TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Campaign IOCs
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS campaign_iocs (
+            id TEXT PRIMARY KEY,
+            campaign_id TEXT NOT NULL,
+            ioc_type TEXT NOT NULL,
+            value TEXT NOT NULL,
+            confidence REAL DEFAULT 0.0,
+            first_seen TEXT,
+            last_seen TEXT,
+            context TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (campaign_id) REFERENCES threat_campaigns(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Campaign Timeline Events
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS campaign_timeline (
+            id TEXT PRIMARY KEY,
+            campaign_id TEXT NOT NULL,
+            timestamp TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            description TEXT NOT NULL,
+            ttps TEXT,
+            iocs TEXT,
+            source TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (campaign_id) REFERENCES threat_campaigns(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Attack Patterns (MITRE ATT&CK TTPs)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS attack_patterns (
+            id TEXT PRIMARY KEY,
+            technique_id TEXT NOT NULL UNIQUE,
+            name TEXT NOT NULL,
+            tactic TEXT NOT NULL,
+            sub_technique TEXT,
+            description TEXT NOT NULL,
+            platforms TEXT,
+            detection TEXT,
+            mitigation TEXT,
+            used_by TEXT,
+            data_sources TEXT,
+            procedures TEXT,
+            external_references TEXT,
+            custom BOOLEAN DEFAULT FALSE,
+            created_by TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Threat Correlations (linking observed activity to threat actors)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS threat_correlations (
+            id TEXT PRIMARY KEY,
+            correlation_type TEXT NOT NULL,
+            actor_id TEXT,
+            campaign_id TEXT,
+            matched_iocs TEXT,
+            matched_ttps TEXT,
+            matched_malware TEXT,
+            confidence REAL NOT NULL,
+            source_type TEXT NOT NULL,
+            source_id TEXT NOT NULL,
+            context TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (actor_id) REFERENCES threat_actors(id) ON DELETE SET NULL,
+            FOREIGN KEY (campaign_id) REFERENCES threat_campaigns(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Threat Intelligence Reports
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS threat_intel_reports (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            summary TEXT,
+            content TEXT NOT NULL,
+            report_type TEXT NOT NULL,
+            threat_actors TEXT,
+            campaigns TEXT,
+            ttps TEXT,
+            iocs TEXT,
+            reference_urls TEXT,
+            tlp TEXT DEFAULT 'amber',
+            status TEXT NOT NULL DEFAULT 'draft',
+            published_at TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Watched Actors (user subscriptions to threat actor updates)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS watched_actors (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            actor_id TEXT NOT NULL,
+            notify_on_update BOOLEAN DEFAULT TRUE,
+            notify_on_campaign BOOLEAN DEFAULT TRUE,
+            notify_on_ioc BOOLEAN DEFAULT TRUE,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (actor_id) REFERENCES threat_actors(id) ON DELETE CASCADE,
+            UNIQUE(user_id, actor_id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_threat_actors_name ON threat_actors(name)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_threat_actors_mitre ON threat_actors(mitre_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_threat_actors_country ON threat_actors(country)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_threat_actors_status ON threat_actors(tracking_status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_threat_infra_actor ON threat_actor_infrastructure(actor_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_threat_infra_value ON threat_actor_infrastructure(value)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_threat_campaigns_name ON threat_campaigns(name)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_threat_campaigns_status ON threat_campaigns(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_campaign_iocs_campaign ON campaign_iocs(campaign_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_campaign_iocs_value ON campaign_iocs(value)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_campaign_timeline_campaign ON campaign_timeline(campaign_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_attack_patterns_technique ON attack_patterns(technique_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_attack_patterns_tactic ON attack_patterns(tactic)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_threat_correlations_actor ON threat_correlations(actor_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_threat_correlations_campaign ON threat_correlations(campaign_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_threat_intel_reports_user ON threat_intel_reports(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_watched_actors_user ON watched_actors(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_watched_actors_actor ON watched_actors(actor_id)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created threat actor & campaign tracking tables (Sprint 12)");
     Ok(())
 }

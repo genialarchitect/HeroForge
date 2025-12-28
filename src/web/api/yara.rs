@@ -240,6 +240,190 @@ pub struct ImmediateScanResponse {
 }
 
 // ============================================================================
+// Visual Rule Builder Types
+// ============================================================================
+
+/// Request to build a rule from visual components
+#[derive(Debug, Deserialize)]
+pub struct BuildRuleRequest {
+    pub name: String,
+    pub description: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub metadata: Vec<MetadataEntry>,
+    pub strings: Vec<StringDefinition>,
+    pub condition: ConditionSpec,
+}
+
+/// Metadata key-value entry
+#[derive(Debug, Deserialize)]
+pub struct MetadataEntry {
+    pub key: String,
+    pub value: String,
+}
+
+/// String definition for visual builder
+#[derive(Debug, Deserialize)]
+pub struct StringDefinition {
+    pub identifier: String,
+    pub string_type: StringType,
+    pub value: String,
+    #[serde(default)]
+    pub modifiers: StringModifiers,
+}
+
+/// Type of YARA string
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StringType {
+    Text,
+    Hex,
+    Regex,
+}
+
+/// String modifiers
+#[derive(Debug, Default, Deserialize)]
+pub struct StringModifiers {
+    #[serde(default)]
+    pub nocase: bool,
+    #[serde(default)]
+    pub wide: bool,
+    #[serde(default)]
+    pub ascii: bool,
+    #[serde(default)]
+    pub fullword: bool,
+    #[serde(default)]
+    pub private: bool,
+    #[serde(default)]
+    pub xor: bool,
+    #[serde(default)]
+    pub base64: bool,
+}
+
+/// Condition specification
+#[derive(Debug, Deserialize)]
+pub struct ConditionSpec {
+    pub condition_type: ConditionType,
+    pub count: Option<u32>,
+    pub custom_expression: Option<String>,
+}
+
+/// Condition type
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConditionType {
+    All,
+    Any,
+    Count,
+    Custom,
+}
+
+/// Response for built rule
+#[derive(Debug, Serialize)]
+pub struct BuildRuleResponse {
+    pub rule_text: String,
+    pub valid: bool,
+    pub errors: Vec<String>,
+    pub warnings: Vec<String>,
+}
+
+// ============================================================================
+// Community Sources Types
+// ============================================================================
+
+/// Response for community sources list
+#[derive(Debug, Serialize)]
+pub struct CommunitySourcesResponse {
+    pub sources: Vec<CommunitySourceInfo>,
+}
+
+/// Community source information
+#[derive(Debug, Serialize)]
+pub struct CommunitySourceInfo {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub url: String,
+    pub source_type: String,
+    pub enabled: bool,
+    pub auto_update: bool,
+    pub rules_count: u32,
+    pub last_updated_at: Option<String>,
+}
+
+/// Request to import rules from content
+#[derive(Debug, Deserialize)]
+pub struct ImportRulesRequest {
+    pub content: String,
+    pub source: Option<String>,
+    pub category: Option<String>,
+    #[serde(default)]
+    pub overwrite_existing: bool,
+}
+
+/// Response for rule import
+#[derive(Debug, Serialize)]
+pub struct ImportRulesResponse {
+    pub total_rules: u32,
+    pub imported: u32,
+    pub skipped: u32,
+    pub errors: Vec<ImportError>,
+    pub rules: Vec<ImportedRuleSummary>,
+}
+
+/// Import error
+#[derive(Debug, Serialize)]
+pub struct ImportError {
+    pub rule_name: Option<String>,
+    pub line: Option<u32>,
+    pub message: String,
+}
+
+/// Summary of imported rule
+#[derive(Debug, Serialize)]
+pub struct ImportedRuleSummary {
+    pub id: String,
+    pub name: String,
+    pub category: String,
+}
+
+/// Request to fetch from community source
+#[derive(Debug, Deserialize)]
+pub struct FetchCommunityRequest {
+    pub source_id: String,
+}
+
+// ============================================================================
+// Bulk Scan Types
+// ============================================================================
+
+/// Request for bulk scan
+#[derive(Debug, Deserialize)]
+pub struct BulkScanRequest {
+    pub name: Option<String>,
+    pub paths: Vec<String>,
+    pub recursive: Option<bool>,
+    #[serde(default)]
+    pub rule_ids: Vec<String>,
+    #[serde(default)]
+    pub categories: Vec<String>,
+}
+
+/// Response for bulk scan status
+#[derive(Debug, Serialize)]
+pub struct BulkScanResponse {
+    pub id: String,
+    pub name: Option<String>,
+    pub status: String,
+    pub total_paths: u32,
+    pub completed_paths: u32,
+    pub total_matches: u32,
+    pub total_files_scanned: u64,
+    pub total_bytes_scanned: u64,
+}
+
+// ============================================================================
 // API Handlers - Scans
 // ============================================================================
 
@@ -717,7 +901,7 @@ pub async fn create_rule(
     }
 
     // Check if rule name already exists
-    let existing = db::get_yara_rule_by_name(pool.get_ref(), &req.name)
+    let existing = db::get_yara_rule_by_name(pool.get_ref(), &req.name, Some(&claims.sub))
         .await
         .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
 
@@ -930,6 +1114,422 @@ pub async fn get_stats(
 }
 
 // ============================================================================
+// Visual Rule Builder Handlers
+// ============================================================================
+
+/// Build a YARA rule from visual components
+pub async fn build_rule(
+    _claims: auth::Claims,
+    req: web::Json<BuildRuleRequest>,
+) -> Result<HttpResponse> {
+    // Build the rule text from components
+    let mut rule_text = String::new();
+
+    // Rule declaration with tags
+    if req.tags.is_empty() {
+        rule_text.push_str(&format!("rule {} {{\n", req.name));
+    } else {
+        rule_text.push_str(&format!("rule {} : {} {{\n", req.name, req.tags.join(" ")));
+    }
+
+    // Metadata section
+    if req.description.is_some() || !req.metadata.is_empty() {
+        rule_text.push_str("    meta:\n");
+        if let Some(desc) = &req.description {
+            rule_text.push_str(&format!("        description = \"{}\"\n", escape_yara_string(desc)));
+        }
+        for entry in &req.metadata {
+            rule_text.push_str(&format!("        {} = \"{}\"\n", entry.key, escape_yara_string(&entry.value)));
+        }
+    }
+
+    // Strings section
+    if !req.strings.is_empty() {
+        rule_text.push_str("    strings:\n");
+        for s in &req.strings {
+            let value_str = match s.string_type {
+                StringType::Text => format!("\"{}\"", escape_yara_string(&s.value)),
+                StringType::Hex => format!("{{ {} }}", s.value),
+                StringType::Regex => format!("/{}/", s.value),
+            };
+
+            let mut modifiers = Vec::new();
+            if s.modifiers.nocase { modifiers.push("nocase"); }
+            if s.modifiers.wide { modifiers.push("wide"); }
+            if s.modifiers.ascii { modifiers.push("ascii"); }
+            if s.modifiers.fullword { modifiers.push("fullword"); }
+            if s.modifiers.private { modifiers.push("private"); }
+            if s.modifiers.xor { modifiers.push("xor"); }
+            if s.modifiers.base64 { modifiers.push("base64"); }
+
+            if modifiers.is_empty() {
+                rule_text.push_str(&format!("        {} = {}\n", s.identifier, value_str));
+            } else {
+                rule_text.push_str(&format!("        {} = {} {}\n", s.identifier, value_str, modifiers.join(" ")));
+            }
+        }
+    }
+
+    // Condition section
+    rule_text.push_str("    condition:\n");
+    let condition = match req.condition.condition_type {
+        ConditionType::All => "all of them".to_string(),
+        ConditionType::Any => "any of them".to_string(),
+        ConditionType::Count => format!("{} of them", req.condition.count.unwrap_or(1)),
+        ConditionType::Custom => req.condition.custom_expression.clone().unwrap_or_else(|| "any of them".to_string()),
+    };
+    rule_text.push_str(&format!("        {}\n", condition));
+
+    rule_text.push_str("}\n");
+
+    // Validate the generated rule
+    let validation = validate_rule(&rule_text);
+
+    Ok(HttpResponse::Ok().json(BuildRuleResponse {
+        rule_text,
+        valid: validation.valid,
+        errors: validation.errors,
+        warnings: validation.warnings,
+    }))
+}
+
+/// Escape special characters in a string for YARA
+fn escape_yara_string(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
+        .replace('\t', "\\t")
+}
+
+// ============================================================================
+// Community Sources Handlers
+// ============================================================================
+
+/// Get list of community rule sources
+pub async fn get_community_sources(
+    _claims: auth::Claims,
+) -> Result<HttpResponse> {
+    use crate::malware_analysis::yara::get_default_community_sources;
+
+    let sources = get_default_community_sources();
+    let response: Vec<CommunitySourceInfo> = sources.iter().map(|s| CommunitySourceInfo {
+        id: s.id.clone(),
+        name: s.name.clone(),
+        description: s.description.clone(),
+        url: s.url.clone(),
+        source_type: format!("{:?}", s.source_type).to_lowercase(),
+        enabled: s.enabled,
+        auto_update: s.auto_update,
+        rules_count: s.rules_count,
+        last_updated_at: s.last_updated_at.map(|d| d.to_rfc3339()),
+    }).collect();
+
+    Ok(HttpResponse::Ok().json(CommunitySourcesResponse { sources: response }))
+}
+
+/// Fetch rules from a community source
+pub async fn fetch_community_source(
+    pool: web::Data<SqlitePool>,
+    claims: auth::Claims,
+    path: web::Path<String>,
+) -> Result<HttpResponse> {
+    use crate::malware_analysis::yara::{get_default_community_sources, CommunityRuleFetcher};
+
+    let source_id = path.into_inner();
+    let sources = get_default_community_sources();
+
+    let source = sources.iter()
+        .find(|s| s.id == source_id)
+        .ok_or_else(|| actix_web::error::ErrorNotFound("Community source not found"))?;
+
+    let fetcher = CommunityRuleFetcher::new();
+    let rules = fetcher.fetch_rules(source).await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(format!("Failed to fetch rules: {}", e)))?;
+
+    // Import the fetched rules
+    let mut imported = 0u32;
+    let mut skipped = 0u32;
+    let mut errors = Vec::new();
+    let mut imported_rules = Vec::new();
+
+    for rule in &rules {
+        let rule_id = uuid::Uuid::new_v4().to_string();
+
+        // Check if rule already exists by name
+        let existing = db::get_yara_rule_by_name(pool.get_ref(), &rule.name, Some(&claims.sub)).await;
+
+        if existing.is_ok() {
+            skipped += 1;
+            continue;
+        }
+
+        // Create the rule
+        let category_str = rule.category.to_string();
+        match db::create_yara_rule(
+            pool.get_ref(),
+            &rule.name,
+            &rule.rule_content,
+            "{}",
+            false,
+            Some(&claims.sub),
+            Some(category_str.as_str()),
+        ).await {
+            Ok(created_id) => {
+                imported += 1;
+                imported_rules.push(ImportedRuleSummary {
+                    id: created_id,
+                    name: rule.name.clone(),
+                    category: category_str,
+                });
+            }
+            Err(e) => {
+                errors.push(ImportError {
+                    rule_name: Some(rule.name.clone()),
+                    line: None,
+                    message: e.to_string(),
+                });
+            }
+        }
+    }
+
+    Ok(HttpResponse::Ok().json(ImportRulesResponse {
+        total_rules: rules.len() as u32,
+        imported,
+        skipped,
+        errors,
+        rules: imported_rules,
+    }))
+}
+
+/// Import rules from content
+pub async fn import_rules(
+    pool: web::Data<SqlitePool>,
+    claims: auth::Claims,
+    req: web::Json<ImportRulesRequest>,
+) -> Result<HttpResponse> {
+    use crate::malware_analysis::yara::import_rules_from_content;
+    use crate::malware_analysis::yara::types::{RuleSource, YaraCategory};
+
+    // Parse source type
+    let source = match req.source.as_deref() {
+        Some("custom") | None => RuleSource::Custom,
+        Some("community") => RuleSource::Community,
+        Some("imported") => RuleSource::Imported,
+        _ => RuleSource::Custom,
+    };
+
+    // Parse category override
+    let category_override = req.category.as_ref().and_then(|c| {
+        match c.to_lowercase().as_str() {
+            "malware" => Some(YaraCategory::Malware),
+            "packer" => Some(YaraCategory::Packer),
+            "webshell" => Some(YaraCategory::Webshell),
+            "exploit" => Some(YaraCategory::Exploit),
+            "ransomware" => Some(YaraCategory::Ransomware),
+            "rat" => Some(YaraCategory::Rat),
+            "apt" => Some(YaraCategory::Apt),
+            "backdoor" => Some(YaraCategory::Backdoor),
+            "miner" => Some(YaraCategory::Miner),
+            "stealer" => Some(YaraCategory::Stealer),
+            _ => Some(YaraCategory::Generic),
+        }
+    });
+
+    let import_result = import_rules_from_content(&req.content, source, category_override);
+
+    // Import the parsed rules into the database
+    let mut imported = 0u32;
+    let mut skipped = 0u32;
+    let mut errors = Vec::new();
+    let mut imported_rules = Vec::new();
+
+    for rule in &import_result.rules {
+        let rule_id = uuid::Uuid::new_v4().to_string();
+
+        // Check if rule already exists by name
+        let existing = db::get_yara_rule_by_name(pool.get_ref(), &rule.name, Some(&claims.sub)).await;
+
+        if existing.is_ok() && !req.overwrite_existing {
+            skipped += 1;
+            continue;
+        }
+
+        // If overwriting, delete the old rule first
+        if existing.is_ok() && req.overwrite_existing {
+            let _ = db::delete_yara_rule_by_name(pool.get_ref(), &rule.name, &claims.sub).await;
+        }
+
+        // Create the rule
+        let cat_str = rule.category.to_string();
+        match db::create_yara_rule(
+            pool.get_ref(),
+            &rule.name,
+            &rule.rule_content,
+            "{}",
+            false,
+            Some(&claims.sub),
+            Some(cat_str.as_str()),
+        ).await {
+            Ok(created_id) => {
+                imported += 1;
+                imported_rules.push(ImportedRuleSummary {
+                    id: created_id,
+                    name: rule.name.clone(),
+                    category: cat_str,
+                });
+            }
+            Err(e) => {
+                errors.push(ImportError {
+                    rule_name: Some(rule.name.clone()),
+                    line: None,
+                    message: e.to_string(),
+                });
+            }
+        }
+    }
+
+    Ok(HttpResponse::Ok().json(ImportRulesResponse {
+        total_rules: import_result.total_rules,
+        imported,
+        skipped,
+        errors,
+        rules: imported_rules,
+    }))
+}
+
+// ============================================================================
+// Bulk Scan Handlers
+// ============================================================================
+
+/// Start a bulk scan on multiple paths
+pub async fn bulk_scan(
+    pool: web::Data<SqlitePool>,
+    state: web::Data<Arc<YaraState>>,
+    claims: auth::Claims,
+    req: web::Json<BulkScanRequest>,
+) -> Result<HttpResponse> {
+    // Validate paths exist
+    for path in &req.paths {
+        let p = std::path::Path::new(path);
+        if !p.exists() {
+            return Err(actix_web::error::ErrorBadRequest(format!(
+                "Path does not exist: {}", path
+            )));
+        }
+    }
+
+    // Get rule IDs to use
+    let rule_ids: Vec<String> = if req.rule_ids.is_empty() {
+        // Get all enabled rules
+        let rules = db::get_enabled_yara_rules(pool.get_ref(), Some(&claims.sub)).await
+            .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+        rules.into_iter().map(|r| r.id).collect()
+    } else {
+        req.rule_ids.clone()
+    };
+
+    let recursive = req.recursive.unwrap_or(false);
+    let paths_json = serde_json::to_string(&req.paths).unwrap_or_default();
+
+    // Create bulk scan record
+    let scan_id = db::create_yara_scan(
+        pool.get_ref(),
+        &claims.sub,
+        req.name.as_deref(),
+        &paths_json,
+        "bulk",
+        recursive,
+        &rule_ids,
+    ).await
+    .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+
+    // Mark scan as active
+    state.start_scan(&scan_id).await;
+
+    // Clone necessary data for async task
+    let pool_clone = pool.get_ref().clone();
+    let scan_id_clone = scan_id.clone();
+    let paths = req.paths.clone();
+    let user_id = claims.sub.clone();
+
+    // Spawn async scan task
+    tokio::spawn(async move {
+        let rules = match load_rules_for_scan(&pool_clone, Some(&user_id)).await {
+            Ok(r) => r,
+            Err(e) => {
+                let _ = db::update_yara_scan_error(&pool_clone, &scan_id_clone, &e.to_string()).await;
+                return;
+            }
+        };
+
+        let mut scanner = YaraScanner::new();
+        scanner.add_rules(rules);
+
+        let mut total_matches = 0u32;
+        let mut total_files = 0u64;
+        let mut total_bytes = 0u64;
+        let mut all_matches = Vec::new();
+
+        for path in &paths {
+            let p = std::path::Path::new(path);
+            if p.is_dir() {
+                match scanner.scan_directory(path, recursive).await {
+                    Ok(result) => {
+                        total_files += result.stats.files_scanned;
+                        total_bytes += result.stats.bytes_scanned;
+                        total_matches += result.matches.len() as u32;
+                        all_matches.extend(result.matches);
+                    }
+                    Err(e) => {
+                        log::warn!("Error scanning {}: {}", path, e);
+                    }
+                }
+            } else {
+                match scanner.scan_file(path).await {
+                    Ok(matches) => {
+                        total_files += 1;
+                        total_matches += matches.len() as u32;
+                        all_matches.extend(matches);
+                    }
+                    Err(e) => {
+                        log::warn!("Error scanning {}: {}", path, e);
+                    }
+                }
+            }
+        }
+
+        // Save matches to database
+        for m in &all_matches {
+            let match_id = uuid::Uuid::new_v4().to_string();
+            let _ = db::create_yara_match(
+                &pool_clone,
+                &match_id,
+                &scan_id_clone,
+                &m.rule_name,
+                m.file_path.as_deref(),
+                &m.matched_strings.iter().map(|s| s.identifier.clone()).collect::<Vec<_>>().join(", "),
+                &serde_json::to_string(&m.metadata).unwrap_or_default(),
+            ).await;
+        }
+
+        // Update scan completion
+        let _ = db::complete_yara_scan(
+            &pool_clone,
+            &scan_id_clone,
+            total_matches as i64,
+            total_files as i64,
+            total_bytes as i64,
+        ).await;
+    });
+
+    Ok(HttpResponse::Accepted().json(ScanCreatedResponse {
+        id: scan_id,
+        message: "Bulk scan started".to_string(),
+    }))
+}
+
+// ============================================================================
 // Helper Functions
 // ============================================================================
 
@@ -981,18 +1581,24 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/scan", web::post().to(scan_path))
             .route("/scan/bytes", web::post().to(scan_bytes))
             .route("/scan/upload", web::post().to(scan_upload))
+            .route("/scan/bulk", web::post().to(bulk_scan))
             .route("/scans", web::get().to(list_scans))
             .route("/scans/{id}", web::get().to(get_scan))
             .route("/scans/{id}", web::delete().to(delete_scan))
             // Rules
             .route("/rules", web::get().to(list_rules))
             .route("/rules", web::post().to(create_rule))
+            .route("/rules/build", web::post().to(build_rule))
+            .route("/rules/import", web::post().to(import_rules))
             .route("/rules/categories", web::get().to(get_categories))
             .route("/rules/stats", web::get().to(get_stats))
             .route("/rules/{id}", web::get().to(get_rule))
             .route("/rules/{id}", web::put().to(update_rule))
             .route("/rules/{id}", web::delete().to(delete_rule))
             // Validation
-            .route("/validate", web::post().to(validate_rule_endpoint)),
+            .route("/validate", web::post().to(validate_rule_endpoint))
+            // Community Sources
+            .route("/community/sources", web::get().to(get_community_sources))
+            .route("/community/fetch/{source_id}", web::post().to(fetch_community_source)),
     );
 }

@@ -5,12 +5,18 @@
 //! - **Shodan**: Exposed service detection and historical data
 //! - **ExploitDB**: Known exploit correlation for services and CVEs
 //! - **NVD/CISA KEV**: Real-time CVE announcements and known exploited vulnerabilities
+//! - **MISP**: Malware Information Sharing Platform integration
+//! - **STIX/TAXII**: Structured threat intelligence exchange
+//! - **Threat Actors**: APT group tracking and campaign intelligence
 //!
 //! The feed manager coordinates lookups across sources and generates actionable alerts.
 
 pub mod cve_feeds;
 pub mod exploit_db;
+pub mod misp;
 pub mod shodan;
+pub mod stix;
+pub mod threat_actors;
 pub mod types;
 
 use anyhow::Result;
@@ -22,7 +28,10 @@ use uuid::Uuid;
 
 pub use cve_feeds::CveFeedsClient;
 pub use exploit_db::ExploitDbClient;
+pub use misp::{MispClient, MispEvent, MispAttribute};
 pub use shodan::ShodanClient;
+pub use stix::{StixBundle, StixObject, TaxiiClient};
+pub use threat_actors::{ThreatActorDatabase, ThreatActorProfile, Campaign, AttackPattern};
 pub use types::*;
 
 /// Threat Intelligence Feed Manager

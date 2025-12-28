@@ -154,23 +154,50 @@ pub async fn get_yara_rule(pool: &SqlitePool, id: &str) -> Result<Option<StoredY
     }
 }
 
-/// Get a YARA rule by name
-pub async fn get_yara_rule_by_name(pool: &SqlitePool, name: &str) -> Result<Option<StoredYaraRule>> {
-    let row = sqlx::query_as::<_, YaraRuleRow>(
-        r#"
-        SELECT id, name, rule_text, metadata, is_builtin, user_id, category, enabled, created_at, updated_at
-        FROM yara_rules
-        WHERE name = ?
-        "#,
-    )
-    .bind(name)
-    .fetch_optional(pool)
-    .await?;
+/// Get a YARA rule by name (optionally scoped to a user)
+pub async fn get_yara_rule_by_name(pool: &SqlitePool, name: &str, user_id: Option<&str>) -> Result<Option<StoredYaraRule>> {
+    let row = if let Some(uid) = user_id {
+        sqlx::query_as::<_, YaraRuleRow>(
+            r#"
+            SELECT id, name, rule_text, metadata, is_builtin, user_id, category, enabled, created_at, updated_at
+            FROM yara_rules
+            WHERE name = ? AND (user_id = ? OR user_id IS NULL OR is_builtin = 1)
+            "#,
+        )
+        .bind(name)
+        .bind(uid)
+        .fetch_optional(pool)
+        .await?
+    } else {
+        sqlx::query_as::<_, YaraRuleRow>(
+            r#"
+            SELECT id, name, rule_text, metadata, is_builtin, user_id, category, enabled, created_at, updated_at
+            FROM yara_rules
+            WHERE name = ?
+            "#,
+        )
+        .bind(name)
+        .fetch_optional(pool)
+        .await?
+    };
 
     match row {
         Some(r) => Ok(Some(r.into_rule()?)),
         None => Ok(None),
     }
+}
+
+/// Delete a YARA rule by name (scoped to a user)
+pub async fn delete_yara_rule_by_name(pool: &SqlitePool, name: &str, user_id: &str) -> Result<bool> {
+    let result = sqlx::query(
+        "DELETE FROM yara_rules WHERE name = ? AND user_id = ? AND is_builtin = 0",
+    )
+    .bind(name)
+    .bind(user_id)
+    .execute(pool)
+    .await?;
+
+    Ok(result.rows_affected() > 0)
 }
 
 /// List all YARA rules
@@ -586,6 +613,85 @@ pub async fn count_user_yara_scans(pool: &SqlitePool, user_id: &str) -> Result<i
     Ok(row.0)
 }
 
+/// Update a YARA scan with an error message
+pub async fn update_yara_scan_error(pool: &SqlitePool, id: &str, error: &str) -> Result<()> {
+    let now = Utc::now().to_rfc3339();
+
+    sqlx::query(
+        r#"
+        UPDATE yara_scans
+        SET status = 'error', error_message = ?, completed_at = ?
+        WHERE id = ?
+        "#,
+    )
+    .bind(error)
+    .bind(&now)
+    .bind(id)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Complete a YARA scan with results
+pub async fn complete_yara_scan(
+    pool: &SqlitePool,
+    id: &str,
+    matches_count: i64,
+    files_scanned: i64,
+    bytes_scanned: i64,
+) -> Result<()> {
+    let now = Utc::now().to_rfc3339();
+
+    sqlx::query(
+        r#"
+        UPDATE yara_scans
+        SET status = 'completed', matches_count = ?, files_scanned = ?, bytes_scanned = ?, completed_at = ?
+        WHERE id = ?
+        "#,
+    )
+    .bind(matches_count)
+    .bind(files_scanned)
+    .bind(bytes_scanned)
+    .bind(&now)
+    .bind(id)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Create a YARA match (simplified version for bulk scans)
+pub async fn create_yara_match(
+    pool: &SqlitePool,
+    id: &str,
+    scan_id: &str,
+    rule_name: &str,
+    file_path: Option<&str>,
+    matched_strings: &str,
+    metadata: &str,
+) -> Result<()> {
+    let now = Utc::now().to_rfc3339();
+
+    sqlx::query(
+        r#"
+        INSERT INTO yara_matches (id, scan_id, rule_name, rule_id, file_path, matched_strings, metadata, tags, created_at)
+        VALUES (?, ?, ?, NULL, ?, ?, ?, '[]', ?)
+        "#,
+    )
+    .bind(id)
+    .bind(scan_id)
+    .bind(rule_name)
+    .bind(file_path)
+    .bind(matched_strings)
+    .bind(metadata)
+    .bind(&now)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
 // ============================================================================
 // YARA Matches CRUD
 // ============================================================================
@@ -977,7 +1083,7 @@ pub async fn seed_builtin_yara_rules(pool: &SqlitePool) -> Result<()> {
 
     for rule in rules {
         // Check if rule already exists
-        let existing = get_yara_rule_by_name(pool, &rule.name).await?;
+        let existing = get_yara_rule_by_name(pool, &rule.name, None).await?;
         if existing.is_some() {
             continue;
         }

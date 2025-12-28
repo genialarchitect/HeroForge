@@ -275,6 +275,74 @@ impl Default for ThreatIntelConfig {
     }
 }
 
+/// IOC (Indicator of Compromise) type
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum IocType {
+    Ip,
+    Domain,
+    Url,
+    Md5,
+    Sha1,
+    Sha256,
+    Email,
+    Filename,
+    Registry,
+    Mutex,
+    JA3,
+    Yara,
+    Sigma,
+    Other,
+}
+
+impl std::fmt::Display for IocType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            IocType::Ip => write!(f, "IP"),
+            IocType::Domain => write!(f, "Domain"),
+            IocType::Url => write!(f, "URL"),
+            IocType::Md5 => write!(f, "MD5"),
+            IocType::Sha1 => write!(f, "SHA1"),
+            IocType::Sha256 => write!(f, "SHA256"),
+            IocType::Email => write!(f, "Email"),
+            IocType::Filename => write!(f, "Filename"),
+            IocType::Registry => write!(f, "Registry"),
+            IocType::Mutex => write!(f, "Mutex"),
+            IocType::JA3 => write!(f, "JA3"),
+            IocType::Yara => write!(f, "YARA"),
+            IocType::Sigma => write!(f, "Sigma"),
+            IocType::Other => write!(f, "Other"),
+        }
+    }
+}
+
+/// Indicator of Compromise
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Ioc {
+    /// Unique identifier
+    pub id: String,
+    /// Type of IOC
+    pub ioc_type: IocType,
+    /// IOC value
+    pub value: String,
+    /// Source of the IOC
+    pub source: String,
+    /// Confidence level (0.0 - 1.0)
+    pub confidence: f64,
+    /// Severity level
+    pub severity: ThreatSeverity,
+    /// First seen timestamp
+    pub first_seen: Option<DateTime<Utc>>,
+    /// Last seen timestamp
+    pub last_seen: Option<DateTime<Utc>>,
+    /// Associated tags
+    pub tags: Vec<String>,
+    /// Additional context
+    pub context: Option<String>,
+    /// Created timestamp
+    pub created_at: DateTime<Utc>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

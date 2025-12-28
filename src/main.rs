@@ -35,6 +35,7 @@ mod scanner;
 mod siem;
 mod threat_hunting;
 mod threat_intel;
+mod traffic_analysis;
 mod types;
 mod yellow_team;
 mod orange_team;

@@ -64,6 +64,7 @@ import {
   Code,
   Binary,
   Biohazard,
+  Braces,
 } from 'lucide-react';
 
 interface NavItem {
@@ -240,6 +241,7 @@ const Header: React.FC = () => {
   // BLUE TEAM - Defensive Security / Detection
   const blueTeamItems: NavItem[] = [
     { to: '/siem', icon: <Activity className="h-4 w-4" />, label: 'SIEM' },
+    { to: '/yara', icon: <Braces className="h-4 w-4" />, label: 'YARA Rules' },
     { to: '/forensics', icon: <HardDrive className="h-4 w-4" />, label: 'Forensics' },
     { to: '/incident-response', icon: <AlertCircle className="h-4 w-4" />, label: 'Incident Response' },
     { to: '/detection-engineering', icon: <ScanSearch className="h-4 w-4" />, label: 'Detection Engineering' },

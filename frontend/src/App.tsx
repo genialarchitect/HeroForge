@@ -83,6 +83,9 @@ const FuzzingPage = lazy(() => import('./pages/FuzzingPage'));
 // Malware Analysis
 const MalwareAnalysisPage = lazy(() => import('./pages/MalwareAnalysisPage'));
 
+// YARA Rule Management
+const YaraPage = lazy(() => import('./pages/YaraPage'));
+
 // CRM pages
 const CrmDashboard = lazy(() => import('./pages/crm/CrmDashboard'));
 
@@ -612,6 +615,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <MalwareAnalysisPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/yara"
+            element={
+              <ProtectedRoute>
+                <YaraPage />
               </ProtectedRoute>
             }
           />
