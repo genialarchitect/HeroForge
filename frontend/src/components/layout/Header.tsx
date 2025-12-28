@@ -241,6 +241,7 @@ const Header: React.FC = () => {
   // BLUE TEAM - Defensive Security / Detection
   const blueTeamItems: NavItem[] = [
     { to: '/siem', icon: <Activity className="h-4 w-4" />, label: 'SIEM' },
+    { to: '/traffic-analysis', icon: <Network className="h-4 w-4" />, label: 'Traffic Analysis' },
     { to: '/yara', icon: <Braces className="h-4 w-4" />, label: 'YARA Rules' },
     { to: '/forensics', icon: <HardDrive className="h-4 w-4" />, label: 'Forensics' },
     { to: '/incident-response', icon: <AlertCircle className="h-4 w-4" />, label: 'Incident Response' },

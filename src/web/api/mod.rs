@@ -99,6 +99,7 @@ pub mod yellow_team;
 pub mod orange_team;
 pub mod green_team;
 pub mod white_team;
+pub mod traffic_analysis;
 
 #[cfg(test)]
 mod tests;

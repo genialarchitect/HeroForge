@@ -632,6 +632,8 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .configure(api::sandbox::configure)
                     // YARA Rule Management (Sprint 8 - Priority 1 Features) endpoints
                     .configure(api::yara::configure)
+                    // Traffic Analysis (Sprint 9-10 - Priority 1 Features) endpoints
+                    .configure(api::traffic_analysis::configure)
                     // Start workflow from vulnerability
                     .route("/vulnerabilities/{id}/workflow", web::post().to(api::workflows::start_workflow))
                     // SSO Admin endpoints
