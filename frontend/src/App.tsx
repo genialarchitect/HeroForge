@@ -344,6 +344,14 @@ function App() {
             }
           />
           <Route
+            path="/attack-paths"
+            element={
+              <ProtectedRoute>
+                <AttackPathsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/attack-paths/:scanId"
             element={
               <ProtectedRoute>

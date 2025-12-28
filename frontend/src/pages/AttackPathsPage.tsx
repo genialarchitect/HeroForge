@@ -276,6 +276,7 @@ const AttackPathsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
   const [scan, setScan] = useState<ScanResult | null>(null);
+  const [scans, setScans] = useState<ScanResult[]>([]);
   const [paths, setPaths] = useState<AttackPath[]>([]);
   const [stats, setStats] = useState<AttackPathStats | null>(null);
   const [selectedPath, setSelectedPath] = useState<AttackPath | null>(null);
@@ -284,9 +285,24 @@ const AttackPathsPage: React.FC = () => {
   const [hasAnalyzed, setHasAnalyzed] = useState(false);
 
   const loadData = useCallback(async () => {
-    if (!scanId) return;
-
     setLoading(true);
+
+    // If no scanId, load list of completed scans for selection
+    if (!scanId) {
+      try {
+        const scansRes = await scanAPI.getAll();
+        // Filter to only completed scans
+        const completedScans = (scansRes.data || []).filter((s) => s.status === 'completed');
+        setScans(completedScans);
+      } catch (error) {
+        toast.error('Failed to load scans');
+        console.error(error);
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     try {
       // Load scan info
       const scanRes = await scanAPI.getById(scanId);
@@ -358,6 +374,73 @@ const AttackPathsPage: React.FC = () => {
       <Layout>
         <div className="flex items-center justify-center py-12">
           <LoadingSpinner />
+        </div>
+      </Layout>
+    );
+  }
+
+  // Show scan selector when no scanId is provided
+  if (!scanId) {
+    return (
+      <Layout>
+        <div className="space-y-6">
+          <div>
+            <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+              <Network className="h-6 w-6 text-primary" />
+              Attack Path Analysis
+            </h1>
+            <p className="text-slate-400 mt-1">
+              Select a completed scan to analyze attack paths
+            </p>
+          </div>
+
+          {scans.length === 0 ? (
+            <Card className="p-8 text-center">
+              <Network className="h-16 w-16 text-slate-500 mx-auto mb-4" />
+              <h2 className="text-xl font-bold text-white mb-2">
+                No Completed Scans Available
+              </h2>
+              <p className="text-slate-400 mb-6 max-w-md mx-auto">
+                You need to complete a network scan first before you can analyze attack paths.
+                Run a scan with vulnerability detection enabled to get started.
+              </p>
+              <Button onClick={() => navigate('/scan')}>
+                <Target className="h-4 w-4 mr-2" />
+                Start New Scan
+              </Button>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {scans.map((s) => (
+                <Card
+                  key={s.id}
+                  className="cursor-pointer hover:border-primary transition-all"
+                  onClick={() => navigate(`/attack-paths/${s.id}`)}
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <Target className="h-5 w-5 text-primary" />
+                      <span className="font-medium text-white">{s.name}</span>
+                    </div>
+                    <Badge type={s.status === 'completed' ? 'low' : 'medium'}>
+                      {s.status}
+                    </Badge>
+                  </div>
+                  <div className="text-sm text-slate-400 space-y-1">
+                    <p>Targets: {s.targets || 'N/A'}</p>
+                    <p>Created: {new Date(s.created_at).toLocaleDateString()}</p>
+                    {s.total_hosts !== undefined && (
+                      <p>Hosts: {s.total_hosts}</p>
+                    )}
+                  </div>
+                  <div className="mt-3 flex items-center text-primary text-sm">
+                    <span>Analyze Attack Paths</span>
+                    <ChevronRight className="h-4 w-4 ml-1" />
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
         </div>
       </Layout>
     );
