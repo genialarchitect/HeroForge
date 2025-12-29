@@ -15,6 +15,7 @@ mod config;
 mod cracking;
 mod cve;
 mod db;
+mod dns_analytics;
 mod email;
 mod email_validation;
 mod forensics;

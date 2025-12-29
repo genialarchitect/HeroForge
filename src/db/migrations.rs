@@ -264,6 +264,8 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     create_ueba_tables(pool).await?;
     // NetFlow/IPFIX Analysis tables (Sprint 5 - Priority 2 Features)
     create_netflow_tables(pool).await?;
+    // DNS Analytics tables (Sprint 6 - Priority 2 Features)
+    create_dns_analytics_tables(pool).await?;
     Ok(())
 }
 
@@ -20687,5 +20689,493 @@ async fn create_netflow_tables(pool: &SqlitePool) -> Result<()> {
         .await?;
 
     log::info!("Created NetFlow/IPFIX analysis tables (Sprint 5 - Priority 2 Features)");
+    Ok(())
+}
+
+/// Create DNS Analytics tables (Sprint 6 - Priority 2 Features)
+async fn create_dns_analytics_tables(pool: &SqlitePool) -> Result<()> {
+    // Passive DNS records - stores DNS query/response pairs for historical analysis
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS passive_dns_records (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            query_name TEXT NOT NULL,
+            query_type TEXT NOT NULL,
+            response_data TEXT NOT NULL,
+            ttl INTEGER,
+            first_seen TEXT NOT NULL,
+            last_seen TEXT NOT NULL,
+            query_count INTEGER DEFAULT 1,
+            source_ips TEXT,
+            is_suspicious INTEGER DEFAULT 0,
+            threat_type TEXT,
+            threat_score INTEGER DEFAULT 0,
+            customer_id TEXT REFERENCES customers(id),
+            engagement_id TEXT REFERENCES engagements(id),
+            created_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_passive_dns_user ON passive_dns_records(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_passive_dns_query_name ON passive_dns_records(query_name)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_passive_dns_response ON passive_dns_records(response_data)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_passive_dns_suspicious ON passive_dns_records(is_suspicious)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_passive_dns_threat_type ON passive_dns_records(threat_type)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_passive_dns_customer ON passive_dns_records(customer_id)")
+        .execute(pool)
+        .await?;
+
+    // DNS anomalies - detected security issues
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS dns_anomalies (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            anomaly_type TEXT NOT NULL,
+            domain TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            description TEXT NOT NULL,
+            indicators TEXT,
+            entropy_score REAL,
+            dga_probability REAL,
+            tunnel_indicators TEXT,
+            fast_flux_indicators TEXT,
+            first_seen TEXT NOT NULL,
+            last_seen TEXT NOT NULL,
+            query_count INTEGER DEFAULT 1,
+            status TEXT DEFAULT 'new',
+            source_ips TEXT,
+            customer_id TEXT REFERENCES customers(id),
+            engagement_id TEXT REFERENCES engagements(id),
+            notes TEXT,
+            resolved_by TEXT,
+            resolved_at TEXT,
+            created_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dns_anomalies_user ON dns_anomalies(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dns_anomalies_type ON dns_anomalies(anomaly_type)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dns_anomalies_domain ON dns_anomalies(domain)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dns_anomalies_severity ON dns_anomalies(severity)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dns_anomalies_status ON dns_anomalies(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dns_anomalies_customer ON dns_anomalies(customer_id)")
+        .execute(pool)
+        .await?;
+
+    // Newly observed domains (NODs) - domains seen for the first time
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS newly_observed_domains (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            domain TEXT NOT NULL,
+            tld TEXT NOT NULL,
+            first_seen TEXT NOT NULL,
+            last_seen TEXT,
+            first_query_ip TEXT,
+            querying_ips TEXT,
+            registrar TEXT,
+            registration_date TEXT,
+            whois_data TEXT,
+            risk_score INTEGER DEFAULT 0,
+            threat_indicators TEXT,
+            threat_type TEXT,
+            status TEXT DEFAULT 'new',
+            resolved_ips TEXT,
+            query_count INTEGER DEFAULT 1,
+            notes TEXT,
+            customer_id TEXT REFERENCES customers(id),
+            engagement_id TEXT REFERENCES engagements(id),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(user_id, domain)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_nod_user ON newly_observed_domains(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_nod_domain ON newly_observed_domains(domain)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_nod_tld ON newly_observed_domains(tld)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_nod_risk_score ON newly_observed_domains(risk_score)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_nod_status ON newly_observed_domains(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_nod_threat_type ON newly_observed_domains(threat_type)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_nod_customer ON newly_observed_domains(customer_id)")
+        .execute(pool)
+        .await?;
+
+    // NOD alerts - high-risk NOD notifications
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS nod_alerts (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            nod_id TEXT NOT NULL REFERENCES newly_observed_domains(id) ON DELETE CASCADE,
+            domain TEXT NOT NULL,
+            risk_score INTEGER NOT NULL,
+            severity TEXT NOT NULL,
+            threat_type TEXT,
+            indicators TEXT,
+            first_seen TEXT NOT NULL,
+            source_ip TEXT,
+            acknowledged INTEGER DEFAULT 0,
+            acknowledged_by TEXT,
+            acknowledged_at TEXT,
+            created_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_nod_alerts_user ON nod_alerts(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_nod_alerts_nod ON nod_alerts(nod_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_nod_alerts_severity ON nod_alerts(severity)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_nod_alerts_acknowledged ON nod_alerts(acknowledged)")
+        .execute(pool)
+        .await?;
+
+    // DNS baselines - statistical baselines for anomaly detection
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS dns_baselines (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            baseline_type TEXT NOT NULL,
+            entity TEXT NOT NULL,
+            period TEXT NOT NULL,
+            mean_value REAL NOT NULL,
+            std_deviation REAL NOT NULL,
+            min_value REAL NOT NULL,
+            max_value REAL NOT NULL,
+            sample_count INTEGER NOT NULL,
+            last_calculated_at TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            UNIQUE(user_id, baseline_type, entity, period)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dns_baselines_user ON dns_baselines(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dns_baselines_type ON dns_baselines(baseline_type)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dns_baselines_entity ON dns_baselines(entity)")
+        .execute(pool)
+        .await?;
+
+    // DNS collector configurations - data sources for passive DNS
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS dns_collectors (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            collector_type TEXT NOT NULL,
+            listen_address TEXT,
+            listen_port INTEGER,
+            is_enabled INTEGER DEFAULT 1,
+            capture_responses INTEGER DEFAULT 1,
+            store_raw_packets INTEGER DEFAULT 0,
+            whitelist_domains TEXT,
+            blacklist_domains TEXT,
+            last_active_at TEXT,
+            queries_collected INTEGER DEFAULT 0,
+            customer_id TEXT REFERENCES customers(id),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dns_collectors_user ON dns_collectors(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dns_collectors_enabled ON dns_collectors(is_enabled)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dns_collectors_customer ON dns_collectors(customer_id)")
+        .execute(pool)
+        .await?;
+
+    // DNS queries log - raw DNS query logs for analysis
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS dns_query_logs (
+            id TEXT PRIMARY KEY,
+            collector_id TEXT NOT NULL REFERENCES dns_collectors(id) ON DELETE CASCADE,
+            timestamp TEXT NOT NULL,
+            source_ip TEXT NOT NULL,
+            source_port INTEGER,
+            query_name TEXT NOT NULL,
+            query_type TEXT NOT NULL,
+            response_code TEXT,
+            response_data TEXT,
+            ttl INTEGER,
+            latency_ms INTEGER,
+            server_ip TEXT,
+            is_recursive INTEGER DEFAULT 1,
+            is_dnssec INTEGER DEFAULT 0,
+            raw_packet TEXT,
+            created_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dns_logs_collector ON dns_query_logs(collector_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dns_logs_timestamp ON dns_query_logs(timestamp)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dns_logs_source_ip ON dns_query_logs(source_ip)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dns_logs_query_name ON dns_query_logs(query_name)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dns_logs_query_type ON dns_query_logs(query_type)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dns_logs_response_code ON dns_query_logs(response_code)")
+        .execute(pool)
+        .await?;
+
+    // DNS threat intel correlation - matches with known threat intelligence
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS dns_threat_intel (
+            id TEXT PRIMARY KEY,
+            domain TEXT NOT NULL UNIQUE,
+            is_malicious INTEGER DEFAULT 0,
+            threat_types TEXT,
+            confidence REAL DEFAULT 0,
+            sources TEXT,
+            first_reported TEXT,
+            last_reported TEXT,
+            associated_malware TEXT,
+            associated_campaigns TEXT,
+            iocs TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dns_threat_intel_domain ON dns_threat_intel(domain)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dns_threat_intel_malicious ON dns_threat_intel(is_malicious)")
+        .execute(pool)
+        .await?;
+
+    // DNS threat intel sources - feed configurations
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS dns_threat_intel_sources (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            source_type TEXT NOT NULL,
+            url TEXT,
+            api_key TEXT,
+            is_enabled INTEGER DEFAULT 1,
+            update_frequency_hours INTEGER DEFAULT 24,
+            last_sync_at TEXT,
+            domains_synced INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dns_ti_sources_user ON dns_threat_intel_sources(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dns_ti_sources_enabled ON dns_threat_intel_sources(is_enabled)")
+        .execute(pool)
+        .await?;
+
+    // DGA family signatures - known DGA algorithm patterns
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS dga_family_signatures (
+            id TEXT PRIMARY KEY,
+            family_name TEXT NOT NULL UNIQUE,
+            description TEXT,
+            tld_patterns TEXT,
+            length_min INTEGER,
+            length_max INTEGER,
+            entropy_min REAL,
+            entropy_max REAL,
+            consonant_ratio_min REAL,
+            consonant_ratio_max REAL,
+            digit_ratio_min REAL,
+            digit_ratio_max REAL,
+            example_domains TEXT,
+            associated_malware TEXT,
+            is_builtin INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dga_signatures_family ON dga_family_signatures(family_name)")
+        .execute(pool)
+        .await?;
+
+    // Seed some known DGA family signatures
+    let families = vec![
+        ("Conficker", "Conficker worm DGA", ".com,.net,.org,.info,.biz", 4, 10, 3.0, 4.5, "high randomness, short domains"),
+        ("CryptoLocker", "CryptoLocker ransomware DGA", ".com,.net,.org,.biz,.ru,.info,.co.uk", 12, 17, 3.5, 5.0, "medium-long random domains"),
+        ("Necurs", "Necurs botnet DGA", ".com,.net,.org,.cc,.tv,.biz,.so,.me", 6, 12, 3.2, 4.8, "mixed character patterns"),
+        ("Qakbot", "Qakbot banking trojan DGA", ".com,.net,.org", 8, 15, 3.3, 4.6, "alphanumeric patterns"),
+        ("Ramnit", "Ramnit banking trojan DGA", ".com,.net,.org", 8, 16, 3.4, 4.7, "high entropy domains"),
+        ("Suppobox", "Suppobox DGA", ".com,.net,.org,.info,.biz", 6, 12, 3.0, 4.5, "pronounceable random"),
+        ("Tinba", "Tinba banking trojan DGA", ".com", 12, 20, 3.5, 5.0, "long random domains"),
+        ("Pykspa", "Pykspa worm DGA", ".com,.net,.org,.cc,.ws,.info", 5, 12, 3.0, 4.5, "short random domains"),
+    ];
+
+    for (name, desc, tlds, min_len, max_len, ent_min, ent_max, examples) in families {
+        let id = uuid::Uuid::new_v4().to_string();
+        let now = chrono::Utc::now().to_rfc3339();
+        let _ = sqlx::query(
+            r#"INSERT OR IGNORE INTO dga_family_signatures
+               (id, family_name, description, tld_patterns, length_min, length_max,
+                entropy_min, entropy_max, example_domains, is_builtin, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)"#
+        )
+        .bind(&id)
+        .bind(name)
+        .bind(desc)
+        .bind(tlds)
+        .bind(min_len)
+        .bind(max_len)
+        .bind(ent_min)
+        .bind(ent_max)
+        .bind(examples)
+        .bind(&now)
+        .bind(&now)
+        .execute(pool)
+        .await;
+    }
+
+    // Known domains whitelist - domains to exclude from detection
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS dns_whitelist (
+            id TEXT PRIMARY KEY,
+            user_id TEXT,
+            domain TEXT NOT NULL,
+            domain_type TEXT DEFAULT 'exact',
+            reason TEXT,
+            is_global INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL,
+            UNIQUE(domain, user_id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dns_whitelist_domain ON dns_whitelist(domain)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_dns_whitelist_user ON dns_whitelist(user_id)")
+        .execute(pool)
+        .await?;
+
+    // Seed some common CDN/cloud domains for whitelist
+    let whitelist_domains = vec![
+        "cloudflare.com", "cloudflare-dns.com", "akamai.net", "akamaiedge.net",
+        "amazonaws.com", "azure.com", "azure.net", "azurewebsites.net",
+        "googleusercontent.com", "googleapis.com", "gstatic.com", "googlevideo.com",
+        "microsoft.com", "office.com", "office365.com", "microsoftonline.com",
+        "apple.com", "icloud.com", "mzstatic.com",
+        "facebook.com", "fbcdn.net", "instagram.com",
+        "twitter.com", "twimg.com",
+        "linkedin.com", "licdn.com",
+        "github.com", "githubusercontent.com", "github.io",
+        "fastly.net", "fastlylb.net",
+        "edgekey.net", "edgesuite.net",
+    ];
+
+    for domain in whitelist_domains {
+        let id = uuid::Uuid::new_v4().to_string();
+        let now = chrono::Utc::now().to_rfc3339();
+        let _ = sqlx::query(
+            "INSERT OR IGNORE INTO dns_whitelist (id, domain, reason, is_global, created_at) VALUES (?, ?, ?, 1, ?)"
+        )
+        .bind(&id)
+        .bind(domain)
+        .bind("Known CDN/Cloud provider")
+        .bind(&now)
+        .execute(pool)
+        .await;
+    }
+
+    log::info!("Created DNS Analytics tables (Sprint 6 - Priority 2 Features)");
     Ok(())
 }

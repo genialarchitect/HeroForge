@@ -245,6 +245,7 @@ const Header: React.FC = () => {
     { to: '/ueba', icon: <UserCog className="h-4 w-4" />, label: 'UEBA' },
     { to: '/traffic-analysis', icon: <Network className="h-4 w-4" />, label: 'Traffic Analysis' },
     { to: '/netflow-analysis', icon: <Activity className="h-4 w-4" />, label: 'NetFlow Analysis' },
+    { to: '/dns-analytics', icon: <Globe className="h-4 w-4" />, label: 'DNS Analytics' },
     { to: '/yara', icon: <Braces className="h-4 w-4" />, label: 'YARA Rules' },
     { to: '/sigma-rules', icon: <FileCode className="h-4 w-4" />, label: 'Sigma Rules' },
     { to: '/forensics', icon: <HardDrive className="h-4 w-4" />, label: 'Forensics' },

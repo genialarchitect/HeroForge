@@ -29,6 +29,7 @@ pub mod crm;
 pub mod dashboard;
 pub mod dns;
 pub mod dns_analysis;
+pub mod dns_analytics;
 pub mod domain_intel;
 pub mod dorking;
 pub mod email_security;

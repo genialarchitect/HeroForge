@@ -98,6 +98,7 @@ const UebaPage = lazy(() => import('./pages/UebaPage'));
 
 // NetFlow Analysis
 const NetFlowAnalysisPage = lazy(() => import('./pages/NetFlowAnalysisPage'));
+const DnsAnalyticsPage = lazy(() => import('./pages/DnsAnalyticsPage'));
 
 // CRM pages
 const CrmDashboard = lazy(() => import('./pages/crm/CrmDashboard'));
@@ -678,6 +679,15 @@ function App() {
             element={
               <ProtectedRoute>
                 <NetFlowAnalysisPage />
+              </ProtectedRoute>
+            }
+          />
+          {/* DNS Analytics */}
+          <Route
+            path="/dns-analytics"
+            element={
+              <ProtectedRoute>
+                <DnsAnalyticsPage />
               </ProtectedRoute>
             }
           />

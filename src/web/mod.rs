@@ -550,6 +550,8 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .configure(api::ueba::configure)
                     // NetFlow/IPFIX/sFlow Analysis endpoints
                     .configure(api::netflow::configure)
+                    // DNS Analytics endpoints
+                    .configure(api::dns_analytics::configure)
                     // Exploitation Framework endpoints
                     .configure(api::exploitation::configure)
                     // AV/EDR Evasion Analysis endpoints
