@@ -546,6 +546,10 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .configure(api::evidence::configure)
                     // SIEM (Full capabilities) endpoints
                     .configure(api::siem::configure)
+                    // UEBA (User Entity Behavior Analytics) endpoints
+                    .configure(api::ueba::configure)
+                    // NetFlow/IPFIX/sFlow Analysis endpoints
+                    .configure(api::netflow::configure)
                     // Exploitation Framework endpoints
                     .configure(api::exploitation::configure)
                     // AV/EDR Evasion Analysis endpoints

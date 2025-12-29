@@ -45,6 +45,10 @@ pub struct ScanRepoRequest {
     /// Number of commits to scan in history
     #[serde(default = "default_commit_depth")]
     pub commit_depth: usize,
+    /// Optional CRM customer ID
+    pub customer_id: Option<String>,
+    /// Optional CRM engagement ID
+    pub engagement_id: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -78,6 +82,10 @@ pub struct EnumerateRequest {
     /// Scan each discovered repository for secrets
     #[serde(default)]
     pub scan_repos: bool,
+    /// Optional CRM customer ID
+    pub customer_id: Option<String>,
+    /// Optional CRM engagement ID
+    pub engagement_id: Option<String>,
 }
 
 /// Response for scan initiation
@@ -209,9 +217,9 @@ pub async fn scan_repo(
         INSERT INTO git_recon_scans (
             id, user_id, platform, scan_type, target, owner, repo_name,
             scan_current_files, scan_commit_history, commit_depth,
-            status, created_at, updated_at
+            status, created_at, updated_at, customer_id, engagement_id
         )
-        VALUES (?1, ?2, ?3, 'repo', ?4, ?5, ?6, ?7, ?8, ?9, 'pending', ?10, ?11)
+        VALUES (?1, ?2, ?3, 'repo', ?4, ?5, ?6, ?7, ?8, ?9, 'pending', ?10, ?11, ?12, ?13)
         "#,
     )
     .bind(&id)
@@ -225,6 +233,8 @@ pub async fn scan_repo(
     .bind(body.commit_depth as i32)
     .bind(&now.to_rfc3339())
     .bind(&now.to_rfc3339())
+    .bind(&body.customer_id)
+    .bind(&body.engagement_id)
     .execute(pool.get_ref())
     .await
     .map_err(|e| {
@@ -436,9 +446,9 @@ pub async fn enumerate_repos(
         INSERT INTO git_recon_scans (
             id, user_id, platform, scan_type, target, owner,
             include_private, include_forks, include_archived,
-            status, created_at, updated_at
+            status, created_at, updated_at, customer_id, engagement_id
         )
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'pending', ?10, ?11)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'pending', ?10, ?11, ?12, ?13)
         "#,
     )
     .bind(&id)
@@ -452,6 +462,8 @@ pub async fn enumerate_repos(
     .bind(body.include_archived)
     .bind(&now.to_rfc3339())
     .bind(&now.to_rfc3339())
+    .bind(&body.customer_id)
+    .bind(&body.engagement_id)
     .execute(pool.get_ref())
     .await
     .map_err(|e| {

@@ -28,6 +28,10 @@ pub struct EmailCheckRequest {
     /// Whether to include unverified breaches
     #[serde(default)]
     pub include_unverified: bool,
+    /// Optional CRM customer ID
+    pub customer_id: Option<String>,
+    /// Optional CRM engagement ID
+    pub engagement_id: Option<String>,
 }
 
 /// Domain check request
@@ -35,6 +39,10 @@ pub struct EmailCheckRequest {
 pub struct DomainCheckRequest {
     /// Domain to check
     pub domain: String,
+    /// Optional CRM customer ID
+    pub customer_id: Option<String>,
+    /// Optional CRM engagement ID
+    pub engagement_id: Option<String>,
 }
 
 /// Password check request
@@ -147,6 +155,8 @@ pub async fn check_email(
                 &email,
                 &result,
                 false,
+                body.customer_id.as_deref(),
+                body.engagement_id.as_deref(),
             )
             .await
             {
@@ -243,6 +253,8 @@ pub async fn check_domain(
                 &domain,
                 &result,
                 false,
+                body.customer_id.as_deref(),
+                body.engagement_id.as_deref(),
             )
             .await
             {
@@ -334,6 +346,8 @@ pub async fn check_password(
                 "[password check]",
                 &check_result,
                 false,
+                None, // Password checks are not associated with CRM customers
+                None, // Password checks are not associated with CRM engagements
             )
             .await;
 

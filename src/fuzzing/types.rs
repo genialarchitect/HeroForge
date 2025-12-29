@@ -433,6 +433,8 @@ pub struct CreateCampaignRequest {
     pub fuzzer_type: FuzzerType,
     pub target_config: TargetConfig,
     pub fuzzer_config: FuzzerConfig,
+    pub customer_id: Option<String>,
+    pub engagement_id: Option<String>,
 }
 
 /// Update campaign request

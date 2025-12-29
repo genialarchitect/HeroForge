@@ -42,6 +42,10 @@ pub struct AnalyzeQueriesRequest {
     /// Optional configuration overrides
     #[serde(default)]
     pub config: Option<AnalysisConfig>,
+    /// CRM customer ID
+    pub customer_id: Option<String>,
+    /// CRM engagement ID
+    pub engagement_id: Option<String>,
 }
 
 /// Individual DNS query input
@@ -303,6 +307,8 @@ pub async fn analyze_queries(
         user_id,
         queries.len() as i64,
         threats_found,
+        body.customer_id.as_deref(),
+        body.engagement_id.as_deref(),
     ).await {
         error!("Failed to save analysis job: {}", e);
     }
@@ -864,13 +870,15 @@ async fn save_analysis_job(
     user_id: &str,
     query_count: i64,
     threats_found: i64,
+    customer_id: Option<&str>,
+    engagement_id: Option<&str>,
 ) -> anyhow::Result<()> {
     let now = Utc::now();
 
     sqlx::query(
         r#"
-        INSERT INTO dns_analysis_jobs (id, user_id, query_count, threats_found, status, created_at, completed_at)
-        VALUES (?, ?, ?, ?, 'completed', ?, ?)
+        INSERT INTO dns_analysis_jobs (id, user_id, query_count, threats_found, status, created_at, completed_at, customer_id, engagement_id)
+        VALUES (?, ?, ?, ?, 'completed', ?, ?, ?, ?)
         "#,
     )
     .bind(job_id)
@@ -879,6 +887,8 @@ async fn save_analysis_job(
     .bind(threats_found)
     .bind(now.to_rfc3339())
     .bind(now.to_rfc3339())
+    .bind(customer_id)
+    .bind(engagement_id)
     .execute(pool)
     .await?;
 

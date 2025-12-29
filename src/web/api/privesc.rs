@@ -46,6 +46,8 @@ pub struct StartPrivescRequest {
     pub run_peas: bool,
     #[serde(default = "default_timeout")]
     pub timeout_secs: u64,
+    pub customer_id: Option<String>,
+    pub engagement_id: Option<String>,
 }
 
 fn default_ssh_port() -> u16 {
@@ -136,7 +138,13 @@ pub async fn start_scan(
     };
 
     // Create scan record in database
-    let scan_id = privesc::create_privesc_scan(pool.get_ref(), &claims.sub, &config).await?;
+    let scan_id = privesc::create_privesc_scan(
+        pool.get_ref(),
+        &claims.sub,
+        &config,
+        req.customer_id.as_deref(),
+        req.engagement_id.as_deref(),
+    ).await?;
 
     // Track running scan
     {

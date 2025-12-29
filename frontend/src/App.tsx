@@ -93,6 +93,12 @@ const SigmaRulesPage = lazy(() => import('./pages/SigmaRulesPage'));
 // Traffic Analysis
 const TrafficAnalysisPage = lazy(() => import('./pages/TrafficAnalysisPage'));
 
+// UEBA (User Entity Behavior Analytics)
+const UebaPage = lazy(() => import('./pages/UebaPage'));
+
+// NetFlow Analysis
+const NetFlowAnalysisPage = lazy(() => import('./pages/NetFlowAnalysisPage'));
+
 // CRM pages
 const CrmDashboard = lazy(() => import('./pages/crm/CrmDashboard'));
 
@@ -654,6 +660,24 @@ function App() {
             element={
               <ProtectedRoute>
                 <TrafficAnalysisPage />
+              </ProtectedRoute>
+            }
+          />
+          {/* UEBA (User Entity Behavior Analytics) */}
+          <Route
+            path="/ueba"
+            element={
+              <ProtectedRoute>
+                <UebaPage />
+              </ProtectedRoute>
+            }
+          />
+          {/* NetFlow Analysis */}
+          <Route
+            path="/netflow-analysis"
+            element={
+              <ProtectedRoute>
+                <NetFlowAnalysisPage />
               </ProtectedRoute>
             }
           />

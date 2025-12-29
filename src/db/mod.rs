@@ -38,6 +38,7 @@ pub mod container;
 pub mod cracking;
 pub mod credential_audit;
 pub mod crm;
+pub mod crm_asset_sync;
 pub mod dorking;
 pub mod evidence;
 pub mod exclusions;

@@ -141,7 +141,12 @@ async fn start_scan(
         ..Default::default()
     };
 
-    let scan = manager.create_scan(&claims.sub, config.clone()).await?;
+    let scan = manager.create_scan(
+        &claims.sub,
+        config.clone(),
+        body.customer_id.as_deref(),
+        body.engagement_id.as_deref(),
+    ).await?;
 
     // Start scan in background
     let scan_id = scan.id.clone();

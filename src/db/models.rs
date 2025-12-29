@@ -2249,6 +2249,10 @@ pub struct StartCiCdScanRequest {
     pub branch: Option<String>,
     /// Pipeline configuration files (for direct file scanning)
     pub files: Option<Vec<CiCdFileContent>>,
+    /// CRM customer ID
+    pub customer_id: Option<String>,
+    /// CRM engagement ID
+    pub engagement_id: Option<String>,
 }
 
 /// CI/CD file content for direct scanning

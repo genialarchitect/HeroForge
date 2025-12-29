@@ -145,8 +145,8 @@ async fn create_campaign(
 
     sqlx::query(
         r#"INSERT INTO fuzzing_campaigns
-           (id, user_id, name, description, target_type, fuzzer_type, target_config, fuzzer_config, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#
+           (id, user_id, name, description, target_type, fuzzer_type, target_config, fuzzer_config, created_at, updated_at, customer_id, engagement_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#
     )
     .bind(&id)
     .bind(&claims.sub)
@@ -158,6 +158,8 @@ async fn create_campaign(
     .bind(&fuzzer_config)
     .bind(&now)
     .bind(&now)
+    .bind(&body.customer_id)
+    .bind(&body.engagement_id)
     .execute(pool.get_ref())
     .await
     .map_err(|e| ApiError::internal(format!("Database error: {}", e)))?;

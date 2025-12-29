@@ -3092,6 +3092,10 @@ pub struct InlineSastScanRequest {
     /// Rules to disable
     #[serde(default)]
     pub disabled_rules: Vec<String>,
+    /// CRM customer ID
+    pub customer_id: Option<String>,
+    /// CRM engagement ID
+    pub engagement_id: Option<String>,
 }
 
 /// Response for starting a SAST scan
@@ -3149,6 +3153,8 @@ pub async fn sast_start_scan(
         repository_url: None,
         branch: None,
         languages: body.languages.clone(),
+        customer_id: None,
+        engagement_id: None,
     };
 
     let scan_record = match yt_db::create_sast_scan(pool.get_ref(), user_id, &create_request).await {
@@ -3195,6 +3201,8 @@ pub async fn sast_start_scan(
             rule_ids: None,
             enabled_rules: if body.enabled_rules.is_empty() { None } else { Some(body.enabled_rules.clone()) },
             disabled_rules: if body.disabled_rules.is_empty() { None } else { Some(body.disabled_rules.clone()) },
+            customer_id: None,
+            engagement_id: None,
         };
 
         let result = scanner.run_scan(&scan_request);

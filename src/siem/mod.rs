@@ -60,6 +60,7 @@ pub mod sigma;
 pub mod sigma_converter;
 pub mod storage;
 pub mod types;
+pub mod ueba;
 
 // Re-export commonly used types
 #[allow(unused_imports)]
@@ -102,6 +103,21 @@ pub use dashboard::{
     AlertDeduplicator, AlertGroup, AlertWorkflow, DashboardOverview, DashboardWidget,
     DeduplicationConfig, SavedSearch, SeverityScorer, SiemDashboard, TimeRange,
     WidgetType,
+};
+
+// Re-export UEBA types
+#[allow(unused_imports)]
+pub use ueba::{
+    UebaEngine, UebaEngineConfig, ProcessActivityResult, DetectedAnomaly,
+    EntityType, UebaEntity, CreateEntityRequest, UpdateEntityRequest,
+    UebaPeerGroup, PeerGroupCriteria, CreatePeerGroupRequest,
+    ActivityType, UebaActivity, RecordActivityRequest,
+    AnomalyType, AnomalyStatus, UebaAnomaly, AnomalyEvidence, UpdateAnomalyRequest,
+    RiskLevel, RiskFactorType, UebaRiskFactor,
+    UebaBaseline, MetricCategory,
+    UebaSession, RecordSessionRequest,
+    UebaDashboardStats, AnomalyTypeCount, RiskDistribution, EntityRiskSummary,
+    GeoLocation, ListEntitiesQuery, ListAnomaliesQuery, ListActivitiesQuery,
 };
 
 #[cfg(test)]

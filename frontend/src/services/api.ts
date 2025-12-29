@@ -115,6 +115,11 @@ import type {
   CreatePortalUserRequest,
   UpdatePortalUserRequest,
   ResetPortalUserPasswordRequest,
+  CrmDiscoveredAsset,
+  DiscoveredAssetsSummary,
+  CreateDiscoveredAssetRequest,
+  UpdateDiscoveredAssetRequest,
+  BulkScopeRequest,
   FindingTemplate,
   CreateFindingTemplateRequest,
   UpdateFindingTemplateRequest,
@@ -311,6 +316,53 @@ import type {
   ArchitectureReview,
   StrideThreat,
   CreateArchitectureReviewRequest,
+  // UEBA Types
+  UebaEntity,
+  UebaEntityListResponse,
+  CreateUebaEntityRequest,
+  UpdateUebaEntityRequest,
+  UebaPeerGroup,
+  CreateUebaPeerGroupRequest,
+  UpdateUebaPeerGroupRequest,
+  UebaActivity,
+  UebaActivityListResponse,
+  RecordUebaActivityRequest,
+  ProcessUebaActivityResponse,
+  UebaAnomaly,
+  UebaAnomalyListResponse,
+  UpdateUebaAnomalyRequest,
+  UebaSession,
+  UebaSessionListResponse,
+  RecordUebaSessionRequest,
+  UebaBaseline,
+  UebaBaselineListResponse,
+  UebaRiskFactor,
+  UebaRiskFactorListResponse,
+  UebaDashboardStats,
+  AddToWatchlistRequest,
+  // Sprint 4: Advanced Detection Types
+  UebaAdvancedStats,
+  UebaAdvancedDetection,
+  UebaAdvancedDetectionListResponse,
+  UebaBusinessHours,
+  CreateBusinessHoursRequest,
+  UebaSensitiveResource,
+  CreateSensitiveResourceRequest,
+  UebaKnownVpn,
+  CreateKnownVpnRequest,
+  UebaDetectionRule,
+  CreateDetectionRuleRequest,
+  UebaDataAccess,
+  UebaDataAccessListResponse,
+  RecordDataAccessRequest,
+  UebaHostAccess,
+  UebaHostAccessListResponse,
+  RecordHostAccessRequest,
+  UebaDataTransfer,
+  UebaDataTransferListResponse,
+  RecordDataTransferRequest,
+  RunAdvancedDetectionRequest,
+  AdvancedDetectionResult,
 } from '../types';
 
 const api = axios.create({
@@ -1384,6 +1436,31 @@ export const crmAPI = {
       api.post<{ message: string }>(`/crm/customers/${customerId}/portal-users/${userId}/deactivate`),
     resetPassword: (customerId: string, userId: string, data: ResetPortalUserPasswordRequest) =>
       api.post<{ message: string }>(`/crm/customers/${customerId}/portal-users/${userId}/reset-password`, data),
+  },
+
+  // Discovered Assets (auto-populated from recon scans)
+  discoveredAssets: {
+    getByCustomer: (customerId: string, params?: { asset_type?: string; is_in_scope?: boolean; limit?: number; offset?: number }) => {
+      const queryParams = new URLSearchParams();
+      if (params?.asset_type) queryParams.append('asset_type', params.asset_type);
+      if (params?.is_in_scope !== undefined) queryParams.append('is_in_scope', String(params.is_in_scope));
+      if (params?.limit) queryParams.append('limit', String(params.limit));
+      if (params?.offset) queryParams.append('offset', String(params.offset));
+      const qs = queryParams.toString();
+      return api.get<CrmDiscoveredAsset[]>(`/crm/customers/${customerId}/discovered-assets${qs ? `?${qs}` : ''}`);
+    },
+    getSummary: (customerId: string) =>
+      api.get<DiscoveredAssetsSummary>(`/crm/customers/${customerId}/discovered-assets/summary`),
+    getById: (id: string) =>
+      api.get<CrmDiscoveredAsset>(`/crm/discovered-assets/${id}`),
+    create: (customerId: string, data: CreateDiscoveredAssetRequest) =>
+      api.post<CrmDiscoveredAsset>(`/crm/customers/${customerId}/discovered-assets`, data),
+    update: (id: string, data: UpdateDiscoveredAssetRequest) =>
+      api.put<CrmDiscoveredAsset>(`/crm/discovered-assets/${id}`, data),
+    delete: (id: string) =>
+      api.delete(`/crm/discovered-assets/${id}`),
+    bulkSetScope: (customerId: string, data: BulkScopeRequest) =>
+      api.post<{ updated: number }>(`/crm/customers/${customerId}/discovered-assets/bulk-scope`, data),
   },
 };
 
@@ -2677,6 +2754,259 @@ export const siemFullAPI = {
 
   deleteRuleChain: (id: string) =>
     api.delete<{ message: string }>(`/siem/sigma/chains/${id}`),
+};
+
+// ============================================================================
+// UEBA (User Entity Behavior Analytics) API
+// ============================================================================
+
+export const uebaAPI = {
+  // Dashboard & Stats
+  getDashboard: () =>
+    api.get<UebaDashboardStats>('/ueba/dashboard'),
+
+  getStats: () =>
+    api.get<{
+      entity_stats: { entity_type: string; risk_level: string; count: number }[];
+      anomaly_stats: { anomaly_type: string; status: string; count: number }[];
+      activity_stats: { activity_type: string; count: number }[];
+    }>('/ueba/stats'),
+
+  // Entities
+  listEntities: (params?: {
+    entity_type?: string;
+    risk_level?: string;
+    department?: string;
+    is_privileged?: boolean;
+    is_active?: boolean;
+    search?: string;
+    offset?: number;
+    limit?: number;
+  }) => api.get<UebaEntityListResponse>('/ueba/entities', { params }),
+
+  getEntity: (id: string) =>
+    api.get<UebaEntity>(`/ueba/entities/${id}`),
+
+  createEntity: (data: CreateUebaEntityRequest) =>
+    api.post<UebaEntity>('/ueba/entities', data),
+
+  updateEntity: (id: string, data: UpdateUebaEntityRequest) =>
+    api.put<UebaEntity>(`/ueba/entities/${id}`, data),
+
+  deleteEntity: (id: string) =>
+    api.delete<{ message: string }>(`/ueba/entities/${id}`),
+
+  getEntityBaselines: (id: string) =>
+    api.get<UebaBaseline[]>(`/ueba/entities/${id}/baselines`),
+
+  getEntityRiskFactors: (id: string) =>
+    api.get<UebaRiskFactorListResponse>(`/ueba/entities/${id}/risk-factors`),
+
+  // Peer Groups
+  listPeerGroups: () =>
+    api.get<{ peer_groups: UebaPeerGroup[]; total: number }>('/ueba/peer-groups'),
+
+  getPeerGroup: (id: string) =>
+    api.get<UebaPeerGroup>(`/ueba/peer-groups/${id}`),
+
+  createPeerGroup: (data: CreateUebaPeerGroupRequest) =>
+    api.post<UebaPeerGroup>('/ueba/peer-groups', data),
+
+  updatePeerGroup: (id: string, data: UpdateUebaPeerGroupRequest) =>
+    api.put<UebaPeerGroup>(`/ueba/peer-groups/${id}`, data),
+
+  deletePeerGroup: (id: string) =>
+    api.delete<{ message: string }>(`/ueba/peer-groups/${id}`),
+
+  getPeerGroupMembers: (id: string) =>
+    api.get<UebaEntity[]>(`/ueba/peer-groups/${id}/members`),
+
+  // Activities
+  listActivities: (params?: {
+    entity_id?: string;
+    activity_type?: string;
+    is_anomalous?: boolean;
+    start_time?: string;
+    end_time?: string;
+    offset?: number;
+    limit?: number;
+  }) => api.get<UebaActivityListResponse>('/ueba/activities', { params }),
+
+  recordActivity: (data: RecordUebaActivityRequest) =>
+    api.post<ProcessUebaActivityResponse>('/ueba/activities', data),
+
+  recordActivitiesBulk: (activities: RecordUebaActivityRequest[]) =>
+    api.post<{
+      processed: number;
+      total_anomalies: number;
+      results: {
+        entity_id: string;
+        is_anomalous?: boolean;
+        detected_anomalies?: string[];
+        risk_contribution?: number;
+        error?: string;
+      }[];
+    }>('/ueba/activities/bulk', { activities }),
+
+  // Anomalies
+  listAnomalies: (params?: {
+    entity_id?: string;
+    anomaly_type?: string;
+    status?: string;
+    severity?: string;
+    start_time?: string;
+    end_time?: string;
+    offset?: number;
+    limit?: number;
+  }) => api.get<UebaAnomalyListResponse>('/ueba/anomalies', { params }),
+
+  getAnomaly: (id: string) =>
+    api.get<UebaAnomaly>(`/ueba/anomalies/${id}`),
+
+  updateAnomaly: (id: string, data: UpdateUebaAnomalyRequest) =>
+    api.put<UebaAnomaly>(`/ueba/anomalies/${id}`, data),
+
+  acknowledgeAnomaly: (id: string) =>
+    api.post<{ message: string }>(`/ueba/anomalies/${id}/acknowledge`),
+
+  resolveAnomaly: (id: string, data: { resolution_notes?: string; false_positive?: boolean }) =>
+    api.post<{ message: string }>(`/ueba/anomalies/${id}/resolve`, data),
+
+  // Sessions
+  listSessions: (params?: {
+    entity_id?: string;
+    session_type?: string;
+    auth_status?: string;
+    is_anomalous?: boolean;
+    start_time?: string;
+    end_time?: string;
+    offset?: number;
+    limit?: number;
+  }) => api.get<UebaSessionListResponse>('/ueba/sessions', { params }),
+
+  recordSession: (data: RecordUebaSessionRequest) =>
+    api.post<UebaSession>('/ueba/sessions', data),
+
+  // Baselines
+  listBaselines: (params?: {
+    entity_id?: string;
+    peer_group_id?: string;
+    metric_category?: string;
+  }) => api.get<UebaBaselineListResponse>('/ueba/baselines', { params }),
+
+  // Watchlist
+  addToWatchlist: (data: AddToWatchlistRequest) =>
+    api.post<{ id: string; entity_id: string; reason: string; message: string }>('/ueba/watchlist', data),
+
+  removeFromWatchlist: (entityId: string) =>
+    api.delete<{ message: string }>(`/ueba/watchlist/${entityId}`),
+
+  // Sprint 4: Advanced Detection
+  getAdvancedStats: () =>
+    api.get<UebaAdvancedStats>('/ueba/advanced/stats'),
+
+  listAdvancedDetections: (params?: {
+    entity_id?: string;
+    detection_type?: string;
+    severity?: string;
+    status?: string;
+    start_time?: string;
+    end_time?: string;
+    offset?: number;
+    limit?: number;
+  }) => api.get<UebaAdvancedDetectionListResponse>('/ueba/advanced/detections', { params }),
+
+  getAdvancedDetection: (id: string) =>
+    api.get<UebaAdvancedDetection>(`/ueba/advanced/detections/${id}`),
+
+  updateAdvancedDetectionStatus: (id: string, data: { status: string; resolution?: string }) =>
+    api.put<UebaAdvancedDetection>(`/ueba/advanced/detections/${id}/status`, data),
+
+  // Business Hours
+  listBusinessHours: () =>
+    api.get<UebaBusinessHours[]>('/ueba/advanced/business-hours'),
+
+  createBusinessHours: (data: CreateBusinessHoursRequest) =>
+    api.post<UebaBusinessHours>('/ueba/advanced/business-hours', data),
+
+  deleteBusinessHours: (id: string) =>
+    api.delete<{ message: string }>(`/ueba/advanced/business-hours/${id}`),
+
+  // Sensitive Resources
+  listSensitiveResources: () =>
+    api.get<UebaSensitiveResource[]>('/ueba/advanced/sensitive-resources'),
+
+  createSensitiveResource: (data: CreateSensitiveResourceRequest) =>
+    api.post<UebaSensitiveResource>('/ueba/advanced/sensitive-resources', data),
+
+  deleteSensitiveResource: (id: string) =>
+    api.delete<{ message: string }>(`/ueba/advanced/sensitive-resources/${id}`),
+
+  // Known VPNs
+  listKnownVpns: () =>
+    api.get<UebaKnownVpn[]>('/ueba/advanced/known-vpns'),
+
+  createKnownVpn: (data: CreateKnownVpnRequest) =>
+    api.post<UebaKnownVpn>('/ueba/advanced/known-vpns', data),
+
+  deleteKnownVpn: (id: string) =>
+    api.delete<{ message: string }>(`/ueba/advanced/known-vpns/${id}`),
+
+  // Detection Rules
+  listDetectionRules: () =>
+    api.get<UebaDetectionRule[]>('/ueba/advanced/detection-rules'),
+
+  createDetectionRule: (data: CreateDetectionRuleRequest) =>
+    api.post<UebaDetectionRule>('/ueba/advanced/detection-rules', data),
+
+  toggleDetectionRule: (id: string) =>
+    api.put<UebaDetectionRule>(`/ueba/advanced/detection-rules/${id}/toggle`),
+
+  deleteDetectionRule: (id: string) =>
+    api.delete<{ message: string }>(`/ueba/advanced/detection-rules/${id}`),
+
+  // Data Access Recording
+  listDataAccesses: (params?: {
+    entity_id?: string;
+    is_anomalous?: boolean;
+    start_time?: string;
+    end_time?: string;
+    offset?: number;
+    limit?: number;
+  }) => api.get<UebaDataAccessListResponse>('/ueba/advanced/data-accesses', { params }),
+
+  recordDataAccess: (data: RecordDataAccessRequest) =>
+    api.post<UebaDataAccess>('/ueba/advanced/data-accesses', data),
+
+  // Host Access Recording
+  listHostAccesses: (params?: {
+    entity_id?: string;
+    is_anomalous?: boolean;
+    start_time?: string;
+    end_time?: string;
+    offset?: number;
+    limit?: number;
+  }) => api.get<UebaHostAccessListResponse>('/ueba/advanced/host-accesses', { params }),
+
+  recordHostAccess: (data: RecordHostAccessRequest) =>
+    api.post<UebaHostAccess>('/ueba/advanced/host-accesses', data),
+
+  // Data Transfer Recording
+  listDataTransfers: (params?: {
+    entity_id?: string;
+    is_anomalous?: boolean;
+    start_time?: string;
+    end_time?: string;
+    offset?: number;
+    limit?: number;
+  }) => api.get<UebaDataTransferListResponse>('/ueba/advanced/data-transfers', { params }),
+
+  recordDataTransfer: (data: RecordDataTransferRequest) =>
+    api.post<UebaDataTransfer>('/ueba/advanced/data-transfers', data),
+
+  // Run Detection
+  runAdvancedDetection: (data: RunAdvancedDetectionRequest) =>
+    api.post<AdvancedDetectionResult>('/ueba/advanced/run-detection', data),
 };
 
 // ============================================================================

@@ -74,6 +74,10 @@ pub struct RunDorksRequest {
     /// Delay between queries in milliseconds
     #[serde(default = "default_delay")]
     pub delay_ms: u64,
+    /// Optional CRM customer ID
+    pub customer_id: Option<String>,
+    /// Optional CRM engagement ID
+    pub engagement_id: Option<String>,
 }
 
 fn default_max_results() -> usize {
@@ -105,6 +109,10 @@ pub struct CustomDorkRequest {
     pub provider: String,
     /// SerpAPI key
     pub serpapi_key: Option<String>,
+    /// Optional CRM customer ID
+    pub customer_id: Option<String>,
+    /// Optional CRM engagement ID
+    pub engagement_id: Option<String>,
 }
 
 /// Request to save a custom dork template
@@ -305,7 +313,13 @@ pub async fn run_dorks(
     let template_count = templates.len();
 
     // Create scan record
-    let scan_id = db::create_dork_scan(pool.get_ref(), &claims.sub, &req.domain).await?;
+    let scan_id = db::create_dork_scan(
+        pool.get_ref(),
+        &claims.sub,
+        &req.domain,
+        req.customer_id.as_deref(),
+        req.engagement_id.as_deref(),
+    ).await?;
 
     // Track running scan
     {
@@ -425,7 +439,13 @@ pub async fn run_custom_dork(
     let result = google_dorking::run_custom_dork(&req.domain, &req.query, &config).await?;
 
     // Save to database
-    let scan_id = db::create_dork_scan(pool.get_ref(), &claims.sub, &req.domain).await?;
+    let scan_id = db::create_dork_scan(
+        pool.get_ref(),
+        &claims.sub,
+        &req.domain,
+        req.customer_id.as_deref(),
+        req.engagement_id.as_deref(),
+    ).await?;
     db::save_dork_result(pool.get_ref(), &scan_id, &result).await?;
 
     let started_at = chrono::Utc::now();

@@ -256,6 +256,14 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     create_threat_actor_tables(pool).await?;
     // Sprint 2 (Priority 2): Sigma Rule Engine Enhancement
     create_sigma_enhancement_sprint2_tables(pool).await?;
+    // Add CRM columns (customer_id, engagement_id) to all scan tables
+    add_crm_columns_to_all_scan_tables(pool).await?;
+    // CRM discovered assets table (auto-population from recon scans)
+    create_crm_discovered_assets_table(pool).await?;
+    // UEBA (User Entity Behavior Analytics) tables (Sprint 3-4 - Priority 2 Features)
+    create_ueba_tables(pool).await?;
+    // NetFlow/IPFIX Analysis tables (Sprint 5 - Priority 2 Features)
+    create_netflow_tables(pool).await?;
     Ok(())
 }
 
@@ -19373,5 +19381,1311 @@ async fn create_sigma_enhancement_sprint2_tables(pool: &SqlitePool) -> Result<()
         .await;
 
     log::info!("Created Sigma Rule Engine Enhancement tables (Sprint 2 - Priority 2)");
+    Ok(())
+}
+
+/// Helper function to add customer_id and engagement_id columns to a table
+async fn add_crm_columns_to_table(pool: &SqlitePool, table_name: &str) -> Result<()> {
+    // Check if columns already exist using PRAGMA table_info
+    let table_info: Vec<(i64, String, String, i64, Option<String>, i64)> =
+        sqlx::query_as(&format!("PRAGMA table_info({})", table_name))
+        .fetch_all(pool)
+        .await?;
+
+    let has_customer_id = table_info.iter().any(|(_, name, _, _, _, _)| name == "customer_id");
+    let has_engagement_id = table_info.iter().any(|(_, name, _, _, _, _)| name == "engagement_id");
+
+    if !has_customer_id {
+        let _ = sqlx::query(&format!(
+            "ALTER TABLE {} ADD COLUMN customer_id TEXT REFERENCES customers(id)",
+            table_name
+        ))
+        .execute(pool)
+        .await;
+
+        let _ = sqlx::query(&format!(
+            "CREATE INDEX IF NOT EXISTS idx_{}_customer_id ON {}(customer_id)",
+            table_name, table_name
+        ))
+        .execute(pool)
+        .await;
+    }
+
+    if !has_engagement_id {
+        let _ = sqlx::query(&format!(
+            "ALTER TABLE {} ADD COLUMN engagement_id TEXT REFERENCES engagements(id)",
+            table_name
+        ))
+        .execute(pool)
+        .await;
+
+        let _ = sqlx::query(&format!(
+            "CREATE INDEX IF NOT EXISTS idx_{}_engagement_id ON {}(engagement_id)",
+            table_name, table_name
+        ))
+        .execute(pool)
+        .await;
+    }
+
+    Ok(())
+}
+
+/// Add CRM columns (customer_id, engagement_id) to all scan tables for unified CRM integration
+async fn add_crm_columns_to_all_scan_tables(pool: &SqlitePool) -> Result<()> {
+    // List of all scan/campaign/sample/session tables that need CRM columns
+    let tables = vec![
+        // OSINT/Recon tables
+        "nuclei_scans",
+        "asset_discovery_scans",
+        "email_security_results",
+        "google_dork_scans",
+        "git_recon_scans",
+        "breach_check_history",
+        "breach_monitors",
+
+        // Secret Detection tables
+        "git_secret_scans",
+        "filesystem_secret_scans",
+
+        // Security Scanning tables
+        "wireless_scans",
+        "privesc_scans",
+        "sast_scans",
+        "api_security_scans",
+
+        // CI/CD & K8s tables
+        "cicd_pipeline_scans",
+        "k8s_security_scans",
+
+        // Red Team tables
+        "phishing_campaigns",
+        "sms_campaigns",
+        "vishing_campaigns",
+        "qr_campaigns",
+        "qr_scans",
+        "purple_emulation_campaigns",
+
+        // Malware/Binary Analysis tables
+        "binary_samples",
+        "fuzzing_campaigns",
+        "malware_samples",
+        "sandbox_submissions",
+        "dynamic_analysis_sessions",
+
+        // Import tables
+        "imported_scans",
+
+        // Blue Team tables
+        "incidents",
+        "forensic_cases",
+
+        // Additional scan types
+        "yara_scans",
+        "yara_memory_scans",
+        "dns_analysis_jobs",
+    ];
+
+    for table in tables {
+        // Only add columns if table exists
+        let table_exists: Option<(String,)> = sqlx::query_as(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name=?"
+        )
+        .bind(table)
+        .fetch_optional(pool)
+        .await?;
+
+        if table_exists.is_some() {
+            add_crm_columns_to_table(pool, table).await?;
+        }
+    }
+
+    log::info!("Added CRM columns (customer_id, engagement_id) to all scan tables");
+    Ok(())
+}
+
+/// Create the CRM discovered assets table for auto-population from recon scans
+async fn create_crm_discovered_assets_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS crm_discovered_assets (
+            id TEXT PRIMARY KEY,
+            customer_id TEXT NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+            engagement_id TEXT REFERENCES engagements(id) ON DELETE SET NULL,
+            asset_type TEXT NOT NULL,
+            value TEXT NOT NULL,
+            first_seen_at TEXT NOT NULL,
+            last_seen_at TEXT NOT NULL,
+            source TEXT NOT NULL,
+            source_scan_id TEXT,
+            source_scan_type TEXT,
+            metadata TEXT,
+            is_in_scope BOOLEAN DEFAULT FALSE,
+            is_verified BOOLEAN DEFAULT FALSE,
+            notes TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(customer_id, asset_type, value)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for efficient queries
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_crm_discovered_assets_customer ON crm_discovered_assets(customer_id)"
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_crm_discovered_assets_type ON crm_discovered_assets(asset_type)"
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_crm_discovered_assets_value ON crm_discovered_assets(value)"
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_crm_discovered_assets_source ON crm_discovered_assets(source)"
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_crm_discovered_assets_engagement ON crm_discovered_assets(engagement_id)"
+    )
+    .execute(pool)
+    .await?;
+
+    log::info!("Created crm_discovered_assets table");
+    Ok(())
+}
+
+/// Create UEBA (User Entity Behavior Analytics) tables (Sprint 3-4 - Priority 2 Features)
+async fn create_ueba_tables(pool: &SqlitePool) -> Result<()> {
+    // UEBA Entities - Users, hosts, service accounts, applications being tracked
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ueba_entities (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            entity_type TEXT NOT NULL,
+            entity_id TEXT NOT NULL,
+            display_name TEXT,
+            department TEXT,
+            role TEXT,
+            manager TEXT,
+            location TEXT,
+            peer_group_id TEXT REFERENCES ueba_peer_groups(id),
+            risk_score INTEGER DEFAULT 0,
+            risk_level TEXT DEFAULT 'low',
+            baseline_data TEXT,
+            tags TEXT,
+            last_activity_at TEXT,
+            first_seen_at TEXT,
+            is_active BOOLEAN DEFAULT TRUE,
+            is_privileged BOOLEAN DEFAULT FALSE,
+            is_service_account BOOLEAN DEFAULT FALSE,
+            metadata TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(user_id, entity_type, entity_id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_entities_user ON ueba_entities(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_entities_type ON ueba_entities(entity_type)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_entities_risk ON ueba_entities(risk_score)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_entities_peer_group ON ueba_entities(peer_group_id)")
+        .execute(pool)
+        .await?;
+
+    // UEBA Peer Groups - Groups of similar users/entities for baseline comparison
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ueba_peer_groups (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            criteria TEXT NOT NULL,
+            member_count INTEGER DEFAULT 0,
+            baseline_metrics TEXT,
+            is_auto_generated BOOLEAN DEFAULT FALSE,
+            last_updated_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_peer_groups_user ON ueba_peer_groups(user_id)")
+        .execute(pool)
+        .await?;
+
+    // UEBA Activities - Individual activities/events for entities
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ueba_activities (
+            id TEXT PRIMARY KEY,
+            entity_id TEXT NOT NULL REFERENCES ueba_entities(id) ON DELETE CASCADE,
+            activity_type TEXT NOT NULL,
+            source_ip TEXT,
+            source_location TEXT,
+            source_country TEXT,
+            source_city TEXT,
+            source_lat REAL,
+            source_lon REAL,
+            destination TEXT,
+            destination_type TEXT,
+            action TEXT,
+            resource TEXT,
+            resource_type TEXT,
+            status TEXT,
+            risk_contribution INTEGER DEFAULT 0,
+            is_anomalous BOOLEAN DEFAULT FALSE,
+            anomaly_reasons TEXT,
+            raw_event TEXT,
+            event_source TEXT,
+            timestamp TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_activities_entity ON ueba_activities(entity_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_activities_type ON ueba_activities(activity_type)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_activities_timestamp ON ueba_activities(timestamp)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_activities_anomalous ON ueba_activities(is_anomalous)")
+        .execute(pool)
+        .await?;
+
+    // UEBA Anomalies - Detected behavioral anomalies
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ueba_anomalies (
+            id TEXT PRIMARY KEY,
+            entity_id TEXT NOT NULL REFERENCES ueba_entities(id) ON DELETE CASCADE,
+            anomaly_type TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT NOT NULL,
+            evidence TEXT NOT NULL,
+            baseline_deviation REAL,
+            confidence REAL,
+            status TEXT DEFAULT 'new',
+            priority TEXT DEFAULT 'medium',
+            assigned_to TEXT,
+            related_activities TEXT,
+            related_anomalies TEXT,
+            mitre_techniques TEXT,
+            risk_score_impact INTEGER DEFAULT 0,
+            detected_at TEXT NOT NULL,
+            acknowledged_at TEXT,
+            acknowledged_by TEXT,
+            resolved_at TEXT,
+            resolved_by TEXT,
+            resolution_notes TEXT,
+            false_positive BOOLEAN DEFAULT FALSE,
+            suppressed BOOLEAN DEFAULT FALSE,
+            suppression_reason TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_anomalies_entity ON ueba_anomalies(entity_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_anomalies_type ON ueba_anomalies(anomaly_type)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_anomalies_status ON ueba_anomalies(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_anomalies_severity ON ueba_anomalies(severity)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_anomalies_detected ON ueba_anomalies(detected_at)")
+        .execute(pool)
+        .await?;
+
+    // UEBA Risk Factors - Components contributing to entity risk scores
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ueba_risk_factors (
+            id TEXT PRIMARY KEY,
+            entity_id TEXT NOT NULL REFERENCES ueba_entities(id) ON DELETE CASCADE,
+            factor_type TEXT NOT NULL,
+            factor_value TEXT,
+            description TEXT,
+            weight REAL DEFAULT 1.0,
+            contribution INTEGER,
+            source TEXT,
+            source_id TEXT,
+            valid_from TEXT NOT NULL,
+            valid_until TEXT,
+            is_active BOOLEAN DEFAULT TRUE,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_risk_factors_entity ON ueba_risk_factors(entity_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_risk_factors_type ON ueba_risk_factors(factor_type)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_risk_factors_active ON ueba_risk_factors(is_active)")
+        .execute(pool)
+        .await?;
+
+    // UEBA Baselines - Statistical baselines for entities and peer groups
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ueba_baselines (
+            id TEXT PRIMARY KEY,
+            entity_id TEXT REFERENCES ueba_entities(id) ON DELETE CASCADE,
+            peer_group_id TEXT REFERENCES ueba_peer_groups(id) ON DELETE CASCADE,
+            metric_name TEXT NOT NULL,
+            metric_category TEXT NOT NULL,
+            period TEXT NOT NULL,
+            mean_value REAL,
+            std_deviation REAL,
+            min_value REAL,
+            max_value REAL,
+            median_value REAL,
+            percentile_25 REAL,
+            percentile_75 REAL,
+            percentile_95 REAL,
+            percentile_99 REAL,
+            sample_count INTEGER,
+            last_value REAL,
+            trend TEXT,
+            is_stable BOOLEAN DEFAULT TRUE,
+            last_calculated_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_baselines_entity ON ueba_baselines(entity_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_baselines_peer_group ON ueba_baselines(peer_group_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_baselines_metric ON ueba_baselines(metric_name)")
+        .execute(pool)
+        .await?;
+
+    // UEBA Sessions - Login/session tracking for impossible travel detection
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ueba_sessions (
+            id TEXT PRIMARY KEY,
+            entity_id TEXT NOT NULL REFERENCES ueba_entities(id) ON DELETE CASCADE,
+            session_id TEXT,
+            session_type TEXT NOT NULL,
+            source_ip TEXT NOT NULL,
+            source_country TEXT,
+            source_city TEXT,
+            source_lat REAL,
+            source_lon REAL,
+            source_asn TEXT,
+            source_isp TEXT,
+            user_agent TEXT,
+            device_type TEXT,
+            device_fingerprint TEXT,
+            auth_method TEXT,
+            auth_status TEXT NOT NULL,
+            mfa_used BOOLEAN DEFAULT FALSE,
+            is_vpn BOOLEAN DEFAULT FALSE,
+            is_tor BOOLEAN DEFAULT FALSE,
+            is_proxy BOOLEAN DEFAULT FALSE,
+            risk_score INTEGER DEFAULT 0,
+            anomaly_flags TEXT,
+            started_at TEXT NOT NULL,
+            ended_at TEXT,
+            duration_seconds INTEGER,
+            created_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_sessions_entity ON ueba_sessions(entity_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_sessions_ip ON ueba_sessions(source_ip)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_sessions_started ON ueba_sessions(started_at)")
+        .execute(pool)
+        .await?;
+
+    // UEBA Alert Rules - Custom detection rules for behavioral anomalies
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ueba_alert_rules (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            rule_type TEXT NOT NULL,
+            conditions TEXT NOT NULL,
+            threshold_type TEXT,
+            threshold_value REAL,
+            baseline_deviation_threshold REAL,
+            time_window_minutes INTEGER,
+            severity TEXT NOT NULL,
+            enabled BOOLEAN DEFAULT TRUE,
+            entity_types TEXT,
+            peer_groups TEXT,
+            actions TEXT,
+            cooldown_minutes INTEGER DEFAULT 60,
+            last_triggered_at TEXT,
+            trigger_count INTEGER DEFAULT 0,
+            false_positive_count INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_alert_rules_user ON ueba_alert_rules(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_alert_rules_enabled ON ueba_alert_rules(enabled)")
+        .execute(pool)
+        .await?;
+
+    // UEBA Watchlist - Entities under enhanced monitoring
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ueba_watchlist (
+            id TEXT PRIMARY KEY,
+            entity_id TEXT NOT NULL REFERENCES ueba_entities(id) ON DELETE CASCADE,
+            user_id TEXT NOT NULL,
+            reason TEXT NOT NULL,
+            priority TEXT NOT NULL,
+            monitoring_level TEXT DEFAULT 'enhanced',
+            alert_on_all_activities BOOLEAN DEFAULT FALSE,
+            custom_thresholds TEXT,
+            notes TEXT,
+            added_at TEXT NOT NULL,
+            expires_at TEXT,
+            added_by TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(entity_id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_watchlist_entity ON ueba_watchlist(entity_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_watchlist_user ON ueba_watchlist(user_id)")
+        .execute(pool)
+        .await?;
+
+    // UEBA Data Sources - External log sources for UEBA
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ueba_data_sources (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            source_type TEXT NOT NULL,
+            description TEXT,
+            connection_config TEXT,
+            parser_config TEXT,
+            field_mappings TEXT NOT NULL,
+            enabled BOOLEAN DEFAULT TRUE,
+            status TEXT DEFAULT 'disconnected',
+            last_event_at TEXT,
+            events_processed INTEGER DEFAULT 0,
+            errors_count INTEGER DEFAULT 0,
+            last_error TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_data_sources_user ON ueba_data_sources(user_id)")
+        .execute(pool)
+        .await?;
+
+    // UEBA Investigation Cases - Cases for investigating anomalies
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ueba_investigations (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT,
+            status TEXT DEFAULT 'open',
+            priority TEXT DEFAULT 'medium',
+            entity_ids TEXT,
+            anomaly_ids TEXT,
+            activity_ids TEXT,
+            assigned_to TEXT,
+            findings TEXT,
+            timeline TEXT,
+            evidence TEXT,
+            conclusion TEXT,
+            recommendations TEXT,
+            opened_at TEXT NOT NULL,
+            closed_at TEXT,
+            closed_by TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_investigations_user ON ueba_investigations(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_investigations_status ON ueba_investigations(status)")
+        .execute(pool)
+        .await?;
+
+    // UEBA Risk Score History - Track risk score changes over time
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ueba_risk_score_history (
+            id TEXT PRIMARY KEY,
+            entity_id TEXT NOT NULL REFERENCES ueba_entities(id) ON DELETE CASCADE,
+            risk_score INTEGER NOT NULL,
+            risk_level TEXT NOT NULL,
+            change_reason TEXT,
+            change_source TEXT,
+            factors_snapshot TEXT,
+            recorded_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_risk_history_entity ON ueba_risk_score_history(entity_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_risk_history_recorded ON ueba_risk_score_history(recorded_at)")
+        .execute(pool)
+        .await?;
+
+    // ========================
+    // Sprint 4: Advanced Behavioral Detection Tables
+    // ========================
+
+    // Business Hours Configuration - Per-organization or per-entity business hours
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ueba_business_hours (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            organization_id TEXT,
+            entity_id TEXT REFERENCES ueba_entities(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            timezone TEXT NOT NULL DEFAULT 'UTC',
+            monday_start TEXT,
+            monday_end TEXT,
+            tuesday_start TEXT,
+            tuesday_end TEXT,
+            wednesday_start TEXT,
+            wednesday_end TEXT,
+            thursday_start TEXT,
+            thursday_end TEXT,
+            friday_start TEXT,
+            friday_end TEXT,
+            saturday_start TEXT,
+            saturday_end TEXT,
+            sunday_start TEXT,
+            sunday_end TEXT,
+            holidays TEXT,
+            is_default BOOLEAN DEFAULT FALSE,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_business_hours_user ON ueba_business_hours(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_business_hours_org ON ueba_business_hours(organization_id)")
+        .execute(pool)
+        .await?;
+
+    // Sensitive Resources - Define resources and their sensitivity levels
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ueba_sensitive_resources (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            organization_id TEXT,
+            resource_type TEXT NOT NULL,
+            resource_pattern TEXT NOT NULL,
+            sensitivity_level TEXT NOT NULL,
+            description TEXT,
+            owner TEXT,
+            allowed_roles TEXT,
+            alert_on_access BOOLEAN DEFAULT FALSE,
+            require_justification BOOLEAN DEFAULT FALSE,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_sensitive_resources_user ON ueba_sensitive_resources(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_sensitive_resources_type ON ueba_sensitive_resources(resource_type)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_sensitive_resources_level ON ueba_sensitive_resources(sensitivity_level)")
+        .execute(pool)
+        .await?;
+
+    // Data Access Records - Track data access events
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ueba_data_accesses (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            entity_id TEXT NOT NULL REFERENCES ueba_entities(id) ON DELETE CASCADE,
+            resource_id TEXT,
+            resource_name TEXT NOT NULL,
+            resource_type TEXT NOT NULL,
+            access_type TEXT NOT NULL,
+            sensitivity_level TEXT,
+            source_ip TEXT,
+            source_host TEXT,
+            bytes_accessed INTEGER,
+            records_accessed INTEGER,
+            query_text TEXT,
+            justification TEXT,
+            is_anomalous BOOLEAN DEFAULT FALSE,
+            anomaly_reasons TEXT,
+            risk_score INTEGER DEFAULT 0,
+            accessed_at TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_data_accesses_user ON ueba_data_accesses(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_data_accesses_entity ON ueba_data_accesses(entity_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_data_accesses_resource ON ueba_data_accesses(resource_name)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_data_accesses_time ON ueba_data_accesses(accessed_at)")
+        .execute(pool)
+        .await?;
+
+    // Host Access Records - Track host-to-host access for lateral movement detection
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ueba_host_accesses (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            entity_id TEXT NOT NULL REFERENCES ueba_entities(id) ON DELETE CASCADE,
+            source_host TEXT NOT NULL,
+            destination_host TEXT NOT NULL,
+            destination_ip TEXT,
+            access_type TEXT NOT NULL,
+            protocol TEXT,
+            port INTEGER,
+            success BOOLEAN DEFAULT TRUE,
+            authentication_method TEXT,
+            tool_used TEXT,
+            is_admin_access BOOLEAN DEFAULT FALSE,
+            is_anomalous BOOLEAN DEFAULT FALSE,
+            anomaly_reasons TEXT,
+            duration_seconds INTEGER,
+            bytes_transferred INTEGER,
+            accessed_at TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_host_accesses_user ON ueba_host_accesses(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_host_accesses_entity ON ueba_host_accesses(entity_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_host_accesses_src ON ueba_host_accesses(source_host)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_host_accesses_dst ON ueba_host_accesses(destination_host)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_host_accesses_time ON ueba_host_accesses(accessed_at)")
+        .execute(pool)
+        .await?;
+
+    // Data Transfer Records - Track data transfers for exfiltration detection
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ueba_data_transfers (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            entity_id TEXT NOT NULL REFERENCES ueba_entities(id) ON DELETE CASCADE,
+            transfer_type TEXT NOT NULL,
+            source_path TEXT,
+            destination TEXT NOT NULL,
+            destination_type TEXT NOT NULL,
+            bytes_transferred INTEGER NOT NULL,
+            file_count INTEGER DEFAULT 1,
+            file_types TEXT,
+            is_encrypted BOOLEAN DEFAULT FALSE,
+            is_compressed BOOLEAN DEFAULT FALSE,
+            protocol TEXT,
+            tool_used TEXT,
+            is_external BOOLEAN DEFAULT FALSE,
+            is_anomalous BOOLEAN DEFAULT FALSE,
+            anomaly_reasons TEXT,
+            risk_score INTEGER DEFAULT 0,
+            transferred_at TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_data_transfers_user ON ueba_data_transfers(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_data_transfers_entity ON ueba_data_transfers(entity_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_data_transfers_dest ON ueba_data_transfers(destination)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_data_transfers_time ON ueba_data_transfers(transferred_at)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_data_transfers_external ON ueba_data_transfers(is_external)")
+        .execute(pool)
+        .await?;
+
+    // Known VPN/Proxy IP Ranges - For impossible travel detection
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ueba_known_vpns (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            organization_id TEXT,
+            name TEXT NOT NULL,
+            ip_range TEXT NOT NULL,
+            vpn_type TEXT NOT NULL,
+            provider TEXT,
+            is_corporate BOOLEAN DEFAULT FALSE,
+            is_trusted BOOLEAN DEFAULT TRUE,
+            notes TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_known_vpns_user ON ueba_known_vpns(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_known_vpns_org ON ueba_known_vpns(organization_id)")
+        .execute(pool)
+        .await?;
+
+    // Detection Rules - Configurable detection rule settings
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ueba_detection_rules (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            organization_id TEXT,
+            rule_type TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            is_enabled BOOLEAN DEFAULT TRUE,
+            severity TEXT DEFAULT 'medium',
+            config TEXT NOT NULL,
+            mitre_techniques TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_detection_rules_user ON ueba_detection_rules(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_detection_rules_type ON ueba_detection_rules(rule_type)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_detection_rules_enabled ON ueba_detection_rules(is_enabled)")
+        .execute(pool)
+        .await?;
+
+    // Advanced Detection Results - Store results from advanced detection algorithms
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ueba_advanced_detections (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            entity_id TEXT NOT NULL REFERENCES ueba_entities(id) ON DELETE CASCADE,
+            detection_type TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            risk_score INTEGER NOT NULL,
+            confidence REAL DEFAULT 0.0,
+            title TEXT NOT NULL,
+            description TEXT,
+            evidence TEXT NOT NULL,
+            mitre_techniques TEXT,
+            related_activity_ids TEXT,
+            related_anomaly_id TEXT REFERENCES ueba_anomalies(id) ON DELETE SET NULL,
+            status TEXT DEFAULT 'new',
+            assigned_to TEXT,
+            resolution TEXT,
+            resolved_at TEXT,
+            detected_at TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_advanced_detections_user ON ueba_advanced_detections(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_advanced_detections_entity ON ueba_advanced_detections(entity_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_advanced_detections_type ON ueba_advanced_detections(detection_type)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_advanced_detections_severity ON ueba_advanced_detections(severity)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_advanced_detections_status ON ueba_advanced_detections(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ueba_advanced_detections_time ON ueba_advanced_detections(detected_at)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created UEBA tables (Sprint 3-4 - Priority 2 Features)");
+    Ok(())
+}
+
+/// Create NetFlow/IPFIX/sFlow analysis tables (Sprint 5 - Priority 2 Features)
+async fn create_netflow_tables(pool: &SqlitePool) -> Result<()> {
+    // Flow collectors table - tracks configured flow collectors
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS flow_collectors (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            organization_id TEXT,
+            name TEXT NOT NULL,
+            description TEXT,
+            collector_type TEXT NOT NULL,
+            listen_address TEXT NOT NULL DEFAULT '0.0.0.0',
+            listen_port INTEGER NOT NULL DEFAULT 2055,
+            status TEXT NOT NULL DEFAULT 'stopped',
+            packets_received INTEGER DEFAULT 0,
+            flows_parsed INTEGER DEFAULT 0,
+            parse_errors INTEGER DEFAULT 0,
+            bytes_received INTEGER DEFAULT 0,
+            last_packet_at TEXT,
+            error_message TEXT,
+            config TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_flow_collectors_user ON flow_collectors(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_flow_collectors_status ON flow_collectors(status)")
+        .execute(pool)
+        .await?;
+
+    // Flow records table - stores raw flow data
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS flow_records (
+            id TEXT PRIMARY KEY,
+            collector_id TEXT NOT NULL REFERENCES flow_collectors(id) ON DELETE CASCADE,
+            exporter_ip TEXT NOT NULL,
+            src_ip TEXT NOT NULL,
+            dst_ip TEXT NOT NULL,
+            src_port INTEGER NOT NULL,
+            dst_port INTEGER NOT NULL,
+            protocol INTEGER NOT NULL,
+            packets INTEGER NOT NULL,
+            bytes INTEGER NOT NULL,
+            tcp_flags INTEGER,
+            start_time TEXT NOT NULL,
+            end_time TEXT NOT NULL,
+            duration_ms INTEGER DEFAULT 0,
+            src_as INTEGER,
+            dst_as INTEGER,
+            input_interface INTEGER,
+            output_interface INTEGER,
+            tos INTEGER,
+            application TEXT,
+            src_country TEXT,
+            src_city TEXT,
+            dst_country TEXT,
+            dst_city TEXT,
+            is_suspicious INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_flow_records_collector ON flow_records(collector_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_flow_records_src_ip ON flow_records(src_ip)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_flow_records_dst_ip ON flow_records(dst_ip)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_flow_records_time ON flow_records(start_time)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_flow_records_protocol ON flow_records(protocol)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_flow_records_suspicious ON flow_records(is_suspicious)")
+        .execute(pool)
+        .await?;
+
+    // Flow aggregates table - pre-aggregated flow statistics
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS flow_aggregates (
+            id TEXT PRIMARY KEY,
+            collector_id TEXT NOT NULL REFERENCES flow_collectors(id) ON DELETE CASCADE,
+            period TEXT NOT NULL,
+            period_start TEXT NOT NULL,
+            period_end TEXT NOT NULL,
+            total_flows INTEGER DEFAULT 0,
+            total_bytes INTEGER DEFAULT 0,
+            total_packets INTEGER DEFAULT 0,
+            unique_sources INTEGER DEFAULT 0,
+            unique_destinations INTEGER DEFAULT 0,
+            unique_source_ports INTEGER DEFAULT 0,
+            unique_destination_ports INTEGER DEFAULT 0,
+            top_sources TEXT,
+            top_destinations TEXT,
+            top_source_ports TEXT,
+            top_destination_ports TEXT,
+            protocol_distribution TEXT,
+            avg_flow_duration_ms REAL DEFAULT 0,
+            created_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_flow_aggregates_collector ON flow_aggregates(collector_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_flow_aggregates_period ON flow_aggregates(period)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_flow_aggregates_time ON flow_aggregates(period_start)")
+        .execute(pool)
+        .await?;
+
+    // Flow anomalies table - detected flow-based anomalies
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS flow_anomalies (
+            id TEXT PRIMARY KEY,
+            collector_id TEXT REFERENCES flow_collectors(id) ON DELETE SET NULL,
+            user_id TEXT NOT NULL,
+            anomaly_type TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT,
+            source_ip TEXT,
+            destination_ip TEXT,
+            affected_ports TEXT,
+            evidence TEXT NOT NULL,
+            first_seen TEXT NOT NULL,
+            last_seen TEXT NOT NULL,
+            flow_count INTEGER DEFAULT 0,
+            total_bytes INTEGER DEFAULT 0,
+            total_packets INTEGER DEFAULT 0,
+            is_acknowledged INTEGER DEFAULT 0,
+            acknowledged_by TEXT,
+            acknowledged_at TEXT,
+            notes TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_flow_anomalies_collector ON flow_anomalies(collector_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_flow_anomalies_user ON flow_anomalies(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_flow_anomalies_type ON flow_anomalies(anomaly_type)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_flow_anomalies_severity ON flow_anomalies(severity)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_flow_anomalies_acknowledged ON flow_anomalies(is_acknowledged)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_flow_anomalies_time ON flow_anomalies(first_seen)")
+        .execute(pool)
+        .await?;
+
+    // Flow exporters table - tracks seen flow exporters (routers/switches)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS flow_exporters (
+            id TEXT PRIMARY KEY,
+            collector_id TEXT NOT NULL REFERENCES flow_collectors(id) ON DELETE CASCADE,
+            ip_address TEXT NOT NULL,
+            hostname TEXT,
+            device_type TEXT,
+            snmp_sys_name TEXT,
+            snmp_sys_descr TEXT,
+            first_seen TEXT NOT NULL,
+            last_seen TEXT NOT NULL,
+            total_packets INTEGER DEFAULT 0,
+            total_flows INTEGER DEFAULT 0,
+            interfaces TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(collector_id, ip_address)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_flow_exporters_collector ON flow_exporters(collector_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_flow_exporters_ip ON flow_exporters(ip_address)")
+        .execute(pool)
+        .await?;
+
+    // Flow templates table - stores NetFlow v9/IPFIX templates
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS flow_templates (
+            id TEXT PRIMARY KEY,
+            collector_id TEXT NOT NULL REFERENCES flow_collectors(id) ON DELETE CASCADE,
+            exporter_ip TEXT NOT NULL,
+            template_id INTEGER NOT NULL,
+            template_type TEXT NOT NULL,
+            fields TEXT NOT NULL,
+            field_count INTEGER NOT NULL,
+            first_seen TEXT NOT NULL,
+            last_seen TEXT NOT NULL,
+            usage_count INTEGER DEFAULT 0,
+            UNIQUE(collector_id, exporter_ip, template_id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_flow_templates_collector ON flow_templates(collector_id)")
+        .execute(pool)
+        .await?;
+
+    // Flow baseline profiles - for anomaly detection
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS flow_baselines (
+            id TEXT PRIMARY KEY,
+            collector_id TEXT NOT NULL REFERENCES flow_collectors(id) ON DELETE CASCADE,
+            profile_type TEXT NOT NULL,
+            profile_key TEXT NOT NULL,
+            avg_bytes_per_hour REAL DEFAULT 0,
+            avg_flows_per_hour REAL DEFAULT 0,
+            avg_packets_per_hour REAL DEFAULT 0,
+            std_dev_bytes REAL DEFAULT 0,
+            std_dev_flows REAL DEFAULT 0,
+            std_dev_packets REAL DEFAULT 0,
+            sample_count INTEGER DEFAULT 0,
+            last_updated TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            UNIQUE(collector_id, profile_type, profile_key)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_flow_baselines_collector ON flow_baselines(collector_id)")
+        .execute(pool)
+        .await?;
+
+    // Flow analysis reports table - for generated reports
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS flow_analysis_reports (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            collector_id TEXT REFERENCES flow_collectors(id) ON DELETE SET NULL,
+            report_type TEXT NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT,
+            period_start TEXT NOT NULL,
+            period_end TEXT NOT NULL,
+            summary TEXT,
+            top_talkers TEXT,
+            anomalies_found INTEGER DEFAULT 0,
+            total_flows_analyzed INTEGER DEFAULT 0,
+            total_bytes_analyzed INTEGER DEFAULT 0,
+            report_data TEXT,
+            format TEXT DEFAULT 'json',
+            file_path TEXT,
+            status TEXT DEFAULT 'pending',
+            created_at TEXT NOT NULL,
+            completed_at TEXT
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_flow_reports_user ON flow_analysis_reports(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_flow_reports_collector ON flow_analysis_reports(collector_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_flow_reports_status ON flow_analysis_reports(status)")
+        .execute(pool)
+        .await?;
+
+    // Flow alerts configuration table - custom alert rules
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS flow_alert_rules (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            collector_id TEXT REFERENCES flow_collectors(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            description TEXT,
+            is_enabled INTEGER DEFAULT 1,
+            rule_type TEXT NOT NULL,
+            condition_type TEXT NOT NULL,
+            threshold_value REAL NOT NULL,
+            threshold_unit TEXT,
+            time_window_minutes INTEGER DEFAULT 5,
+            severity TEXT DEFAULT 'medium',
+            notification_channels TEXT,
+            last_triggered_at TEXT,
+            trigger_count INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_flow_alert_rules_user ON flow_alert_rules(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_flow_alert_rules_enabled ON flow_alert_rules(is_enabled)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created NetFlow/IPFIX analysis tables (Sprint 5 - Priority 2 Features)");
     Ok(())
 }

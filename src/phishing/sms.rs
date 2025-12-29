@@ -461,6 +461,8 @@ pub struct CreateSmsCampaignRequest {
     pub end_date: Option<DateTime<Utc>>,
     pub rate_limit_per_minute: Option<u32>,
     pub targets: Vec<CreateSmsTargetRequest>,
+    pub customer_id: Option<String>,
+    pub engagement_id: Option<String>,
 }
 
 /// SMS target creation request
@@ -536,8 +538,8 @@ impl SmsCampaignManager {
                 id, user_id, name, description, status, template_id,
                 twilio_config_id, tracking_domain, awareness_training,
                 training_url, launch_date, end_date, rate_limit_per_minute,
-                created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                created_at, updated_at, customer_id, engagement_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(&id)
@@ -555,6 +557,8 @@ impl SmsCampaignManager {
         .bind(rate_limit as i64)
         .bind(now.to_rfc3339())
         .bind(now.to_rfc3339())
+        .bind(&request.customer_id)
+        .bind(&request.engagement_id)
         .execute(&self.pool)
         .await?;
 

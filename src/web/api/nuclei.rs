@@ -118,6 +118,10 @@ pub struct CreateScanRequest {
     #[serde(default)]
     pub headers: Vec<(String, String)>,
     pub proxy: Option<String>,
+    /// Optional CRM customer ID
+    pub customer_id: Option<String>,
+    /// Optional CRM engagement ID
+    pub engagement_id: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -316,6 +320,8 @@ pub async fn create_scan(
         req.name.as_deref(),
         &req.targets,
         &config,
+        req.customer_id.as_deref(),
+        req.engagement_id.as_deref(),
     )
     .await
     .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;

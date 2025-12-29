@@ -68,20 +68,24 @@ pub async fn create_dork_scan(
     pool: &SqlitePool,
     user_id: &str,
     domain: &str,
+    customer_id: Option<&str>,
+    engagement_id: Option<&str>,
 ) -> Result<String> {
     let id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
 
     sqlx::query(
         r#"
-        INSERT INTO google_dork_scans (id, user_id, domain, status, dork_count, result_count, created_at)
-        VALUES (?, ?, ?, 'pending', 0, 0, ?)
+        INSERT INTO google_dork_scans (id, user_id, domain, status, dork_count, result_count, created_at, customer_id, engagement_id)
+        VALUES (?, ?, ?, 'pending', 0, 0, ?, ?, ?)
         "#,
     )
     .bind(&id)
     .bind(user_id)
     .bind(domain)
     .bind(&now)
+    .bind(customer_id)
+    .bind(engagement_id)
     .execute(pool)
     .await?;
 

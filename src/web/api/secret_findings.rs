@@ -340,6 +340,10 @@ pub struct GitSecretScanRequest {
     pub scan_history: bool,
     /// How many commits to scan in history (default: 100)
     pub history_depth: Option<usize>,
+    /// Optional CRM customer ID
+    pub customer_id: Option<String>,
+    /// Optional CRM engagement ID
+    pub engagement_id: Option<String>,
 }
 
 /// Response for a git secret scan
@@ -386,9 +390,10 @@ pub async fn start_git_secret_scan(
         r#"
         INSERT INTO git_secret_scans (
             id, user_id, repository_url, repository_path, branch,
-            scan_history, history_depth, status, created_at, updated_at
+            scan_history, history_depth, status, created_at, updated_at,
+            customer_id, engagement_id
         )
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'pending', ?8, ?9)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'pending', ?8, ?9, ?10, ?11)
         "#,
     )
     .bind(&id)
@@ -400,6 +405,8 @@ pub async fn start_git_secret_scan(
     .bind(body.history_depth.unwrap_or(100) as i32)
     .bind(now)
     .bind(now)
+    .bind(&body.customer_id)
+    .bind(&body.engagement_id)
     .execute(pool.get_ref())
     .await
     .map_err(|e| {
@@ -683,6 +690,10 @@ pub struct FilesystemSecretScanRequest {
     /// Enable entropy-based detection
     #[serde(default = "default_true")]
     pub entropy_detection: bool,
+    /// Optional CRM customer ID
+    pub customer_id: Option<String>,
+    /// Optional CRM engagement ID
+    pub engagement_id: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -738,9 +749,9 @@ pub async fn start_filesystem_secret_scan(
         INSERT INTO filesystem_secret_scans (
             id, user_id, scan_paths, recursive, max_depth,
             include_patterns, exclude_patterns, entropy_detection,
-            status, created_at, updated_at
+            status, created_at, updated_at, customer_id, engagement_id
         )
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'pending', ?9, ?10)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'pending', ?9, ?10, ?11, ?12)
         "#,
     )
     .bind(&id)
@@ -753,6 +764,8 @@ pub async fn start_filesystem_secret_scan(
     .bind(body.entropy_detection)
     .bind(now)
     .bind(now)
+    .bind(&body.customer_id)
+    .bind(&body.engagement_id)
     .execute(pool.get_ref())
     .await
     .map_err(|e| {

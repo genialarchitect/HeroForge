@@ -329,6 +329,8 @@ pub struct CreateCampaignRequest {
     pub launch_date: Option<DateTime<Utc>>,
     pub end_date: Option<DateTime<Utc>>,
     pub targets: Vec<CreateTargetRequest>,
+    pub customer_id: Option<String>,
+    pub engagement_id: Option<String>,
 }
 
 /// Target creation request

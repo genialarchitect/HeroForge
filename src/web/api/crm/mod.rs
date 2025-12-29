@@ -9,12 +9,14 @@
 //! - Time tracking
 //! - Communication logging
 //! - CRM dashboard statistics
+//! - Discovered assets (auto-populated from recon scans)
 
 pub mod communications;
 pub mod contacts;
 pub mod contracts;
 pub mod customers;
 pub mod dashboard;
+pub mod discovered_assets;
 pub mod engagements;
 pub mod portal_users;
 pub mod sla;
@@ -82,5 +84,13 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .route("/crm/customers/{customer_id}/portal-users/{user_id}", web::delete().to(portal_users::delete_portal_user_handler))
         .route("/crm/customers/{customer_id}/portal-users/{user_id}/activate", web::post().to(portal_users::activate_portal_user_handler))
         .route("/crm/customers/{customer_id}/portal-users/{user_id}/deactivate", web::post().to(portal_users::deactivate_portal_user_handler))
-        .route("/crm/customers/{customer_id}/portal-users/{user_id}/reset-password", web::post().to(portal_users::reset_portal_user_password));
+        .route("/crm/customers/{customer_id}/portal-users/{user_id}/reset-password", web::post().to(portal_users::reset_portal_user_password))
+        // Discovered assets endpoints (auto-populated from recon scans)
+        .route("/crm/customers/{customer_id}/discovered-assets", web::get().to(discovered_assets::list_customer_assets))
+        .route("/crm/customers/{customer_id}/discovered-assets", web::post().to(discovered_assets::create_asset))
+        .route("/crm/customers/{customer_id}/discovered-assets/summary", web::get().to(discovered_assets::get_assets_summary))
+        .route("/crm/customers/{customer_id}/discovered-assets/bulk-scope", web::post().to(discovered_assets::bulk_set_scope))
+        .route("/crm/discovered-assets/{id}", web::get().to(discovered_assets::get_asset))
+        .route("/crm/discovered-assets/{id}", web::put().to(discovered_assets::update_asset))
+        .route("/crm/discovered-assets/{id}", web::delete().to(discovered_assets::delete_asset));
 }

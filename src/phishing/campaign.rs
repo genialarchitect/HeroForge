@@ -40,8 +40,8 @@ impl CampaignManager {
                 id, user_id, name, description, status, email_template_id,
                 landing_page_id, smtp_profile_id, tracking_domain,
                 awareness_training, training_url, launch_date, end_date,
-                created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                created_at, updated_at, customer_id, engagement_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(&id)
@@ -59,6 +59,8 @@ impl CampaignManager {
         .bind(request.end_date.map(|d| d.to_rfc3339()))
         .bind(now.to_rfc3339())
         .bind(now.to_rfc3339())
+        .bind(&request.customer_id)
+        .bind(&request.engagement_id)
         .execute(&self.pool)
         .await?;
 

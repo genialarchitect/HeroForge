@@ -16,6 +16,10 @@ use crate::web::auth;
 pub struct EmailSecurityRequest {
     /// The domain to analyze
     pub domain: String,
+    /// Optional CRM customer ID
+    pub customer_id: Option<String>,
+    /// Optional CRM engagement ID
+    pub engagement_id: Option<String>,
 }
 
 /// Response wrapper for email security analysis
@@ -115,8 +119,8 @@ pub async fn analyze_email_security(
     match sqlx::query(
         r#"
         INSERT INTO email_security_results
-        (id, domain, spf_record, dkim_selectors, dmarc_policy, spoofability, result_json, analyzed_at, user_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (id, domain, spf_record, dkim_selectors, dmarc_policy, spoofability, result_json, analyzed_at, user_id, customer_id, engagement_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(&result_id)
@@ -128,6 +132,8 @@ pub async fn analyze_email_security(
     .bind(&result_json)
     .bind(analyzed_at)
     .bind(&claims.sub)
+    .bind(&req.customer_id)
+    .bind(&req.engagement_id)
     .execute(pool.as_ref())
     .await
     {

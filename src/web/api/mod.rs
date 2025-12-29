@@ -100,6 +100,8 @@ pub mod orange_team;
 pub mod green_team;
 pub mod white_team;
 pub mod traffic_analysis;
+pub mod ueba;
+pub mod netflow;
 
 #[cfg(test)]
 mod tests;

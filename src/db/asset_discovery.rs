@@ -50,6 +50,8 @@ pub async fn create_asset_discovery_scan(
     pool: &SqlitePool,
     user_id: &str,
     config: &AssetDiscoveryConfig,
+    customer_id: Option<&str>,
+    engagement_id: Option<&str>,
 ) -> Result<String> {
     let id = uuid::Uuid::new_v4().to_string();
     let now = Utc::now().to_rfc3339();
@@ -60,8 +62,8 @@ pub async fn create_asset_discovery_scan(
     sqlx::query(
         r#"
         INSERT INTO asset_discovery_scans (
-            id, user_id, domain, config, status, statistics, errors, started_at, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            id, user_id, domain, config, status, statistics, errors, started_at, created_at, customer_id, engagement_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(&id)
@@ -73,6 +75,8 @@ pub async fn create_asset_discovery_scan(
     .bind(&errors_json)
     .bind(&now)
     .bind(&now)
+    .bind(customer_id)
+    .bind(engagement_id)
     .execute(pool)
     .await?;
 

@@ -292,6 +292,8 @@ pub struct StartSastScanRequest {
     pub rule_ids: Option<Vec<String>>,  // Use all if not specified
     pub enabled_rules: Option<Vec<String>>,   // Rules to enable
     pub disabled_rules: Option<Vec<String>>,  // Rules to disable
+    pub customer_id: Option<String>,
+    pub engagement_id: Option<String>,
 }
 
 /// Request to create a custom SAST rule

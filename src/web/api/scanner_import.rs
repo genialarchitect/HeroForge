@@ -71,6 +71,13 @@ pub struct ImportResponse {
     pub low_count: usize,
 }
 
+/// Query parameters for import upload
+#[derive(Debug, Deserialize)]
+pub struct ImportQuery {
+    pub customer_id: Option<String>,
+    pub engagement_id: Option<String>,
+}
+
 /// Configure scanner import routes
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -90,6 +97,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
 async fn import_nessus(
     pool: web::Data<SqlitePool>,
     claims: web::ReqData<auth::Claims>,
+    query: web::Query<ImportQuery>,
     mut payload: Multipart,
 ) -> Result<HttpResponse, ApiError> {
     let (filename, content) = extract_file_from_multipart(&mut payload).await?;
@@ -102,7 +110,14 @@ async fn import_nessus(
             .map_err(|e| ApiError::bad_request(format!("Failed to parse Nessus XML: {}", e)))?
     };
 
-    let response = save_imported_scan(&pool, &claims.sub, &filename, scan).await?;
+    let response = save_imported_scan(
+        &pool,
+        &claims.sub,
+        &filename,
+        scan,
+        query.customer_id.as_deref(),
+        query.engagement_id.as_deref(),
+    ).await?;
 
     Ok(HttpResponse::Ok().json(response))
 }
@@ -111,6 +126,7 @@ async fn import_nessus(
 async fn import_qualys(
     pool: web::Data<SqlitePool>,
     claims: web::ReqData<auth::Claims>,
+    query: web::Query<ImportQuery>,
     mut payload: Multipart,
 ) -> Result<HttpResponse, ApiError> {
     let (filename, content) = extract_file_from_multipart(&mut payload).await?;
@@ -118,7 +134,14 @@ async fn import_qualys(
     let scan = QualysParser::parse_xml(&content)
         .map_err(|e| ApiError::bad_request(format!("Failed to parse Qualys XML: {}", e)))?;
 
-    let response = save_imported_scan(&pool, &claims.sub, &filename, scan).await?;
+    let response = save_imported_scan(
+        &pool,
+        &claims.sub,
+        &filename,
+        scan,
+        query.customer_id.as_deref(),
+        query.engagement_id.as_deref(),
+    ).await?;
 
     Ok(HttpResponse::Ok().json(response))
 }
@@ -157,6 +180,8 @@ async fn save_imported_scan(
     user_id: &str,
     filename: &str,
     scan: ImportedScan,
+    customer_id: Option<&str>,
+    engagement_id: Option<&str>,
 ) -> Result<ImportResponse, ApiError> {
     let import_id = Uuid::new_v4().to_string();
     let now = Utc::now().to_rfc3339();
@@ -168,8 +193,8 @@ async fn save_imported_scan(
             id, user_id, source, original_filename, scanner_name, scanner_version,
             policy_name, scan_name, scan_date, host_count, finding_count,
             critical_count, high_count, medium_count, low_count, info_count,
-            status, imported_at, processing_completed_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?)
+            status, imported_at, processing_completed_at, customer_id, engagement_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?)
         "#,
     )
     .bind(&import_id)
@@ -190,6 +215,8 @@ async fn save_imported_scan(
     .bind(scan.info_count as i32)
     .bind(&now)
     .bind(&now)
+    .bind(customer_id)
+    .bind(engagement_id)
     .execute(pool)
     .await
     .map_err(|e| ApiError::internal(format!("Failed to save import: {}", e)))?;

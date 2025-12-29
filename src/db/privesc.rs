@@ -45,6 +45,8 @@ pub async fn create_privesc_scan(
     pool: &SqlitePool,
     user_id: &str,
     config: &PrivescConfig,
+    customer_id: Option<&str>,
+    engagement_id: Option<&str>,
 ) -> Result<String> {
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
@@ -56,8 +58,8 @@ pub async fn create_privesc_scan(
 
     sqlx::query(
         r#"
-        INSERT INTO privesc_scans (id, user_id, target, os_type, status, config, statistics, system_info, errors, created_at)
-        VALUES (?, ?, ?, ?, 'pending', ?, '{}', '{}', '[]', ?)
+        INSERT INTO privesc_scans (id, user_id, target, os_type, status, config, statistics, system_info, errors, created_at, customer_id, engagement_id)
+        VALUES (?, ?, ?, ?, 'pending', ?, '{}', '{}', '[]', ?, ?, ?)
         "#,
     )
     .bind(&id)
@@ -66,6 +68,8 @@ pub async fn create_privesc_scan(
     .bind(os_type)
     .bind(&config_json)
     .bind(&now)
+    .bind(customer_id)
+    .bind(engagement_id)
     .execute(pool)
     .await?;
 

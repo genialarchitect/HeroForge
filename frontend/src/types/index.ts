@@ -1592,6 +1592,73 @@ export interface UpdateEngagementRequest {
   notes?: string;
 }
 
+// CRM Discovered Assets (auto-populated from recon scans)
+export type CrmAssetType =
+  | 'domain'
+  | 'subdomain'
+  | 'ip_address'
+  | 'service'
+  | 'port'
+  | 'certificate'
+  | 'email_address'
+  | 'repository'
+  | 'dns_record'
+  | 'technology'
+  | 'endpoint'
+  | 'api_endpoint'
+  | 'credential'
+  | 'secret';
+
+export interface CrmDiscoveredAsset {
+  id: string;
+  customer_id: string;
+  engagement_id: string | null;
+  asset_type: CrmAssetType;
+  value: string;
+  first_seen_at: string;
+  last_seen_at: string;
+  source: string;
+  source_scan_id: string | null;
+  source_scan_type: string | null;
+  metadata: Record<string, unknown> | null;
+  is_in_scope: boolean;
+  is_verified: boolean;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DiscoveredAssetsSummary {
+  total_assets: number;
+  in_scope_assets: number;
+  verified_assets: number;
+  assets_by_type: [string, number][];
+  assets_by_source: [string, number][];
+  recent_discoveries: CrmDiscoveredAsset[];
+}
+
+export interface CreateDiscoveredAssetRequest {
+  asset_type: CrmAssetType;
+  value: string;
+  engagement_id?: string;
+  source?: string;
+  metadata?: Record<string, unknown>;
+  is_in_scope?: boolean;
+  notes?: string;
+}
+
+export interface UpdateDiscoveredAssetRequest {
+  is_in_scope?: boolean;
+  is_verified?: boolean;
+  notes?: string;
+  engagement_id?: string;
+}
+
+export interface BulkScopeRequest {
+  asset_ids: string[];
+  is_in_scope: boolean;
+}
+
 export interface CreateMilestoneRequest {
   name: string;
   description?: string;
@@ -6176,4 +6243,711 @@ export interface CreateFuzzingDictionaryRequest {
   name: string;
   description?: string;
   entries: string[];
+}
+
+// =============================================================================
+// UEBA (User Entity Behavior Analytics) Types
+// =============================================================================
+
+export type UebaEntityType = 'user' | 'host' | 'service_account' | 'application' | 'device' | 'ip_address';
+
+export type UebaRiskLevel = 'low' | 'medium' | 'high' | 'critical';
+
+export type UebaActivityType =
+  | 'login'
+  | 'logout'
+  | 'failed_login'
+  | 'file_access'
+  | 'file_modify'
+  | 'file_delete'
+  | 'privilege_use'
+  | 'privilege_escalation'
+  | 'network_connection'
+  | 'email_send'
+  | 'email_receive'
+  | 'data_download'
+  | 'data_upload'
+  | 'process_execution'
+  | 'service_access'
+  | 'admin_action'
+  | 'config_change'
+  | 'policy_violation'
+  | 'other';
+
+export type UebaAnomalyType =
+  | 'impossible_travel'
+  | 'unusual_login_time'
+  | 'unusual_login_location'
+  | 'excessive_failed_logins'
+  | 'unusual_data_access'
+  | 'large_data_transfer'
+  | 'unusual_privilege_use'
+  | 'service_account_abuse'
+  | 'lateral_movement'
+  | 'data_exfiltration'
+  | 'off_hours_activity'
+  | 'unusual_network_activity'
+  | 'new_device_login'
+  | 'suspicious_process_execution'
+  | 'policy_violation'
+  | 'baseline_deviation'
+  | 'rapid_activity_burst'
+  | 'dormant_account_activity'
+  | 'credential_sharing'
+  | 'other';
+
+export type UebaAnomalyStatus =
+  | 'new'
+  | 'acknowledged'
+  | 'investigating'
+  | 'confirmed'
+  | 'false_positive'
+  | 'resolved'
+  | 'suppressed';
+
+export interface UebaEntity {
+  id: string;
+  user_id: string;
+  entity_type: string;
+  entity_id: string;
+  display_name?: string;
+  department?: string;
+  role?: string;
+  manager?: string;
+  location?: string;
+  peer_group_id?: string;
+  risk_score: number;
+  risk_level: string;
+  baseline_data?: string;
+  tags?: string;
+  last_activity_at?: string;
+  first_seen_at?: string;
+  is_active: boolean;
+  is_privileged: boolean;
+  is_service_account: boolean;
+  metadata?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateUebaEntityRequest {
+  entity_type: string;
+  entity_id: string;
+  display_name?: string;
+  department?: string;
+  role?: string;
+  manager?: string;
+  location?: string;
+  is_privileged?: boolean;
+  is_service_account?: boolean;
+  tags?: string[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface UpdateUebaEntityRequest {
+  display_name?: string;
+  department?: string;
+  role?: string;
+  manager?: string;
+  location?: string;
+  peer_group_id?: string;
+  is_privileged?: boolean;
+  is_service_account?: boolean;
+  is_active?: boolean;
+  tags?: string[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface UebaPeerGroup {
+  id: string;
+  user_id: string;
+  name: string;
+  description?: string;
+  criteria: string;
+  member_count: number;
+  baseline_metrics?: string;
+  is_auto_generated: boolean;
+  last_updated_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UebaPeerGroupCriteria {
+  department?: string;
+  role?: string;
+  location?: string;
+  is_privileged?: boolean;
+  entity_type?: string;
+  tags?: string[];
+}
+
+export interface CreateUebaPeerGroupRequest {
+  name: string;
+  description?: string;
+  criteria: UebaPeerGroupCriteria;
+}
+
+export interface UpdateUebaPeerGroupRequest {
+  name?: string;
+  description?: string;
+  criteria?: UebaPeerGroupCriteria;
+}
+
+export interface UebaActivity {
+  id: string;
+  entity_id: string;
+  activity_type: string;
+  source_ip?: string;
+  source_location?: string;
+  source_country?: string;
+  source_city?: string;
+  source_lat?: number;
+  source_lon?: number;
+  destination?: string;
+  destination_type?: string;
+  action?: string;
+  resource?: string;
+  resource_type?: string;
+  status?: string;
+  risk_contribution: number;
+  is_anomalous: boolean;
+  anomaly_reasons?: string;
+  raw_event?: string;
+  event_source?: string;
+  timestamp: string;
+  created_at: string;
+}
+
+export interface RecordUebaActivityRequest {
+  entity_id: string;
+  activity_type: string;
+  source_ip?: string;
+  source_country?: string;
+  source_city?: string;
+  source_lat?: number;
+  source_lon?: number;
+  destination?: string;
+  destination_type?: string;
+  action?: string;
+  resource?: string;
+  resource_type?: string;
+  status?: string;
+  raw_event?: Record<string, unknown>;
+  event_source?: string;
+  timestamp?: string;
+}
+
+export interface UebaAnomaly {
+  id: string;
+  entity_id: string;
+  anomaly_type: string;
+  severity: string;
+  title: string;
+  description: string;
+  evidence: string;
+  baseline_deviation?: number;
+  confidence?: number;
+  status: string;
+  priority: string;
+  assigned_to?: string;
+  related_activities?: string;
+  related_anomalies?: string;
+  mitre_techniques?: string;
+  risk_score_impact: number;
+  detected_at: string;
+  acknowledged_at?: string;
+  acknowledged_by?: string;
+  resolved_at?: string;
+  resolved_by?: string;
+  resolution_notes?: string;
+  false_positive: boolean;
+  suppressed: boolean;
+  suppression_reason?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UpdateUebaAnomalyRequest {
+  status?: string;
+  priority?: string;
+  assigned_to?: string;
+  resolution_notes?: string;
+  false_positive?: boolean;
+  suppressed?: boolean;
+  suppression_reason?: string;
+}
+
+export interface UebaSession {
+  id: string;
+  entity_id: string;
+  session_id?: string;
+  session_type: string;
+  source_ip: string;
+  source_country?: string;
+  source_city?: string;
+  source_lat?: number;
+  source_lon?: number;
+  source_asn?: string;
+  source_isp?: string;
+  user_agent?: string;
+  device_type?: string;
+  device_fingerprint?: string;
+  auth_method?: string;
+  auth_status: string;
+  mfa_used: boolean;
+  is_vpn: boolean;
+  is_tor: boolean;
+  is_proxy: boolean;
+  risk_score: number;
+  anomaly_flags?: string;
+  started_at: string;
+  ended_at?: string;
+  duration_seconds?: number;
+  created_at: string;
+}
+
+export interface RecordUebaSessionRequest {
+  entity_id: string;
+  session_id?: string;
+  session_type: string;
+  source_ip: string;
+  source_country?: string;
+  source_city?: string;
+  source_lat?: number;
+  source_lon?: number;
+  user_agent?: string;
+  device_fingerprint?: string;
+  auth_method?: string;
+  auth_status: string;
+  mfa_used?: boolean;
+}
+
+export interface UebaBaseline {
+  id: string;
+  entity_id?: string;
+  peer_group_id?: string;
+  metric_name: string;
+  metric_category: string;
+  period: string;
+  mean_value?: number;
+  std_deviation?: number;
+  min_value?: number;
+  max_value?: number;
+  median_value?: number;
+  percentile_25?: number;
+  percentile_75?: number;
+  percentile_95?: number;
+  percentile_99?: number;
+  sample_count?: number;
+  last_value?: number;
+  trend?: string;
+  is_stable: boolean;
+  last_calculated_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UebaRiskFactor {
+  id: string;
+  entity_id: string;
+  factor_type: string;
+  factor_value?: string;
+  description?: string;
+  weight: number;
+  contribution?: number;
+  source?: string;
+  source_id?: string;
+  valid_from: string;
+  valid_until?: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UebaDashboardStats {
+  total_entities: number;
+  high_risk_entities: number;
+  critical_risk_entities: number;
+  total_anomalies: number;
+  new_anomalies: number;
+  open_anomalies: number;
+  anomalies_by_type: { anomaly_type: string; count: number }[];
+  risk_distribution: {
+    low: number;
+    medium: number;
+    high: number;
+    critical: number;
+  };
+  recent_anomalies: UebaAnomaly[];
+  top_risk_entities: {
+    entity_id: string;
+    display_name?: string;
+    entity_type: string;
+    risk_score: number;
+    risk_level: string;
+  }[];
+  activity_trend: { date: string; count: number }[];
+}
+
+export interface UebaEntityListResponse {
+  entities: UebaEntity[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
+export interface UebaActivityListResponse {
+  activities: UebaActivity[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
+export interface UebaAnomalyListResponse {
+  anomalies: UebaAnomaly[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
+export interface UebaSessionListResponse {
+  sessions: UebaSession[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
+export interface UebaBaselineListResponse {
+  baselines: UebaBaseline[];
+  total: number;
+}
+
+export interface UebaRiskFactorListResponse {
+  risk_factors: UebaRiskFactor[];
+  total: number;
+}
+
+export interface ProcessUebaActivityResponse {
+  activity_id: string;
+  is_anomalous: boolean;
+  anomaly_reasons: string[];
+  detected_anomalies: string[];
+  risk_contribution: number;
+}
+
+export interface AddToWatchlistRequest {
+  entity_id: string;
+  reason: string;
+  expires_at?: string;
+}
+
+// =============================================================================
+// Sprint 4: UEBA Advanced Behavioral Detection Types
+// =============================================================================
+
+export type UebaAdvancedDetectionType =
+  | 'impossible_travel'
+  | 'unusual_data_access'
+  | 'off_hours_activity'
+  | 'service_account_abuse'
+  | 'lateral_movement'
+  | 'data_exfiltration';
+
+export type UebaDataSensitivity = 'public' | 'internal' | 'confidential' | 'restricted' | 'top_secret';
+
+export interface UebaAdvancedStats {
+  total_detections: number;
+  detections_by_type: { detection_type: string; count: number }[];
+  detections_by_severity: { severity: string; count: number }[];
+  new_detections_24h: number;
+  confirmed_detections: number;
+  false_positives: number;
+  detection_trend: { date: string; count: number }[];
+  top_affected_entities: { entity_id: string; display_name?: string; count: number }[];
+}
+
+export interface UebaAdvancedDetection {
+  id: string;
+  user_id: string;
+  entity_id: string;
+  detection_type: string;
+  severity: string;
+  title: string;
+  description: string;
+  confidence: number;
+  risk_score: number;
+  evidence: string;
+  source_data?: string;
+  related_activities?: string;
+  mitre_techniques?: string;
+  geolocation_data?: string;
+  status: string;
+  assigned_to?: string;
+  acknowledged_at?: string;
+  acknowledged_by?: string;
+  resolved_at?: string;
+  resolved_by?: string;
+  resolution_notes?: string;
+  false_positive: boolean;
+  suppressed: boolean;
+  detection_rule_id?: string;
+  detected_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UebaAdvancedDetectionListResponse {
+  detections: UebaAdvancedDetection[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
+export interface UebaBusinessHours {
+  id: string;
+  user_id: string;
+  name: string;
+  description?: string;
+  timezone: string;
+  monday_start?: string;
+  monday_end?: string;
+  tuesday_start?: string;
+  tuesday_end?: string;
+  wednesday_start?: string;
+  wednesday_end?: string;
+  thursday_start?: string;
+  thursday_end?: string;
+  friday_start?: string;
+  friday_end?: string;
+  saturday_start?: string;
+  saturday_end?: string;
+  sunday_start?: string;
+  sunday_end?: string;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateBusinessHoursRequest {
+  name: string;
+  description?: string;
+  timezone: string;
+  monday_start?: string;
+  monday_end?: string;
+  tuesday_start?: string;
+  tuesday_end?: string;
+  wednesday_start?: string;
+  wednesday_end?: string;
+  thursday_start?: string;
+  thursday_end?: string;
+  friday_start?: string;
+  friday_end?: string;
+  saturday_start?: string;
+  saturday_end?: string;
+  sunday_start?: string;
+  sunday_end?: string;
+  is_default?: boolean;
+}
+
+export interface UebaSensitiveResource {
+  id: string;
+  user_id: string;
+  name: string;
+  description?: string;
+  resource_type: string;
+  resource_pattern: string;
+  sensitivity_level: string;
+  access_restrictions?: string;
+  alert_on_access: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateSensitiveResourceRequest {
+  name: string;
+  description?: string;
+  resource_type: string;
+  resource_pattern: string;
+  sensitivity_level: string;
+  access_restrictions?: string[];
+  alert_on_access?: boolean;
+}
+
+export interface UebaKnownVpn {
+  id: string;
+  user_id: string;
+  name: string;
+  description?: string;
+  ip_ranges: string;
+  provider?: string;
+  is_corporate: boolean;
+  is_trusted: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateKnownVpnRequest {
+  name: string;
+  description?: string;
+  ip_ranges: string[];
+  provider?: string;
+  is_corporate?: boolean;
+  is_trusted?: boolean;
+}
+
+export interface UebaDetectionRule {
+  id: string;
+  user_id: string;
+  name: string;
+  description?: string;
+  detection_type: string;
+  enabled: boolean;
+  severity: string;
+  conditions: string;
+  thresholds: string;
+  actions: string;
+  cooldown_minutes: number;
+  last_triggered_at?: string;
+  trigger_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateDetectionRuleRequest {
+  name: string;
+  description?: string;
+  detection_type: string;
+  enabled?: boolean;
+  severity: string;
+  conditions: Record<string, unknown>;
+  thresholds: Record<string, unknown>;
+  actions: string[];
+  cooldown_minutes?: number;
+}
+
+export interface UebaDataAccess {
+  id: string;
+  entity_id: string;
+  resource_id?: string;
+  resource_name: string;
+  resource_type: string;
+  sensitivity_level: string;
+  access_type: string;
+  source_ip?: string;
+  source_location?: string;
+  bytes_accessed?: number;
+  is_anomalous: boolean;
+  anomaly_score?: number;
+  accessed_at: string;
+  created_at: string;
+}
+
+export interface UebaDataAccessListResponse {
+  accesses: UebaDataAccess[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
+export interface RecordDataAccessRequest {
+  entity_id: string;
+  resource_id?: string;
+  resource_name: string;
+  resource_type: string;
+  sensitivity_level: string;
+  access_type: string;
+  source_ip?: string;
+  source_location?: string;
+  bytes_accessed?: number;
+  accessed_at?: string;
+}
+
+export interface UebaHostAccess {
+  id: string;
+  entity_id: string;
+  source_host: string;
+  destination_host: string;
+  destination_ip?: string;
+  port?: number;
+  protocol?: string;
+  service?: string;
+  auth_method?: string;
+  auth_status: string;
+  bytes_transferred?: number;
+  is_lateral_movement: boolean;
+  hop_count?: number;
+  accessed_at: string;
+  created_at: string;
+}
+
+export interface UebaHostAccessListResponse {
+  accesses: UebaHostAccess[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
+export interface RecordHostAccessRequest {
+  entity_id: string;
+  source_host: string;
+  destination_host: string;
+  destination_ip?: string;
+  port?: number;
+  protocol?: string;
+  service?: string;
+  auth_method?: string;
+  auth_status: string;
+  bytes_transferred?: number;
+  accessed_at?: string;
+}
+
+export interface UebaDataTransfer {
+  id: string;
+  entity_id: string;
+  source: string;
+  destination: string;
+  destination_type: string;
+  transfer_method: string;
+  bytes_transferred: number;
+  file_count?: number;
+  file_types?: string;
+  is_external: boolean;
+  is_encrypted: boolean;
+  is_anomalous: boolean;
+  anomaly_reasons?: string;
+  transferred_at: string;
+  created_at: string;
+}
+
+export interface UebaDataTransferListResponse {
+  transfers: UebaDataTransfer[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
+export interface RecordDataTransferRequest {
+  entity_id: string;
+  source: string;
+  destination: string;
+  destination_type: string;
+  transfer_method: string;
+  bytes_transferred: number;
+  file_count?: number;
+  file_types?: string[];
+  is_external?: boolean;
+  is_encrypted?: boolean;
+  transferred_at?: string;
+}
+
+export interface RunAdvancedDetectionRequest {
+  detection_type: UebaAdvancedDetectionType;
+  entity_id?: string;
+  time_window_hours?: number;
+}
+
+export interface AdvancedDetectionResult {
+  detections_created: number;
+  entities_analyzed: number;
+  detection_type: string;
 }

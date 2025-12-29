@@ -273,6 +273,8 @@ pub struct WirelessScan {
     pub handshakes_captured: u32,
     pub started_at: DateTime<Utc>,
     pub completed_at: Option<DateTime<Utc>>,
+    pub customer_id: Option<String>,
+    pub engagement_id: Option<String>,
 }
 
 /// API request types
@@ -281,6 +283,8 @@ pub struct StartScanRequest {
     pub interface: String,
     pub channels: Option<Vec<u8>>,
     pub duration_secs: Option<u32>,
+    pub customer_id: Option<String>,
+    pub engagement_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

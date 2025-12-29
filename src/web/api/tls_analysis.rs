@@ -41,6 +41,10 @@ pub struct AnalyzeTlsRequest {
     pub src_port: Option<u16>,
     /// Destination port (for logging)
     pub dst_port: Option<u16>,
+    /// CRM customer ID
+    pub customer_id: Option<String>,
+    /// CRM engagement ID
+    pub engagement_id: Option<String>,
 }
 
 /// Request to calculate JA3 from ClientHello
@@ -280,6 +284,8 @@ pub async fn analyze_tls(
             &result,
             body.src_ip.as_deref(),
             body.dst_ip.as_deref(),
+            body.customer_id.as_deref(),
+            body.engagement_id.as_deref(),
         )
         .await
         {
@@ -721,6 +727,8 @@ async fn save_tls_analysis_result(
     result: &TlsAnalysisResult,
     src_ip: Option<&str>,
     dst_ip: Option<&str>,
+    customer_id: Option<&str>,
+    engagement_id: Option<&str>,
 ) -> anyhow::Result<()> {
     let id = Uuid::new_v4().to_string();
     let ja3_hash = result.ja3.as_ref().map(|j| j.hash.clone());
@@ -731,8 +739,9 @@ async fn save_tls_analysis_result(
     sqlx::query(
         r#"
         INSERT INTO tls_analysis_results (id, ja3_hash, ja3s_hash, src_ip, dst_ip,
-                                          threat_level, threats_json, detected_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                                          threat_level, threats_json, detected_at,
+                                          customer_id, engagement_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(&id)
@@ -743,6 +752,8 @@ async fn save_tls_analysis_result(
     .bind(&threat_level)
     .bind(&threats_json)
     .bind(result.analyzed_at.to_rfc3339())
+    .bind(customer_id)
+    .bind(engagement_id)
     .execute(pool)
     .await?;
 

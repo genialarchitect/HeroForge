@@ -579,6 +579,8 @@ pub async fn create_yara_scan(
     target_type: &str,
     recursive: bool,
     rules_used: &[String],
+    customer_id: Option<&str>,
+    engagement_id: Option<&str>,
 ) -> Result<String> {
     let id = Uuid::new_v4().to_string();
     let now = Utc::now().to_rfc3339();
@@ -587,8 +589,8 @@ pub async fn create_yara_scan(
     sqlx::query(
         r#"
         INSERT INTO yara_scans (id, user_id, name, target_path, target_type, recursive, status, rules_used,
-                                matches_count, files_scanned, bytes_scanned, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, 0, 0, 0, ?)
+                                matches_count, files_scanned, bytes_scanned, created_at, customer_id, engagement_id)
+        VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, 0, 0, 0, ?, ?, ?)
         "#,
     )
     .bind(&id)
@@ -599,6 +601,8 @@ pub async fn create_yara_scan(
     .bind(recursive)
     .bind(&rules_json)
     .bind(&now)
+    .bind(customer_id)
+    .bind(engagement_id)
     .execute(pool)
     .await?;
 
@@ -1841,6 +1845,8 @@ pub async fn create_yara_memory_scan(
     process_id: Option<i32>,
     process_name: Option<&str>,
     rules_used: &[String],
+    customer_id: Option<&str>,
+    engagement_id: Option<&str>,
 ) -> Result<String> {
     let id = Uuid::new_v4().to_string();
     let now = Utc::now().to_rfc3339();
@@ -1850,8 +1856,8 @@ pub async fn create_yara_memory_scan(
         r#"
         INSERT INTO yara_memory_scans (id, user_id, name, scan_type, source_path, process_id,
                                        process_name, status, rules_used, matches_count,
-                                       regions_scanned, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, 0, ?)
+                                       regions_scanned, created_at, customer_id, engagement_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, 0, ?, ?, ?)
         "#,
     )
     .bind(&id)
@@ -1863,6 +1869,8 @@ pub async fn create_yara_memory_scan(
     .bind(process_name)
     .bind(&rules_json)
     .bind(&now)
+    .bind(customer_id)
+    .bind(engagement_id)
     .execute(pool)
     .await?;
 

@@ -67,8 +67,8 @@ async fn start_scan(
     sqlx::query(
         r#"
         INSERT INTO cicd_pipeline_scans (
-            id, user_id, scan_type, repository_url, branch, status, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)
+            id, user_id, scan_type, repository_url, branch, status, created_at, updated_at, customer_id, engagement_id
+        ) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)
         "#,
     )
     .bind(&scan_id)
@@ -78,6 +78,8 @@ async fn start_scan(
     .bind(&body.branch)
     .bind(now)
     .bind(now)
+    .bind(&body.customer_id)
+    .bind(&body.engagement_id)
     .execute(pool.get_ref())
     .await
     .map_err(|e| ApiError::internal(format!("Failed to create scan: {}", e)))?;

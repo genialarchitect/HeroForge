@@ -46,6 +46,10 @@ pub struct StartK8sScanRequest {
     pub namespaces: Option<Vec<String>>,
     /// Target PSS profile for validation
     pub pss_profile: Option<String>,
+    /// CRM customer ID
+    pub customer_id: Option<String>,
+    /// CRM engagement ID
+    pub engagement_id: Option<String>,
 }
 
 /// Request to analyze manifests immediately
@@ -215,8 +219,8 @@ pub async fn start_scan(
     sqlx::query(
         r#"
         INSERT INTO k8s_security_scans (
-            id, user_id, cluster_name, namespaces, scan_types, status, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)
+            id, user_id, cluster_name, namespaces, scan_types, status, created_at, updated_at, customer_id, engagement_id
+        ) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)
         "#,
     )
     .bind(&scan_id)
@@ -226,6 +230,8 @@ pub async fn start_scan(
     .bind(serde_json::to_string(&scan_types).unwrap_or_default())
     .bind(&now)
     .bind(&now)
+    .bind(&req.customer_id)
+    .bind(&req.engagement_id)
     .execute(pool.get_ref())
     .await
     .map_err(|e| ApiError::internal(format!("Failed to create scan: {}", e)))?;

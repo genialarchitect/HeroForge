@@ -47,6 +47,13 @@ pub struct UploadResponse {
     pub message: String,
 }
 
+/// Query parameters for binary upload
+#[derive(Debug, Deserialize)]
+pub struct UploadQuery {
+    pub customer_id: Option<String>,
+    pub engagement_id: Option<String>,
+}
+
 /// Sample list query params
 #[derive(Debug, Deserialize)]
 pub struct SampleListQuery {
@@ -201,6 +208,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
 async fn upload_binary(
     pool: web::Data<SqlitePool>,
     claims: web::ReqData<auth::Claims>,
+    query: web::Query<UploadQuery>,
     mut payload: Multipart,
 ) -> Result<HttpResponse, ApiError> {
     // Extract file from multipart
@@ -217,7 +225,13 @@ async fn upload_binary(
         .map_err(|e| ApiError::internal(format!("Analysis failed: {}", e)))?;
 
     // Save to database
-    save_sample_to_db(pool.get_ref(), &sample, Some(&data)).await?;
+    save_sample_to_db(
+        pool.get_ref(),
+        &sample,
+        Some(&data),
+        query.customer_id.as_deref(),
+        query.engagement_id.as_deref(),
+    ).await?;
 
     Ok(HttpResponse::Ok().json(UploadResponse {
         id: sample.id,
@@ -255,7 +269,13 @@ async fn extract_binary_from_multipart(payload: &mut Multipart) -> Result<(Strin
 }
 
 /// Save analyzed sample to database
-async fn save_sample_to_db(pool: &SqlitePool, sample: &BinarySample, data: Option<&[u8]>) -> Result<(), ApiError> {
+async fn save_sample_to_db(
+    pool: &SqlitePool,
+    sample: &BinarySample,
+    data: Option<&[u8]>,
+    customer_id: Option<&str>,
+    engagement_id: Option<&str>,
+) -> Result<(), ApiError> {
     // Insert main sample record
     sqlx::query(
         r#"
@@ -269,9 +289,10 @@ async fn save_sample_to_db(pool: &SqlitePool, sample: &BinarySample, data: Optio
             pe_timestamp, pe_entry_point, pe_image_base,
             elf_machine_type, elf_type, elf_os_abi, elf_is_pie,
             elf_has_relro, elf_has_nx, elf_has_stack_canary,
-            elf_interpreter, elf_entry_point, created_at, analyzed_at
+            elf_interpreter, elf_entry_point, created_at, analyzed_at,
+            customer_id, engagement_id
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#
     )
     .bind(&sample.id)
@@ -319,6 +340,8 @@ async fn save_sample_to_db(pool: &SqlitePool, sample: &BinarySample, data: Optio
     .bind(sample.elf_analysis.as_ref().map(|e| e.entry_point as i64))
     .bind(sample.created_at.to_rfc3339())
     .bind(sample.analyzed_at.map(|t| t.to_rfc3339()))
+    .bind(customer_id)
+    .bind(engagement_id)
     .execute(pool)
     .await
     .map_err(|e| ApiError::internal(format!("Failed to save sample: {}", e)))?;
@@ -931,8 +954,8 @@ async fn reanalyze_sample(
     // Preserve original ID
     sample.id = sample_id;
 
-    // Save to database
-    save_sample_to_db(&pool, &sample, Some(&file_data)).await?;
+    // Save to database (no CRM fields for re-analysis)
+    save_sample_to_db(&pool, &sample, Some(&file_data), None, None).await?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "message": "Sample re-analyzed successfully",

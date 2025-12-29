@@ -812,6 +812,8 @@ pub struct CreateSastScanRequest {
     pub repository_url: Option<String>,
     pub branch: Option<String>,
     pub languages: Vec<String>,
+    pub customer_id: Option<String>,
+    pub engagement_id: Option<String>,
 }
 
 /// Request to create a custom SAST rule
@@ -867,8 +869,8 @@ pub async fn create_sast_scan(
 
     sqlx::query(
         r#"
-        INSERT INTO sast_scans (id, user_id, name, repository_url, branch, languages, status, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
+        INSERT INTO sast_scans (id, user_id, name, repository_url, branch, languages, status, created_at, customer_id, engagement_id)
+        VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
         "#,
     )
     .bind(&id)
@@ -878,6 +880,8 @@ pub async fn create_sast_scan(
     .bind(&request.branch)
     .bind(&languages_json)
     .bind(&now)
+    .bind(&request.customer_id)
+    .bind(&request.engagement_id)
     .execute(pool)
     .await?;
 

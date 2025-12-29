@@ -7,6 +7,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use crate::db::asset_discovery;
+use crate::db::crm_asset_sync::{self, AssetType, DiscoveredAsset as CrmDiscoveredAsset};
 use crate::scanner::asset_discovery::{
     run_asset_discovery, AssetDiscoveryConfig, AssetDiscoveryStatus,
 };
@@ -50,6 +51,10 @@ pub struct StartDiscoveryRequest {
     pub concurrency: usize,
     #[serde(default = "default_timeout")]
     pub timeout_secs: u64,
+    /// Optional CRM customer ID
+    pub customer_id: Option<String>,
+    /// Optional CRM engagement ID
+    pub engagement_id: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -125,8 +130,13 @@ pub async fn start_discovery(
     };
 
     // Create scan record in database
-    let scan_id =
-        asset_discovery::create_asset_discovery_scan(pool.get_ref(), &claims.sub, &config).await?;
+    let scan_id = asset_discovery::create_asset_discovery_scan(
+        pool.get_ref(),
+        &claims.sub,
+        &config,
+        req.customer_id.as_deref(),
+        req.engagement_id.as_deref(),
+    ).await?;
 
     // Track running scan
     {
@@ -138,6 +148,9 @@ pub async fn start_discovery(
     let pool_clone = pool.get_ref().clone();
     let scan_id_clone = scan_id.clone();
     let state_clone = state.clone();
+    let customer_id_clone = req.customer_id.clone();
+    let engagement_id_clone = req.engagement_id.clone();
+    let domain_clone = req.domain.clone();
 
     tokio::spawn(async move {
         // Update status to running
@@ -161,6 +174,39 @@ pub async fn start_discovery(
                     asset_discovery::save_discovery_results(&pool_clone, &discovery_result).await
                 {
                     error!("Failed to save discovery results: {}", e);
+                }
+
+                // Sync discovered assets to CRM if customer_id is set
+                if let Some(ref customer_id) = customer_id_clone {
+                    let crm_assets = convert_to_crm_assets(
+                        &discovery_result.assets,
+                        &domain_clone,
+                        &scan_id_clone,
+                    );
+
+                    if !crm_assets.is_empty() {
+                        match crm_asset_sync::sync_from_scan_completion(
+                            &pool_clone,
+                            customer_id,
+                            engagement_id_clone.as_deref(),
+                            &scan_id_clone,
+                            "asset_discovery",
+                            crm_assets,
+                        ).await {
+                            Ok(sync_result) => {
+                                info!(
+                                    "Synced {} assets to CRM for customer {}: {} new, {} updated",
+                                    sync_result.total_assets,
+                                    customer_id,
+                                    sync_result.new_assets,
+                                    sync_result.updated_assets
+                                );
+                            }
+                            Err(e) => {
+                                error!("Failed to sync assets to CRM: {}", e);
+                            }
+                        }
+                    }
                 }
             }
             Err(e) => {
@@ -377,4 +423,134 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/scans/{id}", web::delete().to(delete_scan))
             .route("/assets/search", web::get().to(search_assets)),
     );
+}
+
+/// Convert scanner discovered assets to CRM discovered assets
+fn convert_to_crm_assets(
+    assets: &[crate::scanner::asset_discovery::DiscoveredAsset],
+    domain: &str,
+    scan_id: &str,
+) -> Vec<CrmDiscoveredAsset> {
+    let mut crm_assets = Vec::new();
+
+    // Add the main domain
+    crm_assets.push(CrmDiscoveredAsset {
+        asset_type: AssetType::Domain,
+        value: domain.to_string(),
+        source: "asset_discovery".to_string(),
+        source_scan_id: Some(scan_id.to_string()),
+        source_scan_type: Some("asset_discovery".to_string()),
+        metadata: None,
+    });
+
+    for asset in assets {
+        // Add subdomain
+        if asset.hostname != domain && !asset.hostname.is_empty() {
+            crm_assets.push(CrmDiscoveredAsset {
+                asset_type: AssetType::Subdomain,
+                value: asset.hostname.clone(),
+                source: "asset_discovery".to_string(),
+                source_scan_id: Some(scan_id.to_string()),
+                source_scan_type: Some("asset_discovery".to_string()),
+                metadata: Some(serde_json::json!({
+                    "sources": asset.sources.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
+                    "tags": asset.tags,
+                })),
+            });
+        }
+
+        // Add IP addresses
+        for ip in &asset.ip_addresses {
+            crm_assets.push(CrmDiscoveredAsset {
+                asset_type: AssetType::IpAddress,
+                value: ip.to_string(),
+                source: "asset_discovery".to_string(),
+                source_scan_id: Some(scan_id.to_string()),
+                source_scan_type: Some("asset_discovery".to_string()),
+                metadata: Some(serde_json::json!({
+                    "hostname": asset.hostname,
+                    "asn": asset.asn,
+                    "asn_org": asset.asn_org,
+                    "country": asset.country,
+                    "city": asset.city,
+                })),
+            });
+        }
+
+        // Add services (ports)
+        for port in &asset.ports {
+            crm_assets.push(CrmDiscoveredAsset {
+                asset_type: AssetType::Service,
+                value: format!("{}:{}/{}", asset.hostname, port.port, port.protocol),
+                source: "asset_discovery".to_string(),
+                source_scan_id: Some(scan_id.to_string()),
+                source_scan_type: Some("asset_discovery".to_string()),
+                metadata: Some(serde_json::json!({
+                    "hostname": asset.hostname,
+                    "port": port.port,
+                    "protocol": port.protocol,
+                    "service": port.service,
+                    "version": port.version,
+                    "banner": port.banner,
+                })),
+            });
+        }
+
+        // Add technologies
+        for tech in &asset.technologies {
+            crm_assets.push(CrmDiscoveredAsset {
+                asset_type: AssetType::Technology,
+                value: format!("{}:{}", asset.hostname, tech.name),
+                source: "asset_discovery".to_string(),
+                source_scan_id: Some(scan_id.to_string()),
+                source_scan_type: Some("asset_discovery".to_string()),
+                metadata: Some(serde_json::json!({
+                    "hostname": asset.hostname,
+                    "technology": tech.name,
+                    "version": tech.version,
+                    "category": tech.category,
+                    "confidence": tech.confidence,
+                })),
+            });
+        }
+
+        // Add certificates
+        for cert in &asset.certificates {
+            crm_assets.push(CrmDiscoveredAsset {
+                asset_type: AssetType::Certificate,
+                value: cert.fingerprint_sha256.clone(),
+                source: "asset_discovery".to_string(),
+                source_scan_id: Some(scan_id.to_string()),
+                source_scan_type: Some("asset_discovery".to_string()),
+                metadata: Some(serde_json::json!({
+                    "hostname": asset.hostname,
+                    "subject": cert.subject,
+                    "issuer": cert.issuer,
+                    "valid_from": cert.valid_from,
+                    "valid_to": cert.valid_to,
+                    "sans": cert.sans,
+                })),
+            });
+        }
+
+        // Add DNS records
+        for (record_type, values) in &asset.dns_records {
+            for value in values {
+                crm_assets.push(CrmDiscoveredAsset {
+                    asset_type: AssetType::DnsRecord,
+                    value: format!("{}:{}:{}", asset.hostname, record_type, value),
+                    source: "asset_discovery".to_string(),
+                    source_scan_id: Some(scan_id.to_string()),
+                    source_scan_type: Some("asset_discovery".to_string()),
+                    metadata: Some(serde_json::json!({
+                        "hostname": asset.hostname,
+                        "record_type": record_type,
+                        "value": value,
+                    })),
+                });
+            }
+        }
+    }
+
+    crm_assets
 }

@@ -36,6 +36,8 @@ pub async fn save_breach_check_result(
     target: &str,
     result: &BreachCheckResult,
     cached: bool,
+    customer_id: Option<&str>,
+    engagement_id: Option<&str>,
 ) -> Result<String> {
     let id = Uuid::new_v4().to_string();
     let now = Utc::now().to_rfc3339();
@@ -51,8 +53,9 @@ pub async fn save_breach_check_result(
         INSERT INTO breach_check_history (
             id, user_id, check_type, target, result_json,
             breach_count, exposure_count, password_exposures,
-            has_critical, has_high, sources_checked, errors, cached, created_at
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+            has_critical, has_high, sources_checked, errors, cached, created_at,
+            customer_id, engagement_id
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
         "#,
     )
     .bind(&id)
@@ -69,6 +72,8 @@ pub async fn save_breach_check_result(
     .bind(&errors_json)
     .bind(cached as i32)
     .bind(&now)
+    .bind(customer_id)
+    .bind(engagement_id)
     .execute(pool)
     .await?;
 

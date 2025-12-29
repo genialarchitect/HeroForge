@@ -82,6 +82,10 @@ pub struct ScanPathRequest {
     /// Categories to include
     #[serde(default)]
     pub categories: Vec<String>,
+    /// CRM customer ID
+    pub customer_id: Option<String>,
+    /// CRM engagement ID
+    pub engagement_id: Option<String>,
 }
 
 /// Request to scan raw bytes (base64 encoded)
@@ -408,6 +412,10 @@ pub struct BulkScanRequest {
     pub rule_ids: Vec<String>,
     #[serde(default)]
     pub categories: Vec<String>,
+    /// CRM customer ID
+    pub customer_id: Option<String>,
+    /// CRM engagement ID
+    pub engagement_id: Option<String>,
 }
 
 /// Response for bulk scan status
@@ -464,6 +472,8 @@ pub async fn scan_path(
         target_type,
         recursive,
         &rule_ids,
+        req.customer_id.as_deref(),
+        req.engagement_id.as_deref(),
     )
     .await
     .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
@@ -1441,6 +1451,8 @@ pub async fn bulk_scan(
         "bulk",
         recursive,
         &rule_ids,
+        req.customer_id.as_deref(),
+        req.engagement_id.as_deref(),
     ).await
     .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
 
@@ -1586,6 +1598,10 @@ pub struct MemoryScanRequest {
     /// Scan options
     #[serde(default)]
     pub options: MemoryScanOptionsRequest,
+    /// CRM customer ID
+    pub customer_id: Option<String>,
+    /// CRM engagement ID
+    pub engagement_id: Option<String>,
 }
 
 /// Memory scan options request
@@ -1698,6 +1714,8 @@ pub async fn scan_memory_dump(
         None, // process_id
         None, // process_name
         &rules_used,
+        req.customer_id.as_deref(),
+        req.engagement_id.as_deref(),
     ).await
     .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
 

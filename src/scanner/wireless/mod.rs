@@ -147,6 +147,8 @@ impl WirelessManager {
         &self,
         user_id: &str,
         config: WirelessScanConfig,
+        customer_id: Option<&str>,
+        engagement_id: Option<&str>,
     ) -> Result<WirelessScan> {
         let scan = WirelessScan {
             id: uuid::Uuid::new_v4().to_string(),
@@ -159,11 +161,13 @@ impl WirelessManager {
             handshakes_captured: 0,
             started_at: Utc::now(),
             completed_at: None,
+            customer_id: customer_id.map(|s| s.to_string()),
+            engagement_id: engagement_id.map(|s| s.to_string()),
         };
 
         sqlx::query(
-            "INSERT INTO wireless_scans (id, user_id, interface, config, status, started_at)
-             VALUES (?, ?, ?, ?, ?, ?)"
+            "INSERT INTO wireless_scans (id, user_id, interface, config, status, started_at, customer_id, engagement_id)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
         )
         .bind(&scan.id)
         .bind(&scan.user_id)
@@ -171,6 +175,8 @@ impl WirelessManager {
         .bind(serde_json::to_string(&scan.config)?)
         .bind("pending")
         .bind(scan.started_at.to_rfc3339())
+        .bind(&scan.customer_id)
+        .bind(&scan.engagement_id)
         .execute(&self.pool)
         .await?;
 
@@ -293,6 +299,8 @@ impl WirelessManager {
                         .map(|dt| dt.with_timezone(&Utc))
                         .ok()
                 ),
+                customer_id: None,
+                engagement_id: None,
             });
         }
 

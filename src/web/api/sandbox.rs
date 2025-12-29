@@ -100,6 +100,8 @@ pub struct SubmitSampleRequest {
     pub sample_id: String,
     pub sandbox_config_id: String,
     pub options: Option<SubmissionOptionsRequest>,
+    pub customer_id: Option<String>,
+    pub engagement_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -670,8 +672,8 @@ async fn submit_sample(
     let submitted_at = submission.submitted_at.to_rfc3339();
 
     sqlx::query(
-        r#"INSERT INTO sandbox_submissions (id, user_id, sample_id, sandbox_config_id, sandbox_type, sandbox_task_id, status, submitted_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)"#
+        r#"INSERT INTO sandbox_submissions (id, user_id, sample_id, sandbox_config_id, sandbox_type, sandbox_task_id, status, submitted_at, customer_id, engagement_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#
     )
     .bind(&submission_id)
     .bind(user_id)
@@ -681,6 +683,8 @@ async fn submit_sample(
     .bind(&submission.task_id)
     .bind(&status_str)
     .bind(&submitted_at)
+    .bind(&body.customer_id)
+    .bind(&body.engagement_id)
     .execute(pool.get_ref())
     .await
     .map_err(|e| {

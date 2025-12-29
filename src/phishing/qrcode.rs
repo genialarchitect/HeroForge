@@ -320,6 +320,8 @@ pub struct CreateQrCampaignRequest {
     pub awareness_training: Option<bool>,
     pub training_url: Option<String>,
     pub config: Option<QrCodeConfig>,
+    pub customer_id: Option<String>,
+    pub engagement_id: Option<String>,
 }
 
 /// Request to generate a QR code
@@ -501,8 +503,9 @@ impl QrCodeGenerator {
             INSERT INTO qr_campaigns (
                 id, user_id, name, description, status, template_type,
                 tracking_domain, landing_page_id, awareness_training,
-                training_url, config, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                training_url, config, created_at, updated_at,
+                customer_id, engagement_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(&id)
@@ -518,6 +521,8 @@ impl QrCodeGenerator {
         .bind(&config_json)
         .bind(now.to_rfc3339())
         .bind(now.to_rfc3339())
+        .bind(&request.customer_id)
+        .bind(&request.engagement_id)
         .execute(&self.pool)
         .await?;
 

@@ -18,6 +18,8 @@ pub async fn create_nuclei_scan(
     name: Option<&str>,
     targets: &[String],
     config: &NucleiConfig,
+    customer_id: Option<&str>,
+    engagement_id: Option<&str>,
 ) -> Result<String> {
     let id = Uuid::new_v4().to_string();
     let targets_json = serde_json::to_string(targets)?;
@@ -26,8 +28,8 @@ pub async fn create_nuclei_scan(
 
     sqlx::query(
         r#"
-        INSERT INTO nuclei_scans (id, user_id, name, targets, config, status, created_at)
-        VALUES (?, ?, ?, ?, ?, 'pending', ?)
+        INSERT INTO nuclei_scans (id, user_id, name, targets, config, status, created_at, customer_id, engagement_id)
+        VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)
         "#,
     )
     .bind(&id)
@@ -36,6 +38,8 @@ pub async fn create_nuclei_scan(
     .bind(&targets_json)
     .bind(&config_json)
     .bind(&now)
+    .bind(customer_id)
+    .bind(engagement_id)
     .execute(pool)
     .await?;
 
