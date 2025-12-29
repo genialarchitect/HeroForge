@@ -267,6 +267,7 @@ const Header: React.FC = () => {
   // YELLOW TEAM - DevSecOps / Security Architecture
   const yellowTeamItems: NavItem[] = [
     { to: '/yellow-team', icon: <FileCode className="h-4 w-4" />, label: 'DevSecOps Dashboard' },
+    { to: '/sast', icon: <Code className="h-4 w-4" />, label: 'SAST Scanner' },
     { to: '/iac-security', icon: <FileCode className="h-4 w-4" />, label: 'IaC Security' },
     { to: '/container-security', icon: <Box className="h-4 w-4" />, label: 'Container Security' },
     { to: '/api-security', icon: <FileSearch className="h-4 w-4" />, label: 'API Security' },

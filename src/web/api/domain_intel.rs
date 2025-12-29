@@ -26,6 +26,10 @@ pub struct WhoisLookupRequest {
     /// Timeout in seconds (default: 30)
     #[serde(default = "default_timeout")]
     pub timeout_secs: u64,
+    /// CRM customer ID to associate with this lookup
+    pub customer_id: Option<String>,
+    /// CRM engagement ID to associate with this lookup
+    pub engagement_id: Option<String>,
 }
 
 fn default_timeout() -> u64 {
@@ -65,6 +69,10 @@ pub struct DomainIntelRequest {
     /// Timeout in seconds (default: 30)
     #[serde(default = "default_timeout")]
     pub timeout_secs: u64,
+    /// CRM customer ID to associate with this lookup
+    pub customer_id: Option<String>,
+    /// CRM engagement ID to associate with this lookup
+    pub engagement_id: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -81,6 +89,8 @@ impl Default for DomainIntelRequest {
             subdomain_wordlist: None,
             find_related: true,
             timeout_secs: 30,
+            customer_id: None,
+            engagement_id: None,
         }
     }
 }

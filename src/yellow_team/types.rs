@@ -98,6 +98,9 @@ pub enum SastLanguage {
     Php,
     C,
     Cpp,
+    Kotlin,
+    Scala,
+    Swift,
     Unknown,
 }
 
@@ -115,6 +118,9 @@ impl std::fmt::Display for SastLanguage {
             SastLanguage::Php => write!(f, "php"),
             SastLanguage::C => write!(f, "c"),
             SastLanguage::Cpp => write!(f, "cpp"),
+            SastLanguage::Kotlin => write!(f, "kotlin"),
+            SastLanguage::Scala => write!(f, "scala"),
+            SastLanguage::Swift => write!(f, "swift"),
             SastLanguage::Unknown => write!(f, "unknown"),
         }
     }
@@ -134,6 +140,9 @@ impl SastLanguage {
             "php" => SastLanguage::Php,
             "c" | "h" => SastLanguage::C,
             "cpp" | "cc" | "cxx" | "hpp" => SastLanguage::Cpp,
+            "kt" | "kts" => SastLanguage::Kotlin,
+            "scala" | "sc" => SastLanguage::Scala,
+            "swift" => SastLanguage::Swift,
             _ => SastLanguage::Unknown,
         }
     }
@@ -163,6 +172,9 @@ pub enum SastCategory {
     UseAfterFree,
     NullPointerDereference,
     IntegerOverflow,
+    Ssrf,
+    SecurityHotspot,
+    TaintedDataFlow,
     Other,
 }
 
@@ -189,6 +201,9 @@ impl std::fmt::Display for SastCategory {
             SastCategory::UseAfterFree => write!(f, "use_after_free"),
             SastCategory::NullPointerDereference => write!(f, "null_pointer_dereference"),
             SastCategory::IntegerOverflow => write!(f, "integer_overflow"),
+            SastCategory::Ssrf => write!(f, "ssrf"),
+            SastCategory::SecurityHotspot => write!(f, "security_hotspot"),
+            SastCategory::TaintedDataFlow => write!(f, "tainted_data_flow"),
             SastCategory::Other => write!(f, "other"),
         }
     }

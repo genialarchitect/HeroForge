@@ -43,6 +43,10 @@ pub struct SearchRequest {
     /// Page number (default: 1)
     #[serde(default = "default_page")]
     pub page: u32,
+    /// CRM customer ID to associate with this query
+    pub customer_id: Option<String>,
+    /// CRM engagement ID to associate with this query
+    pub engagement_id: Option<String>,
 }
 
 fn default_page() -> u32 {

@@ -63,6 +63,9 @@ const YellowTeamPage = lazy(() => import('./pages/YellowTeamPage'));
 const WhiteTeamPage = lazy(() => import('./pages/WhiteTeamPage'));
 const OrganizationPage = lazy(() => import('./pages/OrganizationPage'));
 
+// SAST Page (Yellow Team - dedicated)
+const SastPage = lazy(() => import('./pages/SastPage'));
+
 // Blue Team pages
 const ForensicsPage = lazy(() => import('./pages/ForensicsPage'));
 const IncidentResponsePage = lazy(() => import('./pages/IncidentResponsePage'));
@@ -538,6 +541,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <YellowTeamPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/sast"
+            element={
+              <ProtectedRoute>
+                <SastPage />
               </ProtectedRoute>
             }
           />

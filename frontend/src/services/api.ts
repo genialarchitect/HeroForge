@@ -310,6 +310,13 @@ import type {
   SastFinding,
   SastRule,
   CreateSastScanRequest,
+  SemgrepRule,
+  TaintFlowsResponse,
+  TaintAnalysisResult,
+  HotspotsResponse,
+  SecurityHotspot,
+  DetectHotspotsResult,
+  HotspotStats,
   SbomProject,
   SbomComponent,
   CreateSbomRequest,
@@ -4173,6 +4180,36 @@ export const yellowTeamAPI = {
 
   updateThreatStatus: (threatId: string, status: string, mitigation?: string) =>
     api.put<StrideThreat>(`/yellow-team/architecture/threats/${threatId}`, { status, mitigation }),
+
+  // Semgrep Integration
+  listSemgrepRules: () =>
+    api.get<SemgrepRule[]>('/yellow-team/sast/semgrep/rules'),
+
+  importSemgrepRules: (yaml: string) =>
+    api.post<{ imported: number; message: string }>('/yellow-team/sast/semgrep/import', { yaml }),
+
+  deleteSemgrepRule: (id: string) =>
+    api.delete<void>(`/yellow-team/sast/semgrep/rules/${id}`),
+
+  // Taint Analysis
+  getTaintFlows: (scanId: string) =>
+    api.get<TaintFlowsResponse>(`/yellow-team/sast/scans/${scanId}/taint-flows`),
+
+  analyzeTaint: (code: string, language: string, sourcePath?: string) =>
+    api.post<TaintAnalysisResult>('/yellow-team/sast/analyze-taint', { code, language, source_path: sourcePath }),
+
+  // Security Hotspots
+  getHotspots: (scanId: string) =>
+    api.get<HotspotsResponse>(`/yellow-team/sast/scans/${scanId}/hotspots`),
+
+  updateHotspot: (id: string, data: { resolution?: string; comment?: string }) =>
+    api.put<SecurityHotspot>(`/yellow-team/sast/hotspots/${id}`, data),
+
+  detectHotspots: (code: string, language: string, filePath?: string) =>
+    api.post<DetectHotspotsResult>('/yellow-team/sast/detect-hotspots', { code, language, file_path: filePath }),
+
+  getHotspotStats: () =>
+    api.get<HotspotStats>('/yellow-team/sast/hotspots/stats'),
 };
 
 // =============================================================================

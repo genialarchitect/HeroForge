@@ -1,11 +1,27 @@
 //! Static Application Security Testing (SAST) module
 //!
 //! Provides code analysis for security vulnerabilities across multiple languages.
+//!
+//! ## Features
+//!
+//! - **Multi-language Support**: Rust, Python, JavaScript/TypeScript, Go, Java
+//! - **Semgrep Integration**: Parse and use Semgrep YAML rules
+//! - **Taint Analysis**: Track data flow from sources to sinks
+//! - **Security Hotspots**: Identify code requiring human review
+//! - **SARIF Export**: Standard format for tool integration
 
 pub mod rules;
 pub mod analyzers;
+pub mod semgrep;
+pub mod taint;
+pub mod hotspots;
 
 use crate::yellow_team::types::*;
+
+// Re-export key types from new modules
+pub use semgrep::{SemgrepParser, SemgrepMatcher, SemgrepRule, ParsedSemgrepRule};
+pub use taint::{TaintAnalyzer, TaintFlow, TaintSource, TaintSink, TaintSanitizer};
+pub use hotspots::{HotspotDetector, SecurityHotspot, HotspotRule, HotspotCategory, HotspotPriority, HotspotResolution};
 
 // Re-export key types and functions
 pub use crate::yellow_team::types::StartSastScanRequest as SastScanRequest;

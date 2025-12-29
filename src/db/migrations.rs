@@ -13943,6 +13943,214 @@ async fn create_sast_tables(pool: &SqlitePool) -> Result<()> {
         .execute(pool)
         .await?;
 
+    // Semgrep rules storage
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS semgrep_rules (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            rule_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            message TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            languages TEXT NOT NULL,
+            pattern_yaml TEXT NOT NULL,
+            metadata TEXT,
+            source TEXT,
+            source_url TEXT,
+            enabled INTEGER DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_semgrep_rules_user ON semgrep_rules(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_semgrep_rules_languages ON semgrep_rules(languages)")
+        .execute(pool)
+        .await?;
+
+    // Taint analysis configurations
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS taint_sources (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            language TEXT NOT NULL,
+            patterns TEXT NOT NULL,
+            capture_vars TEXT,
+            risk_level TEXT NOT NULL,
+            enabled INTEGER DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS taint_sinks (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            language TEXT NOT NULL,
+            patterns TEXT NOT NULL,
+            vuln_type TEXT NOT NULL,
+            cwe_id TEXT,
+            severity TEXT NOT NULL,
+            enabled INTEGER DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS taint_sanitizers (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            language TEXT NOT NULL,
+            patterns TEXT NOT NULL,
+            protects_against TEXT NOT NULL,
+            enabled INTEGER DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Taint flow tracking
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS taint_flows (
+            id TEXT PRIMARY KEY,
+            scan_id TEXT NOT NULL REFERENCES sast_scans(id) ON DELETE CASCADE,
+            source_id TEXT NOT NULL,
+            source_name TEXT NOT NULL,
+            sink_id TEXT NOT NULL,
+            sink_name TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            source_line INTEGER NOT NULL,
+            sink_line INTEGER NOT NULL,
+            flow_path TEXT NOT NULL,
+            sanitizers_passed TEXT,
+            is_sanitized INTEGER DEFAULT 0,
+            severity TEXT NOT NULL,
+            category TEXT NOT NULL,
+            cwe_id TEXT,
+            confidence TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'open',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_taint_flows_scan ON taint_flows(scan_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_taint_flows_severity ON taint_flows(severity)")
+        .execute(pool)
+        .await?;
+
+    // Security hotspots
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS security_hotspots (
+            id TEXT PRIMARY KEY,
+            scan_id TEXT NOT NULL REFERENCES sast_scans(id) ON DELETE CASCADE,
+            rule_id TEXT NOT NULL,
+            rule_name TEXT NOT NULL,
+            category TEXT NOT NULL,
+            priority TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            line_start INTEGER NOT NULL,
+            line_end INTEGER,
+            code_snippet TEXT,
+            description TEXT NOT NULL,
+            review_guidance TEXT NOT NULL,
+            security_questions TEXT,
+            resolution TEXT NOT NULL DEFAULT 'to_review',
+            resolution_comment TEXT,
+            reviewed_by TEXT,
+            reviewed_at TEXT,
+            cwe_ids TEXT,
+            owasp_ids TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_security_hotspots_scan ON security_hotspots(scan_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_security_hotspots_priority ON security_hotspots(priority)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_security_hotspots_resolution ON security_hotspots(resolution)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_security_hotspots_category ON security_hotspots(category)")
+        .execute(pool)
+        .await?;
+
+    // Hotspot rules (custom hotspot detection rules)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS hotspot_rules (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL,
+            category TEXT NOT NULL,
+            priority TEXT NOT NULL,
+            language TEXT NOT NULL,
+            patterns TEXT NOT NULL,
+            review_guidance TEXT NOT NULL,
+            security_questions TEXT,
+            safe_patterns TEXT,
+            vulnerable_patterns TEXT,
+            cwe_ids TEXT,
+            owasp_ids TEXT,
+            enabled INTEGER DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_hotspot_rules_user ON hotspot_rules(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_hotspot_rules_language ON hotspot_rules(language)")
+        .execute(pool)
+        .await?;
+
     log::info!("Created SAST (Static Application Security Testing) tables for Yellow Team capabilities");
     Ok(())
 }

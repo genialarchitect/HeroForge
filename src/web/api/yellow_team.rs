@@ -3549,6 +3549,450 @@ pub async fn sast_get_stats(
 }
 
 // ============================================================================
+// Semgrep Rules API
+// ============================================================================
+
+/// List Semgrep rules
+///
+/// GET /api/yellow-team/sast/semgrep/rules
+pub async fn semgrep_list_rules(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+) -> HttpResponse {
+    let user_id = &claims.sub;
+
+    match sqlx::query_as::<_, (String, String, String, String, String, String, String, Option<String>, Option<String>, Option<String>, i32, String)>(
+        "SELECT id, rule_id, name, message, severity, languages, pattern_yaml, metadata, source, source_url, enabled, created_at
+         FROM semgrep_rules WHERE user_id = ? ORDER BY created_at DESC"
+    )
+    .bind(user_id)
+    .fetch_all(pool.get_ref())
+    .await
+    {
+        Ok(rows) => {
+            let rules: Vec<serde_json::Value> = rows.into_iter().map(|r| {
+                serde_json::json!({
+                    "id": r.0,
+                    "rule_id": r.1,
+                    "name": r.2,
+                    "message": r.3,
+                    "severity": r.4,
+                    "languages": r.5,
+                    "pattern_yaml": r.6,
+                    "metadata": r.7,
+                    "source": r.8,
+                    "source_url": r.9,
+                    "enabled": r.10 == 1,
+                    "created_at": r.11
+                })
+            }).collect();
+            HttpResponse::Ok().json(serde_json::json!({ "rules": rules, "total": rules.len() }))
+        }
+        Err(e) => {
+            log::error!("Failed to list semgrep rules: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to list rules"
+            }))
+        }
+    }
+}
+
+/// Import Semgrep rules from YAML
+///
+/// POST /api/yellow-team/sast/semgrep/import
+pub async fn semgrep_import_rules(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    body: web::Json<serde_json::Value>,
+) -> HttpResponse {
+    let user_id = &claims.sub;
+    let yaml_content = match body.get("yaml").and_then(|v| v.as_str()) {
+        Some(y) => y,
+        None => return HttpResponse::BadRequest().json(serde_json::json!({"error": "Missing 'yaml' field"}))
+    };
+    let source = body.get("source").and_then(|v| v.as_str()).unwrap_or("manual");
+    let source_url = body.get("source_url").and_then(|v| v.as_str());
+
+    use crate::yellow_team::sast::SemgrepParser;
+    let parser = SemgrepParser::new();
+
+    match parser.parse_yaml(yaml_content) {
+        Ok(parsed_rules) => {
+            let mut imported = 0;
+            for rule in parsed_rules {
+                let id = uuid::Uuid::new_v4().to_string();
+                let languages = rule.original.languages.join(",");
+                let metadata_json = serde_json::to_string(&rule.original.metadata).ok();
+
+                if let Err(e) = sqlx::query(
+                    "INSERT INTO semgrep_rules (id, user_id, rule_id, name, message, severity, languages, pattern_yaml, metadata, source, source_url)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                )
+                .bind(&id)
+                .bind(user_id)
+                .bind(&rule.original.id)
+                .bind(&rule.original.id)
+                .bind(&rule.original.message)
+                .bind(format!("{:?}", rule.converted.severity).to_lowercase())
+                .bind(&languages)
+                .bind(yaml_content)
+                .bind(&metadata_json)
+                .bind(source)
+                .bind(source_url)
+                .execute(pool.get_ref())
+                .await
+                {
+                    log::warn!("Failed to import rule {}: {}", rule.original.id, e);
+                } else {
+                    imported += 1;
+                }
+            }
+            HttpResponse::Ok().json(serde_json::json!({
+                "imported": imported,
+                "message": format!("Successfully imported {} Semgrep rules", imported)
+            }))
+        }
+        Err(e) => {
+            log::error!("Failed to parse Semgrep YAML: {}", e);
+            HttpResponse::BadRequest().json(serde_json::json!({
+                "error": "Failed to parse Semgrep YAML",
+                "details": e.to_string()
+            }))
+        }
+    }
+}
+
+/// Delete a Semgrep rule
+///
+/// DELETE /api/yellow-team/sast/semgrep/rules/{id}
+pub async fn semgrep_delete_rule(
+    pool: web::Data<SqlitePool>,
+    path: web::Path<String>,
+    claims: web::ReqData<auth::Claims>,
+) -> HttpResponse {
+    let rule_id = path.into_inner();
+    let user_id = &claims.sub;
+
+    match sqlx::query("DELETE FROM semgrep_rules WHERE id = ? AND user_id = ?")
+        .bind(&rule_id)
+        .bind(user_id)
+        .execute(pool.get_ref())
+        .await
+    {
+        Ok(result) if result.rows_affected() > 0 => {
+            HttpResponse::Ok().json(serde_json::json!({"message": "Rule deleted"}))
+        }
+        Ok(_) => {
+            HttpResponse::NotFound().json(serde_json::json!({"error": "Rule not found"}))
+        }
+        Err(e) => {
+            log::error!("Failed to delete semgrep rule: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to delete rule"
+            }))
+        }
+    }
+}
+
+// ============================================================================
+// Taint Analysis API
+// ============================================================================
+
+/// Get taint analysis flows for a scan
+///
+/// GET /api/yellow-team/sast/scans/{id}/taint-flows
+pub async fn sast_get_taint_flows(
+    pool: web::Data<SqlitePool>,
+    path: web::Path<String>,
+    _claims: web::ReqData<auth::Claims>,
+) -> HttpResponse {
+    let scan_id = path.into_inner();
+
+    match sqlx::query(
+        "SELECT id, scan_id, source_id, source_name, sink_id, sink_name, file_path, source_line, sink_line, flow_path, sanitizers_passed, is_sanitized, severity, category, cwe_id, confidence, status, created_at
+         FROM taint_flows WHERE scan_id = ? ORDER BY severity DESC, created_at DESC"
+    )
+    .bind(&scan_id)
+    .fetch_all(pool.get_ref())
+    .await
+    {
+        Ok(rows) => {
+            use sqlx::Row;
+            let flows: Vec<serde_json::Value> = rows.into_iter().map(|row| {
+                let flow_path_str: String = row.get("flow_path");
+                serde_json::json!({
+                    "id": row.get::<String, _>("id"),
+                    "scan_id": row.get::<String, _>("scan_id"),
+                    "source": {"id": row.get::<String, _>("source_id"), "name": row.get::<String, _>("source_name")},
+                    "sink": {"id": row.get::<String, _>("sink_id"), "name": row.get::<String, _>("sink_name")},
+                    "file_path": row.get::<String, _>("file_path"),
+                    "source_line": row.get::<i32, _>("source_line"),
+                    "sink_line": row.get::<i32, _>("sink_line"),
+                    "flow_path": serde_json::from_str::<serde_json::Value>(&flow_path_str).unwrap_or_default(),
+                    "sanitizers_passed": row.get::<Option<String>, _>("sanitizers_passed"),
+                    "is_sanitized": row.get::<i32, _>("is_sanitized") == 1,
+                    "severity": row.get::<String, _>("severity"),
+                    "category": row.get::<String, _>("category"),
+                    "cwe_id": row.get::<Option<String>, _>("cwe_id"),
+                    "confidence": row.get::<String, _>("confidence"),
+                    "status": row.get::<String, _>("status"),
+                    "created_at": row.get::<String, _>("created_at")
+                })
+            }).collect();
+            HttpResponse::Ok().json(serde_json::json!({ "flows": flows, "total": flows.len() }))
+        }
+        Err(e) => {
+            log::error!("Failed to get taint flows: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to get taint flows"
+            }))
+        }
+    }
+}
+
+/// Run taint analysis on code
+///
+/// POST /api/yellow-team/sast/analyze-taint
+pub async fn sast_analyze_taint(
+    _pool: web::Data<SqlitePool>,
+    _claims: web::ReqData<auth::Claims>,
+    body: web::Json<serde_json::Value>,
+) -> HttpResponse {
+    let code = match body.get("code").and_then(|v| v.as_str()) {
+        Some(c) => c,
+        None => return HttpResponse::BadRequest().json(serde_json::json!({"error": "Missing 'code' field"}))
+    };
+    let language_str = body.get("language").and_then(|v| v.as_str()).unwrap_or("unknown");
+    let language = crate::yellow_team::types::SastLanguage::from_extension(language_str);
+    let file_path = body.get("file_path").and_then(|v| v.as_str()).unwrap_or("inline");
+
+    use crate::yellow_team::sast::TaintAnalyzer;
+    let analyzer = TaintAnalyzer::new();
+    let flows = analyzer.analyze(code, file_path, language);
+
+    let results: Vec<serde_json::Value> = flows.into_iter().map(|f| {
+        serde_json::json!({
+            "source": {"name": f.source.source_name, "line": f.source.line, "variable_name": f.source.variable_name},
+            "sink": {"name": f.sink.sink_name, "line": f.sink.line},
+            "path": f.path,
+            "sanitizers_passed": f.sanitizers_passed,
+            "is_sanitized": f.is_sanitized,
+            "severity": format!("{:?}", f.severity).to_lowercase(),
+            "category": format!("{}", f.category),
+            "cwe_id": f.cwe_id,
+            "confidence": format!("{:?}", f.confidence).to_lowercase()
+        })
+    }).collect();
+
+    HttpResponse::Ok().json(serde_json::json!({
+        "flows": results,
+        "total": results.len(),
+        "language": language_str
+    }))
+}
+
+// ============================================================================
+// Security Hotspots API
+// ============================================================================
+
+/// Get security hotspots for a scan
+///
+/// GET /api/yellow-team/sast/scans/{id}/hotspots
+pub async fn sast_get_hotspots(
+    pool: web::Data<SqlitePool>,
+    path: web::Path<String>,
+    _claims: web::ReqData<auth::Claims>,
+) -> HttpResponse {
+    let scan_id = path.into_inner();
+
+    match sqlx::query(
+        "SELECT id, scan_id, rule_id, rule_name, category, priority, file_path, line_start, line_end, code_snippet, description, review_guidance, security_questions, resolution, resolution_comment, reviewed_by, reviewed_at, cwe_ids, owasp_ids, created_at
+         FROM security_hotspots WHERE scan_id = ? ORDER BY priority DESC, created_at DESC"
+    )
+    .bind(&scan_id)
+    .fetch_all(pool.get_ref())
+    .await
+    {
+        Ok(rows) => {
+            use sqlx::Row;
+            let hotspots: Vec<serde_json::Value> = rows.into_iter().map(|row| {
+                let security_questions: Option<String> = row.get("security_questions");
+                let cwe_ids: Option<String> = row.get("cwe_ids");
+                let owasp_ids: Option<String> = row.get("owasp_ids");
+                serde_json::json!({
+                    "id": row.get::<String, _>("id"),
+                    "scan_id": row.get::<String, _>("scan_id"),
+                    "rule_id": row.get::<String, _>("rule_id"),
+                    "rule_name": row.get::<String, _>("rule_name"),
+                    "category": row.get::<String, _>("category"),
+                    "priority": row.get::<String, _>("priority"),
+                    "file_path": row.get::<String, _>("file_path"),
+                    "line_number": row.get::<i32, _>("line_start"),
+                    "line_end": row.get::<Option<i32>, _>("line_end"),
+                    "code_snippet": row.get::<Option<String>, _>("code_snippet"),
+                    "message": row.get::<String, _>("description"),
+                    "review_guidance": row.get::<String, _>("review_guidance"),
+                    "security_context": security_questions.as_ref().and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok()).unwrap_or_default(),
+                    "resolution": row.get::<String, _>("resolution"),
+                    "review_comment": row.get::<Option<String>, _>("resolution_comment"),
+                    "reviewer_id": row.get::<Option<String>, _>("reviewed_by"),
+                    "reviewed_at": row.get::<Option<String>, _>("reviewed_at"),
+                    "cwe_id": cwe_ids.as_ref().and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok()).and_then(|v| v.get(0).cloned()),
+                    "created_at": row.get::<String, _>("created_at")
+                })
+            }).collect();
+            HttpResponse::Ok().json(serde_json::json!({ "hotspots": hotspots, "total": hotspots.len() }))
+        }
+        Err(e) => {
+            log::error!("Failed to get security hotspots: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to get security hotspots"
+            }))
+        }
+    }
+}
+
+/// Update a security hotspot resolution
+///
+/// PUT /api/yellow-team/sast/hotspots/{id}
+pub async fn sast_update_hotspot(
+    pool: web::Data<SqlitePool>,
+    path: web::Path<String>,
+    claims: web::ReqData<auth::Claims>,
+    body: web::Json<serde_json::Value>,
+) -> HttpResponse {
+    let hotspot_id = path.into_inner();
+    let user_id = &claims.sub;
+    let resolution = body.get("resolution").and_then(|v| v.as_str()).unwrap_or("to_review");
+    let comment = body.get("resolution_comment").and_then(|v| v.as_str());
+
+    match sqlx::query(
+        "UPDATE security_hotspots SET resolution = ?, resolution_comment = ?, reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+    )
+    .bind(resolution)
+    .bind(comment)
+    .bind(user_id)
+    .bind(&hotspot_id)
+    .execute(pool.get_ref())
+    .await
+    {
+        Ok(result) if result.rows_affected() > 0 => {
+            HttpResponse::Ok().json(serde_json::json!({"message": "Hotspot updated"}))
+        }
+        Ok(_) => {
+            HttpResponse::NotFound().json(serde_json::json!({"error": "Hotspot not found"}))
+        }
+        Err(e) => {
+            log::error!("Failed to update hotspot: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to update hotspot"
+            }))
+        }
+    }
+}
+
+/// Detect security hotspots in code
+///
+/// POST /api/yellow-team/sast/detect-hotspots
+pub async fn sast_detect_hotspots(
+    _pool: web::Data<SqlitePool>,
+    _claims: web::ReqData<auth::Claims>,
+    body: web::Json<serde_json::Value>,
+) -> HttpResponse {
+    let code = match body.get("code").and_then(|v| v.as_str()) {
+        Some(c) => c,
+        None => return HttpResponse::BadRequest().json(serde_json::json!({"error": "Missing 'code' field"}))
+    };
+    let language_str = body.get("language").and_then(|v| v.as_str()).unwrap_or("unknown");
+    let language = crate::yellow_team::types::SastLanguage::from_extension(language_str);
+    let file_path = body.get("file_path").and_then(|v| v.as_str()).unwrap_or("inline");
+
+    use crate::yellow_team::sast::HotspotDetector;
+    let detector = HotspotDetector::new();
+    let hotspots = detector.detect(code, file_path, language);
+    let stats = detector.get_stats(&hotspots);
+
+    let results: Vec<serde_json::Value> = hotspots.into_iter().map(|h| {
+        serde_json::json!({
+            "id": h.id,
+            "rule_id": h.rule_id,
+            "rule_name": h.rule_name,
+            "category": format!("{:?}", h.category).to_lowercase(),
+            "priority": format!("{:?}", h.priority).to_lowercase(),
+            "file_path": h.file_path,
+            "line_start": h.line_start,
+            "line_end": h.line_end,
+            "code_snippet": h.code_snippet,
+            "description": h.description,
+            "review_guidance": h.review_guidance,
+            "security_questions": h.security_questions,
+            "cwe_ids": h.cwe_ids,
+            "owasp_ids": h.owasp_ids
+        })
+    }).collect();
+
+    HttpResponse::Ok().json(serde_json::json!({
+        "hotspots": results,
+        "total": results.len(),
+        "stats": {
+            "by_priority": stats.by_priority.iter().map(|(k, v)| (format!("{:?}", k).to_lowercase(), v)).collect::<std::collections::HashMap<_, _>>(),
+            "by_category": stats.by_category.iter().map(|(k, v)| (format!("{:?}", k).to_lowercase(), v)).collect::<std::collections::HashMap<_, _>>()
+        },
+        "language": language_str
+    }))
+}
+
+/// Get hotspot statistics
+///
+/// GET /api/yellow-team/sast/hotspots/stats
+pub async fn sast_hotspot_stats(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+) -> HttpResponse {
+    let user_id = &claims.sub;
+
+    let total: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM security_hotspots h JOIN sast_scans s ON h.scan_id = s.id WHERE s.user_id = ?"
+    )
+    .bind(user_id)
+    .fetch_one(pool.get_ref())
+    .await
+    .unwrap_or(0);
+
+    let to_review: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM security_hotspots h JOIN sast_scans s ON h.scan_id = s.id WHERE s.user_id = ? AND h.resolution = 'to_review'"
+    )
+    .bind(user_id)
+    .fetch_one(pool.get_ref())
+    .await
+    .unwrap_or(0);
+
+    let safe: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM security_hotspots h JOIN sast_scans s ON h.scan_id = s.id WHERE s.user_id = ? AND h.resolution = 'safe'"
+    )
+    .bind(user_id)
+    .fetch_one(pool.get_ref())
+    .await
+    .unwrap_or(0);
+
+    let vulnerability: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM security_hotspots h JOIN sast_scans s ON h.scan_id = s.id WHERE s.user_id = ? AND h.resolution = 'vulnerability'"
+    )
+    .bind(user_id)
+    .fetch_one(pool.get_ref())
+    .await
+    .unwrap_or(0);
+
+    HttpResponse::Ok().json(serde_json::json!({
+        "total": total,
+        "to_review": to_review,
+        "safe": safe,
+        "vulnerability": vulnerability,
+        "acknowledged": total - to_review - safe - vulnerability
+    }))
+}
+
+// ============================================================================
 // Route Configuration
 // ============================================================================
 
@@ -3681,5 +4125,17 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 .route("/rules", web::post().to(sast_create_rule))
                 .route("/rules/{id}", web::delete().to(sast_delete_rule))
                 .route("/stats", web::get().to(sast_get_stats))
+                // Semgrep integration
+                .route("/semgrep/rules", web::get().to(semgrep_list_rules))
+                .route("/semgrep/import", web::post().to(semgrep_import_rules))
+                .route("/semgrep/rules/{id}", web::delete().to(semgrep_delete_rule))
+                // Taint analysis
+                .route("/scans/{id}/taint-flows", web::get().to(sast_get_taint_flows))
+                .route("/analyze-taint", web::post().to(sast_analyze_taint))
+                // Security hotspots
+                .route("/scans/{id}/hotspots", web::get().to(sast_get_hotspots))
+                .route("/hotspots/{id}", web::put().to(sast_update_hotspot))
+                .route("/detect-hotspots", web::post().to(sast_detect_hotspots))
+                .route("/hotspots/stats", web::get().to(sast_hotspot_stats))
         );
 }
