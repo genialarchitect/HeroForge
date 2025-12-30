@@ -54,7 +54,7 @@ impl JobQueue {
 
         // Get highest priority job (highest score)
         let result: Option<(String, f64)> = self.redis
-            .zpopmax(&queue_key, 1)
+            .zpopmax::<_, Vec<(String, f64)>>(&queue_key, 1)
             .await?
             .into_iter()
             .next();

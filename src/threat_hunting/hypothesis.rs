@@ -6,7 +6,7 @@ use chrono::Utc;
 use super::types::{Hypothesis, CreateHypothesisRequest, UpdateHypothesisRequest, HypothesisStatus};
 
 /// Hypothesis template
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct HypothesisTemplate {
     pub name: String,
     pub description: String,

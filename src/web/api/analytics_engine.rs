@@ -62,7 +62,7 @@ pub async fn save_query(
     .bind(&now)
     .execute(pool.get_ref())
     .await
-    .map_err(|e| ApiError::InternalError(e.to_string()))?;
+    .map_err(|e| ApiError::internal(e.to_string()))?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "id": query_id,
@@ -87,7 +87,7 @@ pub async fn list_saved_queries(
     .bind(&claims.sub)
     .fetch_all(pool.get_ref())
     .await
-    .map_err(|e| ApiError::InternalError(e.to_string()))?;
+    .map_err(|e| ApiError::internal(e.to_string()))?;
 
     let results: Vec<_> = queries
         .into_iter()

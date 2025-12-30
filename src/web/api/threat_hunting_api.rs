@@ -1,4 +1,4 @@
-use actix_web::{web, HttpResponse, HttpRequest};
+use actix_web::{web, HttpResponse};
 use sqlx::SqlitePool;
 use serde_json::json;
 
@@ -12,12 +12,11 @@ use crate::web::auth::jwt::Claims;
 /// POST /api/threat-hunting/hypotheses - Create hypothesis
 pub async fn create_hypothesis(
     pool: web::Data<SqlitePool>,
-    req: HttpRequest,
+    claims: Claims,
     body: web::Json<CreateHypothesisRequest>,
 ) -> HttpResponse {
     // Extract user ID from JWT claims
-    let user_id = req.extensions().get::<Claims>()
-        .map(|claims| claims.sub.clone());
+    let user_id = Some(claims.sub.clone());
 
     match hypothesis::create_hypothesis(&pool, body.into_inner(), user_id).await {
         Ok(hypothesis) => HttpResponse::Ok().json(hypothesis),
@@ -215,11 +214,9 @@ pub async fn get_analytics(pool: web::Data<SqlitePool>) -> HttpResponse {
 /// GET /api/threat-hunting/notebooks - List notebooks
 pub async fn list_notebooks(
     pool: web::Data<SqlitePool>,
-    req: HttpRequest,
+    claims: Claims,
 ) -> HttpResponse {
-    let user_id = req.extensions().get::<Claims>()
-        .map(|claims| claims.sub.clone())
-        .unwrap_or_default();
+    let user_id = claims.sub.clone();
 
     match collaboration::list_notebooks(&pool, &user_id).await {
         Ok(notebooks) => HttpResponse::Ok().json(notebooks),
@@ -236,11 +233,10 @@ pub async fn list_notebooks(
 /// POST /api/threat-hunting/notebooks - Create notebook
 pub async fn create_notebook(
     pool: web::Data<SqlitePool>,
-    req: HttpRequest,
+    claims: Claims,
     body: web::Json<serde_json::Value>,
 ) -> HttpResponse {
-    let user_id = req.extensions().get::<Claims>()
-        .map(|claims| claims.sub.clone());
+    let user_id = Some(claims.sub.clone());
 
     let name = body.get("name")
         .and_then(|v| v.as_str())

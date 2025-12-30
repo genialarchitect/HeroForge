@@ -37,7 +37,7 @@ pub async fn get_hub_status(
     )
     .fetch_one(pool.get_ref())
     .await
-    .map_err(|e| ApiError::InternalError(e.to_string()))?;
+    .map_err(|e| ApiError::internal(e.to_string()))?;
 
     let sources = sqlx::query_as::<_, (String, String, bool, String, i64)>(
         r#"
@@ -48,7 +48,7 @@ pub async fn get_hub_status(
     )
     .fetch_all(pool.get_ref())
     .await
-    .map_err(|e| ApiError::InternalError(e.to_string()))?;
+    .map_err(|e| ApiError::internal(e.to_string()))?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "total_indicators": total_indicators,
@@ -88,7 +88,7 @@ pub async fn create_report(
     .bind(&now)
     .execute(pool.get_ref())
     .await
-    .map_err(|e| ApiError::InternalError(e.to_string()))?;
+    .map_err(|e| ApiError::internal(e.to_string()))?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "id": report_id,
@@ -113,7 +113,7 @@ pub async fn list_reports(
     .bind(&claims.sub)
     .fetch_all(pool.get_ref())
     .await
-    .map_err(|e| ApiError::InternalError(e.to_string()))?;
+    .map_err(|e| ApiError::internal(e.to_string()))?;
 
     Ok(HttpResponse::Ok().json(reports))
 }
@@ -132,7 +132,7 @@ pub async fn list_marketplace_feeds(
     )
     .fetch_all(pool.get_ref())
     .await
-    .map_err(|e| ApiError::InternalError(e.to_string()))?;
+    .map_err(|e| ApiError::internal(e.to_string()))?;
 
     Ok(HttpResponse::Ok().json(feeds))
 }
