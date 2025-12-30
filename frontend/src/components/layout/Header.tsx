@@ -268,8 +268,11 @@ const Header: React.FC = () => {
 
   // PURPLE TEAM - Combined Offense/Defense Validation
   const purpleTeamItems: NavItem[] = [
-    { to: '/purple-team', icon: <Eye className="h-4 w-4" />, label: 'Purple Team' },
+    { to: '/purple-team', icon: <Eye className="h-4 w-4" />, label: 'Purple Team Dashboard' },
+    { to: '/purple-team/live-exercises', icon: <Play className="h-4 w-4" />, label: 'Live Exercises' },
+    { to: '/purple-team/attack-library', icon: <Target className="h-4 w-4" />, label: 'Attack Library' },
     { to: '/attack-paths', icon: <Network className="h-4 w-4" />, label: 'Attack Paths' },
+    { to: '/purple-team/coverage', icon: <ShieldCheck className="h-4 w-4" />, label: 'Detection Coverage' },
   ];
 
   // YELLOW TEAM - DevSecOps / Security Architecture
@@ -285,7 +288,11 @@ const Header: React.FC = () => {
 
   // ORANGE TEAM - Security Awareness & Training
   const orangeTeamItems: NavItem[] = [
-    { to: '/orange-team', icon: <BookOpenCheck className="h-4 w-4" />, label: 'Training & Awareness' },
+    { to: '/orange-team', icon: <GraduationCap className="h-4 w-4" />, label: 'Awareness Dashboard' },
+    { to: '/orange-team/campaigns', icon: <Target className="h-4 w-4" />, label: 'Phishing Campaigns' },
+    { to: '/orange-team/training', icon: <BookOpenCheck className="h-4 w-4" />, label: 'Training Content' },
+    { to: '/orange-team/gamification', icon: <Sparkles className="h-4 w-4" />, label: 'Gamification' },
+    { to: '/orange-team/analytics', icon: <BarChart3 className="h-4 w-4" />, label: 'Analytics' },
   ];
 
   // GREEN TEAM - SOAR / Security Automation & AI
@@ -308,6 +315,16 @@ const Header: React.FC = () => {
     { to: '/finding-templates', icon: <FileWarning className="h-4 w-4" />, label: 'Finding Templates' },
     { to: '/executive-dashboard', icon: <BarChart3 className="h-4 w-4" />, label: 'Executive Dashboard' },
     { to: '/reports', icon: <FileText className="h-4 w-4" />, label: 'Reports' },
+  ];
+
+  // ANALYTICS - Cross-Team Insights & Context
+  const analyticsItems: NavItem[] = [
+    { to: '/analytics', icon: <BarChart3 className="h-4 w-4" />, label: 'Analytics Dashboard' },
+    { to: '/context/users', icon: <UserCheck className="h-4 w-4" />, label: 'User Security Context' },
+    { to: '/context/assets', icon: <Server className="h-4 w-4" />, label: 'Asset Security Context' },
+    { to: '/context/high-risk', icon: <AlertCircle className="h-4 w-4" />, label: 'High-Risk Entities' },
+    { to: '/context/events', icon: <Activity className="h-4 w-4" />, label: 'Cross-Team Events' },
+    { to: '/topology', icon: <Network className="h-4 w-4" />, label: 'Network Topology' },
   ];
 
   // CRM - Customer Relationship Management
@@ -339,6 +356,9 @@ const Header: React.FC = () => {
   ];
 
   // Check if any item in a category is active
+  const isAnalyticsActive = analyticsItems.some(
+    item => location.pathname === item.to || location.pathname.startsWith(item.to)
+  );
   const isCrmActive = crmItems.some(
     item => location.pathname === item.to || location.pathname.startsWith(item.to)
   );
@@ -389,6 +409,15 @@ const Header: React.FC = () => {
             {/* Navigation - Organized by Color Teams */}
             {user && (
               <nav className="flex items-center space-x-1">
+                {/* Analytics - Cross-Team Insights */}
+                <DropdownMenu
+                  label="Analytics"
+                  icon={<BarChart3 className="h-4 w-4" />}
+                  items={analyticsItems}
+                  isActive={isAnalyticsActive}
+                  teamColor="default"
+                />
+
                 {/* CRM - Customer Relationship Management */}
                 <DropdownMenu
                   label="CRM"
