@@ -23,6 +23,7 @@ import DashboardPage from './pages/DashboardPage';
 const AdminPage = lazy(() => import('./pages/AdminPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const SalesPage = lazy(() => import('./pages/SalesPage'));
+const InvestorPage = lazy(() => import('./pages/InvestorPage'));
 const AssetsPage = lazy(() => import('./pages/AssetsPage'));
 const WebAppScanPage = lazy(() => import('./pages/WebAppScanPage'));
 const DnsToolsPage = lazy(() => import('./pages/DnsToolsPage'));
@@ -218,6 +219,7 @@ function App() {
             <Routes>
           <Route path="/" element={<LoginPage />} />
           <Route path="/sales" element={<SalesPage />} />
+          <Route path="/investors" element={<InvestorPage />} />
           <Route
             path="/dashboard"
             element={
