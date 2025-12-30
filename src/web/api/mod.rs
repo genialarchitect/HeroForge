@@ -20,6 +20,7 @@ pub mod chat;
 pub mod cicd;
 pub mod cicd_integration;
 pub mod cicd_pipeline;
+pub mod context;
 pub mod ide_integration;
 pub mod cloud;
 pub mod cloud_discovery;

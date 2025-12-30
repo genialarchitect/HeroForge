@@ -42,6 +42,7 @@ pub mod container;
 pub mod cracking;
 pub mod credential_audit;
 pub mod crm;
+pub mod cross_team;
 pub mod crm_asset_sync;
 pub mod data_lake;
 pub mod deception;
@@ -280,6 +281,9 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     performance::init_tables(pool).await?;
     analytics_engine::init_tables(pool).await?;
     intelligence_platform::init_tables(pool).await?;
+
+    // Run Cross-Team Data Flow migrations
+    cross_team::run_migrations(pool).await?;
 
     Ok(())
 }

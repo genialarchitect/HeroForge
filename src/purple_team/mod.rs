@@ -9,6 +9,8 @@ pub mod detection_check;
 pub mod coverage;
 pub mod gap_analysis;
 pub mod engine;
+pub mod live_exercises;
+pub mod attack_library;
 
 #[allow(unused_imports)]
 pub use types::*;
@@ -21,3 +23,5 @@ pub use coverage::CoverageCalculator;
 pub use gap_analysis::{GapAnalyzer, GapStatistics};
 #[allow(unused_imports)]
 pub use engine::{PurpleTeamEngine, PurpleTeamProgress, ExercisePhase, ExerciseResult, AvailableAttack, AttackParameter, ParameterType};
+pub use live_exercises::*;
+pub use attack_library::*;

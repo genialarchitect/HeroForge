@@ -669,6 +669,8 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .configure(api::performance::configure)
                     .configure(api::analytics_engine::configure)
                     .configure(api::intelligence_platform::configure)
+                    // Cross-Team Context API
+                    .configure(api::context::configure)
                     // Start workflow from vulnerability
                     .route("/vulnerabilities/{id}/workflow", web::post().to(api::workflows::start_workflow))
                     // SSO Admin endpoints

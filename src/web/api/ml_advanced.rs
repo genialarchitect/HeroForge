@@ -87,7 +87,7 @@ pub async fn deploy_model(
     .bind(&now)
     .execute(pool.get_ref())
     .await
-    .map_err(|e| ApiError::InternalError(e.to_string()))?;
+    .map_err(|e| ApiError::internal(e.to_string()))?;
 
     Ok(HttpResponse::Ok().json(result))
 }
@@ -142,7 +142,7 @@ pub async fn create_federation(
     .bind(&now)
     .execute(pool.get_ref())
     .await
-    .map_err(|e| ApiError::InternalError(e.to_string()))?;
+    .map_err(|e| ApiError::internal(e.to_string()))?;
 
     Ok(HttpResponse::Ok().json(model))
 }
