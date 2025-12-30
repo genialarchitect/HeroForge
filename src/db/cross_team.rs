@@ -276,7 +276,8 @@ pub async fn get_user_context(pool: &SqlitePool, user_id: &str) -> Result<UserSe
                 compliance_violations: 0,
                 policy_violations: 0,
                 overall_risk_score: 0.0,
-                updated_at: now.to_rfc3339(),
+                risk_level: "low".to_string(),
+                updated_at: now,
             };
 
             sqlx::query(
