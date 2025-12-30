@@ -36,7 +36,7 @@ pub async fn search_ct_logs(domain: &str, timeout_secs: u64) -> Result<Vec<Strin
 
     let client = Client::builder()
         .timeout(Duration::from_secs(timeout_secs))
-        .user_agent("HeroForge Security Scanner")
+        .user_agent("Genial Architect Scanner")
         .build()?;
 
     // Query crt.sh API

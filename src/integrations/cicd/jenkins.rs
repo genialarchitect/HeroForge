@@ -127,7 +127,7 @@ fn generate_junit_xml(suite: &JUnitTestSuite) -> Result<String> {
     xml.push('\n');
 
     xml.push_str(&format!(
-        r#"<testsuites name="HeroForge Security Scan" tests="{}" failures="{}" errors="{}" skipped="{}" time="{}">"#,
+        r#"<testsuites name="Genial Architect Scan" tests="{}" failures="{}" errors="{}" skipped="{}" time="{}">"#,
         suite.tests, suite.failures, suite.errors, suite.skipped, suite.time
     ));
     xml.push('\n');
@@ -204,7 +204,7 @@ fn escape_xml(s: &str) -> String {
 /// Generate Jenkins pipeline example (Jenkinsfile)
 pub fn generate_pipeline_example(api_url: &str) -> String {
     format!(
-        r#"// HeroForge Security Scan - Jenkins Pipeline
+        r#"// Genial Architect Scan - Jenkins Pipeline
 pipeline {{
     agent any
 

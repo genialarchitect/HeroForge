@@ -11,11 +11,17 @@ pub mod executor;
 pub mod actions;
 pub mod conditions;
 pub mod marketplace;
+pub mod triggers;
+pub mod approvals;
+pub mod analytics;
 
 pub use executor::*;
 pub use actions::*;
 pub use conditions::*;
 pub use marketplace::*;
+pub use triggers::*;
+pub use approvals::*;
+pub use analytics::*;
 
 use crate::green_team::types::*;
 use chrono::Utc;

@@ -149,7 +149,7 @@ export default function PortalResetPassword() {
         </div>
 
         <p className="text-center text-xs text-gray-500">
-          Powered by HeroForge Security Platform
+          Powered by Genial Architect Platform
         </p>
       </div>
     </div>

@@ -620,6 +620,8 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .configure(api::threat_hunting::configure)
                     // Yellow Team (DevSecOps) endpoints
                     .configure(api::yellow_team::configure)
+                    // Software Composition Analysis (SCA) endpoints
+                    .configure(api::sca::configure)
                     // Orange Team (Security Awareness & Training) endpoints
                     .configure(api::orange_team::configure)
                     // Green Team (SOAR - Security Automation & Orchestration) endpoints
@@ -640,6 +642,16 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .configure(api::yara::configure)
                     // Traffic Analysis (Sprint 9-10 - Priority 1 Features) endpoints
                     .configure(api::traffic_analysis::configure)
+                    // CI/CD Pipeline Integration (Sprint 9-10 - Priority 2 Features) endpoints
+                    .configure(api::cicd_integration::configure)
+                    // IDE Integration (Sprint 9-10 - Priority 2 Features) endpoints
+                    .configure(api::ide_integration::configure)
+                    // AI/ML Security Operations (Sprint 15 - Priority 2 Features) endpoints
+                    .configure(api::ai_security::configure)
+                    // OT/ICS (Industrial Control Systems) Security endpoints
+                    .configure(api::ot_ics::configure)
+                    // IoT (Internet of Things) Security endpoints
+                    .configure(api::iot::configure)
                     // Start workflow from vulnerability
                     .route("/vulnerabilities/{id}/workflow", web::post().to(api::workflows::start_workflow))
                     // SSO Admin endpoints

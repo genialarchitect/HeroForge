@@ -157,7 +157,7 @@ impl CertificateTemplate {
             completion_date: completion_date.format("%B %d, %Y").to_string(),
             certificate_number: certificate_number.to_string(),
             expires_date: expires_at.map(|d| d.format("%B %d, %Y").to_string()),
-            organization_name: "HeroForge Security Training".to_string(),
+            organization_name: "Genial Architect Training".to_string(),
             signature_name: "Training Director".to_string(),
             signature_title: "Director of Security Awareness".to_string(),
         }

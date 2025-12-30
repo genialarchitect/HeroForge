@@ -266,6 +266,20 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     create_netflow_tables(pool).await?;
     // DNS Analytics tables (Sprint 6 - Priority 2 Features)
     create_dns_analytics_tables(pool).await?;
+    // Sprint 11-12 (Priority 2): SOAR Foundation Enhancement - Playbooks and Orchestration
+    create_soar_foundation_tables(pool).await?;
+    // Sprint 9-10 (Priority 2): CI/CD Pipeline Integration and IDE Integration
+    create_cicd_integration_tables(pool).await?;
+    create_ide_integration_tables(pool).await?;
+    // Sprint 8 (Priority 2): Software Composition Analysis (SCA)
+    create_sca_tables(pool).await?;
+    // Sprint 15 (Priority 2): AI/ML Security Operations
+    create_ai_security_tables(pool).await?;
+    seed_builtin_llm_test_cases(pool).await?;
+    // Sprint 13-14 (Priority 2): OT/ICS and IoT Security
+    create_ot_ics_tables(pool).await?;
+    create_iot_tables(pool).await?;
+    seed_iot_credentials(pool).await?;
     Ok(())
 }
 
@@ -21385,5 +21399,1604 @@ async fn create_dns_analytics_tables(pool: &SqlitePool) -> Result<()> {
     }
 
     log::info!("Created DNS Analytics tables (Sprint 6 - Priority 2 Features)");
+    Ok(())
+}
+
+/// Create SOAR Foundation Enhancement tables (Sprint 11-12 - Priority 2 Features)
+/// Playbooks and Orchestration for Security Automation
+async fn create_soar_foundation_tables(pool: &SqlitePool) -> Result<()> {
+    // Enhanced soar_playbooks with additional fields for visual builder and CRM integration
+    let _ = sqlx::query("ALTER TABLE soar_playbooks ADD COLUMN user_id TEXT").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE soar_playbooks ADD COLUMN variables TEXT").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE soar_playbooks ADD COLUMN input_schema TEXT").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE soar_playbooks ADD COLUMN output_schema TEXT").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE soar_playbooks ADD COLUMN run_count INTEGER DEFAULT 0").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE soar_playbooks ADD COLUMN avg_duration_seconds INTEGER").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE soar_playbooks ADD COLUMN success_rate REAL").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE soar_playbooks ADD COLUMN last_run_at TIMESTAMP").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE soar_playbooks ADD COLUMN customer_id TEXT").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE soar_playbooks ADD COLUMN engagement_id TEXT").execute(pool).await;
+
+    // Enhanced soar_actions table with more fields
+    let _ = sqlx::query("ALTER TABLE soar_actions ADD COLUMN display_name TEXT").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE soar_actions ADD COLUMN integration TEXT").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE soar_actions ADD COLUMN risk_level TEXT DEFAULT 'low'").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE soar_actions ADD COLUMN enabled BOOLEAN DEFAULT TRUE").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE soar_actions ADD COLUMN custom BOOLEAN DEFAULT FALSE").execute(pool).await;
+
+    // Enhanced soar_playbook_runs with more tracking fields
+    let _ = sqlx::query("ALTER TABLE soar_playbook_runs ADD COLUMN playbook_version INTEGER DEFAULT 1").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE soar_playbook_runs ADD COLUMN initiated_by TEXT").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE soar_playbook_runs ADD COLUMN customer_id TEXT").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE soar_playbook_runs ADD COLUMN engagement_id TEXT").execute(pool).await;
+
+    // SOAR step executions - detailed step-by-step execution tracking
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS soar_step_executions (
+            id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL REFERENCES soar_playbook_runs(id) ON DELETE CASCADE,
+            step_id TEXT NOT NULL,
+            step_index INTEGER NOT NULL,
+            action_id TEXT,
+            action_name TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            input_data TEXT,
+            output_data TEXT,
+            error_message TEXT,
+            retries INTEGER DEFAULT 0,
+            started_at TIMESTAMP,
+            completed_at TIMESTAMP,
+            duration_ms INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_soar_step_executions_run ON soar_step_executions(run_id)").execute(pool).await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_soar_step_executions_status ON soar_step_executions(status)").execute(pool).await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_soar_step_executions_action ON soar_step_executions(action_id)").execute(pool).await?;
+
+    // SOAR approvals - approval workflow for high-risk actions
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS soar_approvals (
+            id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL REFERENCES soar_playbook_runs(id) ON DELETE CASCADE,
+            step_id TEXT NOT NULL,
+            step_name TEXT NOT NULL,
+            action_description TEXT,
+            approvers TEXT NOT NULL,
+            required_approvals INTEGER DEFAULT 1,
+            current_approvals INTEGER DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'pending',
+            timeout_at TIMESTAMP,
+            decisions TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            resolved_at TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_soar_approvals_run ON soar_approvals(run_id)").execute(pool).await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_soar_approvals_status ON soar_approvals(status)").execute(pool).await?;
+
+    // SOAR approval decisions - individual approver responses
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS soar_approval_decisions (
+            id TEXT PRIMARY KEY,
+            approval_id TEXT NOT NULL REFERENCES soar_approvals(id) ON DELETE CASCADE,
+            user_id TEXT NOT NULL,
+            username TEXT,
+            decision TEXT NOT NULL,
+            comments TEXT,
+            decided_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_soar_approval_decisions_approval ON soar_approval_decisions(approval_id)").execute(pool).await?;
+
+    // Enhanced SOAR integrations table
+    let _ = sqlx::query("ALTER TABLE soar_integrations ADD COLUMN user_id TEXT").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE soar_integrations ADD COLUMN vendor TEXT").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE soar_integrations ADD COLUMN config TEXT").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE soar_integrations ADD COLUMN status TEXT DEFAULT 'disconnected'").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE soar_integrations ADD COLUMN customer_id TEXT").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE soar_integrations ADD COLUMN engagement_id TEXT").execute(pool).await;
+
+    // SOAR action library - expanded built-in actions
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS soar_action_library (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            display_name TEXT NOT NULL,
+            description TEXT,
+            category TEXT NOT NULL,
+            integration TEXT,
+            action_type TEXT NOT NULL DEFAULT 'builtin',
+            input_schema TEXT NOT NULL,
+            output_schema TEXT,
+            timeout_seconds INTEGER DEFAULT 300,
+            requires_approval BOOLEAN DEFAULT FALSE,
+            risk_level TEXT DEFAULT 'low',
+            enabled BOOLEAN DEFAULT TRUE,
+            custom BOOLEAN DEFAULT FALSE,
+            icon TEXT,
+            documentation_url TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_soar_action_library_category ON soar_action_library(category)").execute(pool).await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_soar_action_library_integration ON soar_action_library(integration)").execute(pool).await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_soar_action_library_enabled ON soar_action_library(enabled)").execute(pool).await?;
+
+    // SOAR variables - playbook variable definitions
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS soar_playbook_variables (
+            id TEXT PRIMARY KEY,
+            playbook_id TEXT NOT NULL REFERENCES soar_playbooks(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            variable_type TEXT NOT NULL,
+            default_value TEXT,
+            description TEXT,
+            is_required BOOLEAN DEFAULT FALSE,
+            is_secret BOOLEAN DEFAULT FALSE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(playbook_id, name)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_soar_variables_playbook ON soar_playbook_variables(playbook_id)").execute(pool).await?;
+
+    // SOAR triggers - scheduled and event-based triggers
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS soar_triggers (
+            id TEXT PRIMARY KEY,
+            playbook_id TEXT NOT NULL REFERENCES soar_playbooks(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            trigger_type TEXT NOT NULL,
+            config TEXT NOT NULL,
+            enabled BOOLEAN DEFAULT TRUE,
+            last_triggered_at TIMESTAMP,
+            trigger_count INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_soar_triggers_playbook ON soar_triggers(playbook_id)").execute(pool).await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_soar_triggers_type ON soar_triggers(trigger_type)").execute(pool).await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_soar_triggers_enabled ON soar_triggers(enabled)").execute(pool).await?;
+
+    // SOAR webhook endpoints - for external triggering
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS soar_webhook_endpoints (
+            id TEXT PRIMARY KEY,
+            playbook_id TEXT NOT NULL REFERENCES soar_playbooks(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            url_token TEXT NOT NULL UNIQUE,
+            secret TEXT,
+            enabled BOOLEAN DEFAULT TRUE,
+            request_count INTEGER DEFAULT 0,
+            last_request_at TIMESTAMP,
+            allowed_ips TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_soar_webhooks_playbook ON soar_webhook_endpoints(playbook_id)").execute(pool).await?;
+    sqlx::query("CREATE UNIQUE INDEX IF NOT EXISTS idx_soar_webhooks_token ON soar_webhook_endpoints(url_token)").execute(pool).await?;
+
+    // SOAR audit log - comprehensive audit trail
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS soar_audit_log (
+            id TEXT PRIMARY KEY,
+            user_id TEXT,
+            action TEXT NOT NULL,
+            resource_type TEXT NOT NULL,
+            resource_id TEXT,
+            resource_name TEXT,
+            details TEXT,
+            ip_address TEXT,
+            user_agent TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_soar_audit_user ON soar_audit_log(user_id)").execute(pool).await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_soar_audit_resource ON soar_audit_log(resource_type, resource_id)").execute(pool).await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_soar_audit_created ON soar_audit_log(created_at)").execute(pool).await?;
+
+    // SOAR metrics aggregation - for dashboard analytics
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS soar_metrics_daily (
+            id TEXT PRIMARY KEY,
+            metric_date DATE NOT NULL,
+            playbook_id TEXT,
+            total_runs INTEGER DEFAULT 0,
+            successful_runs INTEGER DEFAULT 0,
+            failed_runs INTEGER DEFAULT 0,
+            avg_duration_ms INTEGER,
+            min_duration_ms INTEGER,
+            max_duration_ms INTEGER,
+            total_steps_executed INTEGER DEFAULT 0,
+            approvals_requested INTEGER DEFAULT 0,
+            approvals_approved INTEGER DEFAULT 0,
+            approvals_rejected INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(metric_date, playbook_id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_soar_metrics_date ON soar_metrics_daily(metric_date)").execute(pool).await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_soar_metrics_playbook ON soar_metrics_daily(playbook_id)").execute(pool).await?;
+
+    // Seed built-in SOAR actions
+    seed_soar_actions(pool).await?;
+
+    log::info!("Created SOAR Foundation Enhancement tables (Sprint 11-12 - Priority 2 Features)");
+    Ok(())
+}
+
+/// Seed built-in SOAR actions into the action library
+async fn seed_soar_actions(pool: &SqlitePool) -> Result<()> {
+    let actions: Vec<(&str, &str, &str, &str, Option<&str>, &str, &str, i32, bool, &str)> = vec![
+        // Enrichment actions
+        ("ip_lookup", "IP Lookup", "Look up IP address information", "enrichment", None, r#"{"ip": {"type": "string", "required": true}}"#, r#"{"geolocation": "object", "asn": "string", "reputation": "object"}"#, 30, false, "low"),
+        ("domain_lookup", "Domain Lookup", "Look up domain information including WHOIS", "enrichment", None, r#"{"domain": {"type": "string", "required": true}}"#, r#"{"whois": "object", "dns_records": "array", "reputation": "object"}"#, 30, false, "low"),
+        ("hash_lookup", "Hash Lookup", "Check file hash against threat intelligence", "enrichment", None, r#"{"hash": {"type": "string", "required": true}, "hash_type": {"type": "string"}}"#, r#"{"malware_family": "string", "detection_ratio": "number", "first_seen": "string"}"#, 30, false, "low"),
+        ("url_lookup", "URL Lookup", "Analyze URL for threats", "enrichment", None, r#"{"url": {"type": "string", "required": true}}"#, r#"{"safe": "boolean", "threats": "array", "category": "string"}"#, 30, false, "low"),
+        ("email_lookup", "Email Lookup", "Look up email address reputation", "enrichment", None, r#"{"email": {"type": "string", "required": true}}"#, r#"{"reputation": "object", "breaches": "array"}"#, 30, false, "low"),
+        ("whois_lookup", "WHOIS Lookup", "Perform WHOIS lookup on domain or IP", "enrichment", None, r#"{"target": {"type": "string", "required": true}}"#, r#"{"registrar": "string", "created_date": "string", "name_servers": "array"}"#, 30, false, "low"),
+        ("dns_lookup", "DNS Lookup", "Perform DNS queries", "enrichment", None, r#"{"domain": {"type": "string", "required": true}, "record_type": {"type": "string"}}"#, r#"{"records": "array"}"#, 10, false, "low"),
+        ("geoip_lookup", "GeoIP Lookup", "Get geographic location for IP", "enrichment", None, r#"{"ip": {"type": "string", "required": true}}"#, r#"{"country": "string", "city": "string", "coordinates": "object"}"#, 10, false, "low"),
+        ("asn_lookup", "ASN Lookup", "Look up Autonomous System Number info", "enrichment", None, r#"{"ip": {"type": "string", "required": true}}"#, r#"{"asn": "number", "organization": "string", "prefixes": "array"}"#, 10, false, "low"),
+        ("shodan_lookup", "Shodan Lookup", "Query Shodan for host information", "enrichment", Some("shodan"), r#"{"ip": {"type": "string", "required": true}}"#, r#"{"ports": "array", "services": "array", "vulnerabilities": "array"}"#, 30, false, "low"),
+        // Notification actions
+        ("send_email", "Send Email", "Send an email notification", "notification", Some("email"), r#"{"to": {"type": "string", "required": true}, "subject": {"type": "string", "required": true}, "body": {"type": "string", "required": true}}"#, r#"{"sent": "boolean", "message_id": "string"}"#, 60, false, "low"),
+        ("send_slack", "Send Slack Message", "Send a message to Slack", "notification", Some("slack"), r#"{"channel": {"type": "string", "required": true}, "message": {"type": "string", "required": true}}"#, r#"{"sent": "boolean", "timestamp": "string"}"#, 30, false, "low"),
+        ("send_teams", "Send Teams Message", "Send a message to Microsoft Teams", "notification", Some("teams"), r#"{"webhook_url": {"type": "string", "required": true}, "message": {"type": "string", "required": true}}"#, r#"{"sent": "boolean"}"#, 30, false, "low"),
+        ("send_webhook", "Send Webhook", "Send an HTTP webhook", "notification", None, r#"{"url": {"type": "string", "required": true}, "method": {"type": "string"}, "headers": {"type": "object"}, "body": {"type": "string"}}"#, r#"{"status_code": "number", "response_body": "string"}"#, 60, false, "low"),
+        ("send_sms", "Send SMS", "Send an SMS message", "notification", Some("twilio"), r#"{"to": {"type": "string", "required": true}, "message": {"type": "string", "required": true}}"#, r#"{"sent": "boolean", "sid": "string"}"#, 30, false, "low"),
+        ("send_pagerduty", "Send PagerDuty Alert", "Create a PagerDuty incident", "notification", Some("pagerduty"), r#"{"service_key": {"type": "string", "required": true}, "description": {"type": "string", "required": true}, "severity": {"type": "string"}}"#, r#"{"incident_key": "string", "status": "string"}"#, 30, false, "low"),
+        // Containment actions
+        ("block_ip_firewall", "Block IP (Firewall)", "Block an IP address on firewall", "containment", Some("firewall"), r#"{"ip": {"type": "string", "required": true}, "duration_hours": {"type": "number"}, "comment": {"type": "string"}}"#, r#"{"blocked": "boolean", "rule_id": "string"}"#, 60, true, "high"),
+        ("block_ip_proxy", "Block IP (Proxy)", "Block IP on web proxy", "containment", Some("proxy"), r#"{"ip": {"type": "string", "required": true}, "category": {"type": "string"}}"#, r#"{"blocked": "boolean"}"#, 60, true, "high"),
+        ("block_domain", "Block Domain", "Block a domain", "containment", Some("dns_firewall"), r#"{"domain": {"type": "string", "required": true}, "action": {"type": "string"}}"#, r#"{"blocked": "boolean"}"#, 60, true, "high"),
+        ("block_hash", "Block Hash", "Block file hash in endpoint protection", "containment", Some("edr"), r#"{"hash": {"type": "string", "required": true}, "hash_type": {"type": "string"}}"#, r#"{"blocked": "boolean"}"#, 60, true, "high"),
+        ("isolate_host", "Isolate Host", "Network isolate a compromised host", "containment", Some("edr"), r#"{"hostname": {"type": "string", "required": true}, "reason": {"type": "string"}}"#, r#"{"isolated": "boolean", "agent_id": "string"}"#, 120, true, "critical"),
+        ("disable_user", "Disable User", "Disable a user account", "containment", Some("directory"), r#"{"username": {"type": "string", "required": true}, "reason": {"type": "string"}}"#, r#"{"disabled": "boolean"}"#, 60, true, "high"),
+        ("reset_password", "Force Password Reset", "Force user password reset", "containment", Some("directory"), r#"{"username": {"type": "string", "required": true}, "notify_user": {"type": "boolean"}}"#, r#"{"reset": "boolean"}"#, 60, true, "medium"),
+        ("revoke_sessions", "Revoke Sessions", "Revoke all user sessions", "containment", Some("directory"), r#"{"username": {"type": "string", "required": true}}"#, r#"{"revoked_count": "number"}"#, 60, true, "medium"),
+        ("quarantine_email", "Quarantine Email", "Quarantine suspicious email", "containment", Some("email_security"), r#"{"message_id": {"type": "string", "required": true}}"#, r#"{"quarantined": "boolean"}"#, 60, false, "medium"),
+        ("delete_email", "Delete Email", "Delete malicious email from mailboxes", "containment", Some("email_security"), r#"{"message_id": {"type": "string", "required": true}, "mailboxes": {"type": "array"}}"#, r#"{"deleted_count": "number"}"#, 120, true, "high"),
+        // Remediation actions
+        ("create_ticket", "Create Ticket", "Create a ticket in ticketing system", "remediation", Some("ticketing"), r#"{"title": {"type": "string", "required": true}, "description": {"type": "string", "required": true}, "priority": {"type": "string"}}"#, r#"{"ticket_id": "string", "ticket_url": "string"}"#, 60, false, "low"),
+        ("update_ticket", "Update Ticket", "Update an existing ticket", "remediation", Some("ticketing"), r#"{"ticket_id": {"type": "string", "required": true}, "status": {"type": "string"}, "comment": {"type": "string"}}"#, r#"{"updated": "boolean"}"#, 30, false, "low"),
+        ("close_ticket", "Close Ticket", "Close a ticket", "remediation", Some("ticketing"), r#"{"ticket_id": {"type": "string", "required": true}, "resolution": {"type": "string"}}"#, r#"{"closed": "boolean"}"#, 30, false, "low"),
+        ("run_scan", "Run Vulnerability Scan", "Trigger a vulnerability scan", "remediation", None, r#"{"targets": {"type": "array", "required": true}, "scan_type": {"type": "string"}}"#, r#"{"scan_id": "string", "status": "string"}"#, 300, false, "low"),
+        ("patch_system", "Deploy Patch", "Deploy a patch to systems", "remediation", Some("patch_management"), r#"{"patch_id": {"type": "string", "required": true}, "targets": {"type": "array", "required": true}}"#, r#"{"job_id": "string", "status": "string"}"#, 300, true, "high"),
+        ("update_asset", "Update Asset", "Update asset information", "remediation", None, r#"{"asset_id": {"type": "string", "required": true}, "updates": {"type": "object", "required": true}}"#, r#"{"updated": "boolean"}"#, 30, false, "low"),
+        ("add_to_watchlist", "Add to Watchlist", "Add indicator to watchlist", "remediation", None, r#"{"indicator": {"type": "string", "required": true}, "indicator_type": {"type": "string", "required": true}}"#, r#"{"added": "boolean", "watchlist_id": "string"}"#, 30, false, "low"),
+        ("create_case", "Create Case", "Create a new SOAR case", "remediation", None, r#"{"title": {"type": "string", "required": true}, "severity": {"type": "string", "required": true}}"#, r#"{"case_id": "string", "case_number": "string"}"#, 30, false, "low"),
+        ("update_case", "Update Case", "Update an existing case", "remediation", None, r#"{"case_id": {"type": "string", "required": true}, "status": {"type": "string"}}"#, r#"{"updated": "boolean"}"#, 30, false, "low"),
+        // Utility actions
+        ("http_request", "HTTP Request", "Make an HTTP request", "utility", None, r#"{"url": {"type": "string", "required": true}, "method": {"type": "string", "required": true}}"#, r#"{"status_code": "number", "headers": "object", "body": "string"}"#, 120, false, "low"),
+        ("parse_json", "Parse JSON", "Parse JSON string", "utility", None, r#"{"json_string": {"type": "string", "required": true}}"#, r#"{"data": "object"}"#, 5, false, "low"),
+        ("regex_extract", "Regex Extract", "Extract data using regex", "utility", None, r#"{"text": {"type": "string", "required": true}, "pattern": {"type": "string", "required": true}}"#, r#"{"matches": "array", "groups": "array"}"#, 5, false, "low"),
+        ("transform_data", "Transform Data", "Transform data using JSONPath/JMESPath", "utility", None, r#"{"data": {"type": "object", "required": true}, "expression": {"type": "string", "required": true}}"#, r#"{"result": "any"}"#, 5, false, "low"),
+        ("set_variable", "Set Variable", "Set a workflow variable", "utility", None, r#"{"name": {"type": "string", "required": true}, "value": {"type": "any", "required": true}}"#, r#"{"name": "string", "value": "any"}"#, 5, false, "low"),
+        ("wait", "Wait", "Wait for a specified duration", "utility", None, r#"{"seconds": {"type": "number", "required": true}}"#, r#"{"waited_seconds": "number"}"#, 3600, false, "low"),
+        ("decision", "Decision", "Make a conditional decision", "utility", None, r#"{"condition": {"type": "string", "required": true}}"#, r#"{"result": "any", "condition_met": "boolean"}"#, 5, false, "low"),
+        ("loop", "Loop", "Iterate over an array", "utility", None, r#"{"items": {"type": "array", "required": true}, "action": {"type": "string", "required": true}}"#, r#"{"results": "array", "count": "number"}"#, 300, false, "low"),
+        ("format_string", "Format String", "Format a string template", "utility", None, r#"{"template": {"type": "string", "required": true}}"#, r#"{"result": "string"}"#, 5, false, "low"),
+        ("encode_base64", "Encode Base64", "Encode string to Base64", "utility", None, r#"{"input": {"type": "string", "required": true}}"#, r#"{"encoded": "string"}"#, 5, false, "low"),
+        ("decode_base64", "Decode Base64", "Decode Base64 string", "utility", None, r#"{"input": {"type": "string", "required": true}}"#, r#"{"decoded": "string"}"#, 5, false, "low"),
+        ("hash_string", "Hash String", "Generate hash of string", "utility", None, r#"{"input": {"type": "string", "required": true}, "algorithm": {"type": "string"}}"#, r#"{"hash": "string"}"#, 5, false, "low"),
+        ("timestamp", "Get Timestamp", "Get current timestamp", "utility", None, r#"{"format": {"type": "string"}}"#, r#"{"timestamp": "string", "unix": "number"}"#, 5, false, "low"),
+        ("uuid", "Generate UUID", "Generate a UUID", "utility", None, r#"{}"#, r#"{"uuid": "string"}"#, 5, false, "low"),
+        ("random_string", "Random String", "Generate random string", "utility", None, r#"{"length": {"type": "number", "required": true}}"#, r#"{"result": "string"}"#, 5, false, "low"),
+        // SIEM actions
+        ("siem_search", "SIEM Search", "Search SIEM for events", "siem", Some("siem"), r#"{"query": {"type": "string", "required": true}}"#, r#"{"events": "array", "total": "number"}"#, 120, false, "low"),
+        ("siem_create_alert", "Create SIEM Alert", "Create an alert in SIEM", "siem", Some("siem"), r#"{"title": {"type": "string", "required": true}, "severity": {"type": "string", "required": true}}"#, r#"{"alert_id": "string"}"#, 30, false, "low"),
+        // EDR actions
+        ("edr_get_processes", "Get Processes", "Get running processes from endpoint", "edr", Some("edr"), r#"{"hostname": {"type": "string", "required": true}}"#, r#"{"processes": "array"}"#, 60, false, "low"),
+        ("edr_get_connections", "Get Connections", "Get network connections from endpoint", "edr", Some("edr"), r#"{"hostname": {"type": "string", "required": true}}"#, r#"{"connections": "array"}"#, 60, false, "low"),
+        ("edr_collect_artifact", "Collect Artifact", "Collect forensic artifact from endpoint", "edr", Some("edr"), r#"{"hostname": {"type": "string", "required": true}, "artifact_type": {"type": "string", "required": true}}"#, r#"{"artifact_id": "string", "download_url": "string"}"#, 300, false, "medium"),
+        ("edr_run_command", "Run Remote Command", "Run command on endpoint", "edr", Some("edr"), r#"{"hostname": {"type": "string", "required": true}, "command": {"type": "string", "required": true}}"#, r#"{"output": "string", "exit_code": "number"}"#, 300, true, "high"),
+        ("edr_kill_process", "Kill Process", "Terminate a process on endpoint", "edr", Some("edr"), r#"{"hostname": {"type": "string", "required": true}, "process_id": {"type": "number", "required": true}}"#, r#"{"killed": "boolean"}"#, 60, true, "high"),
+    ];
+
+    let actions_len = actions.len();
+    for (name, display_name, description, category, integration, input_schema, output_schema, timeout, requires_approval, risk_level) in actions {
+        let id = format!("builtin_{}", name);
+        let _ = sqlx::query(
+            "INSERT OR IGNORE INTO soar_action_library (id, name, display_name, description, category, integration, action_type, input_schema, output_schema, timeout_seconds, requires_approval, risk_level, enabled, custom) VALUES (?, ?, ?, ?, ?, ?, 'builtin', ?, ?, ?, ?, ?, TRUE, FALSE)"
+        )
+        .bind(&id)
+        .bind(name)
+        .bind(display_name)
+        .bind(description)
+        .bind(category)
+        .bind(integration)
+        .bind(input_schema)
+        .bind(output_schema)
+        .bind(timeout)
+        .bind(requires_approval)
+        .bind(risk_level)
+        .execute(pool)
+        .await;
+    }
+
+    log::info!("Seeded {} built-in SOAR actions", actions_len);
+    Ok(())
+}
+
+// ============================================================================
+// Sprint 9-10 (Priority 2): CI/CD Pipeline Integration and IDE Integration
+// ============================================================================
+
+/// Create CI/CD pipeline integration tables for external CI/CD systems
+async fn create_cicd_integration_tables(pool: &SqlitePool) -> Result<()> {
+    // CI/CD Pipelines - main integration configuration
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS cicd_pipelines (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            platform TEXT NOT NULL,
+            repository_url TEXT,
+            webhook_secret TEXT,
+            enabled INTEGER DEFAULT 1,
+            config TEXT,
+            last_run_at TEXT,
+            last_run_status TEXT,
+            customer_id TEXT,
+            engagement_id TEXT,
+            organization_id TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL,
+            FOREIGN KEY (engagement_id) REFERENCES engagements(id) ON DELETE SET NULL,
+            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // CI/CD Pipeline Runs - execution history
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS cicd_pipeline_runs (
+            id TEXT PRIMARY KEY,
+            pipeline_id TEXT NOT NULL,
+            external_run_id TEXT,
+            branch TEXT,
+            commit_sha TEXT,
+            trigger_type TEXT,
+            pr_number INTEGER,
+            status TEXT DEFAULT 'pending',
+            gate_status TEXT,
+            findings_new INTEGER DEFAULT 0,
+            findings_fixed INTEGER DEFAULT 0,
+            findings_total INTEGER DEFAULT 0,
+            critical_count INTEGER DEFAULT 0,
+            high_count INTEGER DEFAULT 0,
+            medium_count INTEGER DEFAULT 0,
+            low_count INTEGER DEFAULT 0,
+            duration_seconds INTEGER,
+            scan_id TEXT,
+            error_message TEXT,
+            started_at TEXT,
+            completed_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (pipeline_id) REFERENCES cicd_pipelines(id) ON DELETE CASCADE,
+            FOREIGN KEY (scan_id) REFERENCES cicd_pipeline_scans(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // CI/CD Policies - quality gates and merge blocking rules
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS cicd_policies (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            policy_type TEXT NOT NULL,
+            conditions TEXT NOT NULL,
+            actions TEXT NOT NULL,
+            severity_threshold TEXT,
+            max_new_findings INTEGER,
+            max_total_findings INTEGER,
+            block_on_critical INTEGER DEFAULT 1,
+            enabled INTEGER DEFAULT 1,
+            customer_id TEXT,
+            engagement_id TEXT,
+            organization_id TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL,
+            FOREIGN KEY (engagement_id) REFERENCES engagements(id) ON DELETE SET NULL,
+            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Pipeline-Policy mappings (many-to-many)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS cicd_pipeline_policies (
+            id TEXT PRIMARY KEY,
+            pipeline_id TEXT NOT NULL,
+            policy_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (pipeline_id) REFERENCES cicd_pipelines(id) ON DELETE CASCADE,
+            FOREIGN KEY (policy_id) REFERENCES cicd_policies(id) ON DELETE CASCADE,
+            UNIQUE(pipeline_id, policy_id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // CI/CD Workflow Templates - pre-configured templates
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS cicd_workflow_templates (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            platform TEXT NOT NULL,
+            description TEXT,
+            template_content TEXT NOT NULL,
+            variables TEXT,
+            is_builtin INTEGER DEFAULT 0,
+            category TEXT,
+            created_by TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for CI/CD tables
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_cicd_pipelines_user ON cicd_pipelines(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_cicd_pipelines_platform ON cicd_pipelines(platform)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_cicd_pipelines_customer ON cicd_pipelines(customer_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_cicd_pipelines_org ON cicd_pipelines(organization_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_cicd_pipeline_runs_pipeline ON cicd_pipeline_runs(pipeline_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_cicd_pipeline_runs_status ON cicd_pipeline_runs(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_cicd_pipeline_runs_branch ON cicd_pipeline_runs(branch)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_cicd_policies_user ON cicd_policies(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_cicd_policies_type ON cicd_policies(policy_type)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_cicd_workflow_templates_platform ON cicd_workflow_templates(platform)")
+        .execute(pool)
+        .await?;
+
+    // Seed built-in workflow templates
+    seed_builtin_cicd_templates(pool).await?;
+
+    log::info!("Created CI/CD Pipeline Integration tables (Sprint 9-10 - Priority 2 Features)");
+    Ok(())
+}
+
+/// Seed built-in CI/CD workflow templates
+async fn seed_builtin_cicd_templates(pool: &SqlitePool) -> Result<()> {
+    let now = chrono::Utc::now().to_rfc3339();
+
+    // GitHub Actions template
+    let github_template = r#"name: Genial Architect Scan
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '0 0 * * 0'  # Weekly scan
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Genial Architect Scan
+        id: security-scan
+        env:
+          HEROFORGE_URL: ${{ secrets.HEROFORGE_URL }}
+          HEROFORGE_TOKEN: ${{ secrets.HEROFORGE_TOKEN }}
+        run: |
+          curl -X POST "${HEROFORGE_URL}/api/cicd/webhook/github_actions" \
+            -H "Authorization: Bearer ${HEROFORGE_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -H "X-GitHub-Event: ${{ github.event_name }}" \
+            -d '{
+              "repository": "${{ github.repository }}",
+              "commit": "${{ github.sha }}",
+              "branch": "${{ github.ref_name }}",
+              "pr_number": "${{ github.event.pull_request.number }}",
+              "trigger": "${{ github.event_name }}"
+            }'
+
+      - name: Check Quality Gate
+        if: github.event_name == 'pull_request'
+        run: |
+          # Poll for scan results and quality gate status
+          echo "Checking quality gate status..."
+"#;
+
+    let _ = sqlx::query(
+        r#"INSERT OR IGNORE INTO cicd_workflow_templates
+           (id, name, platform, description, template_content, variables, is_builtin, category, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)"#
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind("HeroForge GitHub Actions Security Scan")
+    .bind("github_actions")
+    .bind("Complete GitHub Actions workflow for security scanning with SAST, SCA, and quality gates")
+    .bind(github_template)
+    .bind(r#"["HEROFORGE_URL", "HEROFORGE_TOKEN"]"#)
+    .bind("security")
+    .bind(&now)
+    .bind(&now)
+    .execute(pool)
+    .await;
+
+    // GitLab CI template
+    let gitlab_template = r#"stages:
+  - security
+
+variables:
+  HEROFORGE_URL: ${HEROFORGE_URL}
+
+heroforge-security-scan:
+  stage: security
+  image: curlimages/curl:latest
+  script:
+    - |
+      curl -X POST "${HEROFORGE_URL}/api/cicd/webhook/gitlab_ci" \
+        -H "Authorization: Bearer ${HEROFORGE_TOKEN}" \
+        -H "Content-Type: application/json" \
+        -H "X-Gitlab-Event: ${CI_PIPELINE_SOURCE}" \
+        -d "{
+          \"project_id\": \"${CI_PROJECT_ID}\",
+          \"project_path\": \"${CI_PROJECT_PATH}\",
+          \"commit\": \"${CI_COMMIT_SHA}\",
+          \"branch\": \"${CI_COMMIT_REF_NAME}\",
+          \"pipeline_id\": \"${CI_PIPELINE_ID}\",
+          \"mr_iid\": \"${CI_MERGE_REQUEST_IID}\"
+        }"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+"#;
+
+    let _ = sqlx::query(
+        r#"INSERT OR IGNORE INTO cicd_workflow_templates
+           (id, name, platform, description, template_content, variables, is_builtin, category, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)"#
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind("HeroForge GitLab CI Security Scan")
+    .bind("gitlab_ci")
+    .bind("GitLab CI/CD pipeline for HeroForge security scanning with merge request integration")
+    .bind(gitlab_template)
+    .bind(r#"["HEROFORGE_URL", "HEROFORGE_TOKEN"]"#)
+    .bind("security")
+    .bind(&now)
+    .bind(&now)
+    .execute(pool)
+    .await;
+
+    // Jenkins template
+    let jenkins_template = r#"pipeline {
+    agent any
+
+    environment {
+        HEROFORGE_URL = credentials('heroforge-url')
+        HEROFORGE_TOKEN = credentials('heroforge-token')
+    }
+
+    stages {
+        stage('Security Scan') {
+            steps {
+                script {
+                    def response = httpRequest(
+                        url: "${HEROFORGE_URL}/api/cicd/webhook/jenkins",
+                        httpMode: 'POST',
+                        customHeaders: [
+                            [name: 'Authorization', value: "Bearer ${HEROFORGE_TOKEN}"],
+                            [name: 'Content-Type', value: 'application/json']
+                        ],
+                        requestBody: """{
+                            "job_name": "${env.JOB_NAME}",
+                            "build_number": "${env.BUILD_NUMBER}",
+                            "commit": "${env.GIT_COMMIT}",
+                            "branch": "${env.GIT_BRANCH}",
+                            "url": "${env.BUILD_URL}"
+                        }"""
+                    )
+
+                    def result = readJSON text: response.content
+                    echo "Scan ID: ${result.scan_id}"
+                }
+            }
+        }
+
+        stage('Quality Gate') {
+            steps {
+                script {
+                    // Poll for quality gate result
+                    echo "Checking quality gate status..."
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            echo 'Security scan completed'
+        }
+        failure {
+            echo 'Security scan failed'
+        }
+    }
+}
+"#;
+
+    let _ = sqlx::query(
+        r#"INSERT OR IGNORE INTO cicd_workflow_templates
+           (id, name, platform, description, template_content, variables, is_builtin, category, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)"#
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind("HeroForge Jenkins Pipeline")
+    .bind("jenkins")
+    .bind("Jenkins declarative pipeline for HeroForge security scanning")
+    .bind(jenkins_template)
+    .bind(r#"["HEROFORGE_URL", "HEROFORGE_TOKEN"]"#)
+    .bind("security")
+    .bind(&now)
+    .bind(&now)
+    .execute(pool)
+    .await;
+
+    // Azure DevOps template
+    let azure_template = r#"trigger:
+  branches:
+    include:
+      - main
+      - develop
+
+pr:
+  branches:
+    include:
+      - main
+
+schedules:
+  - cron: "0 0 * * 0"
+    displayName: Weekly Security Scan
+    branches:
+      include:
+        - main
+
+variables:
+  - group: heroforge-credentials
+
+stages:
+  - stage: Security
+    displayName: Security Scanning
+    jobs:
+      - job: HeroForgeScan
+        displayName: Genial Architect Scan
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - checkout: self
+            fetchDepth: 0
+
+          - task: Bash@3
+            displayName: 'Run HeroForge Scan'
+            inputs:
+              targetType: 'inline'
+              script: |
+                curl -X POST "$(HEROFORGE_URL)/api/cicd/webhook/azure_devops" \
+                  -H "Authorization: Bearer $(HEROFORGE_TOKEN)" \
+                  -H "Content-Type: application/json" \
+                  -d '{
+                    "project": "$(System.TeamProject)",
+                    "repository": "$(Build.Repository.Name)",
+                    "commit": "$(Build.SourceVersion)",
+                    "branch": "$(Build.SourceBranchName)",
+                    "build_id": "$(Build.BuildId)",
+                    "pr_id": "$(System.PullRequest.PullRequestId)"
+                  }'
+
+          - task: Bash@3
+            displayName: 'Check Quality Gate'
+            condition: eq(variables['Build.Reason'], 'PullRequest')
+            inputs:
+              targetType: 'inline'
+              script: |
+                echo "Checking quality gate status..."
+"#;
+
+    let _ = sqlx::query(
+        r#"INSERT OR IGNORE INTO cicd_workflow_templates
+           (id, name, platform, description, template_content, variables, is_builtin, category, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)"#
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind("HeroForge Azure DevOps Pipeline")
+    .bind("azure_devops")
+    .bind("Azure DevOps YAML pipeline for HeroForge security scanning")
+    .bind(azure_template)
+    .bind(r#"["HEROFORGE_URL", "HEROFORGE_TOKEN"]"#)
+    .bind("security")
+    .bind(&now)
+    .bind(&now)
+    .execute(pool)
+    .await;
+
+    Ok(())
+}
+
+/// Create IDE integration tables
+async fn create_ide_integration_tables(pool: &SqlitePool) -> Result<()> {
+    // IDE Sessions - track IDE connection sessions
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ide_sessions (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            ide_type TEXT NOT NULL,
+            ide_version TEXT,
+            project_path TEXT,
+            project_name TEXT,
+            workspace_id TEXT,
+            session_start TEXT NOT NULL,
+            session_end TEXT,
+            last_activity TEXT NOT NULL,
+            files_scanned INTEGER DEFAULT 0,
+            findings_shown INTEGER DEFAULT 0,
+            findings_fixed INTEGER DEFAULT 0,
+            client_ip TEXT,
+            client_info TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // IDE Settings - per-user IDE configuration
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ide_settings (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL UNIQUE,
+            scan_on_save INTEGER DEFAULT 1,
+            scan_on_open INTEGER DEFAULT 0,
+            show_inline_hints INTEGER DEFAULT 1,
+            severity_filter TEXT,
+            excluded_paths TEXT,
+            custom_rules_enabled INTEGER DEFAULT 1,
+            scan_timeout_seconds INTEGER DEFAULT 30,
+            max_file_size_kb INTEGER DEFAULT 1024,
+            enable_quick_fixes INTEGER DEFAULT 1,
+            enable_code_actions INTEGER DEFAULT 1,
+            theme TEXT DEFAULT 'auto',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // IDE Findings - real-time findings for IDE display
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ide_findings (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            file_hash TEXT,
+            rule_id TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            category TEXT NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT NOT NULL,
+            line_start INTEGER NOT NULL,
+            line_end INTEGER NOT NULL,
+            column_start INTEGER,
+            column_end INTEGER,
+            code_snippet TEXT,
+            fix_suggestion TEXT,
+            fix_code TEXT,
+            cwe_id TEXT,
+            is_dismissed INTEGER DEFAULT 0,
+            dismissed_reason TEXT,
+            dismissed_at TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (session_id) REFERENCES ide_sessions(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // IDE Quick Fixes - applied quick fixes for tracking
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ide_quick_fixes (
+            id TEXT PRIMARY KEY,
+            finding_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            fix_type TEXT NOT NULL,
+            original_code TEXT,
+            fixed_code TEXT,
+            applied_at TEXT NOT NULL,
+            reverted_at TEXT,
+            FOREIGN KEY (finding_id) REFERENCES ide_findings(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for IDE tables
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ide_sessions_user ON ide_sessions(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ide_sessions_type ON ide_sessions(ide_type)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ide_sessions_active ON ide_sessions(session_end)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ide_findings_session ON ide_findings(session_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ide_findings_user ON ide_findings(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ide_findings_file ON ide_findings(file_path)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ide_findings_severity ON ide_findings(severity)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ide_quick_fixes_finding ON ide_quick_fixes(finding_id)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created IDE Integration tables (Sprint 9-10 - Priority 2 Features)");
+    Ok(())
+}
+
+/// Create Software Composition Analysis (SCA) tables (Sprint 8 - Priority 2 Features)
+async fn create_sca_tables(pool: &SqlitePool) -> Result<()> {
+    // SCA Projects - represents a codebase being analyzed for dependencies
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS sca_projects (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            repository_url TEXT,
+            ecosystem TEXT NOT NULL,
+            manifest_files TEXT,
+            last_scan_at TEXT,
+            total_dependencies INTEGER DEFAULT 0,
+            vulnerable_dependencies INTEGER DEFAULT 0,
+            license_issues INTEGER DEFAULT 0,
+            customer_id TEXT,
+            engagement_id TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL,
+            FOREIGN KEY (engagement_id) REFERENCES engagements(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // SCA Dependencies - individual packages in a project
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS sca_dependencies (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            version TEXT NOT NULL,
+            ecosystem TEXT NOT NULL,
+            purl TEXT,
+            is_direct INTEGER DEFAULT 1,
+            parent_id TEXT,
+            depth INTEGER DEFAULT 0,
+            license TEXT,
+            license_risk TEXT DEFAULT 'unknown',
+            latest_version TEXT,
+            update_available INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (project_id) REFERENCES sca_projects(id) ON DELETE CASCADE,
+            FOREIGN KEY (parent_id) REFERENCES sca_dependencies(id) ON DELETE SET NULL,
+            UNIQUE(project_id, ecosystem, name, version)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // SCA Vulnerabilities - vulnerabilities affecting dependencies
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS sca_vulnerabilities (
+            id TEXT PRIMARY KEY,
+            dependency_id TEXT NOT NULL,
+            project_id TEXT NOT NULL,
+            vuln_id TEXT NOT NULL,
+            source TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            cvss_score REAL,
+            cvss_vector TEXT,
+            epss_score REAL,
+            title TEXT,
+            description TEXT,
+            affected_versions TEXT,
+            fixed_version TEXT,
+            references_json TEXT DEFAULT '[]',
+            exploited_in_wild INTEGER DEFAULT 0,
+            status TEXT DEFAULT 'new',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (dependency_id) REFERENCES sca_dependencies(id) ON DELETE CASCADE,
+            FOREIGN KEY (project_id) REFERENCES sca_projects(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for SCA tables
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sca_projects_user ON sca_projects(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sca_projects_customer ON sca_projects(customer_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sca_projects_engagement ON sca_projects(engagement_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sca_projects_ecosystem ON sca_projects(ecosystem)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sca_deps_project ON sca_dependencies(project_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sca_deps_name ON sca_dependencies(name)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sca_deps_purl ON sca_dependencies(purl)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sca_deps_direct ON sca_dependencies(is_direct)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sca_deps_license_risk ON sca_dependencies(license_risk)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sca_deps_update ON sca_dependencies(update_available)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sca_vulns_dep ON sca_vulnerabilities(dependency_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sca_vulns_project ON sca_vulnerabilities(project_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sca_vulns_vuln_id ON sca_vulnerabilities(vuln_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sca_vulns_severity ON sca_vulnerabilities(severity)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sca_vulns_status ON sca_vulnerabilities(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sca_vulns_exploited ON sca_vulnerabilities(exploited_in_wild)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created SCA tables (Sprint 8 - Priority 2 Features)");
+    Ok(())
+}
+
+/// Create AI/ML Security Operations tables (Sprint 15 - Priority 2 Features)
+async fn create_ai_security_tables(pool: &SqlitePool) -> Result<()> {
+    // ML Models - stores ML model definitions and metrics
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ml_models (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            model_type TEXT NOT NULL,
+            purpose TEXT NOT NULL,
+            version TEXT NOT NULL,
+            algorithm TEXT,
+            training_data_size INTEGER,
+            accuracy REAL,
+            precision_score REAL,
+            recall_score REAL,
+            f1_score REAL,
+            model_path TEXT,
+            status TEXT DEFAULT 'training',
+            trained_at TEXT,
+            last_used_at TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ml_models_type ON ml_models(model_type)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ml_models_purpose ON ml_models(purpose)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ml_models_status ON ml_models(status)")
+        .execute(pool)
+        .await?;
+
+    // ML Predictions - stores predictions made by ML models
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ml_predictions (
+            id TEXT PRIMARY KEY,
+            model_id TEXT NOT NULL,
+            entity_type TEXT NOT NULL,
+            entity_id TEXT NOT NULL,
+            prediction TEXT NOT NULL,
+            confidence REAL,
+            explanation TEXT,
+            feedback TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (model_id) REFERENCES ml_models(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ml_predictions_model ON ml_predictions(model_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ml_predictions_entity ON ml_predictions(entity_type, entity_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ml_predictions_feedback ON ml_predictions(feedback)")
+        .execute(pool)
+        .await?;
+
+    // AI Queries - stores natural language queries and parsed intents
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ai_queries (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            query_text TEXT NOT NULL,
+            query_type TEXT,
+            parsed_intent TEXT,
+            results TEXT,
+            feedback TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ai_queries_user ON ai_queries(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ai_queries_type ON ai_queries(query_type)")
+        .execute(pool)
+        .await?;
+
+    // LLM Security Tests - stores LLM security test runs
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS llm_security_tests (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            target_name TEXT NOT NULL,
+            target_type TEXT NOT NULL,
+            target_config TEXT,
+            test_type TEXT NOT NULL,
+            status TEXT DEFAULT 'pending',
+            tests_run INTEGER DEFAULT 0,
+            vulnerabilities_found INTEGER DEFAULT 0,
+            results TEXT,
+            started_at TEXT,
+            completed_at TEXT,
+            customer_id TEXT,
+            engagement_id TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL,
+            FOREIGN KEY (engagement_id) REFERENCES engagements(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_llm_tests_user ON llm_security_tests(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_llm_tests_status ON llm_security_tests(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_llm_tests_target ON llm_security_tests(target_name)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_llm_tests_customer ON llm_security_tests(customer_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_llm_tests_engagement ON llm_security_tests(engagement_id)")
+        .execute(pool)
+        .await?;
+
+    // LLM Test Cases - stores test case definitions
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS llm_test_cases (
+            id TEXT PRIMARY KEY,
+            category TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            payload TEXT NOT NULL,
+            expected_behavior TEXT,
+            severity TEXT,
+            cwe_id TEXT,
+            enabled INTEGER DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_llm_test_cases_category ON llm_test_cases(category)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_llm_test_cases_severity ON llm_test_cases(severity)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_llm_test_cases_enabled ON llm_test_cases(enabled)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created AI/ML Security Operations tables (Sprint 15 - Priority 2 Features)");
+    Ok(())
+}
+
+/// Seed built-in LLM test cases
+async fn seed_builtin_llm_test_cases(pool: &SqlitePool) -> Result<()> {
+    use crate::ai_security::llm_testing::payloads::get_builtin_test_cases;
+
+    let test_cases = get_builtin_test_cases();
+    let now = chrono::Utc::now().to_rfc3339();
+
+    for tc in test_cases {
+        let _ = sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO llm_test_cases (id, category, name, description, payload, expected_behavior, severity, cwe_id, enabled, created_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 1, ?9)
+            "#,
+        )
+        .bind(tc.id)
+        .bind(tc.category.to_string())
+        .bind(tc.name)
+        .bind(tc.description)
+        .bind(tc.payload)
+        .bind(tc.expected_behavior)
+        .bind(tc.severity.to_string())
+        .bind(tc.cwe_id)
+        .bind(&now)
+        .execute(pool)
+        .await;
+    }
+
+    log::info!("Seeded {} built-in LLM test cases", get_builtin_test_cases().len());
+    Ok(())
+}
+
+/// Create OT/ICS (Operational Technology / Industrial Control Systems) tables (Sprint 13-14)
+async fn create_ot_ics_tables(pool: &SqlitePool) -> Result<()> {
+    // OT Assets table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ot_assets (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            asset_type TEXT NOT NULL,
+            vendor TEXT,
+            model TEXT,
+            firmware_version TEXT,
+            ip_address TEXT,
+            mac_address TEXT,
+            protocols TEXT DEFAULT '[]',
+            purdue_level INTEGER,
+            zone TEXT,
+            criticality TEXT DEFAULT 'medium',
+            last_seen TIMESTAMP,
+            first_seen TIMESTAMP,
+            scan_id TEXT,
+            vulnerabilities TEXT DEFAULT '[]',
+            risk_score INTEGER DEFAULT 0,
+            notes TEXT,
+            customer_id TEXT,
+            engagement_id TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // OT Protocols table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ot_protocols (
+            id TEXT PRIMARY KEY,
+            asset_id TEXT NOT NULL,
+            protocol_type TEXT NOT NULL,
+            port INTEGER,
+            details TEXT DEFAULT '{}',
+            security_issues TEXT DEFAULT '[]',
+            last_seen TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (asset_id) REFERENCES ot_assets(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // OT Scans table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ot_scans (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            scan_type TEXT NOT NULL,
+            target_range TEXT NOT NULL,
+            protocols_enabled TEXT DEFAULT '[]',
+            status TEXT DEFAULT 'pending',
+            assets_discovered INTEGER DEFAULT 0,
+            vulnerabilities_found INTEGER DEFAULT 0,
+            started_at TIMESTAMP,
+            completed_at TIMESTAMP,
+            customer_id TEXT,
+            engagement_id TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ot_assets_user ON ot_assets(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ot_assets_type ON ot_assets(asset_type)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ot_assets_purdue ON ot_assets(purdue_level)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ot_assets_criticality ON ot_assets(criticality)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ot_assets_ip ON ot_assets(ip_address)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ot_assets_customer ON ot_assets(customer_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ot_protocols_asset ON ot_protocols(asset_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ot_protocols_type ON ot_protocols(protocol_type)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ot_scans_user ON ot_scans(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ot_scans_status ON ot_scans(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ot_scans_customer ON ot_scans(customer_id)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created OT/ICS tables (Sprint 13-14 - Priority 2 Features)");
+    Ok(())
+}
+
+/// Create IoT (Internet of Things) Security tables (Sprint 13-14)
+async fn create_iot_tables(pool: &SqlitePool) -> Result<()> {
+    // IoT Devices table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS iot_devices (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT,
+            device_type TEXT DEFAULT 'unknown',
+            vendor TEXT,
+            model TEXT,
+            firmware_version TEXT,
+            ip_address TEXT,
+            mac_address TEXT,
+            hostname TEXT,
+            protocols TEXT DEFAULT '[]',
+            open_ports TEXT DEFAULT '[]',
+            default_creds_status TEXT DEFAULT 'unknown',
+            last_seen TIMESTAMP,
+            first_seen TIMESTAMP,
+            risk_score INTEGER DEFAULT 0,
+            notes TEXT,
+            customer_id TEXT,
+            engagement_id TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // IoT Scans table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS iot_scans (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            scan_type TEXT NOT NULL,
+            target_range TEXT,
+            status TEXT DEFAULT 'pending',
+            devices_found INTEGER DEFAULT 0,
+            vulnerabilities_found INTEGER DEFAULT 0,
+            started_at TIMESTAMP,
+            completed_at TIMESTAMP,
+            customer_id TEXT,
+            engagement_id TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // IoT Credentials database table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS iot_credentials (
+            id TEXT PRIMARY KEY,
+            device_type TEXT NOT NULL,
+            vendor TEXT,
+            model TEXT,
+            protocol TEXT NOT NULL,
+            username TEXT NOT NULL,
+            password TEXT NOT NULL,
+            source TEXT DEFAULT 'default',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(device_type, vendor, model, protocol, username)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_iot_devices_user ON iot_devices(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_iot_devices_type ON iot_devices(device_type)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_iot_devices_vendor ON iot_devices(vendor)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_iot_devices_ip ON iot_devices(ip_address)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_iot_devices_creds ON iot_devices(default_creds_status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_iot_devices_customer ON iot_devices(customer_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_iot_scans_user ON iot_scans(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_iot_scans_status ON iot_scans(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_iot_scans_customer ON iot_scans(customer_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_iot_credentials_type ON iot_credentials(device_type)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_iot_credentials_vendor ON iot_credentials(vendor)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_iot_credentials_protocol ON iot_credentials(protocol)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created IoT Security tables (Sprint 13-14 - Priority 2 Features)");
+    Ok(())
+}
+
+/// Seed IoT default credentials database
+async fn seed_iot_credentials(pool: &SqlitePool) -> Result<()> {
+    let credentials: Vec<(&str, Option<&str>, Option<&str>, &str, &str, &str, &str)> = vec![
+        // IP Cameras - General
+        ("camera", None, None, "http", "admin", "admin", "default"),
+        ("camera", None, None, "http", "admin", "", "default"),
+        ("camera", None, None, "http", "admin", "12345", "default"),
+        ("camera", None, None, "http", "admin", "123456", "default"),
+        ("camera", None, None, "http", "root", "root", "default"),
+        ("camera", None, None, "telnet", "root", "root", "default"),
+        // Hikvision
+        ("camera", Some("Hikvision"), None, "http", "admin", "12345", "default"),
+        ("camera", Some("Hikvision"), None, "rtsp", "admin", "12345", "default"),
+        // Dahua
+        ("camera", Some("Dahua"), None, "http", "admin", "admin", "default"),
+        // DVR/NVR
+        ("dvr", None, None, "http", "admin", "admin", "default"),
+        ("dvr", None, None, "telnet", "root", "vizxv", "default"),
+        // Routers
+        ("router", None, None, "http", "admin", "admin", "default"),
+        ("router", None, None, "http", "admin", "password", "default"),
+        ("router", Some("TP-Link"), None, "http", "admin", "admin", "default"),
+        ("router", Some("Netgear"), None, "http", "admin", "password", "default"),
+        ("router", Some("D-Link"), None, "http", "admin", "", "default"),
+        ("router", Some("Ubiquiti"), None, "http", "ubnt", "ubnt", "default"),
+        ("router", Some("MikroTik"), None, "http", "admin", "", "default"),
+        // MQTT Brokers
+        ("hub", None, None, "mqtt", "", "", "default"),
+        ("hub", None, None, "mqtt", "admin", "admin", "default"),
+        ("hub", None, None, "mqtt", "guest", "guest", "default"),
+        // Smart Home
+        ("hub", None, None, "http", "admin", "admin", "default"),
+        // Printers
+        ("printer", None, None, "http", "admin", "admin", "default"),
+        // Building Automation
+        ("building_automation", None, None, "http", "admin", "admin", "default"),
+        // Common weak credentials
+        ("unknown", None, None, "telnet", "root", "123456", "common"),
+        ("unknown", None, None, "ssh", "root", "123456", "common"),
+        ("unknown", None, None, "ftp", "anonymous", "", "common"),
+    ];
+
+    let now = chrono::Utc::now().to_rfc3339();
+
+    for (device_type, vendor, model, protocol, username, password, source) in credentials {
+        let id = uuid::Uuid::new_v4().to_string();
+        let _ = sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO iot_credentials (id, device_type, vendor, model, protocol, username, password, source, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(&id)
+        .bind(device_type)
+        .bind(vendor)
+        .bind(model)
+        .bind(protocol)
+        .bind(username)
+        .bind(password)
+        .bind(source)
+        .bind(&now)
+        .execute(pool)
+        .await;
+    }
+
+    log::info!("Seeded IoT default credentials database");
     Ok(())
 }

@@ -396,7 +396,7 @@ impl CloudDiscoveryScanner {
     pub async fn new(config: CloudDiscoveryConfig) -> Result<Self> {
         let client = Client::builder()
             .timeout(Duration::from_secs(config.timeout_secs))
-            .user_agent("Mozilla/5.0 (compatible; HeroForge Security Scanner)")
+            .user_agent("Mozilla/5.0 (compatible; Genial Architect Scanner)")
             .redirect(reqwest::redirect::Policy::limited(5))
             .danger_accept_invalid_certs(false)
             .build()?;

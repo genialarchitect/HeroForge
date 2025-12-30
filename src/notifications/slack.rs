@@ -110,7 +110,7 @@ impl Notifier for SlackNotifier {
                                 "short": false
                             }
                         ],
-                        "footer": "HeroForge Security Scanner",
+                        "footer": "Genial Architect Scanner",
                         "ts": chrono::Utc::now().timestamp()
                     }]
                 })
@@ -157,7 +157,7 @@ impl Notifier for SlackNotifier {
                                 "short": true
                             }
                         ],
-                        "footer": "HeroForge Security Scanner",
+                        "footer": "Genial Architect Scanner",
                         "ts": chrono::Utc::now().timestamp()
                     }]
                 })
@@ -175,7 +175,7 @@ impl Notifier for SlackNotifier {
                                 "short": false
                             }
                         ],
-                        "footer": "HeroForge Security Scanner",
+                        "footer": "Genial Architect Scanner",
                         "ts": chrono::Utc::now().timestamp()
                     }]
                 })
@@ -211,7 +211,7 @@ impl Notifier for SlackNotifier {
                                 "short": true
                             }
                         ],
-                        "footer": "HeroForge Security Scanner",
+                        "footer": "Genial Architect Scanner",
                         "ts": chrono::Utc::now().timestamp()
                     }]
                 })
@@ -227,7 +227,7 @@ impl Notifier for SlackNotifier {
                 "color": "#3B82F6",
                 "title": "HeroForge Slack Integration Test",
                 "text": "Your Slack webhook is configured correctly! You will receive notifications here for scan events.",
-                "footer": "HeroForge Security Scanner",
+                "footer": "Genial Architect Scanner",
                 "ts": chrono::Utc::now().timestamp()
             }]
         });
@@ -488,7 +488,7 @@ mod tests {
                 mockito::Matcher::Regex(r#""attachments""#.to_string()),
                 mockito::Matcher::Regex(r#""color""#.to_string()),
                 mockito::Matcher::Regex(r#""title""#.to_string()),
-                mockito::Matcher::Regex(r#""footer":\s*"HeroForge Security Scanner""#.to_string()),
+                mockito::Matcher::Regex(r#""footer":\s*"Genial Architect Scanner""#.to_string()),
             ]))
             .with_status(200)
             .with_body("ok")

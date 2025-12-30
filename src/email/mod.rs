@@ -35,7 +35,7 @@ impl EmailConfig {
             from_address: std::env::var("SMTP_FROM_ADDRESS")
                 .unwrap_or_else(|_| "noreply@heroforge.local".to_string()),
             from_name: std::env::var("SMTP_FROM_NAME")
-                .unwrap_or_else(|_| "HeroForge Security Scanner".to_string()),
+                .unwrap_or_else(|_| "Genial Architect Scanner".to_string()),
         })
     }
 }
@@ -122,7 +122,7 @@ impl EmailService {
             <p>Please log in to the HeroForge dashboard to view detailed results and generate reports.</p>
         </div>
         <div class="footer">
-            <p>This is an automated notification from HeroForge Security Scanner.</p>
+            <p>This is an automated notification from Genial Architect Scanner.</p>
             <p>To manage your notification settings, please visit your account settings.</p>
         </div>
     </div>
@@ -232,7 +232,7 @@ Please log in to the HeroForge dashboard to view detailed results and generate r
             <p>Please log in to the HeroForge dashboard immediately to review these findings and generate remediation reports.</p>
         </div>
         <div class="footer">
-            <p>This is an automated critical alert from HeroForge Security Scanner.</p>
+            <p>This is an automated critical alert from Genial Architect Scanner.</p>
             <p>To manage your notification settings, please visit your account settings.</p>
         </div>
     </div>
@@ -332,7 +332,7 @@ Please log in to the HeroForge dashboard immediately to review these findings an
             <p>Please log in to the HeroForge dashboard to review your scheduled scan configuration.</p>
         </div>
         <div class="footer">
-            <p>This is an automated notification from HeroForge Security Scanner.</p>
+            <p>This is an automated notification from Genial Architect Scanner.</p>
             <p>To manage your notification settings, please visit your account settings.</p>
         </div>
     </div>

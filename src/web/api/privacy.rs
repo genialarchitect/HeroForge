@@ -8,7 +8,7 @@ pub async fn get_privacy_policy() -> Result<HttpResponse> {
         "last_updated": "2025-01-01",
         "policy": {
             "data_controller": {
-                "organization": "HeroForge Security",
+                "organization": "Genial Architect",
                 "contact_email": "privacy@heroforge.security",
                 "contact_address": "Please contact us via email for our physical address"
             },

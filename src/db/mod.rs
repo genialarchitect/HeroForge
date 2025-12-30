@@ -20,6 +20,7 @@ pub mod ad_assessment;
 pub mod agent_mesh;
 pub mod agents;
 pub mod ai;
+pub mod ai_security;
 pub mod analytics;
 pub mod api_security;
 pub mod asm;
@@ -76,8 +77,11 @@ pub mod detection_engineering;
 pub mod threat_hunting;
 pub mod devsecops;
 pub mod sbom;
+pub mod sca;
 pub mod threat_modeling;
 pub mod yellow_team;
+pub mod ot_ics;
+pub mod iot;
 
 // Core imports used by this module
 use sqlx::sqlite::SqlitePool;
@@ -673,3 +677,75 @@ pub use permissions::{
     cache::warmup_user_cache,
     cache::CacheStats,
 };
+
+// ============================================================================
+// SOAR Playbook Scheduling Functions
+// ============================================================================
+
+/// Scheduled playbook model
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct ScheduledPlaybook {
+    pub id: String,
+    pub playbook_id: String,
+    pub user_id: String,
+    pub cron_expression: String,
+    pub timezone: String,
+    pub next_run_at: chrono::DateTime<chrono::Utc>,
+    pub last_run_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub is_active: bool,
+    pub auto_approve_low_risk: bool,
+    pub input_data: Option<String>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// Get all scheduled playbooks that are due to run
+pub async fn get_due_scheduled_playbooks(pool: &SqlitePool) -> Result<Vec<ScheduledPlaybook>> {
+    let now = chrono::Utc::now();
+
+    let playbooks = sqlx::query_as::<_, ScheduledPlaybook>(
+        r#"
+        SELECT sp.id, sp.playbook_id, sp.user_id, sp.cron_expression, sp.timezone,
+               sp.next_run_at, sp.last_run_at, sp.is_active, sp.auto_approve_low_risk,
+               sp.input_data, sp.created_at, sp.updated_at
+        FROM soar_scheduled_playbooks sp
+        INNER JOIN soar_playbooks p ON sp.playbook_id = p.id
+        WHERE sp.is_active = 1
+          AND sp.next_run_at <= ?
+          AND p.is_active = 1
+        ORDER BY sp.next_run_at ASC
+        "#,
+    )
+    .bind(now.to_rfc3339())
+    .fetch_all(pool)
+    .await?;
+
+    Ok(playbooks)
+}
+
+/// Update playbook next run time after execution
+pub async fn update_playbook_next_run(
+    pool: &SqlitePool,
+    scheduled_playbook_id: &str,
+    next_run: chrono::DateTime<chrono::Utc>,
+) -> Result<()> {
+    let now = chrono::Utc::now();
+
+    sqlx::query(
+        r#"
+        UPDATE soar_scheduled_playbooks
+        SET next_run_at = ?,
+            last_run_at = ?,
+            updated_at = ?
+        WHERE id = ?
+        "#,
+    )
+    .bind(next_run.to_rfc3339())
+    .bind(now.to_rfc3339())
+    .bind(now.to_rfc3339())
+    .bind(scheduled_playbook_id)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}

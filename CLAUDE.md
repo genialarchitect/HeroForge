@@ -88,6 +88,34 @@ npm run dev                           # Development server (proxies /api to :808
 npm run lint                          # ESLint with strict warnings
 ```
 
+### Testing
+
+```bash
+# Run all tests
+cargo test
+
+# Run tests with output
+cargo test -- --nocapture
+
+# Run specific test module
+cargo test scanner::
+
+# Run specific test function
+cargo test scanner::comparison::tests::test_compare_scans
+
+# Run database-dependent tests sequentially (avoid conflicts)
+cargo test -- --test-threads=1
+
+# Run tests with backtrace for debugging
+RUST_BACKTRACE=1 cargo test
+
+# Run tests for a specific module with verbose output
+cargo test --package heroforge --lib scanner::tests -- --nocapture
+
+# Run integration tests only
+cargo test --test '*'
+```
+
 ### Deployment
 
 ```bash
@@ -125,40 +153,85 @@ src/
 │   ├── host_discovery.rs, port_scanner.rs, syn_scanner.rs
 │   ├── service_detection.rs, os_fingerprint.rs
 │   ├── udp_scanner.rs, udp_probes.rs, udp_service_detection.rs
-│   ├── ssl_scanner.rs   # SSL/TLS certificate analysis
-│   ├── dns_recon.rs     # DNS reconnaissance
+│   ├── ssl_scanner.rs, tls_analysis/  # SSL/TLS certificate + cipher analysis
+│   ├── dns_recon.rs, dns_analysis/    # DNS reconnaissance + analytics
 │   ├── comparison.rs    # Scan diff between results
 │   ├── webapp/          # Web application scanning (XSS, SQLi, headers, forms)
-│   └── enumeration/     # Service-specific enumeration (http, dns, smb, ftp, ssh, snmp)
+│   ├── enumeration/     # Service-specific enumeration (http, dns, smb, ftp, ssh, snmp)
+│   ├── ad_assessment/   # Active Directory security assessment
+│   ├── api_security/    # API endpoint scanning and testing
+│   ├── asset_discovery/ # Asset discovery and inventory
+│   ├── attack_paths/    # Attack path analysis
+│   ├── bas/             # Breach and Attack Simulation
+│   ├── bloodhound/      # BloodHound integration for AD analysis
+│   ├── breach_detection/  # Data breach detection
+│   ├── cicd/            # CI/CD pipeline security scanning
+│   ├── cloud/           # AWS, Azure, GCP cloud security scanning
+│   ├── container/       # Container and Kubernetes security
+│   ├── credential_audit/  # Credential strength and policy auditing
+│   ├── dorks/           # Google dorking and search engine reconnaissance
+│   ├── exploitation/    # Exploitation modules (shells, Kerberos, password spray, post-exploit)
+│   ├── git_recon/       # Git repository reconnaissance
+│   ├── iac/             # Infrastructure as Code scanning (Terraform, CloudFormation)
+│   ├── ids/             # Intrusion detection signature matching
+│   ├── nuclei/          # Nuclei template engine integration
+│   ├── privesc/         # Privilege escalation detection
+│   └── secret_detection/  # Secret/credential detection in code
 ├── cve/                 # CVE lookup: offline_db → cache → NVD API
 ├── vuln/                # Vulnerability scanning and misconfiguration detection
 ├── compliance/          # Security compliance frameworks
 │   ├── frameworks/      # CIS, NIST 800-53, NIST CSF, PCI-DSS, HIPAA, SOC2, FERPA, OWASP
 │   ├── controls/        # Control mappings and compliance checks
 │   ├── manual_assessment/  # Rubrics for non-automated controls
+│   ├── evidence/        # Evidence collection and management
 │   └── analyzer.rs, scanner.rs, scoring.rs
 ├── agents/              # Distributed scanning agents and mesh networking
 ├── ai/                  # AI-powered vulnerability prioritization
+├── ai_security/         # AI/ML model security scanning
+├── asm/                 # Attack Surface Management
+├── binary_analysis/     # Binary/malware analysis (PE/ELF/Mach-O parsing, entropy)
+├── c2/                  # Command & Control infrastructure (custom C2 framework)
+├── cracking/            # Password cracking integration
+├── detection_engineering/  # Detection rule creation and testing
+├── devsecops/           # DevSecOps integrations and CI/CD security
+├── dns_analytics/       # DNS traffic analysis and threat detection
+├── exploit_research/    # Exploit research and development tools
+├── forensics/           # Digital forensics and incident investigation
+├── fuzzing/             # Fuzzing framework for vulnerability discovery
+├── incident_response/   # Incident response automation and playbooks
+├── iot/                 # IoT device security scanning
+├── malware_analysis/    # Malware analysis sandbox and tools
+├── netflow/             # NetFlow/IPFIX traffic analysis
+├── phishing/            # Phishing campaign management
 ├── plugins/             # Plugin marketplace and extensibility
+├── purple_team/         # Purple team exercises (combined red/blue team)
 ├── siem/                # SIEM integration (log ingestion, correlation engine, alerting)
-├── threat_intel/        # Threat intelligence feeds (CVE, exploit DB, Shodan)
+├── threat_hunting/      # Threat hunting tools and analytics
+├── threat_intel/        # Threat intelligence feeds (CVE, exploit DB, Shodan, MISP, STIX)
+├── traffic_analysis/    # Network traffic analysis and packet inspection
 ├── vpn/                 # VPN integration for scanning through OpenVPN/WireGuard tunnels
 ├── webhooks/            # Outbound webhook notifications
 ├── workflows/           # Custom remediation workflows
 ├── notifications/       # Multi-channel notifications (Slack, Teams, email)
-├── integrations/        # External integrations (JIRA, ServiceNow, SIEM export)
-├── email/               # SMTP notifications
+├── integrations/        # External integrations (JIRA, ServiceNow, SIEM export, scanner import)
+├── email/               # SMTP notifications and email security validation
 ├── reports/             # Report generation (JSON, HTML, PDF, CSV, Markdown)
 ├── output/              # CLI output formatting
-├── db/                  # SQLite via sqlx (models, migrations, analytics, assets, crm)
-└── web/                 # Actix-web server
-    ├── auth/            # JWT auth (jwt.rs, middleware.rs)
-    ├── api/             # REST endpoints
-    │   └── portal/      # Customer portal API (separate auth)
-    ├── websocket/       # Real-time scan progress
-    ├── error.rs         # Unified API error types
-    ├── rate_limit.rs    # Request rate limiting
-    └── scheduler.rs     # Background job scheduler
+├── db/                  # SQLite via sqlx (models, migrations, analytics, assets, crm, permissions)
+├── web/                 # Actix-web server
+│   ├── auth/            # JWT auth (jwt.rs, middleware.rs) + SSO (SAML, OAuth)
+│   ├── api/             # REST endpoints
+│   │   ├── portal/      # Customer portal API (separate auth)
+│   │   └── manual_compliance/  # Manual compliance assessment API
+│   ├── websocket/       # Real-time scan progress
+│   ├── error.rs         # Unified API error types
+│   ├── rate_limit.rs    # Request rate limiting
+│   └── scheduler.rs     # Background job scheduler
+├── ot_ics/              # OT/ICS industrial control systems security
+├── green_team/          # SOC operations (SOAR playbooks, case management, metrics)
+├── orange_team/         # Security awareness training and phishing analytics
+├── white_team/          # GRC (governance, risk, compliance, audit, policy, vendor management)
+└── yellow_team/         # Secure development (SAST, SCA, SBOM, architecture review, API security)
 ```
 
 ### REST API
@@ -166,17 +239,30 @@ src/
 Full API documentation available via Swagger UI at `/api/docs` (requires running server).
 
 **Key endpoint categories:**
-- `/api/auth/*` - Authentication (register, login, logout, refresh, MFA)
+- `/api/auth/*` - Authentication (register, login, logout, refresh, MFA, SSO)
 - `/api/user/*` - User profile and settings
 - `/api/portal/*` - Customer portal (separate auth system)
 - `/api/scans/*` - Scan CRUD, results, export, compare
-- `/api/reports/*` - Report generation
-- `/api/assets/*` - Asset inventory
+- `/api/reports/*` - Report generation (JSON, HTML, PDF, CSV, Markdown)
+- `/api/assets/*` - Asset inventory and management
 - `/api/vulnerabilities/*` - Vulnerability management and remediation
-- `/api/compliance/*` - Compliance analysis and manual assessments
+- `/api/compliance/*` - Compliance analysis, frameworks, manual assessments, evidence
 - `/api/container/*` - Container and Kubernetes security
-- `/api/integrations/*` - JIRA, ServiceNow, SIEM integrations
+- `/api/cloud/*` - Cloud security (AWS, Azure, GCP)
+- `/api/integrations/*` - JIRA, ServiceNow, SIEM integrations, scanner imports
+- `/api/webhooks/*` - Webhook management
+- `/api/workflows/*` - Custom remediation workflows
 - `/api/admin/*` - User management, audit logs (admin role required)
+- `/api/agents/*` - Distributed scanning agent management
+- `/api/plugins/*` - Plugin marketplace and management
+- `/api/ai/*` - AI-powered vulnerability prioritization
+- `/api/siem/*` - SIEM log ingestion and correlation
+- `/api/threat-intel/*` - Threat intelligence feeds
+- `/api/crm/*` - Customer relationship management
+- `/api/green-team/*` - SOC operations (SOAR playbooks, case management)
+- `/api/orange-team/*` - Security awareness training and phishing
+- `/api/white-team/*` - GRC (governance, risk, compliance)
+- `/api/yellow-team/*` - Secure development (SAST, SCA, SBOM)
 - `WS /api/ws/scans/{id}` - WebSocket for real-time scan progress
 
 ### Data Flow
@@ -197,6 +283,48 @@ Progress updates sent via `ScanProgressMessage` broadcast channel to WebSocket c
 2. **SQLite Cache** (`cve::cache`) - Cached NVD results (30-day TTL)
 3. **NVD API** (`cve::nvd_client`) - Real-time queries on cache miss
 
+### "Colored Teams" Architecture
+
+HeroForge implements a comprehensive security operations framework organized by team colors:
+
+**Red Team** (`scanner/` modules) - Offensive security testing:
+- Network reconnaissance, vulnerability scanning, exploitation
+- Web application testing, Active Directory assessment
+- Cloud security scanning, container security
+
+**Blue Team** (`siem/`, `detection_engineering/`, `incident_response/`) - Defensive operations:
+- SIEM log ingestion and correlation
+- Detection rule creation and testing
+- Incident response automation
+
+**Green Team** (`green_team/`) - SOC operations:
+- SOAR playbooks and orchestration
+- Case management
+- Threat intelligence automation
+- SOC metrics and analytics
+
+**Yellow Team** (`yellow_team/`) - Secure development:
+- SAST (Static Application Security Testing)
+- SCA (Software Composition Analysis)
+- SBOM (Software Bill of Materials)
+- Architecture security review
+- API security testing
+
+**Orange Team** (`orange_team/`) - Security awareness:
+- Phishing campaign management
+- Training content and gamification
+- Just-in-time training
+- Compliance training tracking
+
+**White Team** (`white_team/`) - Governance, Risk, and Compliance (GRC):
+- Risk assessment and management
+- Security controls framework
+- Audit management
+- Policy lifecycle management
+- Third-party vendor risk management
+
+**Purple Team** (`purple_team/`) - Combined red/blue team exercises and collaboration
+
 ### Key Architectural Patterns
 
 **Concurrency:** Tokio runtime, semaphore-limited concurrent port scanning, `tokio::sync::broadcast` for WebSocket updates
@@ -205,9 +333,15 @@ Progress updates sent via `ScanProgressMessage` broadcast channel to WebSocket c
 
 **Auth Flow:** Register/login → bcrypt hash → JWT token → `JwtMiddleware` validates Bearer tokens. Customer portal uses separate `PortalAuthMiddleware` with its own JWT issuer.
 
+**SSO Support:** SAML 2.0 and OAuth 2.0 / OpenID Connect via `web/auth/sso/`
+
 **Error Handling:** Use `anyhow::Error` (not `Box<dyn std::error::Error>`) for `Send` compatibility in async spawned tasks
 
 **Enumeration:** Service-specific modules with depth levels (Passive, Light, Aggressive). Uses native async drivers for databases, external tools (smbclient, enum4linux) for SMB
+
+**Plugin System:** Extensible architecture via `plugins/` module for custom scanners and integrations
+
+**Distributed Scanning:** Agent mesh networking in `agents/mesh/` for coordinated distributed scans
 
 ## Configuration
 
@@ -234,6 +368,11 @@ Progress updates sent via `ScanProgressMessage` broadcast channel to WebSocket c
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` | SMTP server configuration |
 | `SMTP_FROM_ADDRESS`, `SMTP_FROM_NAME` | Email sender configuration |
 | `BACKUP_GPG_PASSPHRASE` | GPG passphrase for encrypted database backups |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | AWS credentials for cloud security scanning |
+| `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_TENANT_ID` | Azure credentials for cloud scanning |
+| `GOOGLE_APPLICATION_CREDENTIALS` | Path to GCP service account JSON for cloud scanning |
+| `SAML_IDP_METADATA_URL` | SAML Identity Provider metadata URL for SSO |
+| `OAUTH_CLIENT_ID`, `OAUTH_CLIENT_SECRET` | OAuth 2.0 credentials for SSO |
 
 ## Integrations
 
@@ -260,6 +399,24 @@ Implemented via `actix-governor` in `src/web/rate_limit.rs`:
 | Scan creation (`POST /api/scans`) | 10 requests | per hour |
 | General API endpoints | 100 requests | per minute |
 
+## External Tool Dependencies
+
+Some modules use external tools for specialized functionality. These are optional but enhance capabilities:
+
+| Tool | Module | Purpose |
+|------|--------|---------|
+| `smbclient` | `scanner/enumeration/smb.rs` | SMB enumeration and file listing |
+| `enum4linux` | `scanner/enumeration/smb.rs` | Windows/Samba enumeration |
+| `nmap` | `scanner/nuclei/` | Nuclei template engine (optional) |
+| `nuclei` | `scanner/nuclei/` | Advanced vulnerability scanning with templates |
+| `hashcat` | `cracking/` | Password cracking (GPU-accelerated) |
+| `john` | `cracking/` | John the Ripper password cracking |
+| `sqlmap` | `scanner/webapp/` | Advanced SQL injection testing (optional) |
+| `ffuf` | `scanner/webapp/` | Web fuzzing (optional) |
+| `gobuster` | `scanner/enumeration/http.rs` | Directory/DNS bruteforcing (optional) |
+
+**Note:** Most functionality works without these tools. They're invoked via Bash commands only when available and when the user opts into more aggressive scanning.
+
 ## Important Notes
 
 **Security:** This is a penetration testing tool for **authorized security testing only**. Never remove security warnings.
@@ -273,6 +430,35 @@ Implemented via `actix-governor` in `src/web/rate_limit.rs`:
 **WebSocket Auth:** `/api/ws/scans/{id}` requires JWT as query parameter (`?token=...`). The JwtMiddleware skips `/ws/` paths; WebSocket handler performs its own token verification.
 
 **Wordlists:** Built-in at `scanner/enumeration/wordlists.rs`, custom via `--enum-wordlist` flag.
+
+**SQLCipher:** Database encryption via SQLCipher (bundled with `libsqlite3-sys` feature). Overrides sqlx's default SQLite. See `DATABASE_ENCRYPTION_MIGRATION.md` for migration guide.
+
+## Development Roadmap
+
+HeroForge follows a structured sprint-based development plan across two priority phases:
+
+### Priority 1 (P1) - ✅ COMPLETE (12 sprints / 6 months)
+**Focus**: Vulnerability research, malware analysis, network traffic analysis, threat intelligence
+
+See `FEATURE_ROADMAP_P1.md` for detailed sprint breakdown.
+
+### Priority 2 (P2) - 🔨 IN PROGRESS (15 sprints / 7.5 months)
+**Focus**: Blue team enhancement, DevSecOps platform, SOAR automation, OT/ICS security, AI/ML security
+
+**Current Status (Sprints 1-10 of 15 complete)**:
+- ✅ Sprint 1-2: Advanced Detection Engineering (YARA, Sigma)
+- ✅ Sprint 3-4: UEBA (User Entity Behavior Analytics)
+- ✅ Sprint 5-6: Network Forensics (NetFlow, DNS Analytics)
+- ✅ Sprint 7-8: DevSecOps (SAST, SCA)
+- ✅ Sprint 9: CI/CD Pipeline Security (GitHub Actions, GitLab CI, Jenkins, Azure DevOps)
+- ✅ Sprint 10: IDE Integration (VS Code, JetBrains, pre-commit hooks)
+- 📋 Sprint 11-15: OT/ICS Security, IoT Security, AI/ML Security (planned)
+
+See `FEATURE_ROADMAP_P2.md` for detailed sprint requirements.
+
+### Comprehensive Feature Matrix
+`docs/FEATURE_ROADMAP.md` provides a complete status overview across all colored team domains:
+- ✅ Implemented | 🔨 Partially Implemented | 📋 Planned | 💡 Proposed
 
 ## Troubleshooting
 

@@ -181,7 +181,7 @@ fn severity_to_security_severity(severity: &Severity) -> String {
 /// Generate GitHub Actions workflow example YAML
 pub fn generate_workflow_example(api_url: &str) -> String {
     format!(
-        r#"# HeroForge Security Scan - GitHub Actions Workflow
+        r#"# Genial Architect Scan - GitHub Actions Workflow
 name: Security Scan
 
 on:
@@ -200,7 +200,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Run HeroForge Security Scan
+      - name: Run Genial Architect Scan
         id: scan
         env:
           HEROFORGE_API_URL: {api_url}

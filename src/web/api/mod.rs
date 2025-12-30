@@ -3,6 +3,7 @@ pub mod admin;
 pub mod agents;
 pub mod asm;
 pub mod ai;
+pub mod ai_security;
 pub mod analytics;
 pub mod api_keys;
 pub mod api_security;
@@ -17,7 +18,9 @@ pub mod breach;
 pub mod c2;
 pub mod chat;
 pub mod cicd;
+pub mod cicd_integration;
 pub mod cicd_pipeline;
+pub mod ide_integration;
 pub mod cloud;
 pub mod cloud_discovery;
 pub mod container;
@@ -103,6 +106,9 @@ pub mod white_team;
 pub mod traffic_analysis;
 pub mod ueba;
 pub mod netflow;
+pub mod sca;
+pub mod ot_ics;
+pub mod iot;
 
 #[cfg(test)]
 mod tests;

@@ -423,7 +423,7 @@ pub fn format_vulnerability_description(
         description.push('\n');
     }
 
-    description.push_str("\n---\nThis ticket was automatically created by HeroForge Security Scanner.\n");
+    description.push_str("\n---\nThis ticket was automatically created by Genial Architect Scanner.\n");
 
     description
 }

@@ -107,6 +107,16 @@ impl From<sqlx::Error> for ApiError {
     }
 }
 
+impl From<serde_json::Error> for ApiError {
+    fn from(err: serde_json::Error) -> Self {
+        Self {
+            error: format!("JSON error: {}", err),
+            details: None,
+            status: StatusCode::BAD_REQUEST,
+        }
+    }
+}
+
 impl From<ApiErrorKind> for ApiError {
     fn from(kind: ApiErrorKind) -> Self {
         let (status, message) = match kind {

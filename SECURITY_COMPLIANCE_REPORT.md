@@ -1,4 +1,4 @@
-# HeroForge Security Compliance Report
+# Genial Architect Compliance Report
 
 **Report Date:** 2025-12-15
 **Standards Evaluated:** CIS Benchmarks, NIST 800-53, NIST 800-63B, GDPR, OWASP

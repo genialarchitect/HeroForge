@@ -108,6 +108,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister }) => {
     e.preventDefault();
 
     if (!username || !password) {
+      toast.error('Please enter both username and password');
       return;
     }
 
@@ -294,7 +295,16 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister }) => {
       )}
 
       {/* Username/Password Form */}
-      <form onSubmit={handleInitialLogin} className="space-y-4">
+      <form
+        onSubmit={handleInitialLogin}
+        className="space-y-4"
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && !loading && !isLoading && ssoRedirecting === null) {
+            e.preventDefault();
+            handleInitialLogin(e as unknown as React.FormEvent);
+          }
+        }}
+      >
         <Input
           type="text"
           placeholder="Username"

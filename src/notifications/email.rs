@@ -33,7 +33,7 @@ impl EmailConfig {
             from_address: std::env::var("SMTP_FROM_ADDRESS")
                 .unwrap_or_else(|_| "noreply@heroforge.local".to_string()),
             from_name: std::env::var("SMTP_FROM_NAME")
-                .unwrap_or_else(|_| "HeroForge Security Scanner".to_string()),
+                .unwrap_or_else(|_| "Genial Architect Scanner".to_string()),
         })
     }
 
@@ -197,7 +197,7 @@ impl EmailNotifier {
             <p>Please log in to the HeroForge dashboard to view detailed results and generate reports.</p>
         </div>
         <div class="footer">
-            <p>This is an automated notification from HeroForge Security Scanner.</p>
+            <p>This is an automated notification from Genial Architect Scanner.</p>
             <p>To manage your notification settings, please visit your account settings.</p>
         </div>
     </div>
@@ -232,7 +232,7 @@ Vulnerability Breakdown:
 Please log in to the HeroForge dashboard to view detailed results and generate reports.
 
 ---
-This is an automated notification from HeroForge Security Scanner.
+This is an automated notification from Genial Architect Scanner.
 "#,
             scan_name,
             hosts_discovered,
@@ -312,7 +312,7 @@ This is an automated notification from HeroForge Security Scanner.
             <p>Please log in to the HeroForge dashboard immediately to review this finding and begin remediation.</p>
         </div>
         <div class="footer">
-            <p>This is an automated critical alert from HeroForge Security Scanner.</p>
+            <p>This is an automated critical alert from Genial Architect Scanner.</p>
             <p>To manage your notification settings, please visit your account settings.</p>
         </div>
     </div>
@@ -346,7 +346,7 @@ Vulnerability Details:
 Please log in to the HeroForge dashboard immediately to review this finding and begin remediation.
 
 ---
-This is an automated critical alert from HeroForge Security Scanner.
+This is an automated critical alert from Genial Architect Scanner.
 "#,
             scan_name, title, severity, host, port, service, description
         );
@@ -384,7 +384,7 @@ This is an automated critical alert from HeroForge Security Scanner.
             <p>You will receive another notification when the scan completes.</p>
         </div>
         <div class="footer">
-            <p>This is an automated notification from HeroForge Security Scanner.</p>
+            <p>This is an automated notification from Genial Architect Scanner.</p>
         </div>
     </div>
 </body>
@@ -402,7 +402,7 @@ Targets: {}
 You will receive another notification when the scan completes.
 
 ---
-This is an automated notification from HeroForge Security Scanner.
+This is an automated notification from Genial Architect Scanner.
 "#,
             scan_name, targets
         );
@@ -451,7 +451,7 @@ This is an automated notification from HeroForge Security Scanner.
             <p>Log in to the HeroForge dashboard to view the scan results.</p>
         </div>
         <div class="footer">
-            <p>This is an automated notification from HeroForge Security Scanner.</p>
+            <p>This is an automated notification from Genial Architect Scanner.</p>
         </div>
     </div>
 </body>
@@ -477,7 +477,7 @@ Duration: {}m {}s
 Log in to the HeroForge dashboard to view the scan results.
 
 ---
-This is an automated notification from HeroForge Security Scanner.
+This is an automated notification from Genial Architect Scanner.
 "#,
             status_text, scan_name, status, status, duration_min, duration_sec
         );
@@ -540,7 +540,7 @@ pub async fn send_portal_password_reset_email(
             <p>For security reasons, this password reset link can only be used once.</p>
         </div>
         <div class="footer">
-            <p>This is an automated message from HeroForge Security Scanner.</p>
+            <p>This is an automated message from Genial Architect Scanner.</p>
             <p>If you have any questions, please contact your security team.</p>
         </div>
     </div>
@@ -567,7 +567,7 @@ If you didn't request a password reset, you can safely ignore this email. Your p
 For security reasons, this password reset link can only be used once.
 
 ---
-This is an automated message from HeroForge Security Scanner.
+This is an automated message from Genial Architect Scanner.
 "#,
         reset_url, expires_in_minutes
     );
@@ -704,7 +704,7 @@ impl Notifier for EmailNotifier {
             <p>You can manage your notification preferences in the HeroForge settings page.</p>
         </div>
         <div class="footer">
-            <p>This is a test message from HeroForge Security Scanner.</p>
+            <p>This is a test message from Genial Architect Scanner.</p>
         </div>
     </div>
 </body>
@@ -722,7 +722,7 @@ You will receive email notifications for:
 You can manage your notification preferences in the HeroForge settings page.
 
 ---
-This is a test message from HeroForge Security Scanner.
+This is a test message from Genial Architect Scanner.
 "#;
 
         self.send_email(subject, text_body, html_body).await

@@ -20,7 +20,7 @@ use lettre::message::{header, MultiPart, SinglePart, Attachment};
 use lettre::transport::smtp::authentication::Credentials;
 use lettre::{Message, SmtpTransport, Transport};
 use rand::Rng;
-use sqlx::SqlitePool;
+use sqlx::{Row, SqlitePool};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -75,6 +75,11 @@ pub fn start_scheduler(pool: Arc<SqlitePool>) {
             // Check and execute due ASM monitors
             if let Err(e) = check_and_execute_due_asm_monitors(&pool).await {
                 log::error!("Scheduler error (ASM monitors): {}", e);
+            }
+
+            // Check and execute due scheduled playbooks
+            if let Err(e) = check_and_execute_due_playbooks(&pool).await {
+                log::error!("Scheduler error (playbooks): {}", e);
             }
         }
     });
@@ -1076,7 +1081,7 @@ async fn send_report_email(
             <p>The report is attached to this email.</p>
         </div>
         <div class="footer">
-            <p>This is an automated report from HeroForge Security Scanner.</p>
+            <p>This is an automated report from Genial Architect Scanner.</p>
         </div>
     </div>
 </body>
@@ -1268,6 +1273,235 @@ async fn update_asm_next_run(
         .execute(pool)
         .await?;
 
+    Ok(())
+}
+
+// ============================================================================
+// Scheduled Playbooks
+// ============================================================================
+
+/// Check for due scheduled playbooks and execute them
+async fn check_and_execute_due_playbooks(pool: &SqlitePool) -> Result<()> {
+    use crate::db::{get_due_scheduled_playbooks, update_playbook_next_run};
+    use crate::green_team::playbooks::ExecutionContext;
+    use crate::green_team::types::PlaybookStep;
+
+    // Get all due scheduled playbooks
+    let due_playbooks = get_due_scheduled_playbooks(pool).await?;
+
+    if due_playbooks.is_empty() {
+        log::debug!("No scheduled playbooks due for execution");
+        return Ok(());
+    }
+
+    log::info!(
+        "Found {} scheduled playbook(s) due for execution",
+        due_playbooks.len()
+    );
+
+    for scheduled_playbook in due_playbooks {
+        log::info!(
+            "Executing scheduled playbook '{}' ({})",
+            scheduled_playbook.playbook_id,
+            scheduled_playbook.id
+        );
+
+        // Get the playbook details
+        let playbook_row = match sqlx::query("SELECT id, name, steps_json, is_active FROM soar_playbooks WHERE id = ? AND is_active = TRUE")
+            .bind(&scheduled_playbook.playbook_id)
+            .fetch_optional(pool)
+            .await? {
+            Some(p) => p,
+            None => {
+                log::warn!(
+                    "Scheduled playbook {} references non-existent or inactive playbook {}",
+                    scheduled_playbook.id,
+                    scheduled_playbook.playbook_id
+                );
+                continue;
+            }
+        };
+
+        let playbook_name: String = playbook_row.get("name");
+        let steps_json: String = playbook_row.get("steps_json");
+        let steps: Vec<PlaybookStep> = serde_json::from_str(&steps_json).unwrap_or_default();
+        let total_steps = steps.len() as i32;
+
+        // Create run record
+        let run_id = uuid::Uuid::new_v4().to_string();
+        let now = chrono::Utc::now().to_rfc3339();
+
+        sqlx::query(
+            "INSERT INTO soar_playbook_runs (id, playbook_id, trigger_type, trigger_source, status, current_step, total_steps, input_data, started_at) VALUES (?, ?, 'schedule', ?, 'running', 0, ?, ?, ?)"
+        )
+        .bind(&run_id)
+        .bind(&scheduled_playbook.playbook_id)
+        .bind(Some(format!("scheduled:{}", scheduled_playbook.id)))
+        .bind(total_steps)
+        .bind(&scheduled_playbook.input_data)
+        .bind(&now)
+        .execute(pool)
+        .await?;
+
+        // Clone data for async task
+        let pool_clone = pool.clone();
+        let run_id_clone = run_id.clone();
+        let scheduled_id = scheduled_playbook.id.clone();
+        let input_data: Option<serde_json::Value> = scheduled_playbook
+            .input_data
+            .as_ref()
+            .and_then(|s| serde_json::from_str(s).ok());
+
+        // Spawn async execution
+        tokio::spawn(async move {
+            let start_time = std::time::Instant::now();
+
+            // Create execution context
+            let run_uuid = match uuid::Uuid::parse_str(&run_id_clone) {
+                Ok(uuid) => uuid,
+                Err(_) => {
+                    log::error!("Invalid run ID format: {}", run_id_clone);
+                    return;
+                }
+            };
+
+            let mut context = ExecutionContext::new(run_uuid, input_data);
+            let action_executor = crate::green_team::playbooks::actions::ActionExecutor::new();
+
+            // Execute each step
+            for (step_index, step) in steps.iter().enumerate() {
+                // Update current step in database
+                if let Err(e) = update_playbook_run_step(&pool_clone, &run_id_clone, step_index as i32).await {
+                    log::error!("Failed to update run step: {}", e);
+                }
+
+                // Check condition if present
+                if let Some(ref condition) = step.condition {
+                    if !crate::green_team::playbooks::conditions::evaluate_condition(condition, &context) {
+                        log::info!("Step {} '{}' skipped due to condition", step_index, step.name);
+                        continue;
+                    }
+                }
+
+                // Execute the action
+                match action_executor.execute(&step.action, &mut context).await {
+                    Ok(output) => {
+                        context.set_step_output(&step.id, output);
+                        log::info!("Step {} '{}' completed successfully", step_index, step.name);
+                    }
+                    Err(error) => {
+                        log::error!("Step {} '{}' failed: {}", step_index, step.name, error);
+
+                        // Check if there's a failure handler
+                        if let Some(ref failure_step_id) = step.on_failure {
+                            log::info!("Jumping to failure handler step: {}", failure_step_id);
+                            // For simplicity we'll just log and continue
+                        } else {
+                            // No failure handler, fail the run
+                            let _ = mark_playbook_run_failed(&pool_clone, &run_id_clone, &error).await;
+                            return;
+                        }
+                    }
+                }
+            }
+
+            // Mark as completed
+            let duration = start_time.elapsed().as_secs() as i32;
+            let completed_at = chrono::Utc::now().to_rfc3339();
+
+            if let Err(e) = sqlx::query(
+                "UPDATE soar_playbook_runs SET status = 'completed', current_step = ?, completed_at = ?, duration_seconds = ? WHERE id = ?"
+            )
+            .bind(total_steps)
+            .bind(&completed_at)
+            .bind(duration)
+            .bind(&run_id_clone)
+            .execute(&pool_clone)
+            .await {
+                log::error!("Failed to mark run as completed: {}", e);
+            }
+
+            log::info!("Scheduled playbook run {} completed in {}s", run_id_clone, duration);
+        });
+
+        // Calculate next run time and update schedule
+        let next_run = calculate_next_playbook_run(&scheduled_playbook.cron_expression);
+        if let Err(e) = update_playbook_next_run(pool, &scheduled_playbook.id, next_run).await {
+            log::error!(
+                "Failed to update next run time for scheduled playbook {}: {}",
+                scheduled_playbook.id,
+                e
+            );
+        }
+    }
+
+    Ok(())
+}
+
+/// Calculate next run time from cron expression
+fn calculate_next_playbook_run(cron_expression: &str) -> chrono::DateTime<chrono::Utc> {
+    use chrono::Utc;
+
+    // Simple cron parsing - in production use a proper cron library
+    let parts: Vec<&str> = cron_expression.split_whitespace().collect();
+
+    if parts.len() < 5 {
+        // Default to daily if invalid
+        return Utc::now() + chrono::Duration::hours(24);
+    }
+
+    let minute = parts[0];
+    let hour = parts[1];
+
+    // Handle common patterns
+    if minute.starts_with("*/") {
+        // Every N minutes
+        let interval: i64 = minute.trim_start_matches("*/").parse().unwrap_or(60);
+        return Utc::now() + chrono::Duration::minutes(interval);
+    }
+
+    if hour == "*" && minute != "*" {
+        // Hourly at specific minute
+        return Utc::now() + chrono::Duration::hours(1);
+    }
+
+    if hour != "*" && minute != "*" {
+        // Daily at specific time
+        return Utc::now() + chrono::Duration::hours(24);
+    }
+
+    // Default to daily
+    Utc::now() + chrono::Duration::hours(24)
+}
+
+/// Helper function to update playbook run step
+async fn update_playbook_run_step(pool: &SqlitePool, run_id: &str, step: i32) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE soar_playbook_runs SET current_step = ? WHERE id = ?")
+        .bind(step)
+        .bind(run_id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+/// Helper function to mark playbook run as failed
+async fn mark_playbook_run_failed(pool: &SqlitePool, run_id: &str, error: &str) -> Result<(), sqlx::Error> {
+    let now = chrono::Utc::now().to_rfc3339();
+    sqlx::query("UPDATE soar_playbook_runs SET status = 'failed', error_message = ?, completed_at = ? WHERE id = ?")
+        .bind(error)
+        .bind(&now)
+        .bind(run_id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+/// Helper function to mark playbook run as waiting approval
+async fn mark_playbook_run_waiting_approval(pool: &SqlitePool, run_id: &str) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE soar_playbook_runs SET status = 'waiting_approval' WHERE id = ?")
+        .bind(run_id)
+        .execute(pool)
+        .await?;
     Ok(())
 }
 

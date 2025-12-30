@@ -308,7 +308,7 @@ fn severity_to_gitlab(severity: &Severity) -> String {
 /// Generate GitLab CI pipeline example (.gitlab-ci.yml)
 pub fn generate_pipeline_example(api_url: &str) -> String {
     format!(
-        r#"# HeroForge Security Scan - GitLab CI Configuration
+        r#"# Genial Architect Scan - GitLab CI Configuration
 stages:
   - security
 

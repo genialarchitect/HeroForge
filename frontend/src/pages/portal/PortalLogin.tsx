@@ -141,7 +141,7 @@ export function PortalLogin() {
 
         <div className="text-center space-y-2">
           <p className="text-xs text-gray-500">
-            Powered by HeroForge Security Platform
+            Powered by Genial Architect Platform
           </p>
           <div className="flex items-center justify-center gap-4 text-xs">
             <Link to="/legal/terms" className="text-gray-500 hover:text-gray-300">Terms</Link>

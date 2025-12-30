@@ -16,6 +16,7 @@ pub mod types;
 pub mod github_actions;
 pub mod jenkins;
 pub mod gitlab;
+pub mod azure_devops;
 
 use anyhow::Result;
 use crate::types::{HostInfo, Severity};
@@ -204,6 +205,10 @@ pub fn generate_report(
             let security = gitlab::generate_security_report(scan_id, hosts, scan_name, &now, &now)?;
             Ok(CiCdReport::GitLabSecurity(security))
         }
+        CiCdPlatform::AzureDevOps => {
+            let sarif = azure_devops::generate_sarif_report(scan_id, hosts, scan_name)?;
+            Ok(CiCdReport::Sarif(sarif))
+        }
     }
 }
 
@@ -222,6 +227,7 @@ pub fn generate_pipeline_example(platform: &CiCdPlatform, api_url: &str) -> Stri
         CiCdPlatform::GitHubActions => github_actions::generate_workflow_example(api_url),
         CiCdPlatform::Jenkins => jenkins::generate_pipeline_example(api_url),
         CiCdPlatform::GitLabCi => gitlab::generate_pipeline_example(api_url),
+        CiCdPlatform::AzureDevOps => azure_devops::generate_pipeline_example(api_url),
         CiCdPlatform::Generic => jenkins::generate_pipeline_example(api_url), // Use JUnit as default
     }
 }

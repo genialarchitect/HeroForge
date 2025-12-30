@@ -103,6 +103,21 @@ const UebaPage = lazy(() => import('./pages/UebaPage'));
 const NetFlowAnalysisPage = lazy(() => import('./pages/NetFlowAnalysisPage'));
 const DnsAnalyticsPage = lazy(() => import('./pages/DnsAnalyticsPage'));
 
+// OT/ICS and IoT Security (Sprint 13-14)
+const OtIcsSecurityPage = lazy(() => import('./pages/OtIcsSecurityPage'));
+const IotSecurityPage = lazy(() => import('./pages/IotSecurityPage'));
+
+// SCA & CI/CD Integration (Sprint 8-10 - Priority 2)
+const ScaPage = lazy(() => import('./pages/ScaPage'));
+const CicdIntegrationPage = lazy(() => import('./pages/CicdIntegrationPage'));
+
+// SOAR Playbooks (Sprint 11-12 - Priority 2)
+const SoarPlaybooksPage = lazy(() => import('./pages/SoarPlaybooksPage'));
+
+// AI/ML Security (Sprint 15 - Priority 2)
+const AiSecurityPage = lazy(() => import('./pages/AiSecurityPage'));
+const LlmTestingPage = lazy(() => import('./pages/LlmTestingPage'));
+
 // CRM pages
 const CrmDashboard = lazy(() => import('./pages/crm/CrmDashboard'));
 
@@ -699,6 +714,76 @@ function App() {
             element={
               <ProtectedRoute>
                 <DnsAnalyticsPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* OT/ICS Security (Sprint 13-14) */}
+          <Route
+            path="/ot-ics-security"
+            element={
+              <ProtectedRoute>
+                <OtIcsSecurityPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* IoT Security (Sprint 13-14) */}
+          <Route
+            path="/iot-security"
+            element={
+              <ProtectedRoute>
+                <IotSecurityPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* SCA - Software Composition Analysis (Sprint 8) */}
+          <Route
+            path="/sca"
+            element={
+              <ProtectedRoute>
+                <ScaPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* CI/CD Integration (Sprint 9-10) */}
+          <Route
+            path="/cicd-integration"
+            element={
+              <ProtectedRoute>
+                <CicdIntegrationPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* SOAR Playbooks (Sprint 11-12) */}
+          <Route
+            path="/soar-playbooks"
+            element={
+              <ProtectedRoute>
+                <SoarPlaybooksPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* AI Security (Sprint 15) */}
+          <Route
+            path="/ai-security"
+            element={
+              <ProtectedRoute>
+                <AiSecurityPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* LLM Security Testing (Sprint 15) */}
+          <Route
+            path="/llm-testing"
+            element={
+              <ProtectedRoute>
+                <LlmTestingPage />
               </ProtectedRoute>
             }
           />

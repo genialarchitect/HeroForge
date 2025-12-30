@@ -728,7 +728,7 @@ async fn check_hsts(target_ip: &str, port: u16, hostname: Option<&str>, timeout:
 
         // Send HTTP HEAD request to check HSTS
         let request = format!(
-            "HEAD / HTTP/1.1\r\nHost: {}\r\nConnection: close\r\nUser-Agent: HeroForge Security Scanner\r\n\r\n",
+            "HEAD / HTTP/1.1\r\nHost: {}\r\nConnection: close\r\nUser-Agent: Genial Architect Scanner\r\n\r\n",
             host
         );
 

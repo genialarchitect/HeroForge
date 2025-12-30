@@ -12,6 +12,7 @@ pub enum CiCdPlatform {
     GitHubActions,
     Jenkins,
     GitLabCi,
+    AzureDevOps,
     Generic,
 }
 
@@ -21,6 +22,7 @@ impl CiCdPlatform {
             Self::GitHubActions => "github_actions",
             Self::Jenkins => "jenkins",
             Self::GitLabCi => "gitlab_ci",
+            Self::AzureDevOps => "azure_devops",
             Self::Generic => "generic",
         }
     }
@@ -30,6 +32,7 @@ impl CiCdPlatform {
             "github_actions" => Some(Self::GitHubActions),
             "jenkins" => Some(Self::Jenkins),
             "gitlab_ci" => Some(Self::GitLabCi),
+            "azure_devops" => Some(Self::AzureDevOps),
             "generic" => Some(Self::Generic),
             _ => None,
         }

@@ -66,6 +66,12 @@ import {
   Biohazard,
   Braces,
   UserCog,
+  Factory,
+  Lightbulb,
+  Sparkles,
+  Brain,
+  Package,
+  GitPullRequest,
 } from 'lucide-react';
 
 interface NavItem {
@@ -246,6 +252,8 @@ const Header: React.FC = () => {
     { to: '/traffic-analysis', icon: <Network className="h-4 w-4" />, label: 'Traffic Analysis' },
     { to: '/netflow-analysis', icon: <Activity className="h-4 w-4" />, label: 'NetFlow Analysis' },
     { to: '/dns-analytics', icon: <Globe className="h-4 w-4" />, label: 'DNS Analytics' },
+    { to: '/ot-ics-security', icon: <Factory className="h-4 w-4" />, label: 'OT/ICS Security' },
+    { to: '/iot-security', icon: <Lightbulb className="h-4 w-4" />, label: 'IoT Security' },
     { to: '/yara', icon: <Braces className="h-4 w-4" />, label: 'YARA Rules' },
     { to: '/sigma-rules', icon: <FileCode className="h-4 w-4" />, label: 'Sigma Rules' },
     { to: '/forensics', icon: <HardDrive className="h-4 w-4" />, label: 'Forensics' },
@@ -268,6 +276,8 @@ const Header: React.FC = () => {
   const yellowTeamItems: NavItem[] = [
     { to: '/yellow-team', icon: <FileCode className="h-4 w-4" />, label: 'DevSecOps Dashboard' },
     { to: '/sast', icon: <Code className="h-4 w-4" />, label: 'SAST Scanner' },
+    { to: '/sca', icon: <Package className="h-4 w-4" />, label: 'SCA (Dependencies)' },
+    { to: '/cicd-integration', icon: <GitPullRequest className="h-4 w-4" />, label: 'CI/CD Integration' },
     { to: '/iac-security', icon: <FileCode className="h-4 w-4" />, label: 'IaC Security' },
     { to: '/container-security', icon: <Box className="h-4 w-4" />, label: 'Container Security' },
     { to: '/api-security', icon: <FileSearch className="h-4 w-4" />, label: 'API Security' },
@@ -278,11 +288,14 @@ const Header: React.FC = () => {
     { to: '/orange-team', icon: <BookOpenCheck className="h-4 w-4" />, label: 'Training & Awareness' },
   ];
 
-  // GREEN TEAM - SOAR / Security Automation
+  // GREEN TEAM - SOAR / Security Automation & AI
   const greenTeamItems: NavItem[] = [
     { to: '/green-team', icon: <Workflow className="h-4 w-4" />, label: 'SOAR Dashboard' },
+    { to: '/soar-playbooks', icon: <Play className="h-4 w-4" />, label: 'Playbooks' },
     { to: '/workflows', icon: <Workflow className="h-4 w-4" />, label: 'Workflows' },
     { to: '/remediation', icon: <Layers className="h-4 w-4" />, label: 'Remediation' },
+    { to: '/ai-security', icon: <Brain className="h-4 w-4" />, label: 'AI Security' },
+    { to: '/llm-testing', icon: <Sparkles className="h-4 w-4" />, label: 'LLM Testing' },
   ];
 
   // WHITE TEAM - GRC / Governance, Risk, Compliance
@@ -295,6 +308,16 @@ const Header: React.FC = () => {
     { to: '/finding-templates', icon: <FileWarning className="h-4 w-4" />, label: 'Finding Templates' },
     { to: '/executive-dashboard', icon: <BarChart3 className="h-4 w-4" />, label: 'Executive Dashboard' },
     { to: '/reports', icon: <FileText className="h-4 w-4" />, label: 'Reports' },
+  ];
+
+  // CRM - Customer Relationship Management
+  const crmItems: NavItem[] = [
+    { to: '/crm', icon: <Building2 className="h-4 w-4" />, label: 'CRM Dashboard' },
+    { to: '/crm/customers', icon: <Users className="h-4 w-4" />, label: 'Customers' },
+    { to: '/crm/engagements', icon: <Target className="h-4 w-4" />, label: 'Engagements' },
+    { to: '/crm/contracts', icon: <FileText className="h-4 w-4" />, label: 'Contracts' },
+    { to: '/crm/time-tracking', icon: <Activity className="h-4 w-4" />, label: 'Time Tracking' },
+    { to: '/sales', icon: <TrendingUp className="h-4 w-4" />, label: 'Sales' },
   ];
 
   // RECON - Scanning & Discovery (Cyan)
@@ -316,6 +339,9 @@ const Header: React.FC = () => {
   ];
 
   // Check if any item in a category is active
+  const isCrmActive = crmItems.some(
+    item => location.pathname === item.to || location.pathname.startsWith(item.to)
+  );
   const isReconActive = reconItems.some(
     item => location.pathname === item.to || location.pathname.startsWith(item.to)
   );
@@ -363,18 +389,14 @@ const Header: React.FC = () => {
             {/* Navigation - Organized by Color Teams */}
             {user && (
               <nav className="flex items-center space-x-1">
-                {/* CRM - Standalone */}
-                <Link
-                  to="/crm"
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
-                    location.pathname.startsWith('/crm')
-                      ? 'bg-primary/10 text-primary font-medium'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-light-hover dark:hover:bg-dark-hover'
-                  }`}
-                >
-                  <Building2 className="h-4 w-4" />
-                  CRM
-                </Link>
+                {/* CRM - Customer Relationship Management */}
+                <DropdownMenu
+                  label="CRM"
+                  icon={<Building2 className="h-4 w-4" />}
+                  items={crmItems}
+                  isActive={isCrmActive}
+                  teamColor="default"
+                />
 
                 {/* Recon - Scanning & Discovery (Cyan) */}
                 <DropdownMenu

@@ -261,7 +261,7 @@ impl SpdxDocument {
                 created: Utc::now().to_rfc3339(),
                 creators: vec![
                     format!("Tool: HeroForge-{}", env!("CARGO_PKG_VERSION")),
-                    "Organization: HeroForge Security".to_string(),
+                    "Organization: Genial Architect".to_string(),
                 ],
                 license_list_version: Some("3.21".to_string()),
                 comment: None,

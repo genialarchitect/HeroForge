@@ -548,6 +548,7 @@ pub async fn get_pipeline_example(
     let content_type = match platform_enum {
         CiCdPlatform::GitHubActions | CiCdPlatform::GitLabCi => "text/yaml",
         CiCdPlatform::Jenkins | CiCdPlatform::Generic => "text/plain",
+        CiCdPlatform::AzureDevOps => "text/yaml",
     };
 
     Ok(HttpResponse::Ok()

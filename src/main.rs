@@ -8,6 +8,7 @@ use std::time::Duration;
 
 mod agents;
 mod ai;
+mod ai_security;
 mod asm;
 mod binary_analysis;
 mod compliance;
@@ -15,6 +16,7 @@ mod config;
 mod cracking;
 mod cve;
 mod db;
+mod devsecops;
 mod dns_analytics;
 mod email;
 mod email_validation;
@@ -47,6 +49,8 @@ mod vpn;
 mod vuln;
 mod web;
 mod exploit_research;
+mod ot_ics;
+mod iot;
 mod webhooks;
 mod workflows;
 

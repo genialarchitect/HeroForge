@@ -119,7 +119,7 @@ impl Notifier for TeamsNotifier {
                             }
                         ]
                     }],
-                    "text": "HeroForge Security Scanner"
+                    "text": "Genial Architect Scanner"
                 })
             }
 
@@ -164,7 +164,7 @@ impl Notifier for TeamsNotifier {
                             }
                         ]
                     }],
-                    "text": "HeroForge Security Scanner"
+                    "text": "Genial Architect Scanner"
                 })
             }
 
@@ -183,7 +183,7 @@ impl Notifier for TeamsNotifier {
                             }
                         ]
                     }],
-                    "text": "HeroForge Security Scanner"
+                    "text": "Genial Architect Scanner"
                 })
             }
 
@@ -215,7 +215,7 @@ impl Notifier for TeamsNotifier {
                             }
                         ]
                     }],
-                    "text": "HeroForge Security Scanner"
+                    "text": "Genial Architect Scanner"
                 })
             }
         };
@@ -232,7 +232,7 @@ impl Notifier for TeamsNotifier {
             "title": "HeroForge Teams Integration Test",
             "text": "Your Microsoft Teams webhook is configured correctly! You will receive notifications here for scan events.",
             "sections": [{
-                "text": "HeroForge Security Scanner"
+                "text": "Genial Architect Scanner"
             }]
         });
 
