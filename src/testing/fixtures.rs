@@ -6,16 +6,23 @@ use chrono::Utc;
 /// Create a sample HostInfo for testing
 pub fn sample_host_info() -> HostInfo {
     HostInfo {
-        ip: "192.168.1.100".to_string(),
-        hostname: Some("testhost.local".to_string()),
+        target: ScanTarget {
+            ip: "192.168.1.100".parse().unwrap(),
+            hostname: Some("testhost.local".to_string()),
+        },
+        is_alive: true,
+        os_guess: Some(OsInfo {
+            os_family: "Linux".to_string(),
+            os_version: Some("5.10".to_string()),
+            confidence: 85,
+        }),
         ports: vec![
             sample_port_info(80, "http"),
             sample_port_info(443, "https"),
             sample_port_info(22, "ssh"),
         ],
-        os: Some("Linux 5.10".to_string()),
-        mac_address: Some("00:11:22:33:44:55".to_string()),
         vulnerabilities: vec![],
+        scan_duration: std::time::Duration::from_secs(10),
     }
 }
 
@@ -23,10 +30,16 @@ pub fn sample_host_info() -> HostInfo {
 pub fn sample_port_info(port: u16, service_name: &str) -> PortInfo {
     PortInfo {
         port,
+        protocol: Protocol::TCP,
         state: PortState::Open,
-        service: Some(service_name.to_string()),
-        version: Some("1.0.0".to_string()),
-        extra_info: None,
+        service: Some(ServiceInfo {
+            name: service_name.to_string(),
+            version: Some("1.0.0".to_string()),
+            banner: None,
+            cpe: None,
+            enumeration: None,
+            ssl_info: None,
+        }),
     }
 }
 
@@ -61,15 +74,11 @@ pub fn sample_scan_config() -> ScanConfig {
 /// Create sample vulnerability data
 pub fn sample_vulnerability() -> Vulnerability {
     Vulnerability {
-        id: uuid::Uuid::new_v4().to_string(),
-        title: "Test Vulnerability".to_string(),
-        description: "This is a test vulnerability".to_string(),
-        severity: Severity::Medium,
-        cvss_score: Some(5.5),
         cve_id: Some("CVE-2024-12345".to_string()),
-        affected_component: "test-service".to_string(),
-        remediation: Some("Update to latest version".to_string()),
-        references: vec!["https://example.com/advisory".to_string()],
+        title: "Test Vulnerability".to_string(),
+        severity: Severity::Medium,
+        description: "This is a test vulnerability".to_string(),
+        affected_service: Some("test-service".to_string()),
     }
 }
 
@@ -88,5 +97,6 @@ pub fn sample_scan_result() -> crate::db::models::ScanResult {
         error_message: None,
         customer_id: None,
         engagement_id: None,
+        organization_id: None,
     }
 }

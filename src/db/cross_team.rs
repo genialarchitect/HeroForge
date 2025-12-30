@@ -258,6 +258,27 @@ pub async fn get_user_context(pool: &SqlitePool, user_id: &str) -> Result<UserSe
             .await?;
 
             let now = Utc::now();
+            let context = UserSecurityContext {
+                user_id: user_id.to_string(),
+                username: user.0,
+                email: user.1,
+                department: None,
+                role: None,
+                training_completion_rate: 0.0,
+                phishing_click_rate: 0.0,
+                security_awareness_score: 0.0,
+                last_training: None,
+                incident_count: 0,
+                insider_threat_score: 0.0,
+                suspicious_activity_count: 0,
+                secure_coding_score: None,
+                code_review_compliance: None,
+                compliance_violations: 0,
+                policy_violations: 0,
+                overall_risk_score: 0.0,
+                updated_at: now.to_rfc3339(),
+            };
+
             sqlx::query(
                 r#"
                 INSERT INTO user_security_context (
@@ -266,13 +287,13 @@ pub async fn get_user_context(pool: &SqlitePool, user_id: &str) -> Result<UserSe
                 "#
             )
             .bind(user_id)
-            .bind(&user.0)
-            .bind(&user.1)
-            .bind(now.to_rfc3339())
+            .bind(&context.username)
+            .bind(&context.email)
+            .bind(&context.updated_at)
             .execute(pool)
             .await?;
 
-            get_user_context(pool, user_id).await
+            Ok(context)
         }
     }
 }
