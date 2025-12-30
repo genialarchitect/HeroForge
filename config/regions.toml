@@ -1,0 +1,38 @@
+# Multi-region configuration (Sprint 9)
+
+[regions]
+
+[regions.us-east]
+name = "US East (Virginia)"
+endpoint = "https://us-east.heroforge.io"
+is_primary = true
+latitude = 37.4316
+longitude = -78.6569
+
+[regions.us-west]
+name = "US West (Oregon)"
+endpoint = "https://us-west.heroforge.io"
+is_primary = false
+latitude = 45.5152
+longitude = -122.6784
+
+[regions.eu-west]
+name = "EU West (Ireland)"
+endpoint = "https://eu-west.heroforge.io"
+is_primary = false
+latitude = 53.3498
+longitude = -6.2603
+
+[regions.ap-southeast]
+name = "Asia Pacific (Singapore)"
+endpoint = "https://ap-southeast.heroforge.io"
+is_primary = false
+latitude = 1.3521
+longitude = 103.8198
+
+[replication]
+strategy = "multi-master"
+conflict_resolution = "last-write-wins"
+sync_interval_seconds = 60
+compression = true
+encryption = true

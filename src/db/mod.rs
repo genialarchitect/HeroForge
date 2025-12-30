@@ -40,15 +40,19 @@ pub mod cracking;
 pub mod credential_audit;
 pub mod crm;
 pub mod crm_asset_sync;
+pub mod deception;
+pub mod dlp;
 pub mod dorking;
 pub mod evidence;
 pub mod exclusions;
 pub mod finding_templates;
 pub mod iac;
+pub mod insider_threat;
 pub mod manual_assessments;
 pub mod methodology;
 pub mod migrations;
 pub mod models;
+pub mod optimization;
 pub mod permissions;
 pub mod models_dashboard;
 pub mod nuclei;
@@ -220,6 +224,15 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
 
     // Run Yellow Team API Security migrations
     yellow_team::run_migrations(pool).await?;
+
+    // Run deception technology migrations (Sprint 7)
+    deception::run_migrations(pool).await?;
+
+    // Run insider threat migrations (Sprint 8)
+    insider_threat::run_migrations(pool).await?;
+
+    // Run DLP migrations (Sprint 8)
+    dlp::run_migrations(pool).await?;
 
     Ok(())
 }
