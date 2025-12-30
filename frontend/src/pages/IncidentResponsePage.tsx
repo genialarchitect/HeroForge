@@ -139,14 +139,14 @@ interface ResponseAction {
 interface IncidentDashboard {
   total_incidents: number;
   open_incidents: number;
-  p1_active: number;
-  p2_active: number;
-  mttr_hours: number;
-  mttd_hours: number;
-  incidents_today: number;
-  incidents_this_week: number;
-  by_status: Record<string, number>;
-  by_severity: Record<string, number>;
+  incidents_by_severity: Array<{ severity: string; count: number }>;
+  incidents_by_status: Array<{ status: string; count: number }>;
+  incidents_by_classification: Array<{ classification: string; count: number }>;
+  sla_breaches: number;
+  mean_time_to_contain_hours: number | null;
+  mean_time_to_close_hours: number | null;
+  recent_incidents: Incident[];
+  pending_actions: number;
 }
 
 // ============================================================================
@@ -837,7 +837,11 @@ export default function IncidentResponsePage() {
                           <Zap className="w-6 h-6 text-orange-400" />
                         </div>
                         <div>
-                          <p className="text-2xl font-bold text-white">{dashboard.p1_active + dashboard.p2_active}</p>
+                          <p className="text-2xl font-bold text-white">
+                            {dashboard.incidents_by_severity
+                              .filter(s => s.severity.toLowerCase() === 'p1' || s.severity.toLowerCase() === 'p2')
+                              .reduce((sum, s) => sum + s.count, 0)}
+                          </p>
                           <p className="text-xs text-gray-400">P1/P2 Active</p>
                         </div>
                       </div>
@@ -850,9 +854,13 @@ export default function IncidentResponsePage() {
                         </div>
                         <div>
                           <p className="text-2xl font-bold text-white">
-                            {dashboard.mttr_hours < 1 ? `${Math.round(dashboard.mttr_hours * 60)}m` : `${dashboard.mttr_hours.toFixed(1)}h`}
+                            {dashboard.mean_time_to_contain_hours
+                              ? (dashboard.mean_time_to_contain_hours < 1
+                                  ? `${Math.round(dashboard.mean_time_to_contain_hours * 60)}m`
+                                  : `${dashboard.mean_time_to_contain_hours.toFixed(1)}h`)
+                              : 'N/A'}
                           </p>
-                          <p className="text-xs text-gray-400">Avg MTTR</p>
+                          <p className="text-xs text-gray-400">Avg MTTC</p>
                         </div>
                       </div>
                     </div>
@@ -875,7 +883,7 @@ export default function IncidentResponsePage() {
                     <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
                       <h3 className="text-lg font-semibold text-white mb-4">By Status</h3>
                       <div className="space-y-3">
-                        {Object.entries(dashboard.by_status || {}).map(([status, count]) => (
+                        {dashboard.incidents_by_status.map(({ status, count }) => (
                           <div key={status} className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
                               <StatusBadge status={status} />
@@ -889,7 +897,7 @@ export default function IncidentResponsePage() {
                     <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
                       <h3 className="text-lg font-semibold text-white mb-4">By Severity</h3>
                       <div className="space-y-3">
-                        {Object.entries(dashboard.by_severity || {}).map(([severity, count]) => (
+                        {dashboard.incidents_by_severity.map(({ severity, count }) => (
                           <div key={severity} className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
                               <SeverityBadge severity={severity} />

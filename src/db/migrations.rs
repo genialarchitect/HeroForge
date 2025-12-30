@@ -12651,8 +12651,7 @@ async fn create_incident_response_tables(pool: &SqlitePool) -> Result<()> {
             user_id TEXT NOT NULL,
             organization_id TEXT,
             FOREIGN KEY (assignee_id) REFERENCES users(id),
-            FOREIGN KEY (user_id) REFERENCES users(id),
-            FOREIGN KEY (organization_id) REFERENCES organizations(id)
+            FOREIGN KEY (user_id) REFERENCES users(id)
         )
         "#,
     )
