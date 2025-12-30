@@ -24,6 +24,9 @@ const AdminPage = lazy(() => import('./pages/AdminPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const SalesPage = lazy(() => import('./pages/SalesPage'));
 const InvestorPage = lazy(() => import('./pages/InvestorPage'));
+const PitchDeckPage = lazy(() => import('./pages/PitchDeckPage'));
+const FinancialModelPage = lazy(() => import('./pages/FinancialModelPage'));
+const OnePagerPage = lazy(() => import('./pages/OnePagerPage'));
 const AssetsPage = lazy(() => import('./pages/AssetsPage'));
 const WebAppScanPage = lazy(() => import('./pages/WebAppScanPage'));
 const DnsToolsPage = lazy(() => import('./pages/DnsToolsPage'));
@@ -220,6 +223,9 @@ function App() {
           <Route path="/" element={<LoginPage />} />
           <Route path="/sales" element={<SalesPage />} />
           <Route path="/investors" element={<InvestorPage />} />
+          <Route path="/pitch" element={<PitchDeckPage />} />
+          <Route path="/financials" element={<FinancialModelPage />} />
+          <Route path="/one-pager" element={<OnePagerPage />} />
           <Route
             path="/dashboard"
             element={
