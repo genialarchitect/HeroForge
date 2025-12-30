@@ -618,6 +618,10 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .configure(api::detection_engineering::configure)
                     // Threat Hunting endpoints (blue team)
                     .configure(api::threat_hunting::configure)
+                    // Threat Hunting Platform (Phase 4 Sprint 1)
+                    .configure(api::threat_hunting_api::configure)
+                    // Data Lake Integration (Phase 4 Sprint 1)
+                    .configure(api::data_lake_api::configure)
                     // Yellow Team (DevSecOps) endpoints
                     .configure(api::yellow_team::configure)
                     // Software Composition Analysis (SCA) endpoints

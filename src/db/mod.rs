@@ -43,6 +43,7 @@ pub mod cracking;
 pub mod credential_audit;
 pub mod crm;
 pub mod crm_asset_sync;
+pub mod data_lake;
 pub mod deception;
 pub mod dlp;
 pub mod dorking;

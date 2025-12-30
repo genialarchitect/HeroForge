@@ -99,6 +99,8 @@ pub mod yara;
 pub mod tls_analysis;
 pub mod detection_engineering;
 pub mod threat_hunting;
+pub mod threat_hunting_api;
+pub mod data_lake_api;
 pub mod yellow_team;
 pub mod orange_team;
 pub mod green_team;

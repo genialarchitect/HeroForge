@@ -218,6 +218,8 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     // Threat Hunting tables (blue team)
     super::threat_hunting::create_threat_hunting_tables(pool).await?;
     super::threat_hunting::seed_builtin_playbooks(pool).await?;
+    // Data Lake tables (Phase 4 Sprint 1)
+    super::data_lake::init_data_lake_tables(pool).await?;
     // DevSecOps Dashboard tables (Yellow Team)
     create_devsecops_tables(pool).await?;
     // SBOM (Software Bill of Materials) tables (Yellow Team)

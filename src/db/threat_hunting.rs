@@ -253,6 +253,121 @@ pub async fn create_threat_hunting_tables(pool: &SqlitePool) -> Result<()> {
         .execute(pool)
         .await?;
 
+    // Hunt hypotheses table (Phase 4 Sprint 1)
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS hunt_hypotheses (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            query TEXT NOT NULL,
+            expected_outcome TEXT,
+            status TEXT NOT NULL,
+            created_by TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )"
+    )
+    .execute(pool)
+    .await?;
+
+    // Hunt campaigns table
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS hunt_campaigns (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            start_date TEXT,
+            end_date TEXT,
+            status TEXT NOT NULL,
+            created_by TEXT,
+            created_at TEXT NOT NULL
+        )"
+    )
+    .execute(pool)
+    .await?;
+
+    // Hunt executions table
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS hunt_executions (
+            id TEXT PRIMARY KEY,
+            hypothesis_id TEXT,
+            campaign_id TEXT,
+            executed_at TEXT NOT NULL,
+            results TEXT NOT NULL,
+            findings_count INTEGER NOT NULL DEFAULT 0,
+            false_positives INTEGER NOT NULL DEFAULT 0,
+            status TEXT NOT NULL,
+            FOREIGN KEY(hypothesis_id) REFERENCES hunt_hypotheses(id) ON DELETE CASCADE,
+            FOREIGN KEY(campaign_id) REFERENCES hunt_campaigns(id) ON DELETE CASCADE
+        )"
+    )
+    .execute(pool)
+    .await?;
+
+    // Hunt queries table
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS hunt_queries (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            query_dsl TEXT NOT NULL,
+            category TEXT,
+            created_by TEXT,
+            created_at TEXT NOT NULL,
+            last_used TEXT
+        )"
+    )
+    .execute(pool)
+    .await?;
+
+    // Hunt notebooks table
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS hunt_notebooks (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            content TEXT NOT NULL,
+            shared_with TEXT NOT NULL,
+            created_by TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )"
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for hunt tables
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_hunt_hypotheses_status ON hunt_hypotheses(status)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_hunt_hypotheses_created_by ON hunt_hypotheses(created_by)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_hunt_executions_hypothesis_id ON hunt_executions(hypothesis_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_hunt_executions_campaign_id ON hunt_executions(campaign_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_hunt_executions_executed_at ON hunt_executions(executed_at)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_hunt_campaigns_status ON hunt_campaigns(status)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_hunt_queries_category ON hunt_queries(category)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_hunt_notebooks_created_by ON hunt_notebooks(created_by)")
+        .execute(pool)
+        .await?;
+
     debug!("Threat hunting tables created successfully");
     Ok(())
 }

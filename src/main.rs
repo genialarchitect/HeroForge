@@ -20,6 +20,7 @@ mod compliance_automation;
 mod config;
 mod cracking;
 mod cve;
+mod data_lake;
 mod db;
 mod devsecops;
 mod dlp;
