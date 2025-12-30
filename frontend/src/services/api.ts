@@ -2308,7 +2308,7 @@ import type {
   PipelineExample,
 } from '../types';
 
-export const cicdAPI = {
+export const cicdQualityGateAPI = {
   // Token Management
   tokens: {
     // Get all CI/CD tokens for the current user
@@ -5816,6 +5816,92 @@ export const otAPI = {
   getPurdueCompliance: (params?: { customer_id?: string }) => api.get('/ot/purdue/compliance', { params }),
   classifyPurdueLevel: (data: { asset_type: string; protocols: string[] }) =>
     api.post('/ot/purdue/classify', data),
+};
+
+// ============================================================================
+// CI/CD Integration API
+// ============================================================================
+
+export interface CicdPipeline {
+  id: string;
+  name: string;
+  platform: 'github_actions' | 'gitlab_ci' | 'jenkins' | 'azure_devops' | 'circleci' | 'bitbucket';
+  repository_url?: string;
+  enabled: boolean;
+  webhook_secret?: string;
+  last_run_at?: string;
+  last_run_status?: string;
+  customer_id?: string;
+  engagement_id?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CicdRun {
+  id: string;
+  pipeline_id: string;
+  branch: string;
+  commit_sha: string;
+  trigger_type: string;
+  pr_number?: number;
+  status: string;
+  gate_status?: string;
+  findings_new: number;
+  findings_fixed: number;
+  findings_total: number;
+  duration_seconds?: number;
+  started_at: string;
+  completed_at?: string;
+}
+
+export interface CicdPolicy {
+  id: string;
+  name: string;
+  description?: string;
+  enabled: boolean;
+  conditions: any;
+  actions: any;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CicdTemplate {
+  platform: string;
+  content: string;
+  description?: string;
+}
+
+export const cicdAPI = {
+  // Pipelines
+  getPipelines: () => api.get<CicdPipeline[]>('/cicd/pipelines'),
+  getPipeline: (id: string) => api.get<CicdPipeline>(`/cicd/pipelines/${id}`),
+  createPipeline: (data: { name: string; platform: string; repository_url?: string; customer_id?: string; engagement_id?: string }) =>
+    api.post<CicdPipeline>('/cicd/pipelines', data),
+  updatePipeline: (id: string, data: Partial<CicdPipeline>) =>
+    api.put<CicdPipeline>(`/cicd/pipelines/${id}`, data),
+  deletePipeline: (id: string) => api.delete(`/cicd/pipelines/${id}`),
+
+  // Runs
+  getRuns: (params?: { pipeline_id?: string; status?: string; branch?: string; limit?: number; offset?: number }) =>
+    api.get<CicdRun[]>('/cicd/runs', { params }),
+  getRun: (id: string) => api.get<CicdRun>(`/cicd/runs/${id}`),
+  getGateStatus: (id: string) => api.get(`/cicd/runs/${id}/gate-status`),
+
+  // Policies
+  getPolicies: () => api.get<CicdPolicy[]>('/cicd/policies'),
+  getPolicy: (id: string) => api.get<CicdPolicy>(`/cicd/policies/${id}`),
+  createPolicy: (data: { name: string; description?: string; conditions: any; actions: any }) =>
+    api.post<CicdPolicy>('/cicd/policies', data),
+  updatePolicy: (id: string, data: Partial<CicdPolicy>) =>
+    api.put<CicdPolicy>(`/cicd/policies/${id}`, data),
+  deletePolicy: (id: string) => api.delete(`/cicd/policies/${id}`),
+
+  // Templates
+  getTemplates: () => api.get<CicdTemplate[]>('/cicd/templates'),
+  getPlatforms: () => api.get<string[]>('/cicd/templates/platforms'),
+  getTemplate: (platform: string) => api.get<CicdTemplate>(`/cicd/templates/${platform}`),
+  generateTemplate: (data: { platform: string; features?: string[] }) =>
+    api.post<CicdTemplate>('/cicd/templates/generate', data),
 };
 
 // ============================================================================

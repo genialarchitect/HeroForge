@@ -18,90 +18,13 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import Layout from '../components/layout/Layout';
-
-// Types
-interface IotDevice {
-  id: string;
-  name?: string;
-  device_type: string;
-  vendor?: string;
-  model?: string;
-  firmware_version?: string;
-  ip_address?: string;
-  mac_address?: string;
-  hostname?: string;
-  protocols: string[];
-  open_ports: number[];
-  default_creds_status: 'vulnerable' | 'changed' | 'unknown';
-  risk_score: number;
-  last_seen?: string;
-}
-
-interface IotScan {
-  id: string;
-  name: string;
-  scan_type: string;
-  target_range?: string;
-  status: string;
-  devices_found: number;
-  vulnerabilities_found: number;
-  started_at?: string;
-  completed_at?: string;
-}
-
-interface DefaultCredential {
-  device_type: string;
-  vendor?: string;
-  model?: string;
-  protocol: string;
-  username: string;
-  password: string;
-}
-
-// Mock API
-const iotAPI = {
-  getDevices: async (): Promise<IotDevice[]> => {
-    return [
-      { id: '1', name: 'Front Door Camera', device_type: 'camera', vendor: 'Hikvision', model: 'DS-2CD2143G2-I', firmware_version: '5.7.1', ip_address: '192.168.1.100', mac_address: 'AA:BB:CC:DD:EE:01', protocols: ['rtsp', 'http'], open_ports: [80, 554, 8000], default_creds_status: 'vulnerable', risk_score: 85, last_seen: new Date().toISOString() },
-      { id: '2', name: 'Living Room Thermostat', device_type: 'thermostat', vendor: 'Nest', model: 'Learning Thermostat', firmware_version: '6.2', ip_address: '192.168.1.101', mac_address: 'AA:BB:CC:DD:EE:02', protocols: ['http', 'mqtt'], open_ports: [80, 443], default_creds_status: 'changed', risk_score: 25, last_seen: new Date().toISOString() },
-      { id: '3', name: 'Smart Speaker', device_type: 'speaker', vendor: 'Amazon', model: 'Echo Dot', ip_address: '192.168.1.102', mac_address: 'AA:BB:CC:DD:EE:03', protocols: ['http', 'mqtt'], open_ports: [443], default_creds_status: 'changed', risk_score: 20, last_seen: new Date().toISOString() },
-      { id: '4', name: 'Smart Hub', device_type: 'hub', vendor: 'Samsung', model: 'SmartThings Hub', ip_address: '192.168.1.103', mac_address: 'AA:BB:CC:DD:EE:04', protocols: ['http', 'zigbee', 'zwave'], open_ports: [80, 443, 8080], default_creds_status: 'unknown', risk_score: 45, last_seen: new Date().toISOString() },
-      { id: '5', name: 'IP Camera 2', device_type: 'camera', vendor: 'Dahua', model: 'IPC-HDW2431T', ip_address: '192.168.1.104', mac_address: 'AA:BB:CC:DD:EE:05', protocols: ['rtsp', 'http', 'onvif'], open_ports: [80, 554, 37777], default_creds_status: 'vulnerable', risk_score: 90, last_seen: new Date().toISOString() },
-      { id: '6', name: 'Motion Sensor', device_type: 'sensor', vendor: 'Philips', model: 'Hue Motion', ip_address: '192.168.1.105', mac_address: 'AA:BB:CC:DD:EE:06', protocols: ['zigbee'], open_ports: [], default_creds_status: 'changed', risk_score: 15, last_seen: new Date().toISOString() },
-    ];
-  },
-  getScans: async (): Promise<IotScan[]> => {
-    return [
-      { id: '1', name: 'Network Discovery', scan_type: 'discovery', target_range: '192.168.1.0/24', status: 'completed', devices_found: 12, vulnerabilities_found: 4, started_at: new Date().toISOString(), completed_at: new Date().toISOString() },
-      { id: '2', name: 'Credential Check', scan_type: 'credential', target_range: '192.168.1.0/24', status: 'running', devices_found: 6, vulnerabilities_found: 2, started_at: new Date().toISOString() },
-    ];
-  },
-  searchCredentials: async (query: string): Promise<DefaultCredential[]> => {
-    const allCreds: DefaultCredential[] = [
-      { device_type: 'camera', vendor: 'Hikvision', protocol: 'http', username: 'admin', password: 'admin' },
-      { device_type: 'camera', vendor: 'Hikvision', protocol: 'http', username: 'admin', password: '12345' },
-      { device_type: 'camera', vendor: 'Dahua', protocol: 'http', username: 'admin', password: 'admin' },
-      { device_type: 'camera', vendor: 'Axis', protocol: 'http', username: 'root', password: 'pass' },
-      { device_type: 'router', vendor: 'TP-Link', protocol: 'http', username: 'admin', password: 'admin' },
-      { device_type: 'router', vendor: 'Netgear', protocol: 'http', username: 'admin', password: 'password' },
-      { device_type: 'thermostat', vendor: 'Generic', protocol: 'http', username: 'admin', password: '1234' },
-      { device_type: 'hub', vendor: 'Generic', protocol: 'http', username: 'admin', password: 'admin' },
-    ];
-    return allCreds.filter(c =>
-      c.device_type.toLowerCase().includes(query.toLowerCase()) ||
-      c.vendor?.toLowerCase().includes(query.toLowerCase())
-    );
-  },
-  startScan: async (scan: Partial<IotScan>): Promise<void> => {
-    await new Promise(resolve => setTimeout(resolve, 500));
-  }
-};
+import { iotAPI, IotDevice, IotScan, IotCredential } from '../services/api';
 
 const IotSecurityPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'devices' | 'scans' | 'credentials'>('devices');
   const [devices, setDevices] = useState<IotDevice[]>([]);
   const [scans, setScans] = useState<IotScan[]>([]);
-  const [credentials, setCredentials] = useState<DefaultCredential[]>([]);
+  const [credentials, setCredentials] = useState<IotCredential[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [credSearchTerm, setCredSearchTerm] = useState('');
@@ -121,12 +44,13 @@ const IotSecurityPage: React.FC = () => {
     try {
       setLoading(true);
       const [devicesData, scansData] = await Promise.all([
-        iotAPI.getDevices(),
-        iotAPI.getScans()
+        iotAPI.getDevices().then(res => res.data),
+        iotAPI.getScans().then(res => res.data)
       ]);
       setDevices(devicesData);
       setScans(scansData);
     } catch (error) {
+      console.error('Failed to load IoT data:', error);
       toast.error('Failed to load IoT data');
     } finally {
       setLoading(false);
@@ -135,14 +59,20 @@ const IotSecurityPage: React.FC = () => {
 
   const searchCredentials = async () => {
     try {
-      const results = await iotAPI.searchCredentials(credSearchTerm);
+      const params: { device_type?: string; vendor?: string } = {};
+      if (credSearchTerm) {
+        params.device_type = credSearchTerm;
+        params.vendor = credSearchTerm;
+      }
+      const results = await iotAPI.searchCredentials(params).then(res => res.data);
       setCredentials(results);
     } catch (error) {
+      console.error('Failed to search credentials:', error);
       toast.error('Failed to search credentials');
     }
   };
 
-  const getDeviceIcon = (type: string) => {
+  const getDeviceIcon = (type?: string) => {
     switch (type) {
       case 'camera': return <Camera className="h-5 w-5" />;
       case 'thermostat': return <Thermometer className="h-5 w-5" />;
@@ -179,7 +109,7 @@ const IotSecurityPage: React.FC = () => {
     device.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     device.vendor?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     device.ip_address?.includes(searchTerm) ||
-    device.device_type.toLowerCase().includes(searchTerm.toLowerCase())
+    device.device_type?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const vulnerableDevices = devices.filter(d => d.default_creds_status === 'vulnerable');
@@ -196,7 +126,20 @@ const IotSecurityPage: React.FC = () => {
               <p className="text-gray-400">Discover and assess IoT device security</p>
             </div>
           </div>
-          <button className="flex items-center gap-2 px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-500">
+          <button
+            onClick={async () => {
+              try {
+                toast.info('Starting IoT scan...');
+                await iotAPI.startScan({ name: 'IoT Discovery', scan_type: 'discovery', target_range: '192.168.1.0/24' });
+                toast.success('Scan started successfully');
+                await loadData();
+              } catch (error) {
+                console.error('Failed to start scan:', error);
+                toast.error('Failed to start scan');
+              }
+            }}
+            className="flex items-center gap-2 px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-500"
+          >
             <Play className="h-4 w-4" />
             Start IoT Scan
           </button>
@@ -220,7 +163,7 @@ const IotSecurityPage: React.FC = () => {
           </div>
           <div className="bg-gray-800 rounded-lg p-4">
             <div className="text-2xl font-bold text-cyan-400">
-              {new Set(devices.flatMap(d => d.protocols)).size}
+              {new Set(devices.flatMap(d => d.protocols || [])).size}
             </div>
             <div className="text-gray-400 text-sm">Protocols</div>
           </div>
@@ -303,7 +246,7 @@ const IotSecurityPage: React.FC = () => {
                           <div>
                             <h3 className="text-white font-medium flex items-center gap-2">
                               {device.name || 'Unknown Device'}
-                              {getCredStatusIcon(device.default_creds_status)}
+                              {getCredStatusIcon(device.default_creds_status || 'unknown')}
                             </h3>
                             <div className="text-gray-400 text-sm">
                               {device.vendor} {device.model} • {device.ip_address}
@@ -312,7 +255,7 @@ const IotSecurityPage: React.FC = () => {
                         </div>
                         <div className="flex items-center gap-6">
                           <div className="flex gap-1">
-                            {device.protocols.slice(0, 3).map((protocol) => (
+                            {(device.protocols || []).slice(0, 3).map((protocol) => (
                               <span
                                 key={protocol}
                                 className="px-2 py-1 text-xs bg-gray-700 text-gray-300 rounded"
@@ -336,10 +279,10 @@ const IotSecurityPage: React.FC = () => {
                           device.default_creds_status === 'changed' ? 'bg-green-600 text-white' :
                           'bg-yellow-600 text-white'
                         }`}>
-                          {getCredStatusText(device.default_creds_status)}
+                          {getCredStatusText(device.default_creds_status || 'unknown')}
                         </span>
                         <span className="text-gray-400">
-                          Ports: {device.open_ports.length > 0 ? device.open_ports.join(', ') : 'None'}
+                          Ports: {(device.open_ports || []).length > 0 ? (device.open_ports || []).join(', ') : 'None'}
                         </span>
                         <span className="text-gray-400 capitalize">{device.device_type}</span>
                       </div>
@@ -498,13 +441,13 @@ const IotSecurityPage: React.FC = () => {
                   selectedDevice.default_creds_status === 'changed' ? 'bg-green-900/30 border border-green-700' :
                   'bg-yellow-900/30 border border-yellow-700'
                 }`}>
-                  {getCredStatusIcon(selectedDevice.default_creds_status)}
+                  {getCredStatusIcon(selectedDevice.default_creds_status || 'unknown')}
                   <span className={
                     selectedDevice.default_creds_status === 'vulnerable' ? 'text-red-400' :
                     selectedDevice.default_creds_status === 'changed' ? 'text-green-400' :
                     'text-yellow-400'
                   }>
-                    {getCredStatusText(selectedDevice.default_creds_status)}
+                    {getCredStatusText(selectedDevice.default_creds_status || 'unknown')}
                   </span>
                 </div>
               </div>
@@ -512,8 +455,8 @@ const IotSecurityPage: React.FC = () => {
               <div className="mb-4">
                 <div className="text-gray-400 text-sm mb-2">Open Ports</div>
                 <div className="flex flex-wrap gap-2">
-                  {selectedDevice.open_ports.length > 0 ? (
-                    selectedDevice.open_ports.map((port) => (
+                  {(selectedDevice.open_ports || []).length > 0 ? (
+                    (selectedDevice.open_ports || []).map((port) => (
                       <span key={port} className="px-3 py-1 bg-gray-700 text-white rounded">
                         {port}
                       </span>
@@ -527,7 +470,7 @@ const IotSecurityPage: React.FC = () => {
               <div>
                 <div className="text-gray-400 text-sm mb-2">Protocols</div>
                 <div className="flex flex-wrap gap-2">
-                  {selectedDevice.protocols.map((p) => (
+                  {(selectedDevice.protocols || []).map((p) => (
                     <span key={p} className="px-3 py-1 bg-cyan-600 text-white rounded">
                       {p.toUpperCase()}
                     </span>

@@ -20,48 +20,18 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import Layout from '../components/layout/Layout';
+import { CicdPipeline, CicdRun, CicdPolicy } from '../services/api';
+import api from '../services/api';
+import type { AxiosResponse } from 'axios';
 
-// Types
-interface CicdPipeline {
-  id: string;
-  name: string;
-  platform: 'github_actions' | 'gitlab_ci' | 'jenkins' | 'azure_devops';
-  repository_url?: string;
-  enabled: boolean;
-  last_run_at?: string;
-  last_run_status?: string;
-  customer_id?: string;
-  engagement_id?: string;
-  created_at: string;
-}
-
-interface CicdRun {
-  id: string;
-  pipeline_id: string;
-  branch: string;
-  commit_sha: string;
-  trigger_type: string;
-  pr_number?: number;
-  status: string;
-  gate_status?: string;
-  findings_new: number;
-  findings_fixed: number;
-  findings_total: number;
-  duration_seconds?: number;
-  started_at: string;
-  completed_at?: string;
-}
-
-interface CicdPolicy {
-  id: string;
-  name: string;
-  description?: string;
-  policy_type: string;
-  severity_threshold?: string;
-  max_new_findings?: number;
-  block_on_critical: boolean;
-  enabled: boolean;
-}
+// Note: there are duplicate cicdAPI exports in api.ts that need to be resolved
+// We're using a local wrapper to access the endpoints directly
+const cicdAPI = {
+  getPipelines: () => api.get<CicdPipeline[]>('/cicd/pipelines'),
+  getRuns: (params?: any) => api.get<CicdRun[]>('/cicd/runs', { params }),
+  getPolicies: () => api.get<CicdPolicy[]>('/cicd/policies'),
+  getTemplate: (platform: string) => api.get<{ platform: string; content: string; description?: string }>(`/cicd/templates/${platform}`),
+};
 
 interface IdeSettings {
   scan_on_save: boolean;
@@ -72,135 +42,15 @@ interface IdeSettings {
   custom_rules_enabled: boolean;
 }
 
-// Mock API
-const cicdAPI = {
-  getPipelines: async (): Promise<CicdPipeline[]> => {
-    return [
-      { id: '1', name: 'Main Build', platform: 'github_actions', repository_url: 'https://github.com/org/repo', enabled: true, last_run_at: new Date().toISOString(), last_run_status: 'passed', created_at: new Date().toISOString() },
-      { id: '2', name: 'Security Scan', platform: 'gitlab_ci', repository_url: 'https://gitlab.com/org/repo', enabled: true, last_run_at: new Date().toISOString(), last_run_status: 'failed', created_at: new Date().toISOString() },
-    ];
-  },
-  getRuns: async (pipelineId?: string): Promise<CicdRun[]> => {
-    return [
-      { id: '1', pipeline_id: '1', branch: 'main', commit_sha: 'abc1234', trigger_type: 'push', status: 'completed', gate_status: 'passed', findings_new: 0, findings_fixed: 3, findings_total: 12, duration_seconds: 145, started_at: new Date().toISOString(), completed_at: new Date().toISOString() },
-      { id: '2', pipeline_id: '1', branch: 'feature/auth', commit_sha: 'def5678', trigger_type: 'pr', pr_number: 42, status: 'completed', gate_status: 'failed', findings_new: 5, findings_fixed: 0, findings_total: 17, duration_seconds: 178, started_at: new Date().toISOString(), completed_at: new Date().toISOString() },
-      { id: '3', pipeline_id: '2', branch: 'develop', commit_sha: 'ghi9012', trigger_type: 'schedule', status: 'running', findings_new: 0, findings_fixed: 0, findings_total: 0, started_at: new Date().toISOString() },
-    ];
-  },
-  getPolicies: async (): Promise<CicdPolicy[]> => {
-    return [
-      { id: '1', name: 'Block Critical', description: 'Block merges when critical vulnerabilities found', policy_type: 'block_merge', severity_threshold: 'critical', block_on_critical: true, enabled: true },
-      { id: '2', name: 'Max 5 New Findings', description: 'Block if more than 5 new findings', policy_type: 'quality_gate', max_new_findings: 5, block_on_critical: true, enabled: true },
-    ];
-  },
-  getTemplate: async (platform: string): Promise<string> => {
-    const templates: Record<string, string> = {
-      github_actions: `name: Genial Architect Scan
-on: [push, pull_request]
-
-jobs:
-  security:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Run Security Scan
-        env:
-          HEROFORGE_URL: \${{ secrets.HEROFORGE_URL }}
-          HEROFORGE_TOKEN: \${{ secrets.HEROFORGE_TOKEN }}
-        run: |
-          curl -X POST "\$HEROFORGE_URL/api/cicd/webhook/github_actions" \\
-            -H "Authorization: Bearer \$HEROFORGE_TOKEN" \\
-            -H "Content-Type: application/json" \\
-            -d '{
-              "repository": "\${{ github.repository }}",
-              "branch": "\${{ github.ref_name }}",
-              "commit": "\${{ github.sha }}",
-              "pr_number": \${{ github.event.pull_request.number || 'null' }}
-            }'`,
-      gitlab_ci: `stages:
-  - security
-
-security-scan:
-  stage: security
-  image: curlimages/curl:latest
-  script:
-    - |
-      curl -X POST "\$HEROFORGE_URL/api/cicd/webhook/gitlab_ci" \\
-        -H "Authorization: Bearer \$HEROFORGE_TOKEN" \\
-        -H "Content-Type: application/json" \\
-        -d "{
-          \\"repository\\": \\"\$CI_PROJECT_PATH\\",
-          \\"branch\\": \\"\$CI_COMMIT_REF_NAME\\",
-          \\"commit\\": \\"\$CI_COMMIT_SHA\\",
-          \\"mr_iid\\": \\"\$CI_MERGE_REQUEST_IID\\"
-        }"
-  rules:
-    - if: '\$CI_PIPELINE_SOURCE == "merge_request_event"'
-    - if: '\$CI_COMMIT_BRANCH'`,
-      jenkins: `pipeline {
-    agent any
-
-    environment {
-        HEROFORGE_URL = credentials('heroforge-url')
-        HEROFORGE_TOKEN = credentials('heroforge-token')
-    }
-
-    stages {
-        stage('Security Scan') {
-            steps {
-                sh '''
-                    curl -X POST "\$HEROFORGE_URL/api/cicd/webhook/jenkins" \\
-                        -H "Authorization: Bearer \$HEROFORGE_TOKEN" \\
-                        -H "Content-Type: application/json" \\
-                        -d "{
-                            \\"repository\\": \\"\$GIT_URL\\",
-                            \\"branch\\": \\"\$GIT_BRANCH\\",
-                            \\"commit\\": \\"\$GIT_COMMIT\\",
-                            \\"build_number\\": \\"\$BUILD_NUMBER\\"
-                        }"
-                '''
-            }
-        }
-    }
-}`,
-      azure_devops: `trigger:
-  - main
-  - develop
-
-pool:
-  vmImage: 'ubuntu-latest'
-
-stages:
-  - stage: Security
-    jobs:
-      - job: Scan
-        steps:
-          - script: |
-              curl -X POST "\$(HEROFORGE_URL)/api/cicd/webhook/azure_devops" \\
-                -H "Authorization: Bearer \$(HEROFORGE_TOKEN)" \\
-                -H "Content-Type: application/json" \\
-                -d '{
-                  "repository": "\$(Build.Repository.Name)",
-                  "branch": "\$(Build.SourceBranchName)",
-                  "commit": "\$(Build.SourceVersion)",
-                  "pr_id": "\$(System.PullRequest.PullRequestId)"
-                }'
-            displayName: 'Run Genial Architect Scan'`
-    };
-    return templates[platform] || '';
-  },
-  getIdeSettings: async (): Promise<IdeSettings> => {
-    return {
-      scan_on_save: true,
-      scan_on_open: false,
-      show_inline_hints: true,
-      severity_filter: ['critical', 'high', 'medium'],
-      excluded_paths: ['node_modules', 'target', 'dist'],
-      custom_rules_enabled: true
-    };
-  }
-};
+// Mock IDE Settings (not yet implemented in backend)
+const getMockIdeSettings = (): IdeSettings => ({
+  scan_on_save: true,
+  scan_on_open: false,
+  show_inline_hints: true,
+  severity_filter: ['critical', 'high', 'medium'],
+  excluded_paths: ['node_modules', 'target', 'dist'],
+  custom_rules_enabled: true
+});
 
 const CicdIntegrationPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'pipelines' | 'runs' | 'policies' | 'templates' | 'ide'>('pipelines');
@@ -225,17 +75,17 @@ const CicdIntegrationPage: React.FC = () => {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [pipelinesData, runsData, policiesData, ideData] = await Promise.all([
-        cicdAPI.getPipelines(),
-        cicdAPI.getRuns(),
-        cicdAPI.getPolicies(),
-        cicdAPI.getIdeSettings()
+      const [pipelinesData, runsData, policiesData] = await Promise.all([
+        cicdAPI.getPipelines().then((res: AxiosResponse<CicdPipeline[]>) => res.data),
+        cicdAPI.getRuns().then((res: AxiosResponse<CicdRun[]>) => res.data),
+        cicdAPI.getPolicies().then((res: AxiosResponse<CicdPolicy[]>) => res.data)
       ]);
       setPipelines(pipelinesData);
       setRuns(runsData);
       setPolicies(policiesData);
-      setIdeSettings(ideData);
+      setIdeSettings(getMockIdeSettings());
     } catch (error) {
+      console.error('Failed to load CI/CD data:', error);
       toast.error('Failed to load CI/CD data');
     } finally {
       setLoading(false);
@@ -244,9 +94,10 @@ const CicdIntegrationPage: React.FC = () => {
 
   const loadTemplate = async (platform: string) => {
     try {
-      const template = await cicdAPI.getTemplate(platform);
-      setTemplateContent(template);
+      const result = await cicdAPI.getTemplate(platform);
+      setTemplateContent(result.data.content);
     } catch (error) {
+      console.error('Failed to load template:', error);
       toast.error('Failed to load template');
     }
   };
@@ -462,21 +313,11 @@ const CicdIntegrationPage: React.FC = () => {
                         </button>
                       </div>
                     </div>
-                    <div className="mt-4 flex flex-wrap gap-4 text-sm">
-                      {policy.severity_threshold && (
-                        <div className="text-gray-400">
-                          Threshold: <span className="text-white capitalize">{policy.severity_threshold}</span>
-                        </div>
-                      )}
-                      {policy.max_new_findings && (
-                        <div className="text-gray-400">
-                          Max New Findings: <span className="text-white">{policy.max_new_findings}</span>
-                        </div>
-                      )}
-                      {policy.block_on_critical && (
-                        <div className="text-red-400">Block on Critical</div>
-                      )}
-                    </div>
+                    {policy.conditions && (
+                      <div className="mt-4 text-sm text-gray-400">
+                        <span className="text-gray-500">Policy ID: {policy.id}</span>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

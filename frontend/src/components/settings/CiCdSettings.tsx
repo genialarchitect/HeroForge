@@ -4,7 +4,7 @@ import { Copy, Plus, Trash2, Key, Shield, Settings2, GitBranch, CheckCircle2, XC
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import Checkbox from '../ui/Checkbox';
-import { cicdAPI } from '../../services/api';
+import { cicdQualityGateAPI as cicdAPI } from '../../services/api';
 import type { CiCdToken, CiCdTokenPermissions, QualityGate, CiCdRun, CiCdPlatform } from '../../types';
 
 type Platform = CiCdPlatform | 'generic';

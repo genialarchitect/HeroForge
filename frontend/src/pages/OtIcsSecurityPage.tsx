@@ -17,45 +17,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import Layout from '../components/layout/Layout';
-
-// Types
-interface OtAsset {
-  id: string;
-  name: string;
-  asset_type: string;
-  vendor?: string;
-  model?: string;
-  firmware_version?: string;
-  ip_address?: string;
-  protocols: string[];
-  purdue_level: number;
-  zone?: string;
-  criticality: string;
-  risk_score: number;
-  vulnerabilities: string[];
-  last_seen?: string;
-}
-
-interface OtProtocol {
-  id: string;
-  asset_id: string;
-  protocol_type: string;
-  port: number;
-  security_issues: string[];
-}
-
-interface OtScan {
-  id: string;
-  name: string;
-  scan_type: string;
-  target_range: string;
-  protocols_enabled: string[];
-  status: string;
-  assets_discovered: number;
-  vulnerabilities_found: number;
-  started_at?: string;
-  completed_at?: string;
-}
+import { otAPI, OtAsset, OtScan } from '../services/api';
 
 // Purdue Model levels
 const PURDUE_LEVELS = [
@@ -67,28 +29,6 @@ const PURDUE_LEVELS = [
   { level: 1, name: 'Basic Control', color: 'bg-red-500' },
   { level: 0, name: 'Process', color: 'bg-red-700' },
 ];
-
-// Mock API
-const otAPI = {
-  getAssets: async (): Promise<OtAsset[]> => {
-    return [
-      { id: '1', name: 'Siemens S7-1500 PLC', asset_type: 'plc', vendor: 'Siemens', model: 'S7-1500', firmware_version: '2.9.4', ip_address: '10.10.1.10', protocols: ['s7', 'modbus'], purdue_level: 1, zone: 'Production Line 1', criticality: 'critical', risk_score: 75, vulnerabilities: ['CVE-2023-28489'], last_seen: new Date().toISOString() },
-      { id: '2', name: 'Allen-Bradley HMI', asset_type: 'hmi', vendor: 'Rockwell', model: 'PanelView Plus 7', firmware_version: '12.011', ip_address: '10.10.1.20', protocols: ['ethernetip', 'cip'], purdue_level: 2, zone: 'Production Line 1', criticality: 'high', risk_score: 45, vulnerabilities: [], last_seen: new Date().toISOString() },
-      { id: '3', name: 'Schneider SCADA', asset_type: 'scada', vendor: 'Schneider Electric', model: 'ClearSCADA', ip_address: '10.10.2.10', protocols: ['dnp3', 'modbus'], purdue_level: 3, zone: 'Control Room', criticality: 'critical', risk_score: 60, vulnerabilities: ['CVE-2022-45789'], last_seen: new Date().toISOString() },
-      { id: '4', name: 'Historian Server', asset_type: 'historian', vendor: 'OSIsoft', model: 'PI Server', ip_address: '10.10.3.10', protocols: ['pi-sdk'], purdue_level: 3, zone: 'Control Room', criticality: 'high', risk_score: 30, vulnerabilities: [], last_seen: new Date().toISOString() },
-      { id: '5', name: 'RTU-001', asset_type: 'rtu', vendor: 'ABB', model: 'RTU560', firmware_version: '13.5.2', ip_address: '10.10.4.10', protocols: ['dnp3', 'iec104'], purdue_level: 1, zone: 'Remote Site 1', criticality: 'high', risk_score: 55, vulnerabilities: [], last_seen: new Date().toISOString() },
-    ];
-  },
-  getScans: async (): Promise<OtScan[]> => {
-    return [
-      { id: '1', name: 'Weekly Discovery', scan_type: 'discovery', target_range: '10.10.0.0/16', protocols_enabled: ['modbus', 's7', 'dnp3'], status: 'completed', assets_discovered: 23, vulnerabilities_found: 5, started_at: new Date().toISOString(), completed_at: new Date().toISOString() },
-      { id: '2', name: 'Protocol Analysis', scan_type: 'protocol', target_range: '10.10.1.0/24', protocols_enabled: ['modbus'], status: 'running', assets_discovered: 8, vulnerabilities_found: 2, started_at: new Date().toISOString() },
-    ];
-  },
-  startScan: async (scan: Partial<OtScan>): Promise<void> => {
-    await new Promise(resolve => setTimeout(resolve, 500));
-  }
-};
 
 const OtIcsSecurityPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'assets' | 'purdue' | 'protocols' | 'scans'>('assets');
@@ -107,12 +47,13 @@ const OtIcsSecurityPage: React.FC = () => {
     try {
       setLoading(true);
       const [assetsData, scansData] = await Promise.all([
-        otAPI.getAssets(),
-        otAPI.getScans()
+        otAPI.getAssets().then(res => res.data),
+        otAPI.getScans().then(res => res.data)
       ]);
       setAssets(assetsData);
       setScans(scansData);
     } catch (error) {
+      console.error('Failed to load OT/ICS data:', error);
       toast.error('Failed to load OT/ICS data');
     } finally {
       setLoading(false);
@@ -166,7 +107,7 @@ const OtIcsSecurityPage: React.FC = () => {
 
   const assetsByLevel = PURDUE_LEVELS.map(level => ({
     ...level,
-    assets: assets.filter(a => a.purdue_level === level.level)
+    assets: assets.filter(a => a.purdue_level === level.level || (level.level === 0 && !a.purdue_level))
   }));
 
   return (
@@ -182,7 +123,22 @@ const OtIcsSecurityPage: React.FC = () => {
             </div>
           </div>
           <button
-            onClick={() => setShowScanModal(true)}
+            onClick={async () => {
+              try {
+                toast.info('Starting OT scan...');
+                await otAPI.startScan({
+                  name: 'OT Discovery',
+                  scan_type: 'discovery',
+                  target_range: '10.10.0.0/16',
+                  protocols_enabled: ['modbus', 's7', 'dnp3']
+                });
+                toast.success('Scan started successfully');
+                await loadData();
+              } catch (error) {
+                console.error('Failed to start scan:', error);
+                toast.error('Failed to start scan');
+              }
+            }}
             className="flex items-center gap-2 px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-500"
           >
             <Play className="h-4 w-4" />
@@ -204,13 +160,13 @@ const OtIcsSecurityPage: React.FC = () => {
           </div>
           <div className="bg-gray-800 rounded-lg p-4">
             <div className="text-2xl font-bold text-yellow-400">
-              {assets.reduce((sum, a) => sum + a.vulnerabilities.length, 0)}
+              {assets.length}
             </div>
-            <div className="text-gray-400 text-sm">Vulnerabilities</div>
+            <div className="text-gray-400 text-sm">Total Assets</div>
           </div>
           <div className="bg-gray-800 rounded-lg p-4">
             <div className="text-2xl font-bold text-cyan-400">
-              {new Set(assets.flatMap(a => a.protocols)).size}
+              {new Set(assets.flatMap(a => a.protocols || [])).size}
             </div>
             <div className="text-gray-400 text-sm">Protocols</div>
           </div>
@@ -276,9 +232,11 @@ const OtIcsSecurityPage: React.FC = () => {
                           <div>
                             <h3 className="text-white font-medium flex items-center gap-2">
                               {asset.name}
-                              <span className={`px-2 py-0.5 text-xs rounded text-white ${getCriticalityColor(asset.criticality)}`}>
-                                {asset.criticality}
-                              </span>
+                              {asset.criticality && (
+                                <span className={`px-2 py-0.5 text-xs rounded text-white ${getCriticalityColor(asset.criticality)}`}>
+                                  {asset.criticality}
+                                </span>
+                              )}
                             </h3>
                             <div className="text-gray-400 text-sm">
                               {asset.vendor} {asset.model} • {asset.ip_address}
@@ -287,7 +245,7 @@ const OtIcsSecurityPage: React.FC = () => {
                         </div>
                         <div className="flex items-center gap-6">
                           <div className="flex gap-1">
-                            {asset.protocols.map((protocol) => (
+                            {(asset.protocols || []).map((protocol) => (
                               <span
                                 key={protocol}
                                 className={`px-2 py-1 text-xs text-white rounded ${getProtocolColor(protocol)}`}
@@ -302,20 +260,16 @@ const OtIcsSecurityPage: React.FC = () => {
                             </div>
                             <div className="text-gray-400 text-xs">Risk Score</div>
                           </div>
-                          {asset.vulnerabilities.length > 0 && (
-                            <div className="flex items-center gap-1 text-red-400">
-                              <AlertTriangle className="h-4 w-4" />
-                              <span>{asset.vulnerabilities.length}</span>
-                            </div>
-                          )}
                         </div>
                       </div>
 
                       <div className="flex items-center gap-4 mt-3 text-sm text-gray-400">
-                        <span className="flex items-center gap-1">
-                          <Layers className="h-3 w-3" />
-                          Level {asset.purdue_level}
-                        </span>
+                        {asset.purdue_level !== undefined && (
+                          <span className="flex items-center gap-1">
+                            <Layers className="h-3 w-3" />
+                            Level {asset.purdue_level}
+                          </span>
+                        )}
                         <span className="flex items-center gap-1">
                           <MapPin className="h-3 w-3" />
                           {asset.zone || 'Unknown'}
@@ -356,7 +310,7 @@ const OtIcsSecurityPage: React.FC = () => {
                             </div>
                             <div className="text-gray-400 text-xs">{asset.ip_address}</div>
                             <div className="flex gap-1 mt-2">
-                              {asset.protocols.slice(0, 2).map((p) => (
+                              {(asset.protocols || []).slice(0, 2).map((p) => (
                                 <span key={p} className="text-xs text-gray-300 bg-gray-600 px-1 rounded">
                                   {p}
                                 </span>
@@ -381,7 +335,7 @@ const OtIcsSecurityPage: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {['Modbus', 'S7', 'DNP3', 'EtherNet/IP', 'BACnet', 'OPC-UA', 'IEC 61850', 'IEC 104'].map((protocol) => {
                   const protocolAssets = assets.filter(a =>
-                    a.protocols.some(p => p.toLowerCase() === protocol.toLowerCase().replace('/', '').replace(' ', ''))
+                    (a.protocols || []).some(p => p.toLowerCase() === protocol.toLowerCase().replace('/', '').replace(' ', ''))
                   );
                   return (
                     <div key={protocol} className="bg-gray-800 rounded-lg p-4">
@@ -434,7 +388,7 @@ const OtIcsSecurityPage: React.FC = () => {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex gap-1">
-                            {scan.protocols_enabled.map((p) => (
+                            {(scan.protocols_enabled || []).map((p) => (
                               <span key={p} className={`px-2 py-0.5 text-xs text-white rounded ${getProtocolColor(p)}`}>
                                 {p}
                               </span>
@@ -495,7 +449,9 @@ const OtIcsSecurityPage: React.FC = () => {
                 </div>
                 <div>
                   <div className="text-gray-400 text-sm">Purdue Level</div>
-                  <div className="text-white">Level {selectedAsset.purdue_level}</div>
+                  <div className="text-white">
+                    {selectedAsset.purdue_level !== undefined ? `Level ${selectedAsset.purdue_level}` : 'Unknown'}
+                  </div>
                 </div>
                 <div>
                   <div className="text-gray-400 text-sm">Zone</div>
@@ -506,27 +462,13 @@ const OtIcsSecurityPage: React.FC = () => {
               <div className="mb-4">
                 <div className="text-gray-400 text-sm mb-2">Protocols</div>
                 <div className="flex gap-2">
-                  {selectedAsset.protocols.map((p) => (
+                  {(selectedAsset.protocols || []).map((p) => (
                     <span key={p} className={`px-3 py-1 text-white rounded ${getProtocolColor(p)}`}>
                       {p.toUpperCase()}
                     </span>
                   ))}
                 </div>
               </div>
-
-              {selectedAsset.vulnerabilities.length > 0 && (
-                <div>
-                  <div className="text-gray-400 text-sm mb-2">Vulnerabilities</div>
-                  <div className="space-y-2">
-                    {selectedAsset.vulnerabilities.map((vuln) => (
-                      <div key={vuln} className="flex items-center gap-2 bg-red-600/20 border border-red-600/40 rounded p-2">
-                        <AlertTriangle className="h-4 w-4 text-red-400" />
-                        <span className="text-red-400">{vuln}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         )}
