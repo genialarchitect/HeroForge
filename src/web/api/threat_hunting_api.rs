@@ -140,11 +140,11 @@ pub async fn list_campaigns(pool: web::Data<SqlitePool>) -> HttpResponse {
 /// POST /api/threat-hunting/campaigns - Create campaign
 pub async fn create_campaign(
     pool: web::Data<SqlitePool>,
-    req: HttpRequest,
+    claims: Claims,
     body: web::Json<CreateCampaignRequest>,
 ) -> HttpResponse {
     // TODO: Implement campaign creation
-    let _ = (pool, req, body);
+    let _ = (pool, claims, body);
     HttpResponse::NotImplemented().json(json!({
         "error": "Campaign creation not yet implemented"
     }))
