@@ -32,6 +32,7 @@
 pub mod aws;
 pub mod azure;
 pub mod cloud_discovery;
+pub mod cspm;
 pub mod gcp;
 pub mod types;
 

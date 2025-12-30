@@ -1,5 +1,10 @@
+pub mod bitbucket;
 pub mod cicd;
+pub mod github;
+pub mod gitlab;
 pub mod jira;
+pub mod opsgenie;
+pub mod pagerduty;
 pub mod scanner_import;
 pub mod servicenow;
 pub mod shodan;

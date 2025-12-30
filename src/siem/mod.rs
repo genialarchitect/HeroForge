@@ -56,6 +56,7 @@ pub mod correlation;
 pub mod dashboard;
 pub mod ingestion;
 pub mod parser;
+pub mod qradar;
 pub mod sigma;
 pub mod sigma_converter;
 pub mod storage;

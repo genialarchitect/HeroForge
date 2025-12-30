@@ -22,6 +22,7 @@ pub mod agents;
 pub mod ai;
 pub mod ai_security;
 pub mod analytics;
+pub mod api_governance;
 pub mod api_security;
 pub mod asm;
 pub mod asset_discovery;
@@ -29,12 +30,14 @@ pub mod assets;
 pub mod attack_paths;
 pub mod auth;
 pub mod bas;
+pub mod bi;
 pub mod bloodhound;
 pub mod breach;
 pub mod chat;
 pub mod cicd;
 pub mod cloud;
 pub mod cloud_discovery;
+pub mod compliance_automation;
 pub mod container;
 pub mod cracking;
 pub mod credential_audit;
@@ -48,6 +51,8 @@ pub mod exclusions;
 pub mod finding_templates;
 pub mod iac;
 pub mod insider_threat;
+pub mod iot;
+pub mod k8s_security;
 pub mod manual_assessments;
 pub mod methodology;
 pub mod migrations;
@@ -56,6 +61,7 @@ pub mod optimization;
 pub mod permissions;
 pub mod models_dashboard;
 pub mod nuclei;
+pub mod plugin_marketplace;
 pub mod plugins;
 pub mod privesc;
 pub mod purple_team;
@@ -67,6 +73,8 @@ pub mod secret_findings;
 pub mod servicenow;
 pub mod settings;
 pub mod shodan_cache;
+pub mod supply_chain;
+pub mod threat_feeds;
 pub mod threat_intel;
 pub mod users;
 pub mod vulnerabilities;
@@ -85,7 +93,6 @@ pub mod sca;
 pub mod threat_modeling;
 pub mod yellow_team;
 pub mod ot_ics;
-pub mod iot;
 
 // Core imports used by this module
 use sqlx::sqlite::SqlitePool;
@@ -233,6 +240,15 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
 
     // Run DLP migrations (Sprint 8)
     dlp::run_migrations(pool).await?;
+
+    // Run Phase 3 migrations (Sprints 11-20)
+    api_governance::init_tables(pool).await?;
+    compliance_automation::init_tables(pool).await?;
+    k8s_security::init_tables(pool).await?;
+    supply_chain::init_tables(pool).await?;
+    plugin_marketplace::init_tables(pool).await?;
+    threat_feeds::init_tables(pool).await?;
+    bi::init_tables(pool).await?;
 
     Ok(())
 }

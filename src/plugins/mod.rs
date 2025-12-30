@@ -14,11 +14,17 @@
 #![allow(dead_code)]
 
 pub mod api;
+pub mod distribution;
 pub mod loader;
 pub mod manifest;
+pub mod marketplace;
 pub mod registry;
+pub mod sandboxing;
+pub mod sdk;
 pub mod types;
 
 // Re-export commonly used types
 pub use loader::PluginLoader;
+pub use marketplace::PluginMarketplace;
 pub use registry::PluginRegistry;
+pub use sdk::PluginSdk;
