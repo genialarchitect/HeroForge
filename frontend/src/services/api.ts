@@ -5607,4 +5607,311 @@ export interface GenerateBriefingRequest {
   focus_actors?: string[];
 }
 
+// ============================================================================
+// SCA (Software Composition Analysis) API
+// ============================================================================
+
+export interface ScaProject {
+  id: string;
+  name: string;
+  repository_url?: string;
+  ecosystem: string;
+  manifest_files?: string[];
+  last_scan_at?: string;
+  total_dependencies: number;
+  vulnerable_dependencies: number;
+  license_issues: number;
+  customer_id?: string;
+  engagement_id?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ScaDependency {
+  id: string;
+  project_id: string;
+  name: string;
+  version: string;
+  ecosystem: string;
+  purl?: string;
+  is_direct: boolean;
+  depth: number;
+  license?: string;
+  license_risk?: string;
+  latest_version?: string;
+  update_available: boolean;
+}
+
+export interface ScaVulnerability {
+  id: string;
+  dependency_id: string;
+  vuln_id: string;
+  source: string;
+  severity: string;
+  cvss_score?: number;
+  cvss_vector?: string;
+  epss_score?: number;
+  title?: string;
+  description?: string;
+  affected_versions?: string;
+  fixed_version?: string;
+  references?: string[];
+  exploited_in_wild: boolean;
+  status: string;
+}
+
+export interface ScaStats {
+  total_projects: number;
+  total_dependencies: number;
+  vulnerable_dependencies: number;
+  critical_vulns: number;
+  high_vulns: number;
+  medium_vulns: number;
+  low_vulns: number;
+  license_issues: number;
+  updates_available: number;
+}
+
+export const scaAPI = {
+  getStats: () => api.get<ScaStats>('/sca/stats'),
+  getProjects: () => api.get<ScaProject[]>('/sca/projects'),
+  getProject: (id: string) => api.get<ScaProject>(`/sca/projects/${id}`),
+  createProject: (data: { name: string; repository_url?: string; ecosystem?: string; customer_id?: string; engagement_id?: string }) =>
+    api.post<ScaProject>('/sca/projects', data),
+  updateProject: (id: string, data: Partial<ScaProject>) =>
+    api.put<ScaProject>(`/sca/projects/${id}`, data),
+  deleteProject: (id: string) => api.delete(`/sca/projects/${id}`),
+  analyzeProject: (id: string, data: { manifest_content?: string; manifest_filename?: string; check_updates?: boolean }) =>
+    api.post(`/sca/projects/${id}/analyze`, data),
+  getDependencies: (id: string, params?: { is_direct?: boolean; has_vulnerabilities?: boolean; license_risk?: string; update_available?: boolean; limit?: number; offset?: number }) =>
+    api.get<ScaDependency[]>(`/sca/projects/${id}/dependencies`, { params }),
+  getVulnerabilities: (id: string, params?: { severity?: string; status?: string; exploited_in_wild?: boolean; has_fix?: boolean; limit?: number; offset?: number }) =>
+    api.get<ScaVulnerability[]>(`/sca/projects/${id}/vulnerabilities`, { params }),
+  updateVulnStatus: (projectId: string, vulnId: string, status: string) =>
+    api.put(`/sca/projects/${projectId}/vulnerabilities/${vulnId}/status`, { status }),
+  getUpdates: (id: string) => api.get(`/sca/projects/${id}/updates`),
+};
+
+// ============================================================================
+// IoT Security API
+// ============================================================================
+
+export interface IotDevice {
+  id: string;
+  name?: string;
+  device_type?: string;
+  vendor?: string;
+  model?: string;
+  firmware_version?: string;
+  ip_address?: string;
+  mac_address?: string;
+  hostname?: string;
+  protocols?: string[];
+  open_ports?: number[];
+  default_creds_status?: string;
+  last_seen?: string;
+  first_seen?: string;
+  risk_score: number;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface IotScan {
+  id: string;
+  name: string;
+  scan_type: string;
+  target_range?: string;
+  status: string;
+  devices_found: number;
+  vulnerabilities_found: number;
+  started_at?: string;
+  completed_at?: string;
+  created_at: string;
+}
+
+export interface IotCredential {
+  id: string;
+  device_type: string;
+  vendor?: string;
+  model?: string;
+  protocol: string;
+  username?: string;
+  password?: string;
+  source: string;
+  created_at: string;
+}
+
+export const iotAPI = {
+  getDashboard: () => api.get('/iot/dashboard'),
+  getDevices: (params?: { device_type?: string; vendor?: string; risk_score_min?: number; limit?: number; offset?: number }) =>
+    api.get<IotDevice[]>('/iot/devices', { params }),
+  getDevice: (id: string) => api.get<IotDevice>(`/iot/devices/${id}`),
+  createDevice: (data: Partial<IotDevice>) => api.post<IotDevice>('/iot/devices', data),
+  updateDevice: (id: string, data: Partial<IotDevice>) => api.put<IotDevice>(`/iot/devices/${id}`, data),
+  deleteDevice: (id: string) => api.delete(`/iot/devices/${id}`),
+  startScan: (data: { name: string; scan_type: string; target_range?: string }) =>
+    api.post<IotScan>('/iot/scan', data),
+  getScans: (params?: { scan_type?: string; status?: string; limit?: number; offset?: number }) =>
+    api.get<IotScan[]>('/iot/scans', { params }),
+  getScan: (id: string) => api.get<IotScan>(`/iot/scans/${id}`),
+  searchCredentials: (params?: { device_type?: string; vendor?: string; model?: string; protocol?: string }) =>
+    api.get<IotCredential[]>('/iot/credentials/search', { params }),
+};
+
+// ============================================================================
+// OT/ICS Security API
+// ============================================================================
+
+export interface OtAsset {
+  id: string;
+  name: string;
+  asset_type: string;
+  vendor?: string;
+  model?: string;
+  firmware_version?: string;
+  ip_address?: string;
+  mac_address?: string;
+  protocols?: string[];
+  purdue_level?: number;
+  zone?: string;
+  criticality?: string;
+  last_seen?: string;
+  first_seen?: string;
+  risk_score: number;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OtScan {
+  id: string;
+  name: string;
+  scan_type: string;
+  target_range: string;
+  protocols_enabled?: string[];
+  status: string;
+  assets_discovered: number;
+  vulnerabilities_found: number;
+  started_at?: string;
+  completed_at?: string;
+  created_at: string;
+}
+
+export const otAPI = {
+  getDashboard: () => api.get('/ot/dashboard'),
+  getAssets: (params?: { asset_type?: string; purdue_level?: number; criticality?: string; limit?: number; offset?: number }) =>
+    api.get<OtAsset[]>('/ot/assets', { params }),
+  getAsset: (id: string) => api.get<OtAsset>(`/ot/assets/${id}`),
+  createAsset: (data: Partial<OtAsset>) => api.post<OtAsset>('/ot/assets', data),
+  updateAsset: (id: string, data: Partial<OtAsset>) => api.put<OtAsset>(`/ot/assets/${id}`, data),
+  deleteAsset: (id: string) => api.delete(`/ot/assets/${id}`),
+  startScan: (data: { name: string; scan_type: string; target_range: string; protocols_enabled?: string[] }) =>
+    api.post<OtScan>('/ot/scan', data),
+  getScans: (params?: { scan_type?: string; status?: string; limit?: number; offset?: number }) =>
+    api.get<OtScan[]>('/ot/scans', { params }),
+  getScan: (id: string) => api.get<OtScan>(`/ot/scans/${id}`),
+  getPurdueLevels: () => api.get('/ot/purdue/levels'),
+  getPurdueView: (params?: { customer_id?: string }) => api.get('/ot/purdue/view', { params }),
+  getPurdueCompliance: (params?: { customer_id?: string }) => api.get('/ot/purdue/compliance', { params }),
+  classifyPurdueLevel: (data: { asset_type: string; protocols: string[] }) =>
+    api.post('/ot/purdue/classify', data),
+};
+
+// ============================================================================
+// SOAR (Security Orchestration, Automation, and Response) API
+// ============================================================================
+
+export interface SoarPlaybook {
+  id: string;
+  name: string;
+  description?: string;
+  category: string;
+  trigger_type: string;
+  status: string;
+  version: number;
+  run_count: number;
+  success_rate?: number;
+  avg_duration_seconds?: number;
+  last_run_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SoarAction {
+  id: string;
+  name: string;
+  display_name: string;
+  description?: string;
+  category: string;
+  action_type: string;
+  risk_level: string;
+  requires_approval: boolean;
+}
+
+export interface SoarRun {
+  id: string;
+  playbook_id: string;
+  playbook_name?: string;
+  trigger_type: string;
+  status: string;
+  current_step: number;
+  total_steps: number;
+  started_at?: string;
+  completed_at?: string;
+  duration_seconds?: number;
+  initiated_by?: string;
+}
+
+export interface SoarApproval {
+  id: string;
+  run_id: string;
+  playbook_name?: string;
+  step_name?: string;
+  status: string;
+  required_approvals: number;
+  current_approvals: number;
+  created_at: string;
+}
+
+export interface SoarIntegration {
+  id: string;
+  name: string;
+  integration_type: string;
+  vendor?: string;
+  status: string;
+  last_test_at?: string;
+}
+
+export const soarAPI = {
+  // Playbooks (using workflows API)
+  getPlaybooks: () => api.get<SoarPlaybook[]>('/workflows/templates'),
+  getPlaybook: (id: string) => api.get<SoarPlaybook>(`/workflows/templates/${id}`),
+  createPlaybook: (data: Partial<SoarPlaybook>) => api.post<SoarPlaybook>('/workflows/templates', data),
+  updatePlaybook: (id: string, data: Partial<SoarPlaybook>) => api.put<SoarPlaybook>(`/workflows/templates/${id}`, data),
+  deletePlaybook: (id: string) => api.delete(`/workflows/templates/${id}`),
+  runPlaybook: (id: string, data?: { input_data?: any }) =>
+    api.post(`/workflows/templates/${id}/start`, data),
+
+  // Runs
+  getRuns: (params?: { status?: string; playbook_id?: string; limit?: number; offset?: number }) =>
+    api.get<SoarRun[]>('/workflows/instances', { params }),
+  getRun: (id: string) => api.get<SoarRun>(`/workflows/instances/${id}`),
+  cancelRun: (id: string) => api.post(`/workflows/instances/${id}/cancel`),
+
+  // Approvals
+  getApprovals: (params?: { status?: string }) =>
+    api.get<SoarApproval[]>('/workflows/approvals', { params }),
+  approveStep: (approvalId: string, decision: string, notes?: string) =>
+    api.post(`/workflows/approvals/${approvalId}/approve`, { decision, notes }),
+  rejectStep: (approvalId: string, reason?: string) =>
+    api.post(`/workflows/approvals/${approvalId}/reject`, { reason }),
+
+  // Actions (placeholder - would need actual action library endpoint)
+  getActions: () => Promise.resolve([]), // TODO: Implement action library endpoint
+
+  // Integrations (placeholder)
+  getIntegrations: () => Promise.resolve([]), // TODO: Implement integrations endpoint
+};
+
 export default api;

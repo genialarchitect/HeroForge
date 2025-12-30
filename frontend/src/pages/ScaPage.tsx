@@ -19,127 +19,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import Layout from '../components/layout/Layout';
-
-// Types
-interface ScaProject {
-  id: string;
-  name: string;
-  repository_url?: string;
-  ecosystem: string;
-  manifest_files?: string[];
-  last_scan_at?: string;
-  total_dependencies: number;
-  vulnerable_dependencies: number;
-  license_issues: number;
-  customer_id?: string;
-  engagement_id?: string;
-  created_at: string;
-}
-
-interface ScaDependency {
-  id: string;
-  project_id: string;
-  name: string;
-  version: string;
-  ecosystem: string;
-  purl: string;
-  is_direct: boolean;
-  depth: number;
-  license?: string;
-  license_risk?: string;
-  latest_version?: string;
-  update_available: boolean;
-}
-
-interface ScaVulnerability {
-  id: string;
-  dependency_id: string;
-  vuln_id: string;
-  source: string;
-  severity: string;
-  cvss_score?: number;
-  title?: string;
-  description?: string;
-  fixed_version?: string;
-  exploited_in_wild: boolean;
-  status: string;
-}
-
-interface ScaStats {
-  total_projects: number;
-  total_dependencies: number;
-  vulnerable_dependencies: number;
-  critical_vulns: number;
-  high_vulns: number;
-  medium_vulns: number;
-  low_vulns: number;
-  license_issues: number;
-  updates_available: number;
-}
-
-// Mock API
-const scaAPI = {
-  getStats: async (): Promise<ScaStats> => {
-    return {
-      total_projects: 5,
-      total_dependencies: 342,
-      vulnerable_dependencies: 23,
-      critical_vulns: 2,
-      high_vulns: 8,
-      medium_vulns: 12,
-      low_vulns: 15,
-      license_issues: 4,
-      updates_available: 45
-    };
-  },
-  getProjects: async (): Promise<ScaProject[]> => {
-    return [
-      {
-        id: '1',
-        name: 'heroforge-backend',
-        repository_url: 'https://github.com/org/heroforge',
-        ecosystem: 'cargo',
-        manifest_files: ['Cargo.toml', 'Cargo.lock'],
-        last_scan_at: new Date().toISOString(),
-        total_dependencies: 156,
-        vulnerable_dependencies: 8,
-        license_issues: 2,
-        created_at: new Date().toISOString()
-      },
-      {
-        id: '2',
-        name: 'heroforge-frontend',
-        repository_url: 'https://github.com/org/heroforge-frontend',
-        ecosystem: 'npm',
-        manifest_files: ['package.json', 'package-lock.json'],
-        last_scan_at: new Date().toISOString(),
-        total_dependencies: 186,
-        vulnerable_dependencies: 15,
-        license_issues: 2,
-        created_at: new Date().toISOString()
-      }
-    ];
-  },
-  getDependencies: async (projectId: string): Promise<ScaDependency[]> => {
-    return [
-      { id: '1', project_id: projectId, name: 'serde', version: '1.0.188', ecosystem: 'cargo', purl: 'pkg:cargo/serde@1.0.188', is_direct: true, depth: 0, license: 'MIT OR Apache-2.0', license_risk: 'low', latest_version: '1.0.195', update_available: true },
-      { id: '2', project_id: projectId, name: 'tokio', version: '1.32.0', ecosystem: 'cargo', purl: 'pkg:cargo/tokio@1.32.0', is_direct: true, depth: 0, license: 'MIT', license_risk: 'low', latest_version: '1.35.1', update_available: true },
-      { id: '3', project_id: projectId, name: 'actix-web', version: '4.4.0', ecosystem: 'cargo', purl: 'pkg:cargo/actix-web@4.4.0', is_direct: true, depth: 0, license: 'MIT OR Apache-2.0', license_risk: 'low', latest_version: '4.4.1', update_available: true },
-    ];
-  },
-  getVulnerabilities: async (projectId: string): Promise<ScaVulnerability[]> => {
-    return [
-      { id: '1', dependency_id: '1', vuln_id: 'GHSA-xxxx-yyyy-zzzz', source: 'github', severity: 'high', cvss_score: 8.1, title: 'Deserialization vulnerability', description: 'A deserialization vulnerability allows remote code execution', fixed_version: '1.0.190', exploited_in_wild: false, status: 'new' },
-      { id: '2', dependency_id: '2', vuln_id: 'CVE-2023-12345', source: 'nvd', severity: 'medium', cvss_score: 5.5, title: 'Denial of service via resource exhaustion', description: 'Resource exhaustion can cause denial of service', fixed_version: '1.33.0', exploited_in_wild: false, status: 'new' },
-    ];
-  },
-  analyzeProject: async (projectId: string): Promise<void> => {
-    await new Promise(resolve => setTimeout(resolve, 1000));
-  },
-  generateSbom: async (projectId: string, format: string): Promise<Blob> => {
-    return new Blob(['SBOM content'], { type: 'application/json' });
-  }
-};
+import { scaAPI, ScaProject, ScaDependency, ScaVulnerability, ScaStats } from '../services/api';
 
 const ScaPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'overview' | 'projects' | 'dependencies' | 'vulnerabilities'>('overview');
@@ -161,8 +41,8 @@ const ScaPage: React.FC = () => {
     try {
       setLoading(true);
       const [statsData, projectsData] = await Promise.all([
-        scaAPI.getStats(),
-        scaAPI.getProjects()
+        scaAPI.getStats().then(res => res.data),
+        scaAPI.getProjects().then(res => res.data)
       ]);
       setStats(statsData);
       setProjects(projectsData);
@@ -170,6 +50,7 @@ const ScaPage: React.FC = () => {
         await selectProject(projectsData[0]);
       }
     } catch (error) {
+      console.error('Failed to load SCA data:', error);
       toast.error('Failed to load SCA data');
     } finally {
       setLoading(false);
@@ -180,12 +61,13 @@ const ScaPage: React.FC = () => {
     setSelectedProject(project);
     try {
       const [deps, vulns] = await Promise.all([
-        scaAPI.getDependencies(project.id),
-        scaAPI.getVulnerabilities(project.id)
+        scaAPI.getDependencies(project.id).then(res => res.data),
+        scaAPI.getVulnerabilities(project.id).then(res => res.data)
       ]);
       setDependencies(deps);
       setVulnerabilities(vulns);
     } catch (error) {
+      console.error('Failed to load project details:', error);
       toast.error('Failed to load project details');
     }
   };
@@ -193,10 +75,14 @@ const ScaPage: React.FC = () => {
   const handleAnalyze = async (project: ScaProject) => {
     try {
       toast.info(`Analyzing ${project.name}...`);
-      await scaAPI.analyzeProject(project.id);
+      await scaAPI.analyzeProject(project.id, { check_updates: true });
       toast.success('Analysis complete!');
-      await selectProject(project);
+      await loadData();
+      if (selectedProject?.id === project.id) {
+        await selectProject(project);
+      }
     } catch (error) {
+      console.error('Analysis failed:', error);
       toast.error('Analysis failed');
     }
   };
@@ -204,15 +90,10 @@ const ScaPage: React.FC = () => {
   const handleExportSbom = async (format: 'cyclonedx' | 'spdx') => {
     if (!selectedProject) return;
     try {
-      const blob = await scaAPI.generateSbom(selectedProject.id, format);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${selectedProject.name}-sbom.${format === 'cyclonedx' ? 'json' : 'spdx.json'}`;
-      a.click();
-      URL.revokeObjectURL(url);
-      toast.success(`SBOM exported as ${format.toUpperCase()}`);
+      // TODO: Implement SBOM export endpoint
+      toast.info(`SBOM export for ${format.toUpperCase()} is not yet implemented`);
     } catch (error) {
+      console.error('Failed to export SBOM:', error);
       toast.error('Failed to export SBOM');
     }
   };

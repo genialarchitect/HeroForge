@@ -24,121 +24,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import Layout from '../components/layout/Layout';
-
-// Types
-interface SoarPlaybook {
-  id: string;
-  name: string;
-  description?: string;
-  category: string;
-  trigger_type: string;
-  status: string;
-  version: number;
-  run_count: number;
-  success_rate?: number;
-  avg_duration_seconds?: number;
-  last_run_at?: string;
-  created_at: string;
-}
-
-interface SoarAction {
-  id: string;
-  name: string;
-  display_name: string;
-  description?: string;
-  category: string;
-  action_type: string;
-  risk_level: string;
-  requires_approval: boolean;
-}
-
-interface SoarRun {
-  id: string;
-  playbook_id: string;
-  playbook_name: string;
-  trigger_type: string;
-  status: string;
-  current_step: number;
-  total_steps: number;
-  started_at: string;
-  completed_at?: string;
-  duration_seconds?: number;
-  initiated_by?: string;
-}
-
-interface SoarApproval {
-  id: string;
-  run_id: string;
-  playbook_name: string;
-  step_name: string;
-  status: string;
-  required_approvals: number;
-  current_approvals: number;
-  created_at: string;
-}
-
-interface SoarIntegration {
-  id: string;
-  name: string;
-  integration_type: string;
-  vendor?: string;
-  status: string;
-  last_test_at?: string;
-}
-
-// Mock API
-const soarAPI = {
-  getPlaybooks: async (): Promise<SoarPlaybook[]> => {
-    return [
-      { id: '1', name: 'Malicious IP Response', description: 'Auto-block malicious IPs and create tickets', category: 'incident_response', trigger_type: 'alert', status: 'active', version: 3, run_count: 145, success_rate: 94.5, avg_duration_seconds: 45, last_run_at: new Date().toISOString(), created_at: new Date().toISOString() },
-      { id: '2', name: 'Phishing Email Analysis', description: 'Extract IOCs and block malicious domains', category: 'enrichment', trigger_type: 'manual', status: 'active', version: 2, run_count: 87, success_rate: 98.2, avg_duration_seconds: 120, last_run_at: new Date().toISOString(), created_at: new Date().toISOString() },
-      { id: '3', name: 'Vulnerability Remediation', description: 'Create JIRA tickets for critical vulnerabilities', category: 'remediation', trigger_type: 'schedule', status: 'active', version: 1, run_count: 52, success_rate: 100, avg_duration_seconds: 15, last_run_at: new Date().toISOString(), created_at: new Date().toISOString() },
-      { id: '4', name: 'User Account Lockout', description: 'Lock account and notify security team', category: 'containment', trigger_type: 'alert', status: 'draft', version: 1, run_count: 0, created_at: new Date().toISOString() },
-    ];
-  },
-  getActions: async (): Promise<SoarAction[]> => {
-    return [
-      { id: '1', name: 'ip_lookup', display_name: 'IP Lookup', description: 'Get IP reputation and geolocation', category: 'enrichment', action_type: 'builtin', risk_level: 'low', requires_approval: false },
-      { id: '2', name: 'domain_lookup', display_name: 'Domain Lookup', description: 'Get domain WHOIS and DNS info', category: 'enrichment', action_type: 'builtin', risk_level: 'low', requires_approval: false },
-      { id: '3', name: 'block_ip', display_name: 'Block IP', description: 'Block IP at firewall', category: 'containment', action_type: 'api', risk_level: 'high', requires_approval: true },
-      { id: '4', name: 'disable_user', display_name: 'Disable User Account', description: 'Disable user in Active Directory', category: 'containment', action_type: 'api', risk_level: 'high', requires_approval: true },
-      { id: '5', name: 'send_email', display_name: 'Send Email', description: 'Send notification email', category: 'notification', action_type: 'builtin', risk_level: 'low', requires_approval: false },
-      { id: '6', name: 'send_slack', display_name: 'Send Slack Message', description: 'Send message to Slack channel', category: 'notification', action_type: 'builtin', risk_level: 'low', requires_approval: false },
-      { id: '7', name: 'create_ticket', display_name: 'Create Ticket', description: 'Create ticket in JIRA/ServiceNow', category: 'remediation', action_type: 'api', risk_level: 'low', requires_approval: false },
-      { id: '8', name: 'http_request', display_name: 'HTTP Request', description: 'Make HTTP API call', category: 'utility', action_type: 'builtin', risk_level: 'medium', requires_approval: false },
-    ];
-  },
-  getRuns: async (): Promise<SoarRun[]> => {
-    return [
-      { id: '1', playbook_id: '1', playbook_name: 'Malicious IP Response', trigger_type: 'alert', status: 'completed', current_step: 5, total_steps: 5, started_at: new Date().toISOString(), completed_at: new Date().toISOString(), duration_seconds: 42, initiated_by: 'Alert: Malicious IP Detected' },
-      { id: '2', playbook_id: '2', playbook_name: 'Phishing Email Analysis', trigger_type: 'manual', status: 'running', current_step: 3, total_steps: 7, started_at: new Date().toISOString(), initiated_by: 'admin@example.com' },
-      { id: '3', playbook_id: '1', playbook_name: 'Malicious IP Response', trigger_type: 'alert', status: 'waiting_approval', current_step: 4, total_steps: 5, started_at: new Date().toISOString(), initiated_by: 'Alert: Suspicious Traffic' },
-      { id: '4', playbook_id: '3', playbook_name: 'Vulnerability Remediation', trigger_type: 'schedule', status: 'failed', current_step: 2, total_steps: 3, started_at: new Date().toISOString(), completed_at: new Date().toISOString(), duration_seconds: 8, initiated_by: 'Scheduled: Daily 9AM' },
-    ];
-  },
-  getApprovals: async (): Promise<SoarApproval[]> => {
-    return [
-      { id: '1', run_id: '3', playbook_name: 'Malicious IP Response', step_name: 'Block IP at Firewall', status: 'pending', required_approvals: 1, current_approvals: 0, created_at: new Date().toISOString() },
-    ];
-  },
-  getIntegrations: async (): Promise<SoarIntegration[]> => {
-    return [
-      { id: '1', name: 'Splunk SIEM', integration_type: 'siem', vendor: 'splunk', status: 'connected', last_test_at: new Date().toISOString() },
-      { id: '2', name: 'JIRA', integration_type: 'ticketing', vendor: 'atlassian', status: 'connected', last_test_at: new Date().toISOString() },
-      { id: '3', name: 'Slack', integration_type: 'notification', vendor: 'slack', status: 'connected', last_test_at: new Date().toISOString() },
-      { id: '4', name: 'Palo Alto Firewall', integration_type: 'firewall', vendor: 'palo_alto', status: 'disconnected' },
-    ];
-  },
-  runPlaybook: async (id: string): Promise<void> => {
-    await new Promise(resolve => setTimeout(resolve, 500));
-  },
-  approveStep: async (approvalId: string): Promise<void> => {
-    await new Promise(resolve => setTimeout(resolve, 500));
-  },
-  rejectStep: async (approvalId: string): Promise<void> => {
-    await new Promise(resolve => setTimeout(resolve, 500));
-  }
-};
+import { soarAPI, SoarPlaybook, SoarAction, SoarRun, SoarApproval, SoarIntegration } from '../services/api';
 
 const SoarPlaybooksPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'playbooks' | 'actions' | 'runs' | 'approvals' | 'integrations'>('playbooks');
@@ -158,11 +44,11 @@ const SoarPlaybooksPage: React.FC = () => {
     try {
       setLoading(true);
       const [playbooksData, actionsData, runsData, approvalsData, integrationsData] = await Promise.all([
-        soarAPI.getPlaybooks(),
-        soarAPI.getActions(),
-        soarAPI.getRuns(),
-        soarAPI.getApprovals(),
-        soarAPI.getIntegrations()
+        soarAPI.getPlaybooks().then(res => res.data).catch(() => []),
+        soarAPI.getActions().then(data => data).catch(() => []),
+        soarAPI.getRuns().then(res => res.data).catch(() => []),
+        soarAPI.getApprovals().then(res => res.data).catch(() => []),
+        soarAPI.getIntegrations().then(data => data).catch(() => [])
       ]);
       setPlaybooks(playbooksData);
       setActions(actionsData);
@@ -170,6 +56,7 @@ const SoarPlaybooksPage: React.FC = () => {
       setApprovals(approvalsData);
       setIntegrations(integrationsData);
     } catch (error) {
+      console.error('Failed to load SOAR data:', error);
       toast.error('Failed to load SOAR data');
     } finally {
       setLoading(false);
@@ -183,26 +70,29 @@ const SoarPlaybooksPage: React.FC = () => {
       toast.success('Playbook started successfully');
       loadData();
     } catch (error) {
+      console.error('Failed to start playbook:', error);
       toast.error('Failed to start playbook');
     }
   };
 
   const handleApprove = async (approval: SoarApproval) => {
     try {
-      await soarAPI.approveStep(approval.id);
+      await soarAPI.approveStep(approval.id, 'approved');
       toast.success('Step approved');
       loadData();
     } catch (error) {
+      console.error('Failed to approve step:', error);
       toast.error('Failed to approve step');
     }
   };
 
   const handleReject = async (approval: SoarApproval) => {
     try {
-      await soarAPI.rejectStep(approval.id);
+      await soarAPI.rejectStep(approval.id, 'Manual rejection');
       toast.success('Step rejected');
       loadData();
     } catch (error) {
+      console.error('Failed to reject step:', error);
       toast.error('Failed to reject step');
     }
   };
