@@ -94,6 +94,13 @@ pub mod sca;
 pub mod threat_modeling;
 pub mod yellow_team;
 pub mod ot_ics;
+// Phase 4 Sprint 2-10 database modules
+pub mod investigation;
+pub mod threat_intel_enhanced;
+pub mod cti_automation;
+pub mod patch_management;
+pub mod orchestration;
+pub mod predictive_security;
 
 // Core imports used by this module
 use sqlx::sqlite::SqlitePool;
@@ -250,6 +257,14 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     plugin_marketplace::init_tables(pool).await?;
     threat_feeds::init_tables(pool).await?;
     bi::init_tables(pool).await?;
+
+    // Run Phase 4 migrations (Sprints 2-10)
+    investigation::run_migrations(pool).await?;
+    threat_intel_enhanced::init_tables(pool).await?;
+    cti_automation::init_tables(pool).await?;
+    patch_management::init_tables(pool).await?;
+    orchestration::init_tables(pool).await?;
+    predictive_security::init_tables(pool).await?;
 
     Ok(())
 }

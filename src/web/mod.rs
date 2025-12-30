@@ -656,6 +656,12 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .configure(api::ot_ics::configure)
                     // IoT (Internet of Things) Security endpoints
                     .configure(api::iot::configure)
+                    // Phase 4 Sprint 2-10 API endpoints
+                    .configure(api::investigation_api::config)
+                    .configure(api::cti_automation_api::config)
+                    .configure(api::patch_management_api::config)
+                    .configure(api::orchestration_api::config)
+                    .configure(api::predictive_api::config)
                     // Start workflow from vulnerability
                     .route("/vulnerabilities/{id}/workflow", web::post().to(api::workflows::start_workflow))
                     // SSO Admin endpoints

@@ -111,6 +111,12 @@ pub mod netflow;
 pub mod sca;
 pub mod ot_ics;
 pub mod iot;
+// Phase 4 Sprint 2-10 API modules
+pub mod investigation_api;
+pub mod cti_automation_api;
+pub mod patch_management_api;
+pub mod orchestration_api;
+pub mod predictive_api;
 
 #[cfg(test)]
 mod tests;

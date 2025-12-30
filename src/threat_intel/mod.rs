@@ -18,6 +18,12 @@ pub mod shodan;
 pub mod stix;
 pub mod threat_actors;
 pub mod types;
+// Phase 4 Sprint 3: Enhanced Threat Intelligence Platform
+pub mod aggregation;
+pub mod correlation;
+pub mod scoring;
+pub mod dissemination;
+pub mod lifecycle;
 
 use anyhow::Result;
 use chrono::Utc;

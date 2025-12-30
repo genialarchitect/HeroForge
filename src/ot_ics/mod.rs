@@ -12,6 +12,10 @@ pub mod discovery;
 pub mod protocols;
 pub mod fingerprint;
 pub mod purdue;
+// Phase 4 Sprint 9: Enhanced OT/ICS Security
+pub mod threat_detection;
+pub mod compliance;
+pub mod safety_monitoring;
 
 pub use types::*;
 pub use discovery::*;

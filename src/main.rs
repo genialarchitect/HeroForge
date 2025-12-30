@@ -74,6 +74,12 @@ mod exploit_research;
 mod ot_ics;
 mod webhooks;
 mod workflows;
+// Phase 4 Sprint 2-10
+mod investigation;
+mod cti_automation;
+mod patch_management;
+mod orchestration;
+mod predictive_security;
 
 use types::{OutputFormat, ScanConfig, ScanType};
 
