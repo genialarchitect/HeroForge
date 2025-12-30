@@ -269,10 +269,7 @@ const Header: React.FC = () => {
   // PURPLE TEAM - Combined Offense/Defense Validation
   const purpleTeamItems: NavItem[] = [
     { to: '/purple-team', icon: <Eye className="h-4 w-4" />, label: 'Purple Team Dashboard' },
-    { to: '/purple-team/live-exercises', icon: <Play className="h-4 w-4" />, label: 'Live Exercises' },
-    { to: '/purple-team/attack-library', icon: <Target className="h-4 w-4" />, label: 'Attack Library' },
     { to: '/attack-paths', icon: <Network className="h-4 w-4" />, label: 'Attack Paths' },
-    { to: '/purple-team/coverage', icon: <ShieldCheck className="h-4 w-4" />, label: 'Detection Coverage' },
   ];
 
   // YELLOW TEAM - DevSecOps / Security Architecture
@@ -286,13 +283,10 @@ const Header: React.FC = () => {
     { to: '/api-security', icon: <FileSearch className="h-4 w-4" />, label: 'API Security' },
   ];
 
-  // ORANGE TEAM - Security Awareness & Training
+  // ORANGE TEAM - Security Awareness & Training (has internal tabs)
   const orangeTeamItems: NavItem[] = [
-    { to: '/orange-team', icon: <GraduationCap className="h-4 w-4" />, label: 'Awareness Dashboard' },
-    { to: '/orange-team/campaigns', icon: <Target className="h-4 w-4" />, label: 'Phishing Campaigns' },
-    { to: '/orange-team/training', icon: <BookOpenCheck className="h-4 w-4" />, label: 'Training Content' },
-    { to: '/orange-team/gamification', icon: <Sparkles className="h-4 w-4" />, label: 'Gamification' },
-    { to: '/orange-team/analytics', icon: <BarChart3 className="h-4 w-4" />, label: 'Analytics' },
+    { to: '/orange-team', icon: <GraduationCap className="h-4 w-4" />, label: 'Security Awareness' },
+    { to: '/phishing', icon: <Target className="h-4 w-4" />, label: 'Phishing Campaigns' },
   ];
 
   // GREEN TEAM - SOAR / Security Automation & AI
@@ -317,14 +311,10 @@ const Header: React.FC = () => {
     { to: '/reports', icon: <FileText className="h-4 w-4" />, label: 'Reports' },
   ];
 
-  // ANALYTICS - Cross-Team Insights & Context
+  // ANALYTICS - Cross-Team Insights & Context (TODO: implement context pages)
   const analyticsItems: NavItem[] = [
-    { to: '/analytics', icon: <BarChart3 className="h-4 w-4" />, label: 'Analytics Dashboard' },
-    { to: '/context/users', icon: <UserCheck className="h-4 w-4" />, label: 'User Security Context' },
-    { to: '/context/assets', icon: <Server className="h-4 w-4" />, label: 'Asset Security Context' },
-    { to: '/context/high-risk', icon: <AlertCircle className="h-4 w-4" />, label: 'High-Risk Entities' },
-    { to: '/context/events', icon: <Activity className="h-4 w-4" />, label: 'Cross-Team Events' },
-    { to: '/topology', icon: <Network className="h-4 w-4" />, label: 'Network Topology' },
+    { to: '/dns-analytics', icon: <BarChart3 className="h-4 w-4" />, label: 'DNS Analytics' },
+    { to: '/netflow-analysis', icon: <Activity className="h-4 w-4" />, label: 'NetFlow Analysis' },
   ];
 
   // CRM - Customer Relationship Management
