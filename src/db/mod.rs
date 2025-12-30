@@ -101,6 +101,13 @@ pub mod cti_automation;
 pub mod patch_management;
 pub mod orchestration;
 pub mod predictive_security;
+// Phase 4 Sprint 11-18 database modules
+pub mod web3;
+pub mod emerging_tech;
+pub mod ml_advanced;
+pub mod performance;
+pub mod analytics_engine;
+pub mod intelligence_platform;
 
 // Core imports used by this module
 use sqlx::sqlite::SqlitePool;
@@ -265,6 +272,14 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     patch_management::init_tables(pool).await?;
     orchestration::init_tables(pool).await?;
     predictive_security::init_tables(pool).await?;
+
+    // Run Phase 4 migrations (Sprints 11-18)
+    web3::init_tables(pool).await?;
+    emerging_tech::init_tables(pool).await?;
+    ml_advanced::init_tables(pool).await?;
+    performance::init_tables(pool).await?;
+    analytics_engine::init_tables(pool).await?;
+    intelligence_platform::init_tables(pool).await?;
 
     Ok(())
 }

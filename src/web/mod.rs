@@ -662,6 +662,13 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .configure(api::patch_management_api::config)
                     .configure(api::orchestration_api::config)
                     .configure(api::predictive_api::config)
+                    // Phase 4 Sprint 11-18 API routes
+                    .configure(api::web3::configure)
+                    .configure(api::emerging_tech::configure)
+                    .configure(api::ml_advanced::configure)
+                    .configure(api::performance::configure)
+                    .configure(api::analytics_engine::configure)
+                    .configure(api::intelligence_platform::configure)
                     // Start workflow from vulnerability
                     .route("/vulnerabilities/{id}/workflow", web::post().to(api::workflows::start_workflow))
                     // SSO Admin endpoints

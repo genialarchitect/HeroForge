@@ -117,6 +117,13 @@ pub mod cti_automation_api;
 pub mod patch_management_api;
 pub mod orchestration_api;
 pub mod predictive_api;
+// Phase 4 Sprint 11-18 API modules
+pub mod web3;
+pub mod emerging_tech;
+pub mod ml_advanced;
+pub mod performance;
+pub mod analytics_engine;
+pub mod intelligence_platform;
 
 #[cfg(test)]
 mod tests;

@@ -80,6 +80,12 @@ mod cti_automation;
 mod patch_management;
 mod orchestration;
 mod predictive_security;
+// Phase 4 Sprint 11-18
+mod web3;
+mod emerging_tech;
+mod performance;
+mod analytics_engine;
+mod intelligence_platform;
 
 use types::{OutputFormat, ScanConfig, ScanType};
 

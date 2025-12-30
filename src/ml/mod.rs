@@ -6,6 +6,10 @@ use anyhow::Result;
 pub mod models;
 pub mod threat_prediction;
 pub mod auto_remediation;
+// Phase 4 Sprint 13-15: Advanced ML capabilities
+pub mod xai;
+pub mod mlops;
+pub mod federated;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MLModel {
