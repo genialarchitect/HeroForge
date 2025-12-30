@@ -6001,3 +6001,119 @@ export const soarAPI = {
 };
 
 export default api;
+
+// ============================================================================
+// AI Security API
+// ============================================================================
+
+export interface AIModel {
+  id: string;
+  name: string;
+  model_type: string;
+  purpose: string;
+  status: 'training' | 'active' | 'inactive' | 'failed';
+  accuracy: number;
+  precision_score?: number;
+  recall_score?: number;
+  f1_score?: number;
+  trained_at?: string;
+  last_used_at?: string;
+  created_at: string;
+}
+
+export interface PrioritizedAlert {
+  id: string;
+  entity_id: string;
+  priority: string;
+  score: number;
+  confidence: number;
+  factors: string[];
+  recommendations: string[];
+  created_at: string;
+}
+
+export interface AnomalyDetection {
+  id: string;
+  entity_type: 'user' | 'host' | 'service';
+  entity_id: string;
+  anomaly_type: string;
+  severity: string;
+  score: number;
+  detected_at: string;
+  resolved: boolean;
+}
+
+export interface LLMTarget {
+  id: string;
+  name: string;
+  endpoint: string;
+  model_type: string;
+  created_at: string;
+}
+
+export interface LLMTestRun {
+  id: string;
+  target_name: string;
+  target_type: string;
+  test_type: string;
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+  tests_run: number;
+  vulnerabilities_found: number;
+  started_at?: string;
+  completed_at?: string;
+  created_at: string;
+}
+
+export interface LLMTestCase {
+  id: string;
+  category: string;
+  name: string;
+  description?: string;
+  payload: string;
+  severity: string;
+  enabled: boolean;
+}
+
+export interface AIDashboard {
+  total_predictions: number;
+  prediction_accuracy: number;
+  active_models: number;
+  llm_tests_run: number;
+  llm_vulns_found: number;
+  anomalies_detected: number;
+  false_positive_rate: number;
+}
+
+export const aiSecurityAPI = {
+  // Dashboard
+  getDashboard: () => api.get<AIDashboard>('/ai-security/dashboard'),
+  getRecommendations: () => api.get('/ai-security/recommendations'),
+
+  // ML Models
+  getModels: () => api.get<AIModel[]>('/ai-security/models'),
+  getModel: (id: string) => api.get<AIModel>(`/ai-security/models/${id}`),
+  trainModel: (id: string) => api.post(`/ai-security/models/${id}/train`),
+  getModelMetrics: (id: string) => api.get(`/ai-security/models/${id}/metrics`),
+
+  // Predictions & Alerts
+  prioritizeAlert: (data: any) => api.post<PrioritizedAlert>('/ai-security/alerts/prioritize', data),
+  batchPrioritizeAlerts: (data: any[]) => api.post<PrioritizedAlert[]>('/ai-security/alerts/prioritize/batch', data),
+
+  // Anomaly Detection
+  detectAnomalies: (data: { metric_name: string; current_value: number; previous_value?: number; historical_values?: number[] }) =>
+    api.post('/ai-security/anomaly/detect', data),
+
+  // LLM Security Testing
+  startLLMTest: (data: { target_name: string; target_type: string; target_config: any; test_type: string; customer_id?: string; engagement_id?: string }) =>
+    api.post<LLMTestRun>('/ai-security/llm-security/test', data),
+  getLLMTests: (params?: { limit?: number; offset?: number }) =>
+    api.get<LLMTestRun[]>('/ai-security/llm-security/tests', { params }),
+  getLLMTest: (id: string) => api.get<LLMTestRun>(`/ai-security/llm-security/tests/${id}`),
+  cancelLLMTest: (id: string) => api.post(`/ai-security/llm-security/tests/${id}/cancel`),
+
+  // Test Cases
+  getTestCases: (params?: { category?: string; enabled_only?: boolean }) =>
+    api.get<LLMTestCase[]>('/ai-security/llm-security/test-cases', { params }),
+  createTestCase: (data: { category: string; name: string; description?: string; payload: string; expected_behavior?: string; severity: string; cwe_id?: string }) =>
+    api.post('/ai-security/llm-security/test-cases', data),
+};
