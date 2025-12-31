@@ -237,7 +237,7 @@ const SalesPage: React.FC = () => {
               <a href="#pricing" className="text-gray-300 hover:text-white transition-colors">Pricing</a>
               <a href="#faq" className="text-gray-300 hover:text-white transition-colors">FAQ</a>
               <Link
-                to="/"
+                to="/login"
                 className="bg-cyan-600 hover:bg-cyan-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
               >
                 Sign In

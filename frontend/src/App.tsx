@@ -163,7 +163,7 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
 
   if (!isAuthenticated) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/login" replace />;
   }
 
   return <>{children}</>;
@@ -175,7 +175,7 @@ const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const isAdmin = useAuthStore((state) => state.isAdmin);
 
   if (!isAuthenticated) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/login" replace />;
   }
 
   if (!isAdmin()) {
@@ -220,8 +220,8 @@ function App() {
         <BrowserRouter>
           <Suspense fallback={<PageLoader />}>
             <Routes>
-          <Route path="/" element={<LoginPage />} />
-          <Route path="/sales" element={<SalesPage />} />
+          <Route path="/" element={<SalesPage />} />
+          <Route path="/login" element={<LoginPage />} />
           <Route path="/investors" element={<InvestorPage />} />
           <Route path="/pitch" element={<PitchDeckPage />} />
           <Route path="/financials" element={<FinancialModelPage />} />
