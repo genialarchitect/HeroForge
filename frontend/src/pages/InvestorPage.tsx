@@ -534,7 +534,7 @@ const InvestorPage: React.FC = () => {
             <a href="mailto:investors@genialarchitect.io" className="text-gray-400 hover:text-white text-sm">Contact</a>
           </div>
           <p className="text-gray-500 text-sm mt-4">
-            &copy; {new Date().getFullYear()} Genial Architect. All rights reserved.
+            &copy; 2025 Genial Architect Cybersecurity Research Associates. All rights reserved.
           </p>
         </div>
       </footer>

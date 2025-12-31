@@ -58,7 +58,7 @@ const LoginPage: React.FC = () => {
             <Link to="/legal/acceptable-use" className="hover:text-primary transition-colors">Acceptable Use</Link>
           </div>
           <p className="text-xs text-slate-400 dark:text-slate-500">
-            &copy; {new Date().getFullYear()} Genial Architect
+            &copy; 2025 Genial Architect Cybersecurity Research Associates. All rights reserved.
           </p>
         </div>
       </div>

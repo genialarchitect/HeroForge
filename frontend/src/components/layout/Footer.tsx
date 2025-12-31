@@ -11,7 +11,7 @@ const Footer: React.FC = () => {
           <div className="flex items-center gap-2">
             <Shield className="w-5 h-5 text-primary" />
             <span className="text-sm text-gray-600 dark:text-gray-400">
-              &copy; {new Date().getFullYear()} Genial Architect. All rights reserved.
+              &copy; 2025 Genial Architect Cybersecurity Research Associates. All rights reserved.
             </span>
           </div>
 

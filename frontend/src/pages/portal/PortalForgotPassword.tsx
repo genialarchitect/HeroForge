@@ -104,7 +104,7 @@ export default function PortalForgotPassword() {
         </div>
 
         <p className="text-center text-xs text-gray-500">
-          Powered by Genial Architect Platform
+          &copy; 2025 Genial Architect Cybersecurity Research Associates. All rights reserved.
         </p>
       </div>
     </div>
