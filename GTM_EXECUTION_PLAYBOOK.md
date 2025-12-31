@@ -1,402 +1,596 @@
-# HeroForge Go-to-Market Execution Playbook
+# HeroForge Pre-Seed GTM Execution Playbook
 
-**Version:** 1.0
-**Last Updated:** December 30, 2025
-**Owner:** CEO / Head of Growth
-
----
-
-## Quick Reference: 90-Day Sprint Plan
-
-| Week | Focus | Key Deliverables | Success Metrics |
-|------|-------|------------------|-----------------|
-| **1-2** | Foundation | Investor deck, financial model, SOC2 kickoff | Deck complete, audit engaged |
-| **3-4** | Content Engine | 10 blog posts, 5 YouTube videos, Reddit presence | 1,000+ organic visitors |
-| **5-6** | Freemium Funnel | Optimize trial signup, onboard 1st ISR | 50 trial signups/week |
-| **7-8** | Paid Acquisition | LinkedIn ads, Google ads, track CAC | $500 CAC for Professional tier |
-| **9-10** | MSP Partnerships | Identify 10 MSP partners, co-marketing materials | 3 signed partnership agreements |
-| **11-12** | Enterprise PoC | Close 1st Enterprise deal, refine sales process | $50K+ ACV closed |
+**Version:** 2.0 (Pre-Seed)
+**Last Updated:** December 31, 2025
+**Owner:** Founder
 
 ---
 
-## 1. Customer Acquisition Channels (Prioritized)
+## Mission Statement
 
-### Channel #1: Content Marketing + SEO (Freemium Funnel)
+**Get 100 users in 6 months. Prove the product works. Build in public.**
 
-**Target:** Freelance pentesters, small consultancies
-**Cost:** $2K/month (freelance writers + tools)
-**Timeline:** Months 1-6 (ongoing)
+This isn't a traditional GTM playbook with big budgets and sales teams. This is a grassroots, community-first approach for a solo founder with limited cash but unlimited hustle and 20 years of domain expertise.
+
+---
+
+## Quick Reference: 6-Month Sprint Plan (Solo Founder)
+
+| Month | Focus | Key Actions | Success Metric |
+|-------|-------|-------------|----------------|
+| **1** | Product Polish | Fix critical bugs, improve onboarding, create demo video | 10 beta testers |
+| **2** | Community Launch | Reddit launch, YouTube tutorials, Twitter engagement | 50 free signups |
+| **3** | First Revenue | Convert beta users, testimonials, case studies | 10 paying users @ $99/mo |
+| **4** | Content Flywheel | Blog posts, more YouTube, answer Stack Overflow questions | 50 paying users |
+| **5** | Word of Mouth | Customer referrals, community building, Slack/Discord | 75 paying users |
+| **6** | Fundraise Prep | Pitch deck finalized, demo polished, investor intros | 100 paying users, $10K MRR |
+
+---
+
+## 1. Founding Principles
+
+### Community Over Customers
+
+**Philosophy:** Treat early users as partners, not transactions
+- Share roadmap publicly
+- Take feature requests seriously
+- Give credit where it's due (name them in release notes)
+- Build in public (share wins and losses on Twitter)
+
+### Authentic Over Polished
+
+**Philosophy:** Leverage veteran founder story and practitioner credibility
+- Don't pretend to be a big company
+- Be honest: "Solo founder, built in 3 weeks with AI"
+- Show the journey: bugs, fixes, learning
+- InfoSec community values authenticity
+
+### Free Value First
+
+**Philosophy:** Give away 90% of value for free, charge for convenience
+- Free tier: Full scanning capabilities, unlimited scans
+- Paid tier: PDF reports, customer portal, CRM, collaboration
+- Free users become evangelists if you solve their problem
+
+---
+
+## 2. The First 100 Users Strategy
+
+### Phase 1: Beta Launch (Month 1)
+**Goal: 10 beta testers**
+
+**Target audience:**
+- Security researchers you know personally
+- InfoSec Twitter followers
+- Reddit lurkers in r/netsec, r/AskNetsec
 
 **Execution:**
+1. **Personal outreach** (Days 1-7)
+   - DM 50 people in your network
+   - Message: "I built a pentesting tool in 3 weeks. Need honest feedback. Free forever for early testers."
+   - Goal: 10 yes responses
 
-1. **Blog (2x per week)**
-   - Topics: "How to automate pentest reporting", "SOC2 compliance for consultancies", "AI in pentesting 2025"
-   - SEO keywords: "pentesting software", "vulnerability management for consultancies", "automated security testing"
-   - Tools: Ahrefs ($99/mo), Clearscope ($170/mo)
+2. **Fix critical bugs** (Days 8-30)
+   - Watch beta testers use the product (Zoom screen share)
+   - Fix showstoppers immediately
+   - Polish onboarding flow
 
-2. **YouTube (1x per week)**
-   - Tutorials: HeroForge features, pentesting techniques, customer success stories
-   - Format: 5-10 min videos, screen recordings + talking head
-   - Growth: Optimize titles/thumbnails, CTAs to free trial
+3. **Collect testimonials** (Days 20-30)
+   - Ask: "What's one thing HeroForge does better than your current tool?"
+   - Get permission to use quotes
+   - Bonus: Screenshot of them using it
 
-3. **Reddit/Hacker News**
-   - Communities: r/netsec, r/AskNetsec, r/cybersecurity
-   - Frequency: 2x per week (valuable content, not spam)
-   - Strategy: Answer questions, share blog posts, AMA sessions
-
-**KPIs:**
-- 5,000 monthly blog visitors (Month 6)
-- 1,000 YouTube subscribers (Month 6)
-- 20% trial signup conversion from organic traffic
-
----
-
-### Channel #2: Paid Acquisition (LinkedIn + Google Ads)
-
-**Target:** Professional tier (security consultancies)
-**Cost:** $10K/month ad spend
-**Timeline:** Months 3-12
-
-**Execution:**
-
-1. **LinkedIn Ads**
-   - Targeting: Job titles ("penetration tester", "security consultant", "CISO"), company size (2-50 employees)
-   - Ad types: Sponsored content (blog posts), lead gen forms (free trial), video ads (product demo)
-   - Budget: $5K/month
-   - Expected CPC: $8-12
-   - Expected conversion: 5% (trial signup) → 20% (paid)
-
-2. **Google Ads**
-   - Keywords: "pentesting software", "vulnerability management tool", "security testing platform"
-   - Ad copy: "50-70% cheaper than Tenable. 14-day free trial. No credit card required."
-   - Landing pages: Dedicated for each keyword cluster (customize messaging)
-   - Budget: $5K/month
-   - Expected CPC: $15-25
-   - Expected conversion: 8% (trial signup) → 20% (paid)
-
-**KPIs:**
-- $500 CAC (all-in: ad spend + trial nurturing)
-- 50 Professional tier signups/month (Month 6)
-- 3:1 LTV:CAC ratio minimum
+**Success metrics:**
+- ✅ 10 active beta users
+- ✅ <5 critical bugs remaining
+- ✅ 3-5 written testimonials
+- ✅ 2-3 video testimonials
 
 ---
 
-### Channel #3: MSP Partnership Program
+### Phase 2: Reddit Launch (Month 2)
+**Goal: 50 free signups**
 
-**Target:** Team tier (MSPs with 10+ clients)
-**Cost:** $3K/month (partner manager time + co-marketing)
-**Timeline:** Months 5-12
+**Strategy: Authentic storytelling, not self-promotion**
 
-**Execution:**
+**Reddit post template:**
 
-1. **Partner Identification**
-   - Sources: CompTIA member list, ASCII Group, Datto/ConnectWise partner directories
-   - Criteria: 10-50 employees, 50+ clients, existing security practice
-   - Outreach: Email + LinkedIn (warm intro via existing customers if possible)
+**Title:** "I'm a 20-year SIGINT analyst. I built a comprehensive pentesting platform in 3 weeks with AI. Here's what I learned."
 
-2. **Partner Program Structure**
-   - **Tier 1 (Reseller):** 20% recurring commission, co-branded materials, joint webinars
-   - **Tier 2 (Referral):** 10% one-time commission, access to customer portal demo
-   - **Benefits:** Dedicated Slack channel, monthly product roadmap updates, priority support
+**Content structure:**
+```
+[Opening: Who I am]
+- 20 years Signals Intelligence
+- 100% disabled Army veteran
+- Father, mission-driven
 
-3. **Co-Marketing**
-   - Joint webinars: "How to Add Pentesting to Your MSP Stack" (partner presents with us)
-   - Case studies: Feature partner's client success (anonymized)
-   - Sales enablement: Provide battle cards, ROI calculators, demo scripts
+[Problem: Why I built this]
+- Enterprise security tools are $50K+/year
+- Small consultancies can't afford them
+- Security shouldn't be a luxury
 
-**KPIs:**
-- 10 active partners by Month 12
-- 30 customer referrals from partners (Month 12)
-- $3,000 CAC (partner-sourced deals)
+[Solution: What I built]
+- All-in-one pentesting platform
+- Network, web app, cloud, container security
+- Built in 3 weeks with Claude Code (AI pair programming)
 
----
+[Tech stack]
+- Backend: Rust, Tokio, Actix-web
+- Frontend: React, TypeScript, Vite
+- Database: SQLite with optional encryption
 
-### Channel #4: Enterprise Outbound Sales
+[Lessons learned]
+- AI lets solo founders move at VC-backed startup speed
+- Domain expertise > engineering background
+- Building in public creates accountability
 
-**Target:** Enterprise tier (Fortune 2000 CISOs)
-**Cost:** $200K/year (2x field AEs + SE support)
-**Timeline:** Months 7-24
+[The ask]
+- Looking for 100 beta users
+- Free forever for early adopters
+- Link: https://heroforge.genialarchitect.io
+```
 
-**Execution:**
+**Subreddits to target:**
+- r/netsec (340K members) - post on weekday morning
+- r/programming (6M members) - focus on AI development story
+- r/AskNetsec (80K members) - answer pentesting questions, mention tool casually
+- r/cybersecurity (500K members) - focus on democratizing security
 
-1. **Account-Based Marketing (ABM)**
-   - Target accounts: 100 Fortune 2000 companies (prioritize regulated industries: finance, healthcare, retail)
-   - Research: Use LinkedIn Sales Navigator, ZoomInfo for contact discovery
-   - Outreach cadence: 7-touch sequence (email, LinkedIn, phone, video)
+**Engagement rules:**
+1. Answer EVERY comment within 1 hour (first 24 hours)
+2. Be humble: "It's far from perfect, but I'm iterating fast"
+3. Offer to hop on Zoom calls with anyone interested
+4. Don't delete negative feedback—respond thoughtfully
 
-2. **Proof of Concept (PoC) Process**
-   - Duration: 30 days
-   - Scope: Network scan (500 hosts), web app scan (5 apps), compliance report (SOC2)
-   - Success criteria: Find 10+ high-severity vulnerabilities, deliver executive dashboard
-   - Pricing: Free PoC (loss leader to close $50K+ annual deal)
-
-3. **Sales Cycle**
-   - Average: 90-120 days
-   - Stages: Outreach → Discovery → PoC → Proposal → Negotiation → Close
-   - Close rate: 20% (1 in 5 PoCs convert to paid)
-
-**KPIs:**
-- 10 Enterprise deals closed (Year 1)
-- $50K average contract value (ACV)
-- $25K CAC (all-in: sales salaries, SE support, travel)
-
----
-
-## 2. Pricing & Packaging Strategy
-
-### Tier Optimization
-
-| Tier | Current Price | Proposed Change | Rationale |
-|------|---------------|-----------------|-----------|
-| **Solo** | $99/month | No change | Freemium anchor, low friction |
-| **Professional** | $299/month | Test $349/month | 17% increase, still 60% cheaper than Rapid7 ($175/mo per app) |
-| **Team** | $599/month | No change | Sweet spot for MSPs, good value perception |
-| **Enterprise** | Custom | Standardize at $5K/mo base | Simplify sales process, add usage-based pricing for >500 hosts |
-
-### Feature Gating
-
-**Solo Tier (Stay Freemium-Friendly):**
-- Keep: Unlimited network scans, basic reports (JSON, CSV, Markdown)
-- Remove: PDF/HTML reports (upsell to Professional)
-- Add: 3-scan history limit (delete older scans to force upgrades)
-
-**Professional Tier (Emphasize Collaboration):**
-- Keep: Everything in Solo, plus: 5 users, scheduled scans, JIRA integration
-- Add: Slack/Teams notifications (currently in Team tier → move to Professional)
-- Upsell: Customer portal (Team tier exclusive)
-
-**Team Tier (MSP Value Prop):**
-- Keep: Customer portal (10 customers), CRM, time tracking
-- Add: White-label branding (custom domain, logo)
-- Upsell: Unlimited customer portals (Enterprise tier)
-
-### Annual Prepay Incentive
-
-- **Discount:** 15% off (11 months for the price of 12)
-- **Cash flow:** Improve runway by collecting annual contracts upfront
-- **Churn reduction:** Annual contracts have 50% lower churn vs monthly
+**Success metrics:**
+- ✅ 1,000+ upvotes (r/netsec)
+- ✅ 50+ free signups from Reddit
+- ✅ 10+ feature requests captured
+- ✅ At least one viral comment thread
 
 ---
 
-## 3. Conversion Funnel Optimization
+### Phase 3: YouTube Education (Months 2-6)
+**Goal: 1,000 subscribers, consistent traffic**
 
-### Free Trial → Paid Conversion
+**Content strategy: Tutorials, not ads**
 
-**Current Baseline (Assumed):** 15% trial-to-paid conversion
-**Target:** 25% by Month 6
+**Video series #1: "HeroForge Tutorials" (10 videos)**
+1. "Network Scanning 101: From NMAP to HeroForge"
+2. "Web App Pentesting: Finding XSS in 10 Minutes"
+3. "AWS Security Scanning Without Breaking the Bank"
+4. "Customer Portal Setup for Security Consultancies"
+5. "AI Vulnerability Prioritization: How It Works"
+6. "Compliance Automation: SOC2 Evidence Collection"
+7. "SIEM Integration: Forwarding Scan Results"
+8. "DevSecOps: CI/CD Pipeline Security Scanning"
+9. "Report Generation: From JSON to PDF"
+10. "Advanced: Custom Exploit Modules"
 
-**Tactics:**
+**Video series #2: "Build with Me" (live coding)**
+- Stream on YouTube every Friday 5pm EST
+- Build features requested by community
+- Show AI-assisted development (Claude Code in action)
+- Invite viewers to suggest features in real-time
 
-1. **Email Nurture Sequence (14 days)**
-   - Day 0: Welcome email + onboarding checklist
-   - Day 1: Video tutorial (network scan)
-   - Day 3: Feature spotlight (AI prioritization)
-   - Day 5: Case study (freelancer success story)
-   - Day 7: Webinar invite ("Master HeroForge in 30 Minutes")
-   - Day 10: Competitive comparison (vs Tenable pricing)
-   - Day 12: Urgency email ("Trial ends in 2 days")
-   - Day 14: Discount offer (20% off first month)
+**Production quality:**
+- Don't overthink it: screen recording + mic
+- 5-10 minute videos (respect viewer time)
+- Optimize titles for SEO: "How to [accomplish task] with [tool]"
+- Thumbnail: Before/after screenshot + tool logo
 
-2. **In-App Prompts**
-   - After 1st scan: "Want PDF reports? Upgrade to Professional"
-   - After 5 scans: "You're a power user! Save 15% with annual billing"
-   - After adding 2nd user: "Unlock team collaboration with Professional tier"
+**Growth tactics:**
+- Embed videos in blog posts (cross-promotion)
+- Share on Twitter with timestamps for key moments
+- Add to relevant Reddit threads (r/AskNetsec questions)
+- Create playlists for binge-watching
 
-3. **Sales-Assisted Conversion (High-Intent Users)**
-   - Trigger: User runs >10 scans in trial period
-   - Action: Inside sales rep reaches out via email + phone
-   - Offer: Personalized demo, answer questions, offer discount
-
-**KPIs:**
-- 25% trial-to-paid conversion (Month 6)
-- 10% upgrade rate from Solo → Professional (within 6 months)
-- 5% upgrade rate from Professional → Team (within 12 months)
-
----
-
-## 4. Customer Success & Retention
-
-### Onboarding (First 30 Days)
-
-**Goal:** Get users to "aha moment" (1st successful scan + actionable report) within 24 hours.
-
-**Playbook:**
-
-1. **Welcome Email (Day 0)**
-   - Subject: "Your HeroForge account is ready 🚀"
-   - Content: 3-step quick start (connect target, run scan, view report)
-   - CTA: "Run your first scan now"
-
-2. **In-App Tour (First Login)**
-   - Highlight: Scan creation, AI prioritization dashboard, PDF export
-   - Format: Interactive tooltips (use Appcues or Pendo)
-
-3. **Week 1 Check-In (Day 7)**
-   - Email from CEO: "How's your experience so far?"
-   - Ask: What's your #1 pain point with current tools?
-   - Offer: Book 15-min strategy call
-
-**KPIs:**
-- 80% of users run 1st scan within 24 hours
-- 50% of users complete onboarding checklist (5 scans, 1 PDF export, 1 compliance report)
-
-### Churn Reduction
-
-**Current Churn (Assumed):** 15%/year (industry average: 20%)
-**Target:** 10%/year by Month 12
-
-**Tactics:**
-
-1. **Proactive Outreach (Low-Usage Accounts)**
-   - Trigger: User hasn't logged in for 14 days
-   - Action: Email + phone call from customer success manager (CSM)
-   - Offer: Training session, feature walkthrough, use case guidance
-
-2. **Churn Survey (Exit Feedback)**
-   - Question: "Why are you canceling?"
-   - Options: Too expensive, missing features, switched to competitor, no longer needed
-   - Follow-up: If "too expensive," offer 20% discount; if "missing features," schedule product feedback call
-
-3. **Win-Back Campaign (Churned Customers)**
-   - Timing: 60 days after cancellation
-   - Message: "We've added [new feature you requested]. Come back and get 1 month free."
-   - Target: 10% win-back rate
+**Success metrics:**
+- ✅ 10 tutorials published (Month 6)
+- ✅ 1,000 subscribers
+- ✅ 50+ signups from YouTube (tracked via UTM links)
+- ✅ Comments asking for more content
 
 ---
 
-## 5. Sales Enablement
+### Phase 4: Twitter Community Building (Months 1-6)
+**Goal: 2,000 followers, daily engagement**
 
-### Battle Cards
+**Strategy: InfoSec commentary + founder journey**
 
-**vs Tenable:**
-- **Price:** HeroForge $999/year vs Tenable $2,275/year (56% savings)
-- **Unique:** Customer portal + CRM (Tenable doesn't have)
-- **Weakness:** Tenable has stronger cloud security (AWS Inspector integration)
-- **Objection handling:** "If you need cloud-specific features, we integrate with AWS Security Hub. For consultancy management, we're the only option."
+**Content pillars:**
+1. **Daily tips** (Monday-Friday)
+   - "Today's pentesting tip: Always check for..."
+   - "Red team trick: Use X to bypass Y"
+   - "Blue team defense: Monitor Z to detect..."
 
-**vs Qualys:**
-- **Price:** Transparent pricing vs Qualys per-target fees
-- **Unique:** AI prioritization (ML model, not just CVSS)
-- **Weakness:** Qualys has broader vulnerability coverage (more plugins)
-- **Objection handling:** "Our AI reduces false positives by 70%, so you spend less time triaging. Quality over quantity."
+2. **Founder journey** (2-3x/week)
+   - "Month 3 revenue: $3K MRR. Here's what's working..."
+   - "Rejected by 5 VCs this week. Feedback: 'Too early.' Press on."
+   - "Just shipped AI vulnerability prioritization. Beta users love it."
 
-**vs Traditional Pentesting:**
-- **Price:** $999/year vs $5K-$100K per engagement (96% savings)
-- **Unique:** Continuous testing vs periodic assessments
-- **Weakness:** Manual pentests find business logic flaws
-- **Objection handling:** "Use HeroForge for continuous scanning, hire pentesters for annual deep dives. Hybrid approach = best ROI."
+3. **Veteran angle** (1x/week)
+   - "20 years of SIGINT taught me..."
+   - "Why veteran founders have an edge in cybersecurity startups"
+   - "Military discipline meets Silicon Valley speed"
 
-### ROI Calculator (Sales Tool)
+4. **Community engagement** (daily)
+   - Retweet user successes: "Just used @HeroForge to find 15 vulns in 10 minutes!"
+   - Answer questions in InfoSec Twitter
+   - Join conversations with hashtags: #infosec, #cybersecurity, #pentesting
 
-**Inputs:**
-- Current pentesting spend ($/year)
-- Number of scans per year
-- Pentester hourly rate ($/hour)
-- Time spent on reporting (hours/scan)
+**Growth tactics:**
+- Follow 50 InfoSec practitioners/day (many follow back)
+- Comment on popular InfoSec threads (add value, don't spam)
+- Quote-tweet competitors' announcements with honest comparisons
+- Run polls: "What feature should I build next?"
 
-**Outputs:**
-- Annual savings with HeroForge
-- ROI percentage
-- Payback period (months)
-
-**Example:**
-- Consultancy spends $10K/year on Tenable + 200 hours/year on manual reporting ($20K labor @ $100/hour)
-- HeroForge: $3,588/year (Professional tier) + 25 hours/year reporting ($2,500 labor)
-- Savings: $24,000/year (80% reduction)
-- Payback: 1.8 months
+**Success metrics:**
+- ✅ 2,000 followers by Month 6
+- ✅ 10K impressions/month
+- ✅ 25+ signups from Twitter (tracked via bio link)
+- ✅ DMs from potential customers/investors
 
 ---
 
-## 6. Metrics Dashboard (Weekly Review)
+### Phase 5: GitHub Open Source Strategy (Months 2-6)
+**Goal: Developer credibility, viral discovery**
 
-| Metric | Current | Target (Month 6) | Owner |
-|--------|---------|------------------|-------|
-| **Acquisition** |  |  |  |
-| Website visitors | 1,000/mo | 10,000/mo | Marketing |
-| Trial signups | 100/mo | 500/mo | Marketing |
-| Trial-to-paid conversion | 15% | 25% | Product |
-| **Revenue** |  |  |  |
-| MRR | $83K | $150K | CEO |
-| ARR | $1M | $1.8M | CEO |
-| NRR (Net Revenue Retention) | 110% | 115% | CS |
-| **Retention** |  |  |  |
-| Monthly churn | 1.5% | 1.0% | CS |
-| Annual churn | 15% | 10% | CS |
-| **Unit Economics** |  |  |  |
-| CAC (Customer Acquisition Cost) | $300 | $500 | Marketing |
-| LTV (Lifetime Value) | $6,000 | $8,000 | Finance |
-| LTV:CAC ratio | 20:1 | 16:1 | Finance |
-| Payback period (months) | 3 | 5 | Finance |
+**Open source components:**
+1. **HeroForge CLI** (core scanning engine)
+   - Release as open source under MIT license
+   - Web UI + customer portal = paid SaaS
+   - Strategy: Give away the car, sell the gas
 
----
+2. **Integration plugins**
+   - Burp Suite extension
+   - Metasploit modules
+   - VS Code extension (SAST integration)
 
-## 7. Team Hiring Plan (12 Months)
+3. **Utility scripts**
+   - "heroforge-to-jira" (export vulns to tickets)
+   - "compliance-report-generator" (SOC2, PCI-DSS templates)
+   - "scan-diff" (compare two scan results)
 
-| Role | Hire Date | Salary | Quota/Target |
-|------|-----------|--------|--------------|
-| **Inside Sales Rep (ISR)** | Month 2 | $60K base + $40K OTE | $50K/month new MRR |
-| **Content Marketer** | Month 3 | $70K | 10K monthly blog visitors |
-| **Customer Success Manager (CSM)** | Month 5 | $65K | <10% annual churn |
-| **Field AE #1** | Month 7 | $80K base + $80K OTE | 2 Enterprise deals/quarter |
-| **Sales Engineer (SE)** | Month 9 | $120K | Support 10 PoCs/month |
-| **Field AE #2** | Month 10 | $80K base + $80K OTE | 2 Enterprise deals/quarter |
-| **Marketing Manager** | Month 12 | $100K | Own full funnel (awareness → conversion) |
+**GitHub profile optimization:**
+- Pin repositories: HeroForge CLI, top plugins
+- README: Clear value prop, installation instructions, screenshots
+- Weekly releases (show velocity)
+- Issues: Respond within 24 hours
+- Discussions: Enable for community support
 
-**Total Year 1 GTM Headcount:** 7 (1 ISR, 2 AEs, 1 SE, 1 CSM, 2 Marketing)
+**Hacker News strategy:**
+- "Show HN: HeroForge – Open-source pentesting platform (built in 3 weeks with AI)"
+- Post on Tuesday 8am PST (best time for Show HN)
+- Be active in comments for first 2 hours
 
----
-
-## 8. Budget Allocation (Series A Use of Funds - GTM Portion)
-
-**Total GTM Budget:** $1.8M (30% of $6M raise)
-
-| Category | Amount | % | Details |
-|----------|--------|---|---------|
-| **Sales Team** | $800K | 44% | 2 AEs ($160K), 1 SE ($120K), 1 ISR ($100K), 1 CSM ($65K), tools ($40K), travel ($15K) |
-| **Marketing** | $600K | 33% | Content marketer ($70K), marketing manager ($100K), ads ($240K), tools/events ($190K) |
-| **Partner Program** | $200K | 11% | Partner manager ($80K), co-marketing ($60K), commissions ($60K) |
-| **Customer Success** | $200K | 11% | Onboarding tools ($50K), CSM software ($30K), training content ($120K) |
+**Success metrics:**
+- ✅ 500+ GitHub stars
+- ✅ 10+ community contributions (PRs)
+- ✅ 25+ signups from GitHub README link
+- ✅ Front page of Hacker News (even briefly)
 
 ---
 
-## 9. Key Risks & Mitigation
+## 3. Conversion Strategy (Free → Paid)
 
-| Risk | Probability | Impact | Mitigation |
-|------|-------------|--------|------------|
-| **CAC too high (>$1,000)** | Medium | High | Double down on organic (SEO, YouTube), pause paid ads until conversion optimized |
-| **Trial-to-paid conversion <15%** | Medium | High | Implement sales-assisted conversion for high-intent users, improve onboarding |
-| **MSP partnerships don't scale** | Medium | Medium | Pivot to direct sales + referral program, offer higher commissions |
-| **Churn >20%** | Low | Critical | Proactive CS outreach, feature velocity (ship requested features), price optimization |
+### The "Aha Moment"
+
+**Goal:** Get users to value within 10 minutes
+
+**Onboarding flow:**
+1. **Welcome screen:**
+   - "Run your first scan in 3 clicks"
+   - Button: "Scan my local network" (auto-detects local subnet)
+
+2. **First scan completes:**
+   - Show results immediately (no report generation delay)
+   - Highlight: "Found 7 vulnerabilities in 2 minutes"
+
+3. **In-app prompt:**
+   - "Want a PDF report to share with your team?"
+   - "Upgrade to Professional ($99/mo) for PDF/HTML reports"
+   - Button: "Try Professional for 14 days free"
+
+### Email Nurture Sequence (14 days)
+
+**Goal:** Convert 20% of free users to paid**
+
+**Day 0: Welcome**
+- Subject: "Welcome to HeroForge 👋"
+- From: Founder's personal email
+- Content: "I'm [Name], the founder. I built this tool because... Let me know if you need help getting started."
+
+**Day 1: Tutorial**
+- Subject: "Your first scan (video tutorial)"
+- Content: 2-minute YouTube video walkthrough
+- CTA: "Run a scan now"
+
+**Day 3: Case study**
+- Subject: "How [Beta User] found 15 vulns in 10 minutes"
+- Content: Customer testimonial
+- CTA: "See what you can find"
+
+**Day 5: Upgrade prompt**
+- Subject: "You've run 5 scans 🎉 Ready for PDF reports?"
+- Content: Explain paid features (PDF, customer portal, CRM)
+- CTA: "Start 14-day trial"
+
+**Day 7: Founder call offer**
+- Subject: "15-minute strategy call?"
+- Content: "I'm doing 1-on-1 calls with early users. Want to chat about your pentesting workflow?"
+- CTA: Calendly link
+
+**Day 10: Competitive comparison**
+- Subject: "HeroForge vs Tenable (honest comparison)"
+- Content: Feature matrix, pricing comparison
+- CTA: "Try Professional free for 14 days"
+
+**Day 12: Discount**
+- Subject: "Special offer: 20% off for early adopters"
+- Content: "You're one of our first 100 users. Here's 20% off forever."
+- CTA: "Claim discount"
+
+**Day 14: Final nudge**
+- Subject: "Still using the free tier? Here's why users upgrade..."
+- Content: Top 3 reasons users upgrade (PDF reports, collaboration, customer portal)
+- CTA: "Upgrade now"
+
+**Success metrics:**
+- ✅ 20% trial-to-paid conversion
+- ✅ 50% email open rate
+- ✅ 10% click-through rate
 
 ---
 
-## 10. Next Steps (Immediate Actions)
+## 4. Pricing Strategy (Pre-Seed)
 
-### This Week:
-- [ ] Finalize investor deck (see INVESTOR_STRATEGY_2025.md)
-- [ ] Launch investor page at /investors
-- [ ] Draft 10 blog post outlines (content calendar)
-- [ ] Hire freelance writer (Upwork, $50/article)
+### Tiers
 
-### Next 2 Weeks:
-- [ ] Set up LinkedIn ads account, create first 3 ad campaigns
-- [ ] Record 5 YouTube tutorials (product walkthroughs)
-- [ ] Identify 20 target MSP partners (research phase)
-- [ ] Onboard 1st inside sales rep (post job on LinkedIn, AngelList)
+| Tier | Price | Features | Target User |
+|------|-------|----------|-------------|
+| **Free** | $0 | Unlimited scans, JSON/CSV export, 3-scan history | Security researchers, hobbyists |
+| **Solo** | $99/mo | Everything in Free + PDF/HTML reports, unlimited history, email support | Freelance pentesters |
+| **Professional** | $249/mo | Everything in Solo + 5 users, customer portal (3 customers), CRM, JIRA integration | Small consultancies (2-10 people) |
+| **Team** | $599/mo | Everything in Pro + unlimited users, unlimited customer portals, white-label branding | MSPs, larger consultancies |
 
-### Next 30 Days:
-- [ ] Hit $100K MRR ($1.2M ARR run rate)
-- [ ] 500 trial signups/month
-- [ ] 3 MSP partnership agreements signed
-- [ ] SOC2 audit kickoff (engage auditor)
+### Early Adopter Discount
+
+**First 100 paying customers:**
+- 30% off forever
+- "Founding member" badge in app
+- Named in "Thank You" section of website
+- Direct access to founder via Slack
+
+**Rationale:**
+- Incentivize early adoption
+- Build community of evangelists
+- Get testimonials and case studies
+
+**Marketing angle:**
+- "Join the first 100 security practitioners making pentesting affordable"
 
 ---
 
-**Document Owner:** CEO / Head of Growth
-**Review Cadence:** Weekly (GTM metrics), Monthly (strategy adjustments)
-**Last Updated:** December 30, 2025
+## 5. Community Building (Slack/Discord)
+
+### When to launch: Month 3 (after 50 users)
+
+**Platform:** Slack (easier for professional users)
+
+**Channels:**
+- `#general` - Community chat
+- `#feature-requests` - Vote on features
+- `#show-and-tell` - Share scan results, reports
+- `#help` - Technical support (founder + community)
+- `#releases` - Product updates
+- `#off-topic` - Memes, InfoSec news
+
+**Engagement tactics:**
+1. **Weekly office hours** (Fridays 5pm EST)
+   - Live Q&A with founder
+   - Demo new features
+   - Discuss roadmap
+
+2. **Feature voting**
+   - Post poll every 2 weeks: "What should I build next?"
+   - Top 3 features go on roadmap
+   - Build in public: share progress
+
+3. **User spotlight**
+   - Monthly interview with power user
+   - Post in `#show-and-tell`
+   - Feature on website/blog
+
+**Success metrics:**
+- ✅ 100 Slack members by Month 6
+- ✅ 10+ messages/day
+- ✅ 5+ feature requests/month
+- ✅ 80% response rate from founder (within 24 hours)
+
+---
+
+## 6. Content Marketing (Organic)
+
+### Blog Strategy
+
+**Goal:** 10,000 monthly visitors by Month 6**
+
+**Content types:**
+
+1. **How-to guides** (SEO-optimized)
+   - "How to Set Up a Pentesting Lab in 30 Minutes"
+   - "SOC2 Compliance for Startups: Complete Checklist"
+   - "Web Application Pentesting: Step-by-Step Guide"
+   - Target keywords: "pentesting tutorial", "SOC2 compliance", "vulnerability scanning"
+
+2. **Founder journey** (authenticity)
+   - "Month 1 Revenue: $0 → $1K MRR"
+   - "Building a Pentesting Platform in 3 Weeks with AI"
+   - "Rejected by 10 VCs: What I Learned"
+
+3. **Technical deep dives** (credibility)
+   - "How HeroForge's AI Prioritization Works (Under the Hood)"
+   - "Rust for Cybersecurity: Why We Chose Rust Over Python"
+   - "Building a High-Performance Port Scanner with Tokio"
+
+**Publishing cadence:**
+- Month 1-2: 1 post/week (founder writes)
+- Month 3-6: 2 posts/week (founder + freelance writer @ $50/post)
+
+**Distribution:**
+- Post on Reddit (relevant subreddits)
+- Tweet thread summarizing key points
+- Cross-post to Medium, Dev.to, Hashnode
+- Email newsletter to users
+
+**Success metrics:**
+- ✅ 20 blog posts published by Month 6
+- ✅ 10,000 monthly visitors
+- ✅ 100+ signups from blog (tracked via UTM)
+- ✅ 5+ backlinks from InfoSec sites
+
+---
+
+## 7. Metrics That Matter (Solo Founder Focus)
+
+**Vanity metrics (ignore):**
+- Total website visitors
+- Social media followers (unless converting)
+- Free users (unless they convert to paid)
+
+**Real metrics (obsess over):**
+- **Paying customers:** 0 → 100 in 6 months
+- **MRR:** $0 → $10K in 6 months
+- **Trial-to-paid conversion:** Target 20%
+- **Churn:** Target <10%/year
+- **NPS (Net Promoter Score):** Target 50+ (ask monthly)
+
+**Weekly review (every Monday):**
+- New signups (free + paid)
+- Revenue (MRR growth)
+- Churn (who canceled and why)
+- Top feature requests
+- Reddit/Twitter engagement
+
+---
+
+## 8. Fundraising Timeline (Post-Product Validation)
+
+### Month 1-3: Build traction
+- Focus 100% on product and first users
+- Don't distract yourself with fundraising yet
+- Goal: 50 paying customers, $5K MRR
+
+### Month 4: Prepare materials
+- Finalize pitch deck (see INVESTOR_STRATEGY_2025.md)
+- Create 2-minute demo video
+- Compile testimonials and case studies
+- Update financial model
+
+### Month 5: Outreach
+- Target 20-30 pre-seed/seed VCs
+- Focus on veteran-friendly investors
+- Warm intros via customers, advisors
+- Goal: 10-15 partner meetings
+
+### Month 6: Close round
+- Negotiate term sheets
+- Legal diligence
+- Wire transfer
+- Announce funding
+
+**Key milestones for fundraising:**
+- ✅ 100 paying customers
+- ✅ $10K MRR ($120K ARR run rate)
+- ✅ 20% trial-to-paid conversion
+- ✅ <10% churn
+- ✅ 5+ customer testimonials (video)
+- ✅ SOC2 audit in progress
+
+---
+
+## 9. What NOT to Do (Solo Founder Traps)
+
+**Don't:**
+1. ❌ Hire too early (stay lean until $10K MRR minimum)
+2. ❌ Spend on paid ads (organic only until you prove conversion)
+3. ❌ Build features users don't request (talk to customers daily)
+4. ❌ Optimize for scale before finding product-market fit
+5. ❌ Chase enterprise deals (SMB/consultancies easier to close)
+6. ❌ Ignore negative feedback (it's the most valuable)
+7. ❌ Overthink branding/design (ship fast, iterate)
+8. ❌ Try to compete with VC-backed startups on their terms (be different)
+
+**Do:**
+1. ✅ Talk to users every single day (Zoom, Slack, email)
+2. ✅ Ship code daily (small improvements > big releases)
+3. ✅ Build in public (transparency builds trust)
+4. ✅ Leverage veteran story (it's your unfair advantage)
+5. ✅ Use AI to 10x productivity (Claude Code, GitHub Copilot)
+6. ✅ Focus on one acquisition channel at a time
+7. ✅ Celebrate small wins (first $1, first $1K MRR, first customer win)
+8. ✅ Take care of yourself (you're in this for 18+ months minimum)
+
+---
+
+## 10. Immediate Next Steps (Week 1)
+
+### Product:
+- [ ] Fix top 5 bugs from beta testing
+- [ ] Polish onboarding flow (reduce friction)
+- [ ] Create 2-minute demo video
+- [ ] Set up analytics (PostHog or Mixpanel)
+
+### Marketing:
+- [ ] Draft Reddit launch post (r/netsec)
+- [ ] Outline 10 blog post ideas
+- [ ] Record first YouTube tutorial (network scanning)
+- [ ] Set up Twitter account, follow 100 InfoSec people
+
+### Sales:
+- [ ] Design free tier limits (nudge to paid)
+- [ ] Create email nurture sequence (14 days)
+- [ ] Write pricing page copy
+- [ ] Set up Stripe billing
+
+### Community:
+- [ ] DM 50 people for beta testing
+- [ ] Create feedback form (Google Forms)
+- [ ] Start Slack workspace (invite beta users)
+
+---
+
+## Conclusion
+
+**This is not a typical GTM playbook.** There are no sales teams, no ad budgets, no enterprise ABM campaigns.
+
+This is grassroots. This is authentic. This is a solo founder with domain expertise, military discipline, and AI leverage going head-to-head with $30M startups.
+
+**The advantage:**
+- You're faster (no committees)
+- You're cheaper (no burn rate)
+- You're authentic (veteran founder story)
+- You're credible (20 years SIGINT)
+
+**The plan:**
+- Month 1: 10 beta users
+- Month 2: 50 free signups
+- Month 3: 10 paying customers
+- Month 4: 50 paying customers
+- Month 5: 75 paying customers
+- Month 6: 100 paying customers, $10K MRR
+
+**Then you fundraise from a position of strength.**
+
+Security is a right, not a luxury. Let's make it accessible to everyone.
+
+---
+
+**Last updated:** December 31, 2025
+**Version:** 2.0 (Pre-Seed)
+**Owner:** Founder
 
 **Related Documents:**
-- [Investor Strategy 2025](./INVESTOR_STRATEGY_2025.md)
-- [Market Evaluation 2025](./MARKET_EVALUATION_2025.md)
-- [Feature Roadmap P2](./FEATURE_ROADMAP_P2.md)
+- [Pre-Seed Investor Strategy](./INVESTOR_STRATEGY_2025.md)
+- [SOC2 Auditor Research (Pre-Seed Budget)](./SOC2_AUDITOR_RESEARCH.md)

@@ -51,8 +51,8 @@ const OnePagerPage: React.FC = () => {
               </p>
             </div>
             <div className="text-right text-sm text-gray-600">
-              <p className="font-semibold">Series A Fundraise</p>
-              <p>$6M Target</p>
+              <p className="font-semibold">Pre-Seed Fundraise</p>
+              <p>$500K-$1.5M</p>
               <p>December 2025</p>
             </div>
           </div>
@@ -66,12 +66,17 @@ const OnePagerPage: React.FC = () => {
               Company Overview
             </h2>
           </div>
-          <p className="text-gray-700 leading-relaxed">
+          <p className="text-gray-700 leading-relaxed mb-3">
             HeroForge is an all-in-one cybersecurity platform that automates penetration testing,
-            vulnerability management, and security operations for consultancies, MSPs, and
-            enterprises. We replace $2,000-$100,000 manual pentesting engagements with continuous,
-            AI-powered security testing at $999-$60,000/year—reducing costs by 96% while enabling
-            24/7 monitoring instead of periodic assessments.
+            vulnerability management, and security operations. Built by a 20-year Signals Intelligence
+            Analyst (nation-state level operations worldwide), 100% disabled Army veteran, and father
+            on a mission: <strong>Security is a right, not a luxury.</strong>
+          </p>
+          <p className="text-gray-700 leading-relaxed">
+            We replace $2,000-$100,000 manual pentesting engagements with continuous,
+            AI-powered security testing—reducing costs by 96% while enabling 24/7 monitoring instead
+            of periodic assessments. Built in 3 weeks with AI-assisted development, achieving what
+            VC-backed teams do in 12+ months.
           </p>
         </div>
 
@@ -149,31 +154,30 @@ const OnePagerPage: React.FC = () => {
           <div className="flex items-center gap-2 mb-3">
             <TrendingUp className="w-5 h-5 text-green-600" />
             <h2 className="text-lg font-bold text-gray-900 uppercase tracking-wide">
-              Traction & Metrics
+              Current Status
             </h2>
           </div>
           <div className="grid grid-cols-4 gap-4">
             <div className="text-center">
-              <p className="text-3xl font-bold text-cyan-600">$1M</p>
-              <p className="text-xs text-gray-600 uppercase tracking-wide">ARR (Current)</p>
+              <p className="text-3xl font-bold text-cyan-600">Pre-Revenue</p>
+              <p className="text-xs text-gray-600 uppercase tracking-wide">Status</p>
             </div>
             <div className="text-center">
-              <p className="text-3xl font-bold text-cyan-600">532</p>
-              <p className="text-xs text-gray-600 uppercase tracking-wide">Paying Customers</p>
+              <p className="text-3xl font-bold text-cyan-600">90%</p>
+              <p className="text-xs text-gray-600 uppercase tracking-wide">Feature Complete</p>
             </div>
             <div className="text-center">
-              <p className="text-3xl font-bold text-cyan-600">20:1</p>
-              <p className="text-xs text-gray-600 uppercase tracking-wide">LTV:CAC Ratio</p>
+              <p className="text-3xl font-bold text-cyan-600">3 Weeks</p>
+              <p className="text-xs text-gray-600 uppercase tracking-wide">Dev Time</p>
             </div>
             <div className="text-center">
-              <p className="text-3xl font-bold text-cyan-600">110%</p>
-              <p className="text-xs text-gray-600 uppercase tracking-wide">Net Revenue Retention</p>
+              <p className="text-3xl font-bold text-cyan-600">Tested</p>
+              <p className="text-xs text-gray-600 uppercase tracking-wide">Against Live Target</p>
             </div>
           </div>
           <div className="mt-4 pt-4 border-t border-gray-300">
             <p className="text-sm text-gray-700 text-center">
-              <strong>Projected Year 3:</strong> $15.3M ARR | 4,960 customers | 12.9:1 LTV:CAC |
-              Cash flow positive Q4 2027
+              <strong>Projected Year 3:</strong> $5M ARR | 2,000 customers | Cash flow positive Q4 2027
             </p>
           </div>
         </div>
@@ -280,24 +284,26 @@ const OnePagerPage: React.FC = () => {
           <div>
             <div className="flex items-center gap-2 mb-3">
               <Users className="w-5 h-5 text-blue-600" />
-              <h2 className="text-lg font-bold text-gray-900 uppercase tracking-wide">Team</h2>
+              <h2 className="text-lg font-bold text-gray-900 uppercase tracking-wide">Founder</h2>
             </div>
             <div className="space-y-2 text-sm text-gray-700">
               <div>
-                <p className="font-semibold">CEO – Former Security Consultant</p>
+                <p className="font-semibold">Solo Founder – 20 Years SIGINT</p>
                 <p className="text-xs text-gray-600">
-                  15+ years pentesting, OSCP/OSCE certified, built tools used by Fortune 500
+                  Signals Intelligence Analyst, nation-state level operations worldwide
                 </p>
               </div>
               <div>
-                <p className="font-semibold">CTO – Ex-CloudFlare, AWS</p>
+                <p className="font-semibold">100% Disabled Army Veteran</p>
                 <p className="text-xs text-gray-600">
-                  10 years scaling security infrastructure, ML expertise
+                  Combat veteran, father, mission-driven: "Security is a right, not a luxury"
                 </p>
               </div>
               <div>
-                <p className="font-semibold">VP Engineering – Ex-Rapid7</p>
-                <p className="text-xs text-gray-600">Led vulnerability research team at Rapid7</p>
+                <p className="font-semibold">AI-Assisted Development Expert</p>
+                <p className="text-xs text-gray-600">
+                  Built in 3 weeks what VC-backed teams achieve in 12+ months
+                </p>
               </div>
             </div>
           </div>
@@ -309,20 +315,20 @@ const OnePagerPage: React.FC = () => {
               <h2 className="text-lg font-bold text-gray-900 uppercase tracking-wide">The Ask</h2>
             </div>
             <div className="space-y-2 text-sm text-gray-700">
-              <p className="text-lg font-bold text-cyan-600">$6M Series A</p>
+              <p className="text-lg font-bold text-cyan-600">$500K-$1.5M Pre-Seed</p>
               <p className="font-semibold">Use of Funds:</p>
               <ul className="space-y-1 text-xs">
-                <li>• 40% Engineering (8 hires, cloud infrastructure)</li>
-                <li>• 30% Go-to-Market (sales, marketing, partnerships)</li>
-                <li>• 15% Operations (finance, HR, compliance)</li>
-                <li>• 15% Reserves (SOC2 audit, contingency)</li>
+                <li>• 40% Product (finish last 10%, polish UX)</li>
+                <li>• 30% Go-to-Market (Reddit, YouTube, community growth)</li>
+                <li>• 20% Founder Runway (18 months, $60K/year)</li>
+                <li>• 10% Infrastructure (AWS, domain, tools)</li>
               </ul>
               <p className="font-semibold mt-3">Milestones (18 months):</p>
               <ul className="space-y-1 text-xs">
-                <li>• $5M ARR (5x growth)</li>
-                <li>• 2,000+ customers</li>
-                <li>• SOC2 Type II certified</li>
-                <li>• 10+ enterprise deals ($50K+ ACV)</li>
+                <li>• First 100 paying customers</li>
+                <li>• $200K ARR by Month 18</li>
+                <li>• Product-market fit validated</li>
+                <li>• Break-even by Month 18</li>
               </ul>
             </div>
           </div>

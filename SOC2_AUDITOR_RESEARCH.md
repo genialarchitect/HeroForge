@@ -1,22 +1,30 @@
-# SOC 2 Type II Auditor Research & Recommendations
+# SOC 2 Type II Auditor Research & Recommendations (Pre-Seed)
 
-**Version:** 1.0
-**Last Updated:** December 30, 2025
-**Owner:** CEO / Head of Compliance
+**Version:** 2.0 (Pre-Seed)
+**Last Updated:** December 31, 2025
+**Owner:** Founder
 
 ---
 
 ## Executive Summary
 
-SOC 2 Type II certification is a critical milestone for HeroForge's Series A fundraise and enterprise sales strategy. Based on current market research, we should expect:
+**Key Takeaway for Pre-Seed:** SOC 2 Type II is important but NOT a priority for pre-seed funding. Focus on product-market fit and first 100 customers first. Plan for SOC2 certification in Year 2-3 after achieving $500K-$1M ARR and 18+ months post-funding.
 
-- **Total Cost:** $80K-$150K (audit + automation + preparation)
-- **Timeline:** 6-9 months (including 3-6 month observation period)
-- **Internal Resources:** 0.5-1.0 FTE combined across Security, DevOps, and Engineering
-- **Recommended Auditor:** A-LIGN or KirkpatrickPrice (startup-friendly, competitive pricing)
-- **Automation Platform:** Vanta or Drata ($10K-$30K/year)
+**Realistic Timeline for Pre-Seed Company:**
+- **Months 1-12:** Focus on product validation, first revenue
+- **Months 13-18:** Readiness assessment when you hit $500K ARR
+- **Months 19-30:** Observation period + audit (when customers start asking for SOC2)
+- **Month 30+:** SOC 2 Type II certified
 
-**Key Takeaway:** SOC 2 Type II is achievable within 9 months at a total cost of ~$100K, positioning HeroForge for enterprise deals and investor confidence.
+**Realistic Budget:**
+- **Pre-Seed (Year 1):** $5K-$10K (self-assessment, policy templates, readiness prep)
+- **Seed/Series A (Year 2):** $40K-$60K (audit + automation platform)
+
+**Why Wait:**
+1. SOC2 costs $80K-$150K all-in—too much burn for pre-seed
+2. Early customers (freelancers, consultancies) won't ask for SOC2
+3. Investors care about traction (users, revenue), not compliance certifications pre-Series A
+4. You can start preparing (policies, controls) for free while building revenue
 
 ---
 
@@ -30,275 +38,377 @@ SOC 2 Type II is an attestation by an independent CPA firm that your internal co
 - **Confidentiality** (optional): NDA, data classification, access restrictions
 - **Privacy** (optional): GDPR, CCPA compliance, data subject rights
 
-**For HeroForge:** We should pursue **Security + Availability** to satisfy enterprise customer requirements for uptime and resilience.
+**For Pre-Seed HeroForge:** Security only (simplest, cheapest). Add Availability when enterprise customers demand it (Year 2+).
 
 ---
 
-## 2. Timeline
+## 2. When Do You ACTUALLY Need SOC 2?
 
-| Phase | Duration | Activities |
-|-------|----------|------------|
-| **Readiness Assessment** | 4-6 weeks | Gap analysis, control design, policy creation, automation platform setup |
-| **Remediation & Preparation** | 8-12 weeks | Implement controls, automate evidence collection, fix gaps, train team |
-| **Observation Period** | 3-6 months | Demonstrate consistent operation of controls (cannot be accelerated) |
-| **Audit Execution** | 4-6 weeks | Auditor testing, evidence review, client interviews |
-| **Report Issuance** | 2-4 weeks | Draft review, management responses, final SOC 2 report |
+### Reality Check: Most Pre-Seed Companies Don't Need SOC2
 
-**Total Timeline:** 6-9 months from kickoff to final report.
+**Who asks for SOC2:**
+- ✅ Enterprise customers (Fortune 500)
+- ✅ Regulated industries (finance, healthcare)
+- ✅ Government contractors
 
-**Critical Path:** The observation period (3-6 months) is the longest phase and cannot be shortened. Automation platforms like Vanta/Drata can reduce readiness time from 12 weeks to 6 weeks.
+**Who doesn't ask for SOC2:**
+- ❌ Freelance pentesters (your Month 1-6 customers)
+- ❌ Small consultancies (your Month 6-12 customers)
+- ❌ Security researchers
+- ❌ Early adopters who trust the founder story
 
----
+### When to Start SOC2 Process
 
-## 3. Cost Breakdown
+**Trigger events:**
+1. A paying customer explicitly asks for SOC2 report
+2. You're pursuing enterprise deals ($50K+ ACV)
+3. You hit $500K-$1M ARR and plan to raise Series A
+4. Investors mention it as a requirement for next round
 
-### Audit Fees
-
-| Audit Firm Tier | Type I Cost | Type II Cost | Notes |
-|-----------------|-------------|--------------|-------|
-| **Big 4 (Deloitte, EY, KPMG, PwC)** | $50K-$100K+ | $80K-$150K+ | Overkill for Series A startups, slow turnaround |
-| **Mid-Tier (A-LIGN, KirkpatrickPrice)** | $15K-$25K | $25K-$50K | Best for startups, fast turnaround, competitive pricing |
-| **Boutique Firms (Johanson Group)** | $12K-$20K | $20K-$35K | Great for small SaaS companies, 4-6 week report delivery |
-
-**Recommended Budget for HeroForge:** $30K-$40K for Type II audit (Security + Availability).
-
-### Total Compliance Costs (Year 1)
-
-| Category | Estimated Cost | Notes |
-|----------|----------------|-------|
-| **Readiness Assessment** | $10K-$15K | Gap analysis, policy templates, control design (can use Vanta/Drata templates) |
-| **Automation Platform** | $15K-$30K | Vanta ($24K/year) or Drata ($18K/year), first-year pricing |
-| **Audit Fees (Type II)** | $30K-$40K | A-LIGN or KirkpatrickPrice |
-| **Penetration Testing** | $5K-$10K | Annual pentest required for SOC 2 (we can use HeroForge internally!) |
-| **Training & Legal** | $5K-$10K | Employee security training, legal review of policies |
-| **Internal Labor** | $20K-$30K | 0.5 FTE @ $100K salary over 9 months |
-
-**Total Year 1 Cost:** $85K-$135K (budget ~$100K conservatively)
+**Until then:** Self-assess, document policies, build foundational controls—but don't spend $80K on an audit.
 
 ---
 
-## 4. Recommended Auditors
+## 3. Pre-Seed Timeline (Realistic)
 
-### Option 1: A-LIGN (Recommended)
+### Year 1: Self-Assessment & Preparation ($5K-$10K)
 
-**Overview:** Technology-enabled auditor, #1 issuer of SOC 2 reports, 5,700+ clients, 400+ auditors, 96% client satisfaction.
+**Months 1-6: Product Validation**
+- [ ] Focus 100% on product-market fit
+- [ ] Get first 100 paying customers
+- [ ] Ignore SOC2 entirely
 
-**Pros:**
-- Startup-friendly: Specializes in SaaS companies
-- Fast turnaround: 4-6 weeks for report after audit
-- Competitive pricing: $25K-$40K for Type II
-- Audit management platform: Online portal for evidence submission
-- Bundled discounts: 10-15% off Type I + Type II combo
+**Months 7-12: Readiness Prep (DIY)**
+- [ ] Read SOC2 requirements (free resources)
+- [ ] Download policy templates (SANS, NIST)
+- [ ] Implement basic controls:
+  - MFA on all admin accounts (AWS, GitHub, production)
+  - CloudTrail logging enabled
+  - Quarterly access reviews (spreadsheet is fine)
+  - Incident response plan (1-page doc)
+  - Vendor risk assessments (spreadsheet)
+- [ ] Cost: $0 (your time) or $5K-$10K (hire consultant for 1-week gap analysis)
 
-**Cons:**
-- Mid-tier pricing (not cheapest, but fair value)
-- Large client base may mean less personalized service
+### Year 2: Observation Period + Audit ($40K-$60K)
 
-**Pricing Estimate:** $30K-$40K for Security + Availability Type II
+**Months 13-18: Automation Platform & Readiness**
+- [ ] Purchase Vanta or Drata ($18K-$30K/year)
+- [ ] Fix gaps identified in self-assessment
+- [ ] Start observation period (controls must run for 3-6 months)
+- [ ] Cost: $18K-$30K (automation platform)
 
-**Contact:** [https://www.a-lign.com](https://www.a-lign.com)
+**Months 19-24: Audit Execution**
+- [ ] Engage auditor (Johanson Group or KirkpatrickPrice)
+- [ ] 3-6 month observation period
+- [ ] Audit execution (4-6 weeks)
+- [ ] Report issuance (2-4 weeks)
+- [ ] Cost: $20K-$35K (audit fees)
 
----
-
-### Option 2: KirkpatrickPrice
-
-**Overview:** Licensed CPA firm with 18+ years of InfoSec experience, PCAOB-registered, serves 1,000+ clients globally.
-
-**Pros:**
-- Experienced with startups: Dedicated startup practice
-- Online Audit Manager: Portal for evidence and communication
-- Multi-service: SOC, ISO 27001, HIPAA, PCI (if we need bundled certifications)
-- Onsite visits available: Can travel for client meetings if needed
-
-**Cons:**
-- Slightly higher pricing than boutique firms
-- Longer audit cycles (8-10 weeks) vs. A-LIGN (4-6 weeks)
-
-**Pricing Estimate:** $25K-$35K for Security + Availability Type II
-
-**Contact:** [https://kirkpatrickprice.com](https://kirkpatrickprice.com)
+**Total Year 2 Cost:** $40K-$65K (automation + audit)
 
 ---
 
-### Option 3: Johanson Group LLP
+## 4. Recommended Auditors (Pre-Seed Budget)
 
-**Overview:** Boutique firm specializing in SOC 2, ISO 27001, HIPAA, GDPR audits. Fast turnaround (4-6 weeks).
+### Option 1: Johanson Group LLP (Best for Pre-Seed)
 
-**Pros:**
-- **Fastest turnaround:** 4-6 weeks from audit start to final report (industry-leading)
-- **Lowest cost:** $20K-$30K for Type II
-- Great fit for small SaaS startups
-- Works well with Vanta/Drata automation platforms
-- Excellent G2 reviews from startups
+**Why Johanson:**
+- Lowest cost: $20K-$30K for Security-only Type II
+- Fastest turnaround: 4-6 weeks from audit start to final report
+- Startup-friendly: Works with companies <$1M ARR
+- Vanta/Drata integration: Accepts automated evidence
 
-**Cons:**
-- Smaller firm (may lack capacity during peak audit season)
-- Less brand recognition vs. A-LIGN/KirkpatrickPrice
+**Pricing Estimate:** $20K-$25K for Security Type II
 
-**Pricing Estimate:** $20K-$30K for Security + Availability Type II
+**When to Use:** Year 2, after you hit $500K ARR and have first enterprise customer asking for SOC2
 
 **Contact:** [https://www.johansonllp.com](https://www.johansonllp.com)
 
 ---
 
-## 5. Automation Platform Comparison
+### Option 2: KirkpatrickPrice (Slightly More Expensive)
 
-Automation platforms reduce manual evidence collection by 80% and cut readiness time in half.
+**Why KirkpatrickPrice:**
+- Mid-tier pricing: $25K-$35K for Security Type II
+- Good reputation with VCs
+- Online portal for evidence submission
 
-| Platform | Annual Cost | Pros | Cons | Auditor Partnerships |
-|----------|-------------|------|------|---------------------|
-| **Vanta** | $24K-$36K | Market leader, best integrations (AWS, GitHub, Slack, etc.), SOC 2 + ISO 27001 + HIPAA | Most expensive | A-LIGN, Schellman, Johanson |
-| **Drata** | $18K-$30K | Competitive pricing, good UI, SOC 2 + ISO 27001 + HIPAA | Fewer integrations than Vanta | KirkpatrickPrice, A-LIGN |
-| **Secureframe** | $15K-$25K | Cheapest, fast setup, SOC 2 + ISO 27001 | Smaller customer base, fewer features | Johanson, smaller firms |
+**Pricing Estimate:** $25K-$30K for Security Type II
 
-**Recommended:** **Vanta** (best ROI for enterprise sales, strong brand recognition with VCs and customers)
+**When to Use:** Year 2-3, if investor or large customer requires "name brand" auditor
+
+**Contact:** [https://kirkpatrickprice.com](https://kirkpatrickprice.com)
 
 ---
 
-## 6. Common Control Failures (What to Fix First)
+### Option 3: A-LIGN (Series A, Not Pre-Seed)
 
-The 10 controls that most commonly fail in SOC 2 audits for startups:
+**Why Wait on A-LIGN:**
+- Higher cost: $30K-$40K for Security Type II
+- Better for Series A+ companies
+- Overkill for pre-revenue or early-stage
 
-1. **Multi-Factor Authentication (MFA):** Not enforced on all critical systems (AWS, GitHub, production databases)
-2. **Access Reviews:** No quarterly access reviews to remove stale accounts
+**When to Use:** Series A (Year 3+), when you're closing $50K+ enterprise deals regularly
+
+**Contact:** [https://www.a-lign.com](https://www.a-lign.com)
+
+---
+
+## 5. Automation Platform (Year 2+)
+
+### Don't Buy Vanta/Drata in Year 1
+
+**Reality:** Automation platforms cost $18K-$30K/year. That's 18-30% of a $500K pre-seed round. Wait until Year 2.
+
+### When to Purchase (Year 2)
+
+**Timing:** When you start the observation period (Months 13-18)
+
+**Platform Recommendation: Drata** (cheaper than Vanta)
+- **Cost:** $18K-$24K/year
+- **Features:** SOC2 automation, evidence collection, integrations (AWS, GitHub, Slack)
+- **Why Drata over Vanta:** 20-30% cheaper, same functionality for early-stage
+
+**Alternative: Secureframe** (cheapest)
+- **Cost:** $15K-$20K/year
+- **Why:** Best for bootstrapped/capital-efficient startups
+
+---
+
+## 6. What to Do in Year 1 (Pre-Seed)
+
+### Free/Low-Cost SOC2 Prep
+
+**Goal:** Lay the foundation without spending $80K
+
+**1. Read & Learn (Free)**
+- SOC2 Academy free course
+- Vanta blog (free SOC2 guides)
+- AICPA SOC2 criteria (download for free)
+
+**2. Implement Basic Controls (Free)**
+- **Access Control:**
+  - ✅ Enable MFA on AWS, GitHub, production database, email
+  - ✅ Document who has access to what (spreadsheet)
+  - ✅ Quarterly access reviews (set calendar reminder)
+
+- **Logging:**
+  - ✅ Enable AWS CloudTrail (logs API calls)
+  - ✅ Enable GitHub audit log
+  - ✅ Retain logs for 1 year minimum
+
+- **Change Management:**
+  - ✅ All code changes require pull request review (GitHub)
+  - ✅ Production deployments documented in Slack/email
+
+- **Vendor Management:**
+  - ✅ List all critical vendors (AWS, GitHub, Stripe, SendGrid)
+  - ✅ Download their SOC2 reports (most provide on request)
+
+- **Incident Response:**
+  - ✅ Write 1-page incident response plan
+  - ✅ Define who responds to security incidents
+  - ✅ Test once per year (tabletop exercise)
+
+**3. Policy Templates (Free or $500)**
+- **Free:** SANS policy templates, NIST resources
+- **Paid ($500):** Buy policy pack from Vanta (one-time purchase, no subscription)
+
+**Total Year 1 Cost:** $0-$2,000 (mostly your time)
+
+---
+
+## 7. Common Control Failures to Avoid
+
+The 5 controls that most commonly fail in SOC 2 audits for startups:
+
+1. **Multi-Factor Authentication (MFA):** Not enforced on all critical systems
+   - **Fix:** Enable MFA on AWS, GitHub, production databases, Google Workspace
+
+2. **Access Reviews:** No quarterly reviews to remove stale accounts
+   - **Fix:** Set calendar reminder, review every 90 days, document in spreadsheet
+
 3. **Deprovisioning:** Ex-employees retain access >24 hours after termination
+   - **Fix:** Create offboarding checklist (revoke AWS, GitHub, Slack, email)
+
 4. **Change Approvals:** Production changes deployed without approval/peer review
-5. **Logging:** Insufficient audit logs (no CloudTrail, no application logs, no SIEM)
-6. **Vulnerability SLAs:** No defined SLA for patching Critical (7 days) and High (30 days) vulnerabilities
-7. **Backups:** No automated backups or restore testing
-8. **DR Tests:** Disaster recovery plan not tested annually
-9. **Incident Drills:** Incident response plan not tested quarterly
-10. **Vendor Reviews:** No annual vendor risk assessments for critical vendors (AWS, GitHub, SendGrid)
+   - **Fix:** Require pull request review in GitHub (branch protection rules)
 
-**Action:** Prioritize automating these controls in the readiness phase (Vanta/Drata can automate 80% of these).
+5. **Logging:** Insufficient audit logs (no CloudTrail, no application logs)
+   - **Fix:** Enable CloudTrail, retain logs for 1+ year
+
+**Action:** Fix these 5 controls in Year 1 (costs $0, takes 2-4 hours of work)
 
 ---
 
-## 7. Preparation Checklist
+## 8. Budget Allocation (Pre-Seed vs Series A)
 
-### Phase 1: Readiness (Weeks 1-6)
+### Pre-Seed Reality (Year 1): $5K
 
-- [ ] Select auditor (A-LIGN, KirkpatrickPrice, or Johanson)
-- [ ] Purchase automation platform (Vanta or Drata)
-- [ ] Conduct gap analysis (automated by Vanta/Drata)
-- [ ] Create security policies (use Vanta templates)
-- [ ] Define control objectives and procedures
-- [ ] Assign control owners (Security, DevOps, Engineering leads)
+| Item | Cost | Notes |
+|------|------|-------|
+| **Gap analysis consultant** | $5K | 1-week engagement, identify what you're missing |
+| **Policy templates** | $500 | One-time purchase (or use free SANS templates) |
+| **Tools/software** | $0 | Use free tiers (AWS free tier, GitHub free, etc.) |
+| **Internal labor** | $0 | Founder's time (10-20 hours over 12 months) |
+| **Total Year 1** | **$5K** | Just preparation, no audit |
 
-### Phase 2: Remediation (Weeks 7-18)
+### Series A Reality (Year 2): $50K
 
-- [ ] Implement MFA on all critical systems (AWS, GitHub, databases)
-- [ ] Enable audit logging (CloudTrail, application logs, GitHub audit log)
-- [ ] Set up SIEM or log aggregation (e.g., AWS CloudWatch, Datadog)
-- [ ] Automate access reviews (quarterly via Vanta/Drata)
-- [ ] Create deprovisioning runbook (offboarding checklist)
-- [ ] Implement change approval process (GitHub pull request reviews)
-- [ ] Define vulnerability SLAs (Critical: 7 days, High: 30 days, Medium: 90 days)
-- [ ] Set up automated backups (database snapshots, code backups)
-- [ ] Create disaster recovery plan and test it
-- [ ] Create incident response plan and conduct tabletop drill
-- [ ] Conduct vendor risk assessments (AWS, GitHub, SendGrid, etc.)
-- [ ] Run penetration test (use HeroForge internally!)
-
-### Phase 3: Observation (Months 4-9)
-
-- [ ] Operate controls consistently for 3-6 months
-- [ ] Collect evidence automatically via Vanta/Drata
-- [ ] Conduct monthly control monitoring (access reviews, vuln scans)
-- [ ] Document exceptions and remediation
-
-### Phase 4: Audit (Weeks 1-6 after observation)
-
-- [ ] Submit evidence to auditor
-- [ ] Respond to auditor questions and requests
-- [ ] Conduct employee interviews
-- [ ] Review draft report and provide management responses
-- [ ] Receive final SOC 2 Type II report
+| Item | Cost | Notes |
+|------|------|-------|
+| **SOC 2 Type II Audit** | $25K | Johanson Group or KirkpatrickPrice |
+| **Automation Platform** | $20K | Drata annual subscription |
+| **Penetration Testing** | $5K | Annual external pentest (or use HeroForge internally for $0) |
+| **Internal Labor** | $0 | Still founder-led (or hire GRC lead in Year 3) |
+| **Total Year 2** | **$50K** | Full audit + automation |
 
 ---
 
-## 8. Budget Allocation (Series A Use of Funds)
+## 9. What Investors Care About (Pre-Seed)
 
-From our $6M Series A raise, allocate **$200K** for compliance over 18 months:
+### Reality: VCs Don't Care About SOC2 at Pre-Seed
 
-| Item | Year 1 Cost | Year 2 Cost | Notes |
-|------|-------------|-------------|-------|
-| **SOC 2 Type II Audit** | $35K | $30K | Annual renewal (10% discount) |
-| **Vanta Subscription** | $30K | $30K | Annual license |
-| **Penetration Testing** | $10K | $10K | Annual external pentest (or use HeroForge internally for $0) |
-| **Training & Legal** | $10K | $5K | Security awareness training, policy review |
-| **Internal Labor (0.5 FTE)** | $25K | $15K | Security/GRC lead (half-time in Year 1, part-time in Year 2) |
-| **ISO 27001 (optional)** | $0 | $40K | If needed for EU customers in Year 2 |
+**What pre-seed investors care about:**
+1. ✅ Product-market fit (do people use it?)
+2. ✅ Traction (revenue, users, growth rate)
+3. ✅ Founder story (20 years SIGINT = credibility)
+4. ✅ Market opportunity (TAM, SAM, SOM)
+5. ✅ Unit economics (CAC, LTV, payback period)
 
-**Year 1 Total:** $110K (includes buffer)
-**Year 2 Total:** $90K (renewal + maintenance)
+**What they don't care about:**
+- ❌ SOC2 certification
+- ❌ ISO 27001
+- ❌ Compliance frameworks
 
----
+### When SOC2 Matters to Investors
 
-## 9. Timeline for Series A Fundraise
+**Series A:** Investors will ask "Do you have SOC2 or are you working on it?"
+- ✅ Acceptable answer: "We're SOC2-ready and will start the audit next quarter when customers ask for it."
+- ❌ Bad answer: "We haven't thought about compliance yet."
 
-Based on our GTM playbook (target close in Q1 2026), we should:
-
-| Date | Milestone |
-|------|-----------|
-| **Week 1-2 (Jan 2026)** | Select auditor, sign engagement letter, purchase Vanta |
-| **Weeks 3-6 (Feb 2026)** | Gap analysis, create policies, assign control owners |
-| **Weeks 7-18 (Mar-May 2026)** | Implement controls, fix gaps, automate evidence collection |
-| **Months 4-9 (Jun-Nov 2026)** | 6-month observation period |
-| **Weeks 1-6 (Dec 2026)** | Audit execution and evidence review |
-| **Jan 2027** | Receive SOC 2 Type II report |
-
-**Investor Messaging:** "We have engaged [Auditor] for SOC 2 Type II certification, targeting completion by Q1 2027. Our readiness assessment shows strong control maturity, and we're using Vanta to automate 80% of evidence collection."
+**Pre-Seed:** Investors might ask, but won't disqualify you for not having it yet.
+- ✅ Acceptable answer: "We're implementing SOC2 controls now. We'll pursue certification when we hit $500K ARR and have enterprise customers asking for it."
 
 ---
 
-## 10. Immediate Next Steps
+## 10. Immediate Next Steps (Pre-Seed)
 
-### This Week:
-1. **Get quotes from 3 auditors:**
-   - A-LIGN: https://www.a-lign.com/contact
-   - KirkpatrickPrice: https://kirkpatrickprice.com/request-quote/
-   - Johanson Group: https://www.johansonllp.com/contact
+### This Month (Free)
 
-2. **Request Vanta demo:** https://www.vanta.com/demo
+1. **Read SOC2 basics** (2 hours)
+   - SOC2 Academy free course
+   - Vanta blog on SOC2 prep
 
-3. **Add to investor deck:** "SOC 2 Type II certification in progress, expected Q1 2027"
+2. **Enable MFA** (30 minutes)
+   - AWS root account
+   - GitHub organization
+   - Google Workspace admin
 
-### Next 2 Weeks:
-1. Sign auditor engagement letter (target A-LIGN or Johanson)
-2. Purchase Vanta subscription
-3. Kick off gap analysis
-4. Assign Security/GRC lead (0.5 FTE, can hire or assign internally)
+3. **Enable logging** (30 minutes)
+   - AWS CloudTrail
+   - GitHub audit log
+   - Application logs (if not already)
 
-### Next 30 Days:
-1. Complete readiness assessment
-2. Create security policies (use Vanta templates)
-3. Begin remediation work (MFA, logging, access reviews)
-4. Add SOC 2 timeline to internal roadmap
+4. **Document access** (1 hour)
+   - Create spreadsheet: User, System, Role, Access Level
+   - Will be useful for access reviews later
+
+### Next Quarter ($500-$2K)
+
+1. **Download policy templates** ($0-$500)
+   - SANS policy templates (free)
+   - Or buy from Vanta ($500 one-time)
+
+2. **Write incident response plan** (2 hours)
+   - 1-page doc: Who responds? How? Escalation?
+
+3. **Conduct vendor risk assessment** (2 hours)
+   - List critical vendors (AWS, GitHub, Stripe)
+   - Download their SOC2 reports
+
+4. **Optional: Gap analysis** ($5K)
+   - Hire consultant for 1-week assessment
+   - Identifies what you're missing
+
+### Year 2 (When You Hit $500K ARR)
+
+1. **Purchase automation platform** ($18K-$24K)
+   - Drata (cheaper) or Vanta (more features)
+
+2. **Start observation period** (3-6 months)
+   - Demonstrate controls operate effectively
+
+3. **Engage auditor** ($20K-$30K)
+   - Johanson Group or KirkpatrickPrice
+
+4. **Receive SOC 2 Type II report** (Month 24-30)
 
 ---
 
-## 11. Sources & References
+## 11. Alternative: Use HeroForge Internally
 
-Based on comprehensive research from industry-leading sources:
+**Pro tip:** HeroForge already has many SOC2-relevant features:
+
+- ✅ Vulnerability scanning (meets "vulnerability management" control)
+- ✅ Compliance frameworks (PCI-DSS, HIPAA, SOC2 checklists built-in)
+- ✅ Evidence collection (automated scan reports)
+- ✅ Penetration testing (annual pentest requirement = self-test)
+
+**Action:** When you start SOC2 prep in Year 2, use HeroForge to:
+1. Scan your own infrastructure (dogfooding)
+2. Generate SOC2 compliance report
+3. Collect evidence for auditor
+4. Save $5K-$10K on external pentest (do it yourself)
+
+---
+
+## Conclusion
+
+### TL;DR for Pre-Seed
+
+**Year 1: Don't spend $80K on SOC2. Spend $5K on readiness.**
+- Implement basic controls (MFA, logging, access reviews)
+- Download free policy templates
+- Document your processes
+
+**Year 2: Spend $50K on SOC2 when customers ask for it.**
+- Purchase Drata ($20K/year)
+- Engage Johanson Group ($25K)
+- Get certified in Months 19-30
+
+**Why This Works:**
+- Pre-seed customers (freelancers, consultancies) don't ask for SOC2
+- Pre-seed investors don't require SOC2
+- Spending $80K in Year 1 is wasteful when you need that capital for product and GTM
+- You can prepare incrementally for $0-$5K and be "audit-ready" when the time comes
+
+**Investor Messaging (Pre-Seed):**
+> "We're implementing SOC2 controls as we build. We'll pursue formal certification in Year 2 when we hit $500K ARR and have enterprise customers requesting it. In the meantime, we're using HeroForge to scan our own infrastructure and maintain security best practices."
+
+**Investor Messaging (Series A):**
+> "We're SOC2-ready and starting the observation period this quarter. We expect to receive our Type II report in Q3. We've been operating under SOC2 controls for 18 months, so the audit will be straightforward."
+
+---
+
+**Document Owner:** Founder
+**Review Cadence:** Quarterly (Year 1), Monthly (when pursuing SOC2 in Year 2)
+**Last Updated:** December 31, 2025
+
+**Related Documents:**
+- [Pre-Seed Investor Strategy](./INVESTOR_STRATEGY_2025.md)
+- [Pre-Seed GTM Execution Playbook](./GTM_EXECUTION_PLAYBOOK.md)
+
+---
+
+## Sources & References
 
 - [How Much Does SOC 2 Compliance Cost in 2025?](https://sprinto.com/blog/soc-2-compliance-cost/)
 - [SOC 2 Certification 2025: Auditor, Cost & Timeline Guide](https://www.dsalta.com/resources/articles/soc-2-certification-2025-auditor-cost-timeline-guide)
 - [SOC 2 Budget: How Much Does SOC 2 Cost in 2025?](https://www.strongdm.com/blog/how-much-does-soc-2-cost)
-- [SOC 2 Audit Costs in 2025: Full Cost Breakdown](https://www.uprootsecurity.com/blog/how-much-does-a-soc-2-audit-cost)
 - [Best SOC 2 Auditors and Companies in 2025](https://www.getastra.com/blog/security-audit/soc-2-auditors/)
-- [13 Best SOC 2 Audit Firms in 2025](https://www.brightdefense.com/resources/soc-2-audit-firms/)
-- [A-LIGN SOC 2 Services](https://www.a-lign.com/service/soc-2)
-- [KirkpatrickPrice SOC 2 Audit Services](https://kirkpatrickprice.com/audit/soc-2/)
 - [Johanson Group SOC 2 Compliance](https://www.johansonllp.com/soc-2-assessment)
+- [KirkpatrickPrice SOC 2 Audit Services](https://kirkpatrickprice.com/audit/soc-2/)
 
----
-
-**Document Owner:** CEO / Head of Compliance
-**Review Cadence:** Monthly (during SOC 2 preparation), Annually (post-certification)
-**Last Updated:** December 30, 2025
-
-**Related Documents:**
-- [Investor Strategy 2025](./INVESTOR_STRATEGY_2025.md)
-- [GTM Execution Playbook](./GTM_EXECUTION_PLAYBOOK.md)
-- [Feature Roadmap P2](./FEATURE_ROADMAP_P2.md)
+**Last updated:** December 31, 2025
+**Version:** 2.0 (Pre-Seed)

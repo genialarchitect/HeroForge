@@ -5,122 +5,122 @@ import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, L
 const FinancialModelPage: React.FC = () => {
   const [view, setView] = useState<'summary' | 'revenue' | 'economics' | 'pl' | 'cashflow'>('summary');
 
-  // Revenue Projections (from INVESTOR_STRATEGY_2025.md)
+  // Revenue Projections (Pre-Seed Reality - from INVESTOR_STRATEGY_2025.md)
   const revenueData = [
     {
-      period: 'Q4 2025',
-      mrr: 83000,
-      arr: 996000,
-      customers: { solo: 300, professional: 200, team: 30, enterprise: 2 },
-      cac: 300,
-      ltv: 6000,
+      period: 'Now',
+      mrr: 0,
+      arr: 0,
+      customers: { solo: 0, professional: 0, team: 0, enterprise: 0 },
+      cac: 0,
+      ltv: 0,
     },
     {
-      period: 'Q1 2026',
-      mrr: 100000,
-      arr: 1200000,
-      customers: { solo: 380, professional: 250, team: 40, enterprise: 3 },
-      cac: 350,
-      ltv: 6200,
+      period: 'M3 2026',
+      mrr: 2000,
+      arr: 24000,
+      customers: { solo: 15, professional: 5, team: 0, enterprise: 0 },
+      cac: 50,
+      ltv: 1200,
     },
     {
-      period: 'Q2 2026',
-      mrr: 125000,
-      arr: 1500000,
-      customers: { solo: 450, professional: 310, team: 55, enterprise: 5 },
-      cac: 400,
-      ltv: 6500,
+      period: 'M6 2026',
+      mrr: 5000,
+      arr: 60000,
+      customers: { solo: 35, professional: 12, team: 1, enterprise: 0 },
+      cac: 70,
+      ltv: 1500,
     },
     {
-      period: 'Q3 2026',
-      mrr: 150000,
-      arr: 1800000,
-      customers: { solo: 520, professional: 380, team: 70, enterprise: 7 },
-      cac: 450,
-      ltv: 7000,
+      period: 'M9 2026',
+      mrr: 10000,
+      arr: 120000,
+      customers: { solo: 65, professional: 25, team: 3, enterprise: 0 },
+      cac: 100,
+      ltv: 1800,
     },
     {
-      period: 'Q4 2026',
-      mrr: 180000,
-      arr: 2160000,
-      customers: { solo: 600, professional: 450, team: 85, enterprise: 10 },
-      cac: 500,
-      ltv: 7500,
+      period: 'Year 1',
+      mrr: 17000,
+      arr: 200000,
+      customers: { solo: 100, professional: 40, team: 5, enterprise: 1 },
+      cac: 120,
+      ltv: 2000,
     },
     {
       period: 'Year 2',
-      mrr: 542000,
-      arr: 6500000,
-      customers: { solo: 1200, professional: 900, team: 180, enterprise: 25 },
-      cac: 600,
-      ltv: 8000,
+      mrr: 100000,
+      arr: 1200000,
+      customers: { solo: 500, professional: 200, team: 30, enterprise: 5 },
+      cac: 200,
+      ltv: 3000,
     },
     {
       period: 'Year 3',
-      mrr: 1275000,
-      arr: 15300000,
-      customers: { solo: 2500, professional: 2000, team: 400, enterprise: 60 },
-      cac: 700,
-      ltv: 9000,
+      mrr: 417000,
+      arr: 5000000,
+      customers: { solo: 1200, professional: 500, team: 100, enterprise: 20 },
+      cac: 300,
+      ltv: 4000,
     },
   ];
 
-  // Revenue by tier breakdown
+  // Revenue by tier breakdown (MRR)
   const tierBreakdown = [
-    { tier: 'Solo ($99)', q4_2025: 29700, year_1: 60000, year_2: 120000, year_3: 247500 },
-    { tier: 'Professional ($299)', q4_2025: 59800, year_1: 119600, year_2: 269100, year_3: 598000 },
-    { tier: 'Team ($599)', q4_2025: 17970, year_1: 35940, year_2: 107820, year_3: 239600 },
-    { tier: 'Enterprise ($5000)', q4_2025: 10000, year_1: 30000, year_2: 125000, year_3: 300000 },
+    { tier: 'Solo ($99)', now: 0, year_1: 9900, year_2: 49500, year_3: 118800 },
+    { tier: 'Professional ($299)', now: 0, year_1: 11960, year_2: 59800, year_3: 149500 },
+    { tier: 'Team ($599)', now: 0, year_1: 2995, year_2: 17970, year_3: 59900 },
+    { tier: 'Enterprise ($5000)', now: 0, year_1: 5000, year_2: 25000, year_3: 100000 },
   ];
 
-  // P&L Projections
+  // P&L Projections (Pre-Seed Reality - Solo Founder)
   const plData = [
     {
       year: 'Year 1 (2026)',
-      revenue: 1400000,
-      cogs: 140000, // 10% (cloud hosting, infrastructure)
-      grossMargin: 1260000,
-      salesMarketing: 720000, // 51% of revenue
-      rd: 560000, // 40% of revenue
-      ga: 280000, // 20% of revenue
-      ebitda: -300000,
-      netIncome: -300000,
+      revenue: 200000,
+      cogs: 20000, // 10% (AWS, infrastructure)
+      grossMargin: 180000,
+      salesMarketing: 60000, // 30% (Reddit ads, YouTube production)
+      rd: 60000, // 30% (founder time allocated to dev)
+      ga: 60000, // 30% (founder living expenses, tools)
+      ebitda: 0,
+      netIncome: 0,
     },
     {
       year: 'Year 2 (2027)',
-      revenue: 6500000,
-      cogs: 650000, // 10%
-      grossMargin: 5850000,
-      salesMarketing: 2600000, // 40% of revenue
-      rd: 1950000, // 30% of revenue
-      ga: 975000, // 15% of revenue
-      ebitda: 325000,
-      netIncome: 325000,
+      revenue: 1200000,
+      cogs: 120000, // 10%
+      grossMargin: 1080000,
+      salesMarketing: 360000, // 30% (community growth, content)
+      rd: 300000, // 25% (first contractor hire)
+      ga: 180000, // 15% (founder salary + ops)
+      ebitda: 240000,
+      netIncome: 240000,
     },
     {
       year: 'Year 3 (2028)',
-      revenue: 15300000,
-      cogs: 1530000, // 10%
-      grossMargin: 13770000,
-      salesMarketing: 4590000, // 30% of revenue
-      rd: 3825000, // 25% of revenue
-      ga: 2295000, // 15% of revenue
-      ebitda: 3060000,
-      netIncome: 3060000,
+      revenue: 5000000,
+      cogs: 500000, // 10%
+      grossMargin: 4500000,
+      salesMarketing: 1500000, // 30% (sales team + marketing)
+      rd: 1250000, // 25% (2-3 engineers)
+      ga: 750000, // 15% (ops, admin, compliance)
+      ebitda: 1000000,
+      netIncome: 1000000,
     },
   ];
 
-  // Cash Flow & Runway
+  // Cash Flow & Runway (Pre-Seed $1M Raise)
   const cashFlowData = [
-    { month: 'Jan 26', cash: 6000000, burn: -150000, runway: 40 },
-    { month: 'Apr 26', cash: 5550000, burn: -140000, runway: 40 },
-    { month: 'Jul 26', cash: 5130000, burn: -120000, runway: 43 },
-    { month: 'Oct 26', cash: 4770000, burn: -100000, runway: 48 },
-    { month: 'Jan 27', cash: 4470000, burn: -80000, runway: 56 },
-    { month: 'Apr 27', cash: 4230000, burn: -50000, runway: 85 },
-    { month: 'Jul 27', cash: 4080000, burn: -20000, runway: 204 },
-    { month: 'Oct 27', cash: 4020000, burn: 20000, runway: Infinity }, // Profitable
-    { month: 'Jan 28', cash: 4380000, burn: 60000, runway: Infinity },
+    { month: 'Jan 26', cash: 1000000, burn: -15000, runway: 67 },
+    { month: 'Apr 26', cash: 955000, burn: -12000, runway: 80 },
+    { month: 'Jul 26', cash: 919000, burn: -10000, runway: 92 },
+    { month: 'Oct 26', cash: 889000, burn: -8000, runway: 111 },
+    { month: 'Jan 27', cash: 865000, burn: -5000, runway: 173 },
+    { month: 'Apr 27', cash: 850000, burn: -2000, runway: 425 },
+    { month: 'Jul 27', cash: 844000, burn: 0, runway: Infinity }, // Break-even
+    { month: 'Oct 27', cash: 860000, burn: 20000, runway: Infinity }, // Profitable
+    { month: 'Jan 28', cash: 920000, burn: 50000, runway: Infinity },
   ];
 
   // Unit Economics Chart
@@ -164,9 +164,9 @@ const FinancialModelPage: React.FC = () => {
         <div className="max-w-7xl mx-auto">
           <h1 className="text-4xl font-bold mb-4">Financial Model & Projections</h1>
           <p className="text-cyan-100 text-lg max-w-3xl">
-            5-year financial projections for HeroForge, showcasing revenue growth, unit economics,
-            and path to profitability. Based on conservative market penetration and proven
-            SaaS metrics.
+            3-year financial projections for HeroForge (pre-revenue to $5M ARR), showcasing realistic
+            grassroots growth, unit economics, and path to profitability. Solo founder, bootstrap
+            mindset, AI-assisted development speed.
           </p>
         </div>
       </div>
@@ -205,34 +205,34 @@ const FinancialModelPage: React.FC = () => {
         {view === 'summary' && (
           <div className="space-y-8">
             <div>
-              <h2 className="text-2xl font-bold mb-6">Key Metrics (Current → Year 3)</h2>
+              <h2 className="text-2xl font-bold mb-6">Key Metrics (Pre-Revenue → Year 3)</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <StatCard
                   icon={<DollarSign className="w-6 h-6 text-cyan-400" />}
                   label="ARR Growth"
-                  value="$1M → $15.3M"
-                  subtext="15x growth in 3 years"
+                  value="$0 → $5M"
+                  subtext="Pre-revenue to Series A-ready"
                   trend="up"
                 />
                 <StatCard
                   icon={<Users className="w-6 h-6 text-cyan-400" />}
                   label="Total Customers"
-                  value="532 → 4,960"
-                  subtext="9.3x customer base expansion"
+                  value="0 → 1,820"
+                  subtext="Grassroots community growth"
                   trend="up"
                 />
                 <StatCard
                   icon={<Target className="w-6 h-6 text-cyan-400" />}
                   label="LTV:CAC Ratio"
-                  value="20:1 → 12.9:1"
-                  subtext="Healthy unit economics"
+                  value="N/A → 13.3:1"
+                  subtext="Healthy unit economics by Y3"
                   trend="up"
                 />
                 <StatCard
                   icon={<Calendar className="w-6 h-6 text-cyan-400" />}
-                  label="Payback Period"
-                  value="3 → 5.2 months"
-                  subtext="Still under 6 months (target)"
+                  label="Break-Even"
+                  value="Month 18"
+                  subtext="Cash flow positive Q4 2027"
                   trend="up"
                 />
               </div>
@@ -269,24 +269,24 @@ const FinancialModelPage: React.FC = () => {
 
             {/* Key Assumptions */}
             <div className="bg-gray-800 p-6 rounded-lg border border-gray-700">
-              <h3 className="text-xl font-bold mb-4">Model Assumptions</h3>
+              <h3 className="text-xl font-bold mb-4">Model Assumptions (Grassroots GTM)</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <h4 className="font-semibold text-cyan-400 mb-2">Revenue Growth Drivers</h4>
                   <ul className="space-y-2 text-gray-300">
-                    <li>• Freemium conversion rate: 15% → 25% (Year 1)</li>
-                    <li>• Average monthly churn: 1.5% → 0.8% (Year 3)</li>
-                    <li>• Net revenue retention (NRR): 110% → 120%</li>
-                    <li>• Expansion revenue: 30% of total by Year 2</li>
+                    <li>• Free tier → paid conversion: 10% → 20% (Year 2)</li>
+                    <li>• Average monthly churn: 2% → 1% (Year 3)</li>
+                    <li>• Net revenue retention (NRR): 100% → 110%</li>
+                    <li>• Expansion revenue: 15% of total by Year 3</li>
                   </ul>
                 </div>
                 <div>
                   <h4 className="font-semibold text-cyan-400 mb-2">Go-to-Market Mix</h4>
                   <ul className="space-y-2 text-gray-300">
-                    <li>• Content Marketing: 40% of new customers (organic)</li>
-                    <li>• Paid Acquisition: 35% (LinkedIn + Google Ads)</li>
-                    <li>• MSP Partnerships: 15% (referral program)</li>
-                    <li>• Enterprise Outbound: 10% (high ACV deals)</li>
+                    <li>• Reddit /r/netsec, /r/blueteamsec (50% organic)</li>
+                    <li>• YouTube tutorials + demos (30% organic)</li>
+                    <li>• Blog + SEO (15% organic)</li>
+                    <li>• Minimal paid ads (5% - Reddit/HN sponsorship)</li>
                   </ul>
                 </div>
               </div>
@@ -304,30 +304,30 @@ const FinancialModelPage: React.FC = () => {
                   <thead>
                     <tr className="border-b border-gray-700">
                       <th className="text-left py-3 px-4">Tier</th>
-                      <th className="text-right py-3 px-4">Q4 2025 (MRR)</th>
+                      <th className="text-right py-3 px-4">Now (MRR)</th>
                       <th className="text-right py-3 px-4">Year 1 (2026)</th>
                       <th className="text-right py-3 px-4">Year 2 (2027)</th>
                       <th className="text-right py-3 px-4">Year 3 (2028)</th>
-                      <th className="text-right py-3 px-4">Growth (Y1→Y3)</th>
+                      <th className="text-right py-3 px-4">Growth</th>
                     </tr>
                   </thead>
                   <tbody>
                     {tierBreakdown.map((tier, i) => (
                       <tr key={i} className="border-b border-gray-700/50">
                         <td className="py-3 px-4 font-medium">{tier.tier}</td>
-                        <td className="text-right py-3 px-4">${tier.q4_2025.toLocaleString()}</td>
+                        <td className="text-right py-3 px-4">${tier.now.toLocaleString()}</td>
                         <td className="text-right py-3 px-4">${tier.year_1.toLocaleString()}</td>
                         <td className="text-right py-3 px-4">${tier.year_2.toLocaleString()}</td>
                         <td className="text-right py-3 px-4">${tier.year_3.toLocaleString()}</td>
                         <td className="text-right py-3 px-4 text-green-400">
-                          {((tier.year_3 / tier.year_1) * 100 - 100).toFixed(0)}%
+                          {tier.year_1 > 0 ? ((tier.year_3 / tier.year_1) * 100 - 100).toFixed(0) + '%' : 'N/A'}
                         </td>
                       </tr>
                     ))}
                     <tr className="border-t-2 border-gray-700 font-bold">
                       <td className="py-3 px-4">Total MRR</td>
                       <td className="text-right py-3 px-4">
-                        ${tierBreakdown.reduce((sum, t) => sum + t.q4_2025, 0).toLocaleString()}
+                        ${tierBreakdown.reduce((sum, t) => sum + t.now, 0).toLocaleString()}
                       </td>
                       <td className="text-right py-3 px-4">
                         ${tierBreakdown.reduce((sum, t) => sum + t.year_1, 0).toLocaleString()}
@@ -338,7 +338,7 @@ const FinancialModelPage: React.FC = () => {
                       <td className="text-right py-3 px-4">
                         ${tierBreakdown.reduce((sum, t) => sum + t.year_3, 0).toLocaleString()}
                       </td>
-                      <td className="text-right py-3 px-4 text-green-400">412%</td>
+                      <td className="text-right py-3 px-4 text-green-400">1,343%</td>
                     </tr>
                   </tbody>
                 </table>
@@ -374,20 +374,20 @@ const FinancialModelPage: React.FC = () => {
               <StatCard
                 icon={<DollarSign className="w-6 h-6 text-cyan-400" />}
                 label="Average CAC"
-                value="$300 → $700"
-                subtext="Increases with Enterprise focus"
+                value="$50 → $300"
+                subtext="Low CAC via organic growth"
               />
               <StatCard
                 icon={<Target className="w-6 h-6 text-cyan-400" />}
                 label="Average LTV"
-                value="$6,000 → $9,000"
-                subtext="50% growth from NRR + expansion"
+                value="$1,200 → $4,000"
+                subtext="Growth from NRR + expansion"
               />
               <StatCard
                 icon={<TrendingUp className="w-6 h-6 text-cyan-400" />}
                 label="LTV:CAC Ratio"
-                value="20:1 → 12.9:1"
-                subtext="Well above 3:1 benchmark"
+                value="24:1 → 13.3:1"
+                subtext="Excellent unit economics"
                 trend="up"
               />
             </div>
@@ -614,21 +614,21 @@ const FinancialModelPage: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <StatCard
                 icon={<DollarSign className="w-6 h-6 text-cyan-400" />}
-                label="Starting Cash (Series A)"
-                value="$6.0M"
-                subtext="January 2026"
+                label="Starting Cash (Pre-Seed)"
+                value="$1.0M"
+                subtext="January 2026 (assuming mid-range raise)"
               />
               <StatCard
                 icon={<Calendar className="w-6 h-6 text-cyan-400" />}
                 label="Runway at Launch"
-                value="40 months"
-                subtext="With $150K monthly burn"
+                value="67 months"
+                subtext="With $15K monthly burn"
               />
               <StatCard
                 icon={<TrendingUp className="w-6 h-6 text-cyan-400" />}
                 label="Cash Flow Positive"
-                value="Q4 2027"
-                subtext="24 months post-raise"
+                value="Month 18"
+                subtext="Break-even Q3 2027"
                 trend="up"
               />
             </div>
@@ -669,43 +669,43 @@ const FinancialModelPage: React.FC = () => {
 
             {/* Use of Funds */}
             <div className="bg-gray-800 p-6 rounded-lg border border-gray-700">
-              <h3 className="text-xl font-bold mb-4">Use of Funds ($6M Series A)</h3>
+              <h3 className="text-xl font-bold mb-4">Use of Funds ($1M Pre-Seed)</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <h4 className="font-semibold text-cyan-400 mb-3">Engineering (40% - $2.4M)</h4>
+                  <h4 className="font-semibold text-cyan-400 mb-3">Product (40% - $400K)</h4>
                   <ul className="space-y-2 text-gray-300">
-                    <li>• 4 backend engineers ($600K)</li>
-                    <li>• 3 frontend engineers ($450K)</li>
-                    <li>• 1 DevOps/SRE ($150K)</li>
-                    <li>• 1 security researcher ($150K)</li>
-                    <li>• Infrastructure & cloud costs ($600K)</li>
-                    <li>• Tools & software licenses ($450K)</li>
+                    <li>• Finish last 10% of features ($150K founder time)</li>
+                    <li>• UX polish & user testing ($100K)</li>
+                    <li>• Security audit & pentest ($50K)</li>
+                    <li>• Infrastructure & cloud costs ($60K/year)</li>
+                    <li>• Tools & software licenses ($40K)</li>
                   </ul>
                 </div>
                 <div>
-                  <h4 className="font-semibold text-cyan-400 mb-3">Go-to-Market (30% - $1.8M)</h4>
+                  <h4 className="font-semibold text-cyan-400 mb-3">Go-to-Market (30% - $300K)</h4>
                   <ul className="space-y-2 text-gray-300">
-                    <li>• Sales team (2 AEs, 1 SE, 1 ISR) ($900K)</li>
-                    <li>• Marketing (content, paid ads) ($600K)</li>
-                    <li>• Partner program ($200K)</li>
-                    <li>• Customer success ($100K)</li>
+                    <li>• Reddit community building ($50K ads)</li>
+                    <li>• YouTube tutorial production ($100K equipment + editing)</li>
+                    <li>• Blog content & SEO ($50K freelance writers)</li>
+                    <li>• Conference sponsorships ($100K)</li>
                   </ul>
                 </div>
                 <div>
-                  <h4 className="font-semibold text-cyan-400 mb-3">Operations (15% - $900K)</h4>
+                  <h4 className="font-semibold text-cyan-400 mb-3">Founder Runway (20% - $200K)</h4>
                   <ul className="space-y-2 text-gray-300">
-                    <li>• Finance & legal ($300K)</li>
-                    <li>• HR & recruiting ($250K)</li>
-                    <li>• Office & facilities ($200K)</li>
-                    <li>• Insurance & compliance ($150K)</li>
+                    <li>• 18 months at $60K/year ($90K total)</li>
+                    <li>• Healthcare & benefits ($30K)</li>
+                    <li>• Home office setup ($10K)</li>
+                    <li>• Emergency buffer ($70K)</li>
                   </ul>
                 </div>
                 <div>
-                  <h4 className="font-semibold text-cyan-400 mb-3">Reserves (15% - $900K)</h4>
+                  <h4 className="font-semibold text-cyan-400 mb-3">Infrastructure (10% - $100K)</h4>
                   <ul className="space-y-2 text-gray-300">
-                    <li>• SOC2 audit & certifications ($200K)</li>
-                    <li>• Contingency buffer ($400K)</li>
-                    <li>• Strategic hires ($300K)</li>
+                    <li>• AWS credits & cloud hosting ($40K)</li>
+                    <li>• Domain & email services ($5K)</li>
+                    <li>• Legal & incorporation ($25K)</li>
+                    <li>• Accounting & bookkeeping ($30K)</li>
                   </ul>
                 </div>
               </div>
