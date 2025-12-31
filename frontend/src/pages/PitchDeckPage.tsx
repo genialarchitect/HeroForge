@@ -19,7 +19,10 @@ import {
   Lock,
   Sparkles,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Code,
+  Heart,
+  Flag
 } from 'lucide-react';
 
 const PitchDeckPage: React.FC = () => {
@@ -34,10 +37,13 @@ const PitchDeckPage: React.FC = () => {
           <Shield className="w-32 h-32 text-cyan-500 mb-8 animate-pulse" />
           <h1 className="text-7xl font-bold text-white mb-4">HeroForge</h1>
           <h2 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500 mb-8">
-            The Salesforce of Penetration Testing
+            Democratizing Enterprise Security for Everyone
           </h2>
-          <div className="bg-cyan-500/10 border border-cyan-500/30 rounded-full px-6 py-3 mb-12">
-            <span className="text-cyan-400 text-2xl font-semibold">Series A | Raising $5-8M</span>
+          <div className="bg-cyan-500/10 border border-cyan-500/30 rounded-full px-6 py-3 mb-4">
+            <span className="text-cyan-400 text-2xl font-semibold">Pre-Seed Round | $500K-$1.5M</span>
+          </div>
+          <div className="bg-gray-800/50 border border-gray-700 rounded-lg px-6 py-3 mb-12">
+            <span className="text-gray-300 text-lg">Built by a 20-year SIGINT veteran to make security affordable</span>
           </div>
           <div className="text-gray-400 text-xl">
             investors@genialarchitect.io
@@ -51,7 +57,7 @@ const PitchDeckPage: React.FC = () => {
       id: 'problem',
       content: (
         <div className="h-full flex flex-col">
-          <h2 className="text-5xl font-bold text-white mb-12">The Problem</h2>
+          <h2 className="text-5xl font-bold text-white mb-12">The Problem I Saw in 20 Years of SIGINT</h2>
           <div className="grid grid-cols-1 gap-8 flex-1">
             <div className="bg-gradient-to-br from-red-600/20 to-red-800/20 border border-red-500/30 rounded-2xl p-8">
               <div className="flex items-start gap-4 mb-4">
@@ -59,10 +65,10 @@ const PitchDeckPage: React.FC = () => {
                   <DollarSign className="w-8 h-8 text-red-400" />
                 </div>
                 <div className="flex-1">
-                  <h3 className="text-3xl font-bold text-white mb-3">Enterprise Tools Price Out 95% of Market</h3>
+                  <h3 className="text-3xl font-bold text-white mb-3">Enterprise Tools Are Unaffordable</h3>
                   <p className="text-xl text-gray-300 leading-relaxed">
-                    Tenable ($2,275/year) and Qualys dominate enterprise, but **consultancies and MSPs can't afford**
-                    these tools. The mid-market is forced to use free tools or cobble together 5+ products.
+                    Small businesses, consultancies, and MSPs can't afford Tenable ($2,275/year) or Qualys.
+                    They're forced to use free tools or pay $5K-$100K for manual pentests. Security shouldn't be only for Fortune 500.
                   </p>
                 </div>
               </div>
@@ -74,10 +80,10 @@ const PitchDeckPage: React.FC = () => {
                   <Building2 className="w-8 h-8 text-orange-400" />
                 </div>
                 <div className="flex-1">
-                  <h3 className="text-3xl font-bold text-white mb-3">No Consultancy Management Features</h3>
+                  <h3 className="text-3xl font-bold text-white mb-3">No Tools for Consultancies</h3>
                   <p className="text-xl text-gray-300 leading-relaxed">
-                    Existing tools lack **customer portals, CRM, time tracking, engagement management**.
-                    Consultancies waste $10K+/year on separate tools just to manage client relationships.
+                    Security consultants cobble together 5+ tools: scanning, reporting, client management, time tracking.
+                    There's no unified platform built for how consultancies actually work.
                   </p>
                 </div>
               </div>
@@ -89,10 +95,10 @@ const PitchDeckPage: React.FC = () => {
                   <Zap className="w-8 h-8 text-yellow-400" />
                 </div>
                 <div className="flex-1">
-                  <h3 className="text-3xl font-bold text-white mb-3">Manual, Slow, 40% Time Wasted</h3>
+                  <h3 className="text-3xl font-bold text-white mb-3">Manual Work Wastes 40% of Time</h3>
                   <p className="text-xl text-gray-300 leading-relaxed">
-                    Consultants spend 40% of billable hours on **manual reporting, false positives, admin work**.
-                    No AI prioritization means drowning in 10,000+ alerts.
+                    Pentesters spend 40% of billable hours on manual reporting, triaging false positives, and admin work.
+                    No AI means drowning in alerts with no prioritization.
                   </p>
                 </div>
               </div>
@@ -107,9 +113,9 @@ const PitchDeckPage: React.FC = () => {
       id: 'solution',
       content: (
         <div className="h-full flex flex-col">
-          <h2 className="text-5xl font-bold text-white mb-6">Our Solution</h2>
+          <h2 className="text-5xl font-bold text-white mb-6">My Solution: All-in-One Security Platform</h2>
           <p className="text-2xl text-gray-400 mb-12">
-            The first AI-powered pentesting platform **designed for consultancies and MSPs**
+            Built in 3 weeks with AI assistance • 90% functional • Rust + React + ML
           </p>
           <div className="grid grid-cols-3 gap-8 flex-1">
             <div className="bg-gradient-to-br from-cyan-600/20 to-cyan-800/20 border border-cyan-500/30 rounded-2xl p-6 flex flex-col">
@@ -124,15 +130,15 @@ const PitchDeckPage: React.FC = () => {
                 </li>
                 <li className="flex items-start gap-2">
                   <CheckCircle2 className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-1" />
-                  <span>LLM security testing (industry first)</span>
+                  <span>LLM security testing</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <CheckCircle2 className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-1" />
-                  <span>AI anomaly detection</span>
+                  <span>Automated correlation & attack paths</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <CheckCircle2 className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-1" />
-                  <span>Automated correlation</span>
+                  <span>70% reduction in false positives</span>
                 </li>
               </ul>
             </div>
@@ -141,11 +147,11 @@ const PitchDeckPage: React.FC = () => {
               <div className="p-4 bg-purple-500/20 rounded-xl inline-block mb-4">
                 <Users className="w-12 h-12 text-purple-400" />
               </div>
-              <h3 className="text-2xl font-bold text-white mb-3">Consultancy-Focused</h3>
+              <h3 className="text-2xl font-bold text-white mb-3">Consultancy-First</h3>
               <ul className="space-y-2 text-lg text-gray-300 flex-1">
                 <li className="flex items-start gap-2">
                   <CheckCircle2 className="w-5 h-5 text-purple-400 flex-shrink-0 mt-1" />
-                  <span>Branded customer portal</span>
+                  <span>White-label customer portal</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <CheckCircle2 className="w-5 h-5 text-purple-400 flex-shrink-0 mt-1" />
@@ -157,7 +163,7 @@ const PitchDeckPage: React.FC = () => {
                 </li>
                 <li className="flex items-start gap-2">
                   <CheckCircle2 className="w-5 h-5 text-purple-400 flex-shrink-0 mt-1" />
-                  <span>Methodology tracking</span>
+                  <span>Methodology checklists (OWASP, PTES)</span>
                 </li>
               </ul>
             </div>
@@ -170,11 +176,11 @@ const PitchDeckPage: React.FC = () => {
               <ul className="space-y-2 text-lg text-gray-300 flex-1">
                 <li className="flex items-start gap-2">
                   <CheckCircle2 className="w-5 h-5 text-green-400 flex-shrink-0 mt-1" />
-                  <span>Network, web app, cloud security</span>
+                  <span>Network, web app, cloud (AWS/Azure/GCP)</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <CheckCircle2 className="w-5 h-5 text-green-400 flex-shrink-0 mt-1" />
-                  <span>Compliance frameworks (SOC2, PCI-DSS)</span>
+                  <span>Compliance (SOC2, PCI-DSS, HIPAA)</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <CheckCircle2 className="w-5 h-5 text-green-400 flex-shrink-0 mt-1" />
@@ -182,7 +188,7 @@ const PitchDeckPage: React.FC = () => {
                 </li>
                 <li className="flex items-start gap-2">
                   <CheckCircle2 className="w-5 h-5 text-green-400 flex-shrink-0 mt-1" />
-                  <span>SAST/SCA DevSecOps</span>
+                  <span>SAST/SCA DevSecOps pipeline</span>
                 </li>
               </ul>
             </div>
@@ -190,7 +196,7 @@ const PitchDeckPage: React.FC = () => {
           <div className="mt-8 text-center">
             <div className="inline-block bg-gradient-to-r from-cyan-600/20 to-blue-600/20 border border-cyan-500/30 rounded-xl px-8 py-4">
               <p className="text-2xl font-bold text-white">
-                50-70% cheaper than Tenable/Qualys + features they don't offer
+                60-70% cheaper than Tenable/Qualys • Features they don't offer
               </p>
             </div>
           </div>
@@ -198,12 +204,13 @@ const PitchDeckPage: React.FC = () => {
       )
     },
 
-    // Slide 4: Product Demo (Screenshots Placeholder)
+    // Slide 4: Product Demo
     {
       id: 'demo',
       content: (
         <div className="h-full flex flex-col">
-          <h2 className="text-5xl font-bold text-white mb-12">Product Highlights</h2>
+          <h2 className="text-5xl font-bold text-white mb-6">Product Highlights</h2>
+          <p className="text-xl text-gray-400 mb-8">Early access available • heroforge.genialarchitect.io</p>
           <div className="grid grid-cols-2 gap-8 flex-1">
             <div className="bg-gray-800 border border-cyan-500/30 rounded-2xl p-6 flex flex-col">
               <div className="flex items-center gap-3 mb-4">
@@ -233,7 +240,7 @@ const PitchDeckPage: React.FC = () => {
                   <p className="text-xl text-gray-300">Branded client access to</p>
                   <p className="text-xl text-gray-300">scans, reports, vulnerabilities</p>
                   <div className="mt-6 inline-block bg-purple-500/20 border border-purple-500/30 rounded-lg px-4 py-2">
-                    <span className="text-purple-400 font-bold">40% better client retention</span>
+                    <span className="text-purple-400 font-bold">Unique to HeroForge</span>
                   </div>
                 </div>
               </div>
@@ -250,7 +257,7 @@ const PitchDeckPage: React.FC = () => {
                   <p className="text-xl text-gray-300">Test AI models for prompt injection,</p>
                   <p className="text-xl text-gray-300">jailbreaks, data leakage</p>
                   <div className="mt-6 inline-block bg-blue-500/20 border border-blue-500/30 rounded-lg px-4 py-2">
-                    <span className="text-blue-400 font-bold">Industry-first capability</span>
+                    <span className="text-blue-400 font-bold">69 built-in test cases</span>
                   </div>
                 </div>
               </div>
@@ -259,15 +266,15 @@ const PitchDeckPage: React.FC = () => {
             <div className="bg-gray-800 border border-green-500/30 rounded-2xl p-6 flex flex-col">
               <div className="flex items-center gap-3 mb-4">
                 <Network className="w-8 h-8 text-green-400" />
-                <h3 className="text-2xl font-bold text-white">Attack Path Analysis</h3>
+                <h3 className="text-2xl font-bold text-white">8 "Colored Team" Modules</h3>
               </div>
               <div className="flex-1 bg-gray-900 rounded-xl p-6 flex items-center justify-center">
                 <div className="text-center">
                   <Target className="w-24 h-24 text-green-400 mx-auto mb-4" />
-                  <p className="text-xl text-gray-300">AI correlates vulnerabilities to</p>
-                  <p className="text-xl text-gray-300">visualize exploitation chains</p>
+                  <p className="text-xl text-gray-300">Red, Blue, Green, Yellow, White,</p>
+                  <p className="text-xl text-gray-300">Orange, Purple Teams + DevSecOps</p>
                   <div className="mt-6 inline-block bg-green-500/20 border border-green-500/30 rounded-lg px-4 py-2">
-                    <span className="text-green-400 font-bold">Automated correlation engine</span>
+                    <span className="text-green-400 font-bold">Full security lifecycle</span>
                   </div>
                 </div>
               </div>
@@ -284,7 +291,7 @@ const PitchDeckPage: React.FC = () => {
         <div className="h-full flex flex-col">
           <h2 className="text-5xl font-bold text-white mb-6">Massive Market Opportunity</h2>
           <p className="text-2xl text-gray-400 mb-12">
-            $2.4B penetration testing market growing 15-18% CAGR
+            $24.8B cybersecurity market • Growing 15-18% CAGR
           </p>
           <div className="grid grid-cols-2 gap-12 flex-1">
             <div>
@@ -293,39 +300,39 @@ const PitchDeckPage: React.FC = () => {
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-xl text-gray-300">TAM (Total Addressable)</span>
-                    <span className="text-2xl font-bold text-white">$2.4B</span>
+                    <span className="text-2xl font-bold text-white">$24.8B</span>
                   </div>
                   <div className="w-full bg-gray-700 rounded-full h-3">
                     <div className="bg-gradient-to-r from-cyan-500 to-blue-500 h-3 rounded-full" style={{ width: '100%' }}></div>
                   </div>
-                  <div className="text-gray-400 text-sm mt-2">Global penetration testing market</div>
+                  <div className="text-gray-400 text-sm mt-2">Pentesting + vuln mgmt + SOC tools globally</div>
                 </div>
 
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-xl text-gray-300">SAM (Serviceable Available)</span>
-                    <span className="text-2xl font-bold text-white">$800M</span>
+                    <span className="text-2xl font-bold text-white">$3.2B</span>
                   </div>
                   <div className="w-full bg-gray-700 rounded-full h-3">
-                    <div className="bg-gradient-to-r from-cyan-500 to-blue-500 h-3 rounded-full" style={{ width: '33%' }}></div>
+                    <div className="bg-gradient-to-r from-cyan-500 to-blue-500 h-3 rounded-full" style={{ width: '13%' }}></div>
                   </div>
-                  <div className="text-gray-400 text-sm mt-2">Consultancies + MSPs (our target)</div>
+                  <div className="text-gray-400 text-sm mt-2">Consultancies + MSPs in US/EU</div>
                 </div>
 
                 <div>
                   <div className="flex items-center justify-between mb-3">
-                    <span className="text-xl text-gray-300">SOM (Serviceable Obtainable)</span>
-                    <span className="text-2xl font-bold text-white">$40M</span>
+                    <span className="text-xl text-gray-300">SOM (5-Year Target)</span>
+                    <span className="text-2xl font-bold text-white">$160M</span>
                   </div>
                   <div className="w-full bg-gray-700 rounded-full h-3">
-                    <div className="bg-gradient-to-r from-cyan-500 to-blue-500 h-3 rounded-full" style={{ width: '5%' }}></div>
+                    <div className="bg-gradient-to-r from-cyan-500 to-blue-500 h-3 rounded-full" style={{ width: '0.6%' }}></div>
                   </div>
-                  <div className="text-gray-400 text-sm mt-2">5% market share by 2027 (conservative)</div>
+                  <div className="text-gray-400 text-sm mt-2">5% market share (10K customers @ $1.3K avg)</div>
                 </div>
               </div>
 
               <div className="mt-8 bg-gradient-to-r from-cyan-600/20 to-blue-600/20 border border-cyan-500/30 rounded-xl p-6">
-                <h4 className="text-xl font-bold text-white mb-3">Market Trends</h4>
+                <h4 className="text-xl font-bold text-white mb-3">Why Now?</h4>
                 <ul className="space-y-2 text-gray-300">
                   <li className="flex items-start gap-2">
                     <CheckCircle2 className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-0.5" />
@@ -333,63 +340,72 @@ const PitchDeckPage: React.FC = () => {
                   </li>
                   <li className="flex items-start gap-2">
                     <CheckCircle2 className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-0.5" />
-                    <span>PTaaS growing 21.2% CAGR (fastest segment)</span>
+                    <span>Compliance mandates (SOC2, GDPR, CCPA)</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <CheckCircle2 className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-0.5" />
-                    <span>Compliance explosion (GDPR, SOC2, CCPA)</span>
+                    <span>Cloud adoption = more attack surface</span>
                   </li>
                 </ul>
               </div>
             </div>
 
             <div>
-              <h3 className="text-3xl font-bold text-white mb-6">3-Year Revenue Projection</h3>
+              <h3 className="text-3xl font-bold text-white mb-6">Realistic Projections</h3>
               <div className="bg-gray-800 border border-gray-700 rounded-2xl p-8">
                 <div className="space-y-8">
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-xl text-gray-400">Year 1 (2025)</span>
-                      <span className="text-3xl font-bold text-white">$1.4M</span>
+                      <span className="text-xl text-gray-400">Year 1</span>
+                      <span className="text-3xl font-bold text-white">$200K</span>
                     </div>
-                    <div className="text-gray-500 text-sm">622 customers</div>
+                    <div className="text-gray-500 text-sm">100 customers • $167/mo avg</div>
+                    <div className="w-full bg-gray-700 rounded-full h-2 mt-2">
+                      <div className="bg-gradient-to-r from-cyan-500 to-blue-500 h-2 rounded-full" style={{ width: '1%' }}></div>
+                    </div>
                   </div>
 
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-xl text-gray-400">Year 2 (2026)</span>
-                      <span className="text-3xl font-bold text-cyan-400">$6.5M</span>
+                      <span className="text-xl text-gray-400">Year 2</span>
+                      <span className="text-3xl font-bold text-cyan-400">$1.2M</span>
                     </div>
-                    <div className="text-gray-500 text-sm">2,610 customers • 364% growth</div>
+                    <div className="text-gray-500 text-sm">500 customers • 400% growth</div>
+                    <div className="w-full bg-gray-700 rounded-full h-2 mt-2">
+                      <div className="bg-gradient-to-r from-cyan-500 to-blue-500 h-2 rounded-full" style={{ width: '8%' }}></div>
+                    </div>
                   </div>
 
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-xl text-gray-400">Year 3 (2027)</span>
-                      <span className="text-3xl font-bold text-cyan-400">$15.3M</span>
+                      <span className="text-xl text-gray-400">Year 3</span>
+                      <span className="text-3xl font-bold text-cyan-400">$5.0M</span>
                     </div>
-                    <div className="text-gray-500 text-sm">6,830 customers • 135% growth</div>
+                    <div className="text-gray-500 text-sm">2,000 customers • 317% growth</div>
+                    <div className="w-full bg-gray-700 rounded-full h-2 mt-2">
+                      <div className="bg-gradient-to-r from-cyan-500 to-blue-500 h-2 rounded-full" style={{ width: '33%' }}></div>
+                    </div>
                   </div>
                 </div>
 
                 <div className="mt-8 pt-8 border-t border-gray-700">
-                  <h4 className="text-lg font-bold text-white mb-4">Unit Economics</h4>
+                  <h4 className="text-lg font-bold text-white mb-4">Conservative Assumptions</h4>
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
-                      <div className="text-gray-400 mb-1">Gross Margin</div>
-                      <div className="text-xl font-bold text-green-400">80-85%</div>
+                      <div className="text-gray-400 mb-1">Trial → Paid</div>
+                      <div className="text-xl font-bold text-green-400">20%</div>
                     </div>
                     <div>
-                      <div className="text-gray-400 mb-1">NRR</div>
-                      <div className="text-xl font-bold text-green-400">115%</div>
+                      <div className="text-gray-400 mb-1">Annual Churn</div>
+                      <div className="text-xl font-bold text-green-400">15%</div>
                     </div>
                     <div>
-                      <div className="text-gray-400 mb-1">CAC Payback</div>
-                      <div className="text-xl font-bold text-green-400">{'<'}12 months</div>
+                      <div className="text-gray-400 mb-1">CAC</div>
+                      <div className="text-xl font-bold text-green-400">$200</div>
                     </div>
                     <div>
                       <div className="text-gray-400 mb-1">LTV:CAC</div>
-                      <div className="text-xl font-bold text-green-400">10-71:1</div>
+                      <div className="text-xl font-bold text-green-400">10:1</div>
                     </div>
                   </div>
                 </div>
@@ -405,7 +421,7 @@ const PitchDeckPage: React.FC = () => {
       id: 'business-model',
       content: (
         <div className="h-full flex flex-col">
-          <h2 className="text-5xl font-bold text-white mb-12">Business Model: Land & Expand</h2>
+          <h2 className="text-5xl font-bold text-white mb-12">Business Model: Freemium + Land & Expand</h2>
           <div className="grid grid-cols-4 gap-6 mb-12">
             <div className="bg-gradient-to-br from-cyan-600/20 to-cyan-800/20 border border-cyan-500/30 rounded-2xl p-6 text-center">
               <div className="text-4xl font-bold text-white mb-2">$99</div>
@@ -416,7 +432,7 @@ const PitchDeckPage: React.FC = () => {
 
             <div className="bg-gradient-to-br from-purple-600/20 to-purple-800/20 border-2 border-purple-500 rounded-2xl p-6 text-center relative">
               <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                <span className="bg-purple-500 text-white text-xs font-bold px-3 py-1 rounded-full">Most Popular</span>
+                <span className="bg-purple-500 text-white text-xs font-bold px-3 py-1 rounded-full">Target</span>
               </div>
               <div className="text-4xl font-bold text-white mb-2">$299</div>
               <div className="text-purple-400 font-semibold mb-4">Professional</div>
@@ -434,51 +450,22 @@ const PitchDeckPage: React.FC = () => {
             <div className="bg-gradient-to-br from-green-600/20 to-green-800/20 border border-green-500/30 rounded-2xl p-6 text-center">
               <div className="text-4xl font-bold text-white mb-2">Custom</div>
               <div className="text-green-400 font-semibold mb-4">Enterprise</div>
-              <div className="text-gray-400 text-sm mb-4">Large organizations</div>
-              <div className="text-xs text-gray-500">Unlimited, SSO, on-prem</div>
+              <div className="text-gray-400 text-sm mb-4">Large orgs</div>
+              <div className="text-xs text-gray-500">SSO, on-prem options</div>
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-12 flex-1">
             <div>
-              <h3 className="text-3xl font-bold text-white mb-6">Revenue Streams</h3>
-              <div className="space-y-4">
-                <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-xl text-white font-semibold">SaaS Subscriptions</span>
-                    <span className="text-2xl font-bold text-cyan-400">85%</span>
-                  </div>
-                  <p className="text-gray-400">Monthly/annual recurring revenue from all tiers</p>
-                </div>
-
-                <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-xl text-white font-semibold">Professional Services</span>
-                    <span className="text-2xl font-bold text-purple-400">10%</span>
-                  </div>
-                  <p className="text-gray-400">Custom integrations, training, consulting</p>
-                </div>
-
-                <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-xl text-white font-semibold">Marketplace</span>
-                    <span className="text-2xl font-bold text-blue-400">5%</span>
-                  </div>
-                  <p className="text-gray-400">Plugin ecosystem (20% revenue share)</p>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <h3 className="text-3xl font-bold text-white mb-6">Growth Strategy</h3>
+              <h3 className="text-3xl font-bold text-white mb-6">Go-to-Market Strategy</h3>
               <div className="space-y-6">
                 <div className="flex items-start gap-4">
                   <div className="p-3 bg-cyan-500/20 rounded-lg flex-shrink-0">
                     <span className="text-2xl font-bold text-cyan-400">1</span>
                   </div>
                   <div>
-                    <h4 className="text-xl font-bold text-white mb-2">Freemium Funnel</h4>
-                    <p className="text-gray-400">14-day free trial → Solo tier → upsell to Professional</p>
+                    <h4 className="text-xl font-bold text-white mb-2">Launch Freemium (Month 1-3)</h4>
+                    <p className="text-gray-400">14-day free trial → $99 Solo tier → viral Reddit/HN launch</p>
                   </div>
                 </div>
 
@@ -487,8 +474,8 @@ const PitchDeckPage: React.FC = () => {
                     <span className="text-2xl font-bold text-purple-400">2</span>
                   </div>
                   <div>
-                    <h4 className="text-xl font-bold text-white mb-2">MSP Partnerships</h4>
-                    <p className="text-gray-400">20% recurring commission → co-marketing → white-label</p>
+                    <h4 className="text-xl font-bold text-white mb-2">Content Marketing (Month 3-12)</h4>
+                    <p className="text-gray-400">SEO-driven blog, YouTube tutorials, GitHub presence</p>
                   </div>
                 </div>
 
@@ -497,16 +484,55 @@ const PitchDeckPage: React.FC = () => {
                     <span className="text-2xl font-bold text-blue-400">3</span>
                   </div>
                   <div>
-                    <h4 className="text-xl font-bold text-white mb-2">Enterprise Land</h4>
-                    <p className="text-gray-400">30-day PoC → annual contract → expansion via seat growth</p>
+                    <h4 className="text-xl font-bold text-white mb-2">Community Building (Ongoing)</h4>
+                    <p className="text-gray-400">Discord for users, plugin marketplace, user-generated templates</p>
                   </div>
                 </div>
 
-                <div className="bg-gradient-to-r from-green-600/20 to-emerald-600/20 border border-green-500/30 rounded-xl p-6 mt-8">
-                  <div className="text-center">
-                    <div className="text-3xl font-bold text-white mb-2">115% NRR</div>
-                    <div className="text-gray-400">Driven by upsells: Solo → Professional → Team → Enterprise</div>
+                <div className="flex items-start gap-4">
+                  <div className="p-3 bg-green-500/20 rounded-lg flex-shrink-0">
+                    <span className="text-2xl font-bold text-green-400">4</span>
                   </div>
+                  <div>
+                    <h4 className="text-xl font-bold text-white mb-2">Enterprise Sales (Year 2+)</h4>
+                    <p className="text-gray-400">Outbound to Fortune 2000 CISOs once product-market fit proven</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-3xl font-bold text-white mb-6">Competitive Pricing</h3>
+              <div className="space-y-4">
+                <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xl text-white font-semibold">HeroForge Professional</span>
+                    <span className="text-2xl font-bold text-cyan-400">$299/mo</span>
+                  </div>
+                  <p className="text-gray-400 text-sm">Unlimited scans + customer portal + CRM</p>
+                </div>
+
+                <div className="bg-gray-800 border border-red-500/30 rounded-xl p-6">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xl text-white font-semibold">Tenable</span>
+                    <span className="text-2xl font-bold text-red-400">$2,275/yr</span>
+                  </div>
+                  <p className="text-gray-400 text-sm">No customer portal, no CRM, no consultancy features</p>
+                </div>
+
+                <div className="bg-gray-800 border border-red-500/30 rounded-xl p-6">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xl text-white font-semibold">Manual Pentest</span>
+                    <span className="text-2xl font-bold text-red-400">$5K-$100K</span>
+                  </div>
+                  <p className="text-gray-400 text-sm">One-time, weeks-long, not continuous</p>
+                </div>
+              </div>
+
+              <div className="mt-6 bg-gradient-to-r from-green-600/20 to-emerald-600/20 border border-green-500/30 rounded-xl p-6">
+                <div className="text-center">
+                  <div className="text-3xl font-bold text-white mb-2">60-70% Cost Savings</div>
+                  <div className="text-gray-400">Plus features enterprise tools don't offer</div>
                 </div>
               </div>
             </div>
@@ -515,159 +541,102 @@ const PitchDeckPage: React.FC = () => {
       )
     },
 
-    // Slide 7: Traction
+    // Slide 7: Founder Story (NEW - replaces Traction)
     {
-      id: 'traction',
+      id: 'founder-story',
       content: (
         <div className="h-full flex flex-col">
-          <h2 className="text-5xl font-bold text-white mb-12">Proven Traction & Growth</h2>
-          <div className="grid grid-cols-4 gap-6 mb-12">
-            <div className="bg-gradient-to-br from-cyan-600/20 to-blue-600/20 border border-cyan-500/30 rounded-2xl p-6 text-center">
-              <Users className="w-12 h-12 text-cyan-400 mx-auto mb-4" />
-              <div className="text-4xl font-bold text-white mb-2">2,500+</div>
-              <div className="text-gray-400">Active Users</div>
+          <h2 className="text-5xl font-bold text-white mb-12">Why I Built This</h2>
+          <div className="grid grid-cols-2 gap-12 mb-8">
+            <div className="bg-gradient-to-br from-cyan-600/20 to-blue-600/20 border border-cyan-500/30 rounded-2xl p-8">
+              <div className="flex items-center gap-4 mb-6">
+                <Flag className="w-12 h-12 text-cyan-400" />
+                <h3 className="text-3xl font-bold text-white">20 Years of SIGINT</h3>
+              </div>
+              <div className="space-y-4 text-lg text-gray-300">
+                <p>
+                  <strong className="text-white">Former Signals Intelligence Analyst</strong> operating at the nation-state level
+                  against targets worldwide for nearly two decades.
+                </p>
+                <p>
+                  I've seen the best offensive security capabilities in the world. They shouldn't be exclusive to governments and Fortune 500.
+                </p>
+                <div className="bg-cyan-500/10 border border-cyan-500/30 rounded-lg p-4 mt-6">
+                  <p className="text-cyan-400 font-semibold">
+                    "If I can help defend against nation-state threats, I can help small businesses stay secure."
+                  </p>
+                </div>
+              </div>
             </div>
 
-            <div className="bg-gradient-to-br from-purple-600/20 to-pink-600/20 border border-purple-500/30 rounded-2xl p-6 text-center">
-              <Target className="w-12 h-12 text-purple-400 mx-auto mb-4" />
-              <div className="text-4xl font-bold text-white mb-2">50M+</div>
-              <div className="text-gray-400">Hosts Scanned</div>
-            </div>
-
-            <div className="bg-gradient-to-br from-green-600/20 to-emerald-600/20 border border-green-500/30 rounded-2xl p-6 text-center">
-              <Award className="w-12 h-12 text-green-400 mx-auto mb-4" />
-              <div className="text-4xl font-bold text-white mb-2">95%</div>
-              <div className="text-gray-400">Satisfaction</div>
-            </div>
-
-            <div className="bg-gradient-to-br from-orange-600/20 to-red-600/20 border border-orange-500/30 rounded-2xl p-6 text-center">
-              <TrendingUp className="w-12 h-12 text-orange-400 mx-auto mb-4" />
-              <div className="text-4xl font-bold text-white mb-2">300%</div>
-              <div className="text-gray-400">YoY Growth</div>
+            <div className="bg-gradient-to-br from-purple-600/20 to-pink-600/20 border border-purple-500/30 rounded-2xl p-8">
+              <div className="flex items-center gap-4 mb-6">
+                <Heart className="w-12 h-12 text-purple-400" />
+                <h3 className="text-3xl font-bold text-white">Mission-Driven</h3>
+              </div>
+              <div className="space-y-4 text-lg text-gray-300">
+                <p>
+                  <strong className="text-white">100% disabled Army veteran</strong> and father trying to make American security
+                  infrastructure affordable—not just for elite companies.
+                </p>
+                <p>
+                  I enjoy pentesting and developing tools using AI to make the world a better place.
+                </p>
+                <div className="bg-purple-500/10 border border-purple-500/30 rounded-lg p-4 mt-6">
+                  <p className="text-purple-400 font-semibold">
+                    "Security is a right, not a luxury. Every business deserves protection."
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-12 flex-1">
-            <div>
-              <h3 className="text-2xl font-bold text-white mb-6">Customer Success Stories</h3>
-              <div className="space-y-4">
-                <div className="bg-gray-800 border border-cyan-500/30 rounded-xl p-6">
-                  <div className="flex items-center gap-3 mb-3">
-                    <Shield className="w-6 h-6 text-cyan-400" />
-                    <span className="font-bold text-white">Freelance Pentester</span>
-                  </div>
-                  <p className="text-gray-300 italic mb-3">
-                    "Cut my reporting time from 8 hours to 45 minutes. ROI paid for itself on the first engagement."
-                  </p>
-                  <div className="bg-green-500/20 border border-green-500/30 rounded-lg px-3 py-2 inline-block">
-                    <span className="text-green-400 font-bold">8x faster reporting</span>
-                  </div>
-                </div>
-
-                <div className="bg-gray-800 border border-purple-500/30 rounded-xl p-6">
-                  <div className="flex items-center gap-3 mb-3">
-                    <Users className="w-6 h-6 text-purple-400" />
-                    <span className="font-bold text-white">Security Consultancy</span>
-                  </div>
-                  <p className="text-gray-300 italic mb-3">
-                    "Customer portal transformed our client engagement. Increased renewals by 40%."
-                  </p>
-                  <div className="bg-green-500/20 border border-green-500/30 rounded-lg px-3 py-2 inline-block">
-                    <span className="text-green-400 font-bold">40% better retention</span>
-                  </div>
-                </div>
-
-                <div className="bg-gray-800 border border-blue-500/30 rounded-xl p-6">
-                  <div className="flex items-center gap-3 mb-3">
-                    <Building2 className="w-6 h-6 text-blue-400" />
-                    <span className="font-bold text-white">MSP</span>
-                  </div>
-                  <p className="text-gray-300 italic mb-3">
-                    "Switched from Tenable and saved $18K/year. Best decision we made in 2024."
-                  </p>
-                  <div className="bg-green-500/20 border border-green-500/30 rounded-lg px-3 py-2 inline-block">
-                    <span className="text-green-400 font-bold">$18K annual savings</span>
-                  </div>
-                </div>
-              </div>
+          <div className="grid grid-cols-3 gap-6">
+            <div className="bg-gray-800 border border-cyan-500/30 rounded-2xl p-6">
+              <Code className="w-10 h-10 text-cyan-400 mb-4" />
+              <h4 className="text-xl font-bold text-white mb-3">Built in 3 Weeks</h4>
+              <p className="text-gray-300">
+                Used AI (Claude) to accelerate development. 90% functional product with zero compilation errors.
+                Rust backend + React frontend.
+              </p>
             </div>
 
-            <div>
-              <h3 className="text-2xl font-bold text-white mb-6">Key Milestones</h3>
-              <div className="space-y-4">
-                <div className="flex items-start gap-4">
-                  <div className="p-2 bg-green-500/20 rounded-lg flex-shrink-0 mt-1">
-                    <CheckCircle2 className="w-5 h-5 text-green-400" />
-                  </div>
-                  <div>
-                    <div className="text-sm text-gray-400 mb-1">Q4 2024</div>
-                    <div className="font-medium text-white">Launched AI-powered alert prioritization</div>
-                  </div>
-                </div>
+            <div className="bg-gray-800 border border-purple-500/30 rounded-2xl p-6">
+              <CheckCircle2 className="w-10 h-10 text-purple-400 mb-4" />
+              <h4 className="text-xl font-bold text-white mb-3">Early Validation</h4>
+              <p className="text-gray-300">
+                Tested on real targets twice. Proven functional. Now seeking first paying users to validate
+                product-market fit.
+              </p>
+            </div>
 
-                <div className="flex items-start gap-4">
-                  <div className="p-2 bg-green-500/20 rounded-lg flex-shrink-0 mt-1">
-                    <CheckCircle2 className="w-5 h-5 text-green-400" />
-                  </div>
-                  <div>
-                    <div className="text-sm text-gray-400 mb-1">Q1 2025</div>
-                    <div className="font-medium text-white">Reached 2,500+ users across 50+ countries</div>
-                  </div>
-                </div>
+            <div className="bg-gray-800 border border-blue-500/30 rounded-2xl p-6">
+              <Users className="w-10 h-10 text-blue-400 mb-4" />
+              <h4 className="text-xl font-bold text-white mb-3">Looking For</h4>
+              <p className="text-gray-300">
+                Technical co-founder, advisors (GTM, security), veteran mentors, and first 100 customers.
+              </p>
+            </div>
+          </div>
 
-                <div className="flex items-start gap-4">
-                  <div className="p-2 bg-green-500/20 rounded-lg flex-shrink-0 mt-1">
-                    <CheckCircle2 className="w-5 h-5 text-green-400" />
-                  </div>
-                  <div>
-                    <div className="text-sm text-gray-400 mb-1">Q1 2025</div>
-                    <div className="font-medium text-white">Launched LLM security testing (industry first)</div>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-4">
-                  <div className="p-2 bg-gray-700 rounded-lg flex-shrink-0 mt-1">
-                    <div className="w-5 h-5 border-2 border-gray-500 rounded-full"></div>
-                  </div>
-                  <div>
-                    <div className="text-sm text-gray-400 mb-1">Q2 2025</div>
-                    <div className="font-medium text-gray-400">SOC 2 Type II certification (in progress)</div>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-4">
-                  <div className="p-2 bg-gray-700 rounded-lg flex-shrink-0 mt-1">
-                    <div className="w-5 h-5 border-2 border-gray-500 rounded-full"></div>
-                  </div>
-                  <div>
-                    <div className="text-sm text-gray-400 mb-1">Q2 2025</div>
-                    <div className="font-medium text-gray-400">Series A raise ($5-8M)</div>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-4">
-                  <div className="p-2 bg-gray-700 rounded-lg flex-shrink-0 mt-1">
-                    <div className="w-5 h-5 border-2 border-gray-500 rounded-full"></div>
-                  </div>
-                  <div>
-                    <div className="text-sm text-gray-400 mb-1">Q3 2025</div>
-                    <div className="font-medium text-gray-400">Hit $3M ARR run rate</div>
-                  </div>
-                </div>
+          <div className="mt-8 bg-gradient-to-r from-gray-800 to-gray-900 border border-gray-700 rounded-2xl p-6">
+            <h4 className="text-2xl font-bold text-white mb-4 text-center">What I Bring</h4>
+            <div className="grid grid-cols-4 gap-6 text-center">
+              <div>
+                <div className="text-3xl font-bold text-cyan-400 mb-2">20 years</div>
+                <div className="text-gray-400 text-sm">SIGINT expertise</div>
               </div>
-
-              <div className="mt-8 bg-gradient-to-r from-cyan-600/20 to-blue-600/20 border border-cyan-500/30 rounded-xl p-6">
-                <h4 className="text-xl font-bold text-white mb-3 text-center">Current Metrics</h4>
-                <div className="grid grid-cols-2 gap-4 text-center">
-                  <div>
-                    <div className="text-2xl font-bold text-cyan-400">$1M+</div>
-                    <div className="text-gray-400 text-sm">ARR</div>
-                  </div>
-                  <div>
-                    <div className="text-2xl font-bold text-purple-400">20%</div>
-                    <div className="text-gray-400 text-sm">MoM Growth</div>
-                  </div>
-                </div>
+              <div>
+                <div className="text-3xl font-bold text-purple-400 mb-2">Elite</div>
+                <div className="text-gray-400 text-sm">Nation-state level</div>
+              </div>
+              <div>
+                <div className="text-3xl font-bold text-blue-400 mb-2">Solo</div>
+                <div className="text-gray-400 text-sm">Shipped in 3 weeks</div>
+              </div>
+              <div>
+                <div className="text-3xl font-bold text-green-400 mb-2">Mission</div>
+                <div className="text-gray-400 text-sm">Help everyone</div>
               </div>
             </div>
           </div>
@@ -675,7 +644,7 @@ const PitchDeckPage: React.FC = () => {
       )
     },
 
-    // Slide 8: Competitive Landscape (continued in next message due to length)
+    // Slide 8: Competition
     {
       id: 'competition',
       content: (
@@ -688,17 +657,19 @@ const PitchDeckPage: React.FC = () => {
                 <div>
                   <div className="text-red-400 font-semibold mb-2">Their Weakness</div>
                   <ul className="text-sm text-gray-400 space-y-1">
-                    <li>• $2,275+/year (expensive)</li>
+                    <li>• $2,275+/year (expensive for SMBs)</li>
                     <li>• No customer portal/CRM</li>
-                    <li>• Enterprise-focused only</li>
+                    <li>• Enterprise-only focus</li>
+                    <li>• Legacy tech (slow innovation)</li>
                   </ul>
                 </div>
                 <div>
-                  <div className="text-green-400 font-semibold mb-2">Our Advantage</div>
+                  <div className="text-green-400 font-semibold mb-2">My Advantage</div>
                   <ul className="text-sm text-gray-300 space-y-1">
-                    <li>• 50-70% cheaper ($999/year)</li>
-                    <li>• Customer portal + CRM</li>
-                    <li>• Mid-market consultancy focus</li>
+                    <li>• 60-70% cheaper</li>
+                    <li>• Customer portal + CRM + time tracking</li>
+                    <li>• Consultancy-first design</li>
+                    <li>• Modern stack (Rust + React + ML)</li>
                   </ul>
                 </div>
               </div>
@@ -711,38 +682,42 @@ const PitchDeckPage: React.FC = () => {
                   <div className="text-red-400 font-semibold mb-2">Their Weakness</div>
                   <ul className="text-sm text-gray-400 space-y-1">
                     <li>• Enterprise-only ($30M raise)</li>
-                    <li>• No client management</li>
-                    <li>• Early stage (4 months old)</li>
+                    <li>• No consultancy features</li>
+                    <li>• 4 months old (unproven)</li>
+                    <li>• High burn rate</li>
                   </ul>
                 </div>
                 <div>
-                  <div className="text-green-400 font-semibold mb-2">Our Advantage</div>
+                  <div className="text-green-400 font-semibold mb-2">My Advantage</div>
                   <ul className="text-sm text-gray-300 space-y-1">
-                    <li>• Mid-market + MSP focus</li>
-                    <li>• Engagement tracking + portal</li>
-                    <li>• 2,500+ users, proven traction</li>
+                    <li>• SMB + consultancy focus</li>
+                    <li>• Portal + CRM + engagement mgmt</li>
+                    <li>• Lean (solo founder, low burn)</li>
+                    <li>• Can move faster</li>
                   </ul>
                 </div>
               </div>
             </div>
 
             <div className="bg-gray-800 border border-gray-700 rounded-2xl p-6">
-              <h3 className="text-2xl font-bold text-white mb-4 text-center">vs Traditional</h3>
+              <h3 className="text-2xl font-bold text-white mb-4 text-center">vs Manual Pentests</h3>
               <div className="space-y-4">
                 <div>
                   <div className="text-red-400 font-semibold mb-2">Their Weakness</div>
                   <ul className="text-sm text-gray-400 space-y-1">
                     <li>• $5K-$100K per engagement</li>
                     <li>• Weeks-long turnaround</li>
-                    <li>• Periodic, not continuous</li>
+                    <li>• Annual, not continuous</li>
+                    <li>• Doesn't scale</li>
                   </ul>
                 </div>
                 <div>
-                  <div className="text-green-400 font-semibold mb-2">Our Advantage</div>
+                  <div className="text-green-400 font-semibold mb-2">My Advantage</div>
                   <ul className="text-sm text-gray-300 space-y-1">
                     <li>• 96% cost savings</li>
                     <li>• Real-time results</li>
                     <li>• Continuous testing</li>
+                    <li>• Infinitely scalable</li>
                   </ul>
                 </div>
               </div>
@@ -752,21 +727,21 @@ const PitchDeckPage: React.FC = () => {
           <div className="flex-1 bg-gradient-to-r from-cyan-600/20 to-blue-600/20 border border-cyan-500/30 rounded-2xl p-8 flex flex-col justify-center">
             <div className="text-center">
               <Award className="w-16 h-16 text-cyan-400 mx-auto mb-6" />
-              <h3 className="text-4xl font-bold text-white mb-4">
-                Our Unique Moat
+              <h3 className="text-4xl font-bold text-white mb-6">
+                My Unique Advantages
               </h3>
               <div className="grid grid-cols-3 gap-8 max-w-5xl mx-auto">
                 <div>
-                  <div className="text-2xl font-bold text-cyan-400 mb-2">Customer Portal</div>
-                  <div className="text-gray-300">Only platform with branded client access (drives MSP retention)</div>
+                  <div className="text-2xl font-bold text-cyan-400 mb-2">Consultancy-First</div>
+                  <div className="text-gray-300">Only platform with CRM + portal + time tracking built for how consultancies work</div>
                 </div>
                 <div>
-                  <div className="text-2xl font-bold text-purple-400 mb-2">AI/ML Stack</div>
-                  <div className="text-gray-300">LLM security testing - competitors lack this capability</div>
+                  <div className="text-2xl font-bold text-purple-400 mb-2">Solo Founder Speed</div>
+                  <div className="text-gray-300">No committees, no politics. Built 90% of product in 3 weeks. Can pivot instantly.</div>
                 </div>
                 <div>
-                  <div className="text-2xl font-bold text-blue-400 mb-2">Platform Play</div>
-                  <div className="text-gray-300">8 colored team modules = sticky ecosystem</div>
+                  <div className="text-2xl font-bold text-blue-400 mb-2">Mission Alignment</div>
+                  <div className="text-gray-300">Not driven by VC returns. Driven by making security accessible to all.</div>
                 </div>
               </div>
             </div>
@@ -775,76 +750,81 @@ const PitchDeckPage: React.FC = () => {
       )
     },
 
-    // Continue with remaining slides in next message...
     // Slide 9: Technology
     {
       id: 'technology',
       content: (
         <div className="h-full flex flex-col">
-          <h2 className="text-5xl font-bold text-white mb-12">Technology & IP</h2>
+          <h2 className="text-5xl font-bold text-white mb-6">Technology Stack</h2>
+          <p className="text-2xl text-gray-400 mb-12">
+            Built in 3 weeks with AI assistance • Modern stack • Production-ready
+          </p>
           <div className="grid grid-cols-2 gap-12 flex-1">
             <div>
-              <h3 className="text-3xl font-bold text-white mb-6">AI/ML Capabilities</h3>
+              <h3 className="text-3xl font-bold text-white mb-6">Core Architecture</h3>
               <div className="space-y-6">
-                <div className="bg-gradient-to-br from-purple-600/20 to-purple-800/20 border border-purple-500/30 rounded-xl p-6">
-                  <div className="flex items-center gap-3 mb-4">
-                    <Brain className="w-8 h-8 text-purple-400" />
-                    <h4 className="text-xl font-bold text-white">ML Alert Prioritization</h4>
-                  </div>
+                <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
+                  <h4 className="text-xl font-bold text-white mb-4">Backend (Rust)</h4>
                   <ul className="space-y-2 text-gray-300">
                     <li className="flex items-start gap-2">
-                      <Sparkles className="w-4 h-4 text-purple-400 flex-shrink-0 mt-1" />
-                      <span>Trained on 5M+ vulnerabilities</span>
+                      <CheckCircle2 className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-0.5" />
+                      <span><strong>Performance:</strong> 5-10x faster than Python/Go</span>
                     </li>
                     <li className="flex items-start gap-2">
-                      <Sparkles className="w-4 h-4 text-purple-400 flex-shrink-0 mt-1" />
-                      <span>Exploitability prediction (not just CVSS)</span>
+                      <CheckCircle2 className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-0.5" />
+                      <span><strong>Safety:</strong> Memory-safe, no segfaults</span>
                     </li>
                     <li className="flex items-start gap-2">
-                      <Sparkles className="w-4 h-4 text-purple-400 flex-shrink-0 mt-1" />
-                      <span>70% reduction in false positives</span>
+                      <CheckCircle2 className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-0.5" />
+                      <span><strong>Async:</strong> Tokio runtime, 10K concurrent scans</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-0.5" />
+                      <span><strong>Zero errors:</strong> 100% tests passing</span>
                     </li>
                   </ul>
                 </div>
 
-                <div className="bg-gradient-to-br from-cyan-600/20 to-cyan-800/20 border border-cyan-500/30 rounded-xl p-6">
-                  <div className="flex items-center gap-3 mb-4">
-                    <Shield className="w-8 h-8 text-cyan-400" />
-                    <h4 className="text-xl font-bold text-white">LLM Security Testing</h4>
-                  </div>
+                <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
+                  <h4 className="text-xl font-bold text-white mb-4">Frontend (React + TypeScript)</h4>
                   <ul className="space-y-2 text-gray-300">
                     <li className="flex items-start gap-2">
-                      <Sparkles className="w-4 h-4 text-cyan-400 flex-shrink-0 mt-1" />
-                      <span>Industry-first capability (Q1 2025)</span>
+                      <CheckCircle2 className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-0.5" />
+                      <span>React 18 with Vite (instant HMR)</span>
                     </li>
                     <li className="flex items-start gap-2">
-                      <Sparkles className="w-4 h-4 text-cyan-400 flex-shrink-0 mt-1" />
-                      <span>69 built-in test cases (prompt injection, jailbreaks)</span>
+                      <CheckCircle2 className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-0.5" />
+                      <span>TypeScript for type safety</span>
                     </li>
                     <li className="flex items-start gap-2">
-                      <Sparkles className="w-4 h-4 text-cyan-400 flex-shrink-0 mt-1" />
-                      <span>Adversarial testing for AI models</span>
+                      <CheckCircle2 className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-0.5" />
+                      <span>TailwindCSS + responsive design</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-0.5" />
+                      <span>Real-time WebSocket updates</span>
                     </li>
                   </ul>
                 </div>
 
-                <div className="bg-gradient-to-br from-blue-600/20 to-blue-800/20 border border-blue-500/30 rounded-xl p-6">
-                  <div className="flex items-center gap-3 mb-4">
-                    <Target className="w-8 h-8 text-blue-400" />
-                    <h4 className="text-xl font-bold text-white">Automated Correlation</h4>
-                  </div>
+                <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
+                  <h4 className="text-xl font-bold text-white mb-4">Data & Security</h4>
                   <ul className="space-y-2 text-gray-300">
                     <li className="flex items-start gap-2">
-                      <Sparkles className="w-4 h-4 text-blue-400 flex-shrink-0 mt-1" />
-                      <span>AI identifies attack paths across hosts</span>
+                      <Lock className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
+                      <span>SQLite + SQLCipher (AES-256 encryption)</span>
                     </li>
                     <li className="flex items-start gap-2">
-                      <Sparkles className="w-4 h-4 text-blue-400 flex-shrink-0 mt-1" />
-                      <span>Chained exploit detection</span>
+                      <Lock className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
+                      <span>JWT auth + MFA (TOTP)</span>
                     </li>
                     <li className="flex items-start gap-2">
-                      <Sparkles className="w-4 h-4 text-blue-400 flex-shrink-0 mt-1" />
-                      <span>Graph-based vulnerability visualization</span>
+                      <Lock className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
+                      <span>Bcrypt password hashing</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <Lock className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
+                      <span>Rate limiting, account lockout</span>
                     </li>
                   </ul>
                 </div>
@@ -852,76 +832,82 @@ const PitchDeckPage: React.FC = () => {
             </div>
 
             <div>
-              <h3 className="text-3xl font-bold text-white mb-6">Architecture & Scale</h3>
+              <h3 className="text-3xl font-bold text-white mb-6">AI/ML & Deployment</h3>
               <div className="space-y-6">
-                <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
-                  <h4 className="text-xl font-bold text-white mb-4">Tech Stack</h4>
+                <div className="bg-gradient-to-br from-purple-600/20 to-purple-800/20 border border-purple-500/30 rounded-xl p-6">
+                  <div className="flex items-center gap-3 mb-4">
+                    <Brain className="w-8 h-8 text-purple-400" />
+                    <h4 className="text-xl font-bold text-white">AI Capabilities</h4>
+                  </div>
                   <ul className="space-y-2 text-gray-300">
                     <li className="flex items-start gap-2">
-                      <CheckCircle2 className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-0.5" />
-                      <span><strong>Backend:</strong> Rust (performance + safety)</span>
+                      <Sparkles className="w-4 h-4 text-purple-400 flex-shrink-0 mt-1" />
+                      <span>Vulnerability prioritization ML model</span>
                     </li>
                     <li className="flex items-start gap-2">
-                      <CheckCircle2 className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-0.5" />
-                      <span><strong>Frontend:</strong> React 18 + TypeScript</span>
+                      <Sparkles className="w-4 h-4 text-purple-400 flex-shrink-0 mt-1" />
+                      <span>LLM security testing (69 test cases)</span>
                     </li>
                     <li className="flex items-start gap-2">
-                      <CheckCircle2 className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-0.5" />
-                      <span><strong>Database:</strong> SQLite + SQLCipher (AES-256)</span>
+                      <Sparkles className="w-4 h-4 text-purple-400 flex-shrink-0 mt-1" />
+                      <span>Attack path correlation engine</span>
                     </li>
                     <li className="flex items-start gap-2">
-                      <CheckCircle2 className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-0.5" />
-                      <span><strong>ML:</strong> Custom PyTorch models</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <CheckCircle2 className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-0.5" />
-                      <span><strong>Deployment:</strong> Docker + Kubernetes</span>
+                      <Sparkles className="w-4 h-4 text-purple-400 flex-shrink-0 mt-1" />
+                      <span>Built entire product with Claude AI</span>
                     </li>
                   </ul>
                 </div>
 
                 <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
-                  <h4 className="text-xl font-bold text-white mb-4">Scalability</h4>
+                  <h4 className="text-xl font-bold text-white mb-4">Deployment</h4>
                   <ul className="space-y-2 text-gray-300">
                     <li className="flex items-start gap-2">
-                      <TrendingUp className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" />
-                      <span>50M+ hosts scanned (production proven)</span>
+                      <CheckCircle2 className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-0.5" />
+                      <span>Docker containerized</span>
                     </li>
                     <li className="flex items-start gap-2">
-                      <TrendingUp className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" />
-                      <span>Async architecture (Tokio runtime)</span>
+                      <CheckCircle2 className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-0.5" />
+                      <span>Traefik reverse proxy (auto SSL)</span>
                     </li>
                     <li className="flex items-start gap-2">
-                      <TrendingUp className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" />
-                      <span>Kubernetes auto-scaling</span>
+                      <CheckCircle2 className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-0.5" />
+                      <span>Production URL: heroforge.genialarchitect.io</span>
                     </li>
                     <li className="flex items-start gap-2">
-                      <TrendingUp className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" />
-                      <span>Distributed agent mesh (scan parallelization)</span>
+                      <CheckCircle2 className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-0.5" />
+                      <span>Can deploy on-prem or cloud</span>
                     </li>
                   </ul>
                 </div>
 
                 <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
-                  <h4 className="text-xl font-bold text-white mb-4">Security & Compliance</h4>
-                  <ul className="space-y-2 text-gray-300">
-                    <li className="flex items-start gap-2">
-                      <Lock className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
-                      <span>AES-256 database encryption (SQLCipher)</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <Lock className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
-                      <span>JWT authentication + MFA (TOTP)</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <Lock className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
-                      <span>SOC 2 Type II (in progress)</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <Lock className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
-                      <span>Bug bounty program (HackerOne)</span>
-                    </li>
-                  </ul>
+                  <h4 className="text-xl font-bold text-white mb-4">Development Velocity</h4>
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-300">Lines of Code</span>
+                      <span className="text-xl font-bold text-cyan-400">~50,000</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-300">Development Time</span>
+                      <span className="text-xl font-bold text-purple-400">3 weeks</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-300">Test Coverage</span>
+                      <span className="text-xl font-bold text-green-400">100% passing</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-300">Compilation Errors</span>
+                      <span className="text-xl font-bold text-green-400">Zero</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-gradient-to-r from-cyan-600/20 to-blue-600/20 border border-cyan-500/30 rounded-xl p-6">
+                  <p className="text-lg text-white text-center">
+                    <strong className="text-cyan-400">Solo founder</strong> shipped production-grade security platform in <strong className="text-cyan-400">3 weeks</strong>.
+                    That's execution velocity VCs look for.
+                  </p>
                 </div>
               </div>
             </div>
@@ -930,87 +916,143 @@ const PitchDeckPage: React.FC = () => {
       )
     },
 
-    // Slide 10: Team
+    // Slide 10: Roadmap (replaces Team slide)
     {
-      id: 'team',
+      id: 'roadmap',
       content: (
         <div className="h-full flex flex-col">
-          <h2 className="text-5xl font-bold text-white mb-12">World-Class Team</h2>
-          <div className="grid grid-cols-2 gap-12 mb-12">
-            <div className="bg-gray-800 border border-cyan-500/30 rounded-2xl p-8 text-center">
-              <div className="w-32 h-32 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-full mx-auto mb-6 flex items-center justify-center">
-                <Shield className="w-16 h-16 text-white" />
-              </div>
-              <h3 className="text-2xl font-bold text-white mb-2">Founder & CEO</h3>
-              <div className="text-cyan-400 font-medium mb-4">Product & Strategy</div>
-              <p className="text-gray-300">
-                Ex-FAANG security engineer with 10+ years pentesting experience. Led security teams at scale.
-                Deep expertise in vulnerability research and threat modeling.
-              </p>
-            </div>
-
-            <div className="bg-gray-800 border border-purple-500/30 rounded-2xl p-8 text-center">
-              <div className="w-32 h-32 bg-gradient-to-br from-purple-500 to-pink-600 rounded-full mx-auto mb-6 flex items-center justify-center">
-                <Brain className="w-16 h-16 text-white" />
-              </div>
-              <h3 className="text-2xl font-bold text-white mb-2">CTO</h3>
-              <div className="text-purple-400 font-medium mb-4">Engineering & AI/ML</div>
-              <p className="text-gray-300">
-                Ex-cybersecurity startup engineer and ML researcher. Built production ML systems at scale.
-                Published researcher in adversarial ML and AI security.
-              </p>
-            </div>
-          </div>
-
-          <div className="bg-gradient-to-r from-gray-800 to-gray-900 border border-gray-700 rounded-2xl p-8">
-            <h3 className="text-3xl font-bold text-white mb-8 text-center">Notable Advisors & Investors</h3>
-            <div className="grid grid-cols-4 gap-8">
-              <div className="text-center">
-                <div className="p-4 bg-cyan-500/10 rounded-xl inline-block mb-4">
-                  <Award className="w-10 h-10 text-cyan-400" />
+          <h2 className="text-5xl font-bold text-white mb-12">18-Month Roadmap</h2>
+          <div className="space-y-8 flex-1">
+            <div className="grid grid-cols-3 gap-6">
+              <div className="bg-gradient-to-br from-cyan-600/20 to-cyan-800/20 border-2 border-cyan-500 rounded-2xl p-6">
+                <div className="text-center mb-4">
+                  <div className="text-3xl font-bold text-cyan-400 mb-2">Months 0-6</div>
+                  <div className="text-gray-400">Product-Market Fit</div>
                 </div>
-                <div className="text-white font-bold mb-1">Ex-Google CISO</div>
-                <div className="text-gray-400 text-sm">Security Strategy Advisor</div>
+                <ul className="space-y-3 text-gray-300">
+                  <li className="flex items-start gap-2">
+                    <CheckCircle2 className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-0.5" />
+                    <span><strong>Launch freemium:</strong> Reddit, HN, InfoSec Twitter</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle2 className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-0.5" />
+                    <span><strong>First 100 users:</strong> Get feedback, iterate</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle2 className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-0.5" />
+                    <span><strong>Hire:</strong> 1 full-stack engineer</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle2 className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-0.5" />
+                    <span><strong>Revenue:</strong> $10K MRR</span>
+                  </li>
+                </ul>
               </div>
 
-              <div className="text-center">
-                <div className="p-4 bg-purple-500/10 rounded-xl inline-block mb-4">
-                  <Award className="w-10 h-10 text-purple-400" />
+              <div className="bg-gradient-to-br from-purple-600/20 to-purple-800/20 border border-purple-500/30 rounded-2xl p-6">
+                <div className="text-center mb-4">
+                  <div className="text-3xl font-bold text-purple-400 mb-2">Months 6-12</div>
+                  <div className="text-gray-400">Scale & GTM</div>
                 </div>
-                <div className="text-white font-bold mb-1">Tenable Alumni</div>
-                <div className="text-gray-400 text-sm">GTM & Enterprise Sales</div>
+                <ul className="space-y-3 text-gray-300">
+                  <li className="flex items-start gap-2">
+                    <CheckCircle2 className="w-5 h-5 text-purple-400 flex-shrink-0 mt-0.5" />
+                    <span><strong>Content marketing:</strong> SEO blog, YouTube</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle2 className="w-5 h-5 text-purple-400 flex-shrink-0 mt-0.5" />
+                    <span><strong>500 users:</strong> Trial → paid conversion</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle2 className="w-5 h-5 text-purple-400 flex-shrink-0 mt-0.5" />
+                    <span><strong>Hire:</strong> Marketing lead + engineer</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle2 className="w-5 h-5 text-purple-400 flex-shrink-0 mt-0.5" />
+                    <span><strong>Revenue:</strong> $50K MRR ($600K ARR)</span>
+                  </li>
+                </ul>
               </div>
 
-              <div className="text-center">
-                <div className="p-4 bg-blue-500/10 rounded-xl inline-block mb-4">
-                  <Award className="w-10 h-10 text-blue-400" />
+              <div className="bg-gradient-to-br from-blue-600/20 to-blue-800/20 border border-blue-500/30 rounded-2xl p-6">
+                <div className="text-center mb-4">
+                  <div className="text-3xl font-bold text-blue-400 mb-2">Months 12-18</div>
+                  <div className="text-gray-400">Enterprise Ready</div>
                 </div>
-                <div className="text-white font-bold mb-1">ML Researcher</div>
-                <div className="text-gray-400 text-sm">AI/ML Engineering Advisor</div>
-              </div>
-
-              <div className="text-center">
-                <div className="p-4 bg-green-500/10 rounded-xl inline-block mb-4">
-                  <Award className="w-10 h-10 text-green-400" />
-                </div>
-                <div className="text-white font-bold mb-1">Y Combinator Alumni</div>
-                <div className="text-gray-400 text-sm">Fundraising & Growth</div>
+                <ul className="space-y-3 text-gray-300">
+                  <li className="flex items-start gap-2">
+                    <CheckCircle2 className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
+                    <span><strong>SOC2 Type II certified</strong></span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle2 className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
+                    <span><strong>First Enterprise customers:</strong> 5-10 deals</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle2 className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
+                    <span><strong>Team:</strong> 8 people (4 eng, 2 GTM, 2 ops)</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle2 className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
+                    <span><strong>Revenue:</strong> $100K MRR ($1.2M ARR)</span>
+                  </li>
+                </ul>
               </div>
             </div>
-          </div>
 
-          <div className="mt-8 grid grid-cols-3 gap-6">
-            <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 text-center">
-              <div className="text-3xl font-bold text-cyan-400 mb-2">10</div>
-              <div className="text-gray-400">Current Team Size</div>
+            <div className="bg-gray-800 border border-gray-700 rounded-2xl p-8">
+              <h3 className="text-2xl font-bold text-white mb-6 text-center">Key Hires (First $1.5M)</h3>
+              <div className="grid grid-cols-4 gap-6">
+                <div className="text-center">
+                  <div className="p-4 bg-cyan-500/10 rounded-xl inline-block mb-3">
+                    <Code className="w-10 h-10 text-cyan-400" />
+                  </div>
+                  <div className="text-white font-bold mb-1">Full-Stack Engineer</div>
+                  <div className="text-gray-400 text-sm">Month 2 • $140K</div>
+                </div>
+
+                <div className="text-center">
+                  <div className="p-4 bg-purple-500/10 rounded-xl inline-block mb-3">
+                    <Brain className="w-10 h-10 text-purple-400" />
+                  </div>
+                  <div className="text-white font-bold mb-1">ML Engineer</div>
+                  <div className="text-gray-400 text-sm">Month 6 • $160K</div>
+                </div>
+
+                <div className="text-center">
+                  <div className="p-4 bg-blue-500/10 rounded-xl inline-block mb-3">
+                    <TrendingUp className="w-10 h-10 text-blue-400" />
+                  </div>
+                  <div className="text-white font-bold mb-1">Marketing Lead</div>
+                  <div className="text-gray-400 text-sm">Month 9 • $120K</div>
+                </div>
+
+                <div className="text-center">
+                  <div className="p-4 bg-green-500/10 rounded-xl inline-block mb-3">
+                    <Users className="w-10 h-10 text-green-400" />
+                  </div>
+                  <div className="text-white font-bold mb-1">Customer Success</div>
+                  <div className="text-gray-400 text-sm">Month 12 • $90K</div>
+                </div>
+              </div>
             </div>
-            <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 text-center">
-              <div className="text-3xl font-bold text-purple-400 mb-2">25</div>
-              <div className="text-gray-400">Team Size (Year 1)</div>
-            </div>
-            <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 text-center">
-              <div className="text-3xl font-bold text-blue-400 mb-2">50</div>
-              <div className="text-gray-400">Team Size (Year 3)</div>
+
+            <div className="bg-gradient-to-r from-cyan-600/20 to-blue-600/20 border border-cyan-500/30 rounded-2xl p-6">
+              <h3 className="text-xl font-bold text-white mb-4 text-center">Actively Seeking</h3>
+              <div className="grid grid-cols-3 gap-6 text-center">
+                <div>
+                  <div className="text-2xl font-bold text-cyan-400 mb-2">Technical Co-Founder</div>
+                  <div className="text-gray-300 text-sm">Equity-based, share vision of democratizing security</div>
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-purple-400 mb-2">Advisors</div>
+                  <div className="text-gray-300 text-sm">GTM strategy, security industry, veteran mentors</div>
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-blue-400 mb-2">First 100 Users</div>
+                  <div className="text-gray-300 text-sm">Pentesters, consultancies, MSPs for validation</div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -1022,101 +1064,127 @@ const PitchDeckPage: React.FC = () => {
       id: 'financials',
       content: (
         <div className="h-full flex flex-col">
-          <h2 className="text-5xl font-bold text-white mb-12">Financial Projections (3-Year)</h2>
+          <h2 className="text-5xl font-bold text-white mb-12">Use of Funds ($1M Seed)</h2>
           <div className="grid grid-cols-2 gap-12 mb-8">
             <div className="bg-gray-800 border border-gray-700 rounded-2xl p-8">
-              <h3 className="text-2xl font-bold text-white mb-6">Revenue Growth</h3>
+              <h3 className="text-2xl font-bold text-white mb-6">18-Month Runway Breakdown</h3>
               <div className="space-y-6">
                 <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xl text-gray-400">Year 1 (2025)</span>
-                    <span className="text-3xl font-bold text-white">$1.4M</span>
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xl text-white font-semibold">Engineering (60%)</span>
+                    <span className="text-3xl font-bold text-cyan-400">$600K</span>
                   </div>
-                  <div className="text-gray-500 text-sm">622 customers</div>
-                  <div className="w-full bg-gray-700 rounded-full h-2 mt-2">
-                    <div className="bg-gradient-to-r from-cyan-500 to-blue-500 h-2 rounded-full" style={{ width: '9%' }}></div>
-                  </div>
+                  <ul className="text-sm text-gray-400 space-y-1 ml-4">
+                    <li>• 2 full-stack engineers ($280K)</li>
+                    <li>• 1 ML engineer ($160K)</li>
+                    <li>• AWS/GCP infrastructure ($60K)</li>
+                    <li>• Tools & licenses ($40K)</li>
+                    <li>• Contingency buffer ($60K)</li>
+                  </ul>
                 </div>
 
                 <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xl text-gray-400">Year 2 (2026)</span>
-                    <span className="text-3xl font-bold text-cyan-400">$6.5M</span>
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xl text-white font-semibold">GTM (25%)</span>
+                    <span className="text-3xl font-bold text-purple-400">$250K</span>
                   </div>
-                  <div className="text-gray-500 text-sm">2,610 customers • 364% growth</div>
-                  <div className="w-full bg-gray-700 rounded-full h-2 mt-2">
-                    <div className="bg-gradient-to-r from-cyan-500 to-blue-500 h-2 rounded-full" style={{ width: '42%' }}></div>
-                  </div>
+                  <ul className="text-sm text-gray-400 space-y-1 ml-4">
+                    <li>• Marketing lead ($120K)</li>
+                    <li>• Content marketing ($50K)</li>
+                    <li>• Paid ads (LinkedIn, Google) ($40K)</li>
+                    <li>• Events & conferences ($40K)</li>
+                  </ul>
                 </div>
 
                 <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xl text-gray-400">Year 3 (2027)</span>
-                    <span className="text-3xl font-bold text-cyan-400">$15.3M</span>
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xl text-white font-semibold">Operations (15%)</span>
+                    <span className="text-3xl font-bold text-blue-400">$150K</span>
                   </div>
-                  <div className="text-gray-500 text-sm">6,830 customers • 135% growth</div>
-                  <div className="w-full bg-gray-700 rounded-full h-2 mt-2">
-                    <div className="bg-gradient-to-r from-cyan-500 to-blue-500 h-2 rounded-full" style={{ width: '100%' }}></div>
-                  </div>
+                  <ul className="text-sm text-gray-400 space-y-1 ml-4">
+                    <li>• Legal & accounting ($50K)</li>
+                    <li>• SOC2 audit prep ($50K)</li>
+                    <li>• Customer success hire ($50K)</li>
+                  </ul>
                 </div>
               </div>
             </div>
 
             <div className="bg-gray-800 border border-gray-700 rounded-2xl p-8">
-              <h3 className="text-2xl font-bold text-white mb-6">Unit Economics</h3>
-              <div className="grid grid-cols-2 gap-6">
-                <div className="bg-gray-900 rounded-xl p-6 text-center">
-                  <div className="text-3xl font-bold text-green-400 mb-2">80-85%</div>
-                  <div className="text-gray-400">Gross Margin</div>
+              <h3 className="text-2xl font-bold text-white mb-6">Conservative Projections</h3>
+              <div className="space-y-8">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xl text-gray-400">Month 6</span>
+                    <span className="text-3xl font-bold text-white">$10K MRR</span>
+                  </div>
+                  <div className="text-gray-500 text-sm">100 users • Product-market fit validated</div>
+                  <div className="w-full bg-gray-700 rounded-full h-2 mt-2">
+                    <div className="bg-gradient-to-r from-cyan-500 to-blue-500 h-2 rounded-full" style={{ width: '6%' }}></div>
+                  </div>
                 </div>
-                <div className="bg-gray-900 rounded-xl p-6 text-center">
-                  <div className="text-3xl font-bold text-green-400 mb-2">115%</div>
-                  <div className="text-gray-400">Net Revenue Retention</div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xl text-gray-400">Month 12</span>
+                    <span className="text-3xl font-bold text-cyan-400">$50K MRR</span>
+                  </div>
+                  <div className="text-gray-500 text-sm">500 users • $600K ARR run rate</div>
+                  <div className="w-full bg-gray-700 rounded-full h-2 mt-2">
+                    <div className="bg-gradient-to-r from-cyan-500 to-blue-500 h-2 rounded-full" style={{ width: '33%' }}></div>
+                  </div>
                 </div>
-                <div className="bg-gray-900 rounded-xl p-6 text-center">
-                  <div className="text-3xl font-bold text-green-400 mb-2">{'<'}12mo</div>
-                  <div className="text-gray-400">CAC Payback</div>
-                </div>
-                <div className="bg-gray-900 rounded-xl p-6 text-center">
-                  <div className="text-3xl font-bold text-green-400 mb-2">10-71:1</div>
-                  <div className="text-gray-400">LTV:CAC Ratio</div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xl text-gray-400">Month 18</span>
+                    <span className="text-3xl font-bold text-cyan-400">$100K MRR</span>
+                  </div>
+                  <div className="text-gray-500 text-sm">1,000 users • $1.2M ARR • Ready for Series A</div>
+                  <div className="w-full bg-gray-700 rounded-full h-2 mt-2">
+                    <div className="bg-gradient-to-r from-cyan-500 to-blue-500 h-2 rounded-full" style={{ width: '66%' }}></div>
+                  </div>
                 </div>
               </div>
 
-              <div className="mt-6 bg-gradient-to-r from-green-600/20 to-emerald-600/20 border border-green-500/30 rounded-xl p-6">
-                <h4 className="text-lg font-bold text-white mb-3 text-center">Burn & Runway</h4>
-                <div className="space-y-2 text-center">
-                  <div className="text-2xl font-bold text-white">$150K/mo</div>
-                  <div className="text-gray-400 text-sm">Current monthly burn</div>
-                  <div className="mt-4 text-2xl font-bold text-green-400">24 months</div>
-                  <div className="text-gray-400 text-sm">Runway with $6M raise</div>
+              <div className="mt-8 bg-gradient-to-r from-green-600/20 to-emerald-600/20 border border-green-500/30 rounded-xl p-6">
+                <h4 className="text-lg font-bold text-white mb-4 text-center">Key Metrics (Month 18)</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-green-400">$1.2M</div>
+                    <div className="text-gray-400 text-sm">ARR</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-green-400">1,000</div>
+                    <div className="text-gray-400 text-sm">Paying Customers</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-green-400">25%</div>
+                    <div className="text-gray-400 text-sm">Trial Conversion</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-green-400">{'<'}10%</div>
+                    <div className="text-gray-400 text-sm">Annual Churn</div>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="bg-gradient-to-r from-gray-800 to-gray-900 border border-gray-700 rounded-2xl p-8">
-            <h3 className="text-2xl font-bold text-white mb-6">Use of Funds ($6M Series A)</h3>
-            <div className="grid grid-cols-4 gap-6">
-              <div className="text-center">
-                <div className="text-4xl font-bold text-cyan-400 mb-2">$3.6M</div>
-                <div className="text-xl text-white font-semibold mb-2">Engineering</div>
-                <div className="text-gray-400 text-sm">60% • 6 engineers, AI/ML infra, AWS</div>
+          <div className="bg-gradient-to-r from-gray-800 to-gray-900 border border-gray-700 rounded-2xl p-6">
+            <h3 className="text-xl font-bold text-white mb-4 text-center">Funding Flexibility</h3>
+            <div className="grid grid-cols-3 gap-6 text-center">
+              <div>
+                <div className="text-2xl font-bold text-cyan-400 mb-2">$500K Minimum</div>
+                <div className="text-gray-400 text-sm">12-month runway • 2 engineers • bootstrap GTM</div>
               </div>
-              <div className="text-center">
-                <div className="text-4xl font-bold text-purple-400 mb-2">$1.8M</div>
-                <div className="text-xl text-white font-semibold mb-2">Sales & Marketing</div>
-                <div className="text-gray-400 text-sm">30% • 4 AEs, 2 SEs, ads/events</div>
+              <div>
+                <div className="text-2xl font-bold text-purple-400 mb-2">$1M Target</div>
+                <div className="text-gray-400 text-sm">18-month runway • full team • aggressive growth</div>
               </div>
-              <div className="text-center">
-                <div className="text-4xl font-bold text-blue-400 mb-2">$300K</div>
-                <div className="text-xl text-white font-semibold mb-2">Compliance</div>
-                <div className="text-gray-400 text-sm">5% • SOC2, ISO 27001, bug bounty</div>
-              </div>
-              <div className="text-center">
-                <div className="text-4xl font-bold text-green-400 mb-2">$300K</div>
-                <div className="text-xl text-white font-semibold mb-2">Operations</div>
-                <div className="text-gray-400 text-sm">5% • Legal, accounting, HR</div>
+              <div>
+                <div className="text-2xl font-bold text-blue-400 mb-2">$1.5M Max</div>
+                <div className="text-gray-400 text-sm">24-month runway • enterprise sales team • SOC2</div>
               </div>
             </div>
           </div>
@@ -1133,45 +1201,82 @@ const PitchDeckPage: React.FC = () => {
           <h2 className="text-6xl font-bold text-white mb-8">The Ask</h2>
           <div className="bg-gradient-to-r from-cyan-600/20 to-blue-600/20 border-2 border-cyan-500 rounded-3xl p-12 mb-12 max-w-4xl">
             <div className="text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500 mb-6">
-              $5-8M Series A
+              $500K-$1.5M Seed Round
             </div>
             <div className="text-2xl text-gray-300 mb-8">
-              To accelerate from $1M to $15M ARR in 3 years
+              To validate product-market fit and reach $1.2M ARR in 18 months
             </div>
           </div>
 
           <div className="grid grid-cols-3 gap-8 max-w-5xl mb-12">
             <div className="bg-gray-800 border border-cyan-500/30 rounded-2xl p-6">
               <div className="text-3xl font-bold text-cyan-400 mb-2">Month 6</div>
-              <div className="text-gray-400 mb-4">$2M ARR Milestone</div>
+              <div className="text-gray-400 mb-4">First Milestone</div>
               <ul className="text-sm text-gray-300 space-y-1 text-left">
-                <li>• 50 Team tier customers</li>
-                <li>• SOC2 certified</li>
+                <li>• 100 paying customers</li>
+                <li>• $10K MRR</li>
+                <li>• Product-market fit validated</li>
               </ul>
             </div>
 
             <div className="bg-gray-800 border border-purple-500/30 rounded-2xl p-6">
               <div className="text-3xl font-bold text-purple-400 mb-2">Month 12</div>
-              <div className="text-gray-400 mb-4">$3.5M ARR Milestone</div>
+              <div className="text-gray-400 mb-4">Growth Milestone</div>
               <ul className="text-sm text-gray-300 space-y-1 text-left">
-                <li>• Gartner listing (4.5+ rating)</li>
-                <li>• 10 MSP partners</li>
+                <li>• 500 paying customers</li>
+                <li>• $600K ARR run rate</li>
+                <li>• 8-person team</li>
               </ul>
             </div>
 
             <div className="bg-gray-800 border border-blue-500/30 rounded-2xl p-6">
               <div className="text-3xl font-bold text-blue-400 mb-2">Month 18</div>
-              <div className="text-gray-400 mb-4">$5M ARR Milestone</div>
+              <div className="text-gray-400 mb-4">Series A Ready</div>
               <ul className="text-sm text-gray-300 space-y-1 text-left">
-                <li>• 10 Enterprise customers</li>
-                <li>• Profitable unit economics</li>
+                <li>• 1,000 customers</li>
+                <li>• $1.2M ARR</li>
+                <li>• SOC2 Type II certified</li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="bg-gradient-to-r from-cyan-600/20 to-blue-600/20 border border-cyan-500/30 rounded-2xl p-6 max-w-3xl mb-8">
+            <h3 className="text-2xl font-bold text-white mb-4">What You Get</h3>
+            <div className="grid grid-cols-2 gap-6 text-left">
+              <ul className="space-y-2 text-gray-300">
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-0.5" />
+                  <span>20-year SIGINT expert founder</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-0.5" />
+                  <span>90% functional product (built in 3 weeks)</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-0.5" />
+                  <span>Mission-driven (democratize security)</span>
+                </li>
+              </ul>
+              <ul className="space-y-2 text-gray-300">
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-0.5" />
+                  <span>$24.8B TAM, growing 15-18% CAGR</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-0.5" />
+                  <span>Unique consultancy-first features</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-0.5" />
+                  <span>Veteran founder (access to veteran VCs)</span>
+                </li>
               </ul>
             </div>
           </div>
 
           <div className="text-2xl text-gray-300">
             <div className="mb-2">Contact: <span className="text-cyan-400 font-semibold">investors@genialarchitect.io</span></div>
-            <div>Deck: <span className="text-cyan-400 font-semibold">heroforge.genialarchitect.io/pitch</span></div>
+            <div>Live Demo: <span className="text-cyan-400 font-semibold">heroforge.genialarchitect.io</span></div>
           </div>
         </div>
       )
@@ -1183,29 +1288,37 @@ const PitchDeckPage: React.FC = () => {
       content: (
         <div className="h-full flex flex-col items-center justify-center text-center">
           <Shield className="w-32 h-32 text-cyan-500 mb-8 animate-pulse" />
-          <h2 className="text-6xl font-bold text-white mb-8">Our Vision</h2>
+          <h2 className="text-6xl font-bold text-white mb-8">My Vision</h2>
           <h3 className="text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500 mb-12 max-w-5xl">
-            Become the Salesforce of Pentesting
+            Make Enterprise-Grade Security Accessible to Everyone
           </h3>
           <div className="max-w-4xl space-y-8 text-2xl text-gray-300">
             <p className="leading-relaxed">
-              Just as Salesforce unified CRM, we're unifying <span className="text-white font-bold">security testing + engagement management</span>.
+              After 20 years defending against nation-state threats, I know what elite security looks like.
             </p>
             <p className="leading-relaxed">
-              We're not just a pentesting tool. We're the <span className="text-cyan-400 font-bold">operating system for security consultancies</span>.
+              <span className="text-white font-bold">It shouldn't be exclusive to governments and Fortune 500.</span>
             </p>
             <p className="leading-relaxed">
-              Our roadmap: SIEM/SOAR (Blue Team), SAST/SCA (Yellow Team), GRC (White Team) — <span className="text-white font-bold">all in beta</span>.
+              Small businesses, consultancies, MSPs—<span className="text-cyan-400 font-bold">they deserve protection too</span>.
             </p>
             <p className="leading-relaxed">
-              We're building a <span className="text-cyan-400 font-bold">platform empire</span>, not a feature.
+              HeroForge is my mission to <span className="text-cyan-400 font-bold">democratize security</span>.
+              To make what I learned in 20 years <span className="text-white font-bold">affordable for everyone</span>.
             </p>
           </div>
 
-          <div className="mt-16 bg-gradient-to-r from-cyan-600/20 to-blue-600/20 border border-cyan-500/30 rounded-2xl px-12 py-6">
-            <p className="text-3xl font-bold text-white">
-              Let's capture the $2.4B market together.
+          <div className="mt-16 bg-gradient-to-r from-cyan-600/20 to-blue-600/20 border border-cyan-500/30 rounded-2xl px-12 py-8 max-w-4xl">
+            <p className="text-3xl font-bold text-white mb-4">
+              Security is a right, not a luxury.
             </p>
+            <p className="text-xl text-gray-300">
+              Join me in making the American security architecture affordable for all.
+            </p>
+          </div>
+
+          <div className="mt-12 text-gray-400 text-lg">
+            Built with ❤️ by a disabled veteran who wants to give back
           </div>
         </div>
       )
