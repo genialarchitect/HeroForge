@@ -754,7 +754,7 @@ function SemgrepRulesTab() {
   const [showImportModal, setShowImportModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const { data: rules, isLoading } = useQuery({
+  const { data: rules, isLoading, isError, error } = useQuery({
     queryKey: ['semgrep-rules'],
     queryFn: () => yellowTeamAPI.listSemgrepRules().then((r) => r.data),
   });
@@ -814,6 +814,19 @@ function SemgrepRulesTab() {
       {isLoading ? (
         <div className="flex justify-center items-center p-12">
           <RefreshCw className="h-8 w-8 text-cyan-400 animate-spin" />
+        </div>
+      ) : isError ? (
+        <div className="bg-gray-800 rounded-lg p-12 text-center border border-gray-700">
+          <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
+          <h3 className="text-xl font-semibold text-gray-300 mb-2">Failed to Load Semgrep Rules</h3>
+          <p className="text-gray-400 mb-4">{error instanceof Error ? error.message : 'An error occurred while fetching Semgrep rules'}</p>
+          <button
+            onClick={() => setShowImportModal(true)}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded transition-colors"
+          >
+            <Upload className="w-4 h-4" />
+            Import Rules
+          </button>
         </div>
       ) : filteredRules && filteredRules.length > 0 ? (
         <div className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
