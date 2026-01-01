@@ -90,8 +90,9 @@ mysql_async = "0.36"
 mongodb = "3.4"
 redis = { version = "1.0", features = ["tokio-comp", "connection-manager"] }
 
-# SMB enumeration
-# Note: SMB enumeration will use external tools (smbclient, enum4linux) via Bash commands
+# SMB enumeration - Native implementation with external tool fallback
+# Uses custom SMB2/3 protocol implementation with NTLM authentication
+byteorder = "1.5"  # Binary protocol parsing
 
 # LDAP for Active Directory assessment
 ldap3 = "0.11"
@@ -106,6 +107,7 @@ base32 = "0.5"
 sha1 = "0.10"
 sha2 = "0.10"
 md-5 = "0.10"
+md4 = "0.10"           # NTLM authentication
 hmac = "0.12"
 aes = "0.8"
 aes-gcm = "0.10"

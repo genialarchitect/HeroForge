@@ -29,6 +29,7 @@ pub mod port_scanner;
 pub mod privesc;
 pub mod secret_detection;
 pub mod service_detection;
+pub mod smb_native;
 pub mod ssl_scanner;
 pub mod syn_scanner;
 pub mod udp_probes;

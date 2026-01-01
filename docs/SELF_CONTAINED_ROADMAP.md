@@ -18,7 +18,7 @@ This document outlines the plan to make HeroForge a fully self-contained securit
 
 ## Phase 1: Core Protocol Implementations (Sprints 1-3)
 
-### Sprint 1: Native LDAP/AD Collection Engine
+### Sprint 1: Native LDAP/AD Collection Engine ✅ COMPLETE
 
 Replace SharpHound dependency with native Active Directory data collection.
 
@@ -73,7 +73,7 @@ src/scanner/ad_collector/
 
 ---
 
-### Sprint 2: Native SMB Protocol Stack
+### Sprint 2: Native SMB Protocol Stack ✅ COMPLETE
 
 Replace smbclient and enum4linux with native SMB implementation.
 

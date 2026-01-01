@@ -1,7 +1,8 @@
 use super::types::{EnumDepth, EnumerationResult, Finding, FindingType, ServiceType};
+use crate::scanner::smb_native::{self, SmbEnumerator, SmbShare, ShareType};
 use crate::types::{ScanProgressMessage, ScanTarget};
 use anyhow::Result;
-use log::{debug, info};
+use log::{debug, info, warn};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use tokio::process::Command;
@@ -163,8 +164,79 @@ async fn check_null_session(target_ip: &str, timeout: Duration) -> Option<Findin
     None
 }
 
-/// Enumerate SMB shares
+/// Enumerate SMB shares using native implementation with fallback to smbclient
 async fn enumerate_shares(target_ip: &str, timeout: Duration, depth: EnumDepth) -> Vec<Finding> {
+    // Try native SMB enumeration first (null session)
+    if let Some(findings) = enumerate_shares_native(target_ip).await {
+        if !findings.is_empty() {
+            info!("Native SMB share enumeration successful");
+            return findings;
+        }
+    }
+
+    // Fall back to smbclient
+    debug!("Falling back to smbclient for share enumeration");
+    enumerate_shares_smbclient(target_ip, timeout, depth).await
+}
+
+/// Enumerate shares using native SMB implementation
+async fn enumerate_shares_native(target_ip: &str) -> Option<Vec<Finding>> {
+    let mut enumerator = SmbEnumerator::new(target_ip);
+
+    // Try to connect (anonymous/null session)
+    if let Err(e) = enumerator.connect().await {
+        debug!("Native SMB connection failed: {}", e);
+        return None;
+    }
+
+    match enumerator.enumerate_shares().await {
+        Ok(shares) => {
+            let findings = shares
+                .into_iter()
+                .map(|share| smb_share_to_finding(&share))
+                .collect();
+            enumerator.disconnect().await;
+            Some(findings)
+        }
+        Err(e) => {
+            debug!("Native SMB share enumeration failed: {}", e);
+            enumerator.disconnect().await;
+            None
+        }
+    }
+}
+
+/// Convert native SMB share to Finding
+fn smb_share_to_finding(share: &SmbShare) -> Finding {
+    let is_interesting = !matches!(share.name.as_str(), "IPC$" | "ADMIN$" | "C$");
+    let confidence = if is_interesting { 90 } else { 70 };
+
+    let share_type_str = match share.share_type {
+        ShareType::Disk => "Disk",
+        ShareType::Pipe => "IPC",
+        ShareType::Print => "Print",
+        ShareType::Unknown(v) => return Finding::with_confidence(
+            FindingType::Share,
+            share.name.clone(),
+            confidence,
+        )
+        .with_metadata("share_type".to_string(), format!("Unknown({})", v))
+        .with_metadata("source".to_string(), "native_smb".to_string()),
+    };
+
+    let mut finding = Finding::with_confidence(FindingType::Share, share.name.clone(), confidence)
+        .with_metadata("share_type".to_string(), share_type_str.to_string())
+        .with_metadata("source".to_string(), "native_smb".to_string());
+
+    if let Some(ref remark) = share.remark {
+        finding = finding.with_metadata("comment".to_string(), remark.clone());
+    }
+
+    finding
+}
+
+/// Enumerate shares using smbclient (fallback)
+async fn enumerate_shares_smbclient(target_ip: &str, timeout: Duration, depth: EnumDepth) -> Vec<Finding> {
     let mut findings = Vec::new();
 
     // Try with null session first
@@ -338,8 +410,53 @@ async fn get_domain_info(target_ip: &str, timeout: Duration) -> Option<Vec<Findi
     }
 }
 
-/// Enumerate users
+/// Enumerate users using native SMB with fallback
 async fn enumerate_users(target_ip: &str, timeout: Duration, depth: EnumDepth) -> Vec<Finding> {
+    // Try native SMB user enumeration first
+    if let Some(findings) = enumerate_users_native(target_ip).await {
+        if !findings.is_empty() {
+            info!("Native SMB user enumeration successful");
+            return findings;
+        }
+    }
+
+    // Fall back to rpcclient
+    debug!("Falling back to rpcclient for user enumeration");
+    enumerate_users_rpcclient(target_ip, timeout, depth).await
+}
+
+/// Enumerate users using native SMB implementation
+async fn enumerate_users_native(target_ip: &str) -> Option<Vec<Finding>> {
+    let mut enumerator = SmbEnumerator::new(target_ip);
+
+    if let Err(e) = enumerator.connect().await {
+        debug!("Native SMB connection for users failed: {}", e);
+        return None;
+    }
+
+    match enumerator.enumerate_users().await {
+        Ok(users) => {
+            let findings: Vec<Finding> = users
+                .into_iter()
+                .map(|user| {
+                    Finding::new(FindingType::User, user.name)
+                        .with_metadata("rid".to_string(), format!("0x{:x}", user.rid))
+                        .with_metadata("source".to_string(), "native_smb".to_string())
+                })
+                .collect();
+            enumerator.disconnect().await;
+            Some(findings)
+        }
+        Err(e) => {
+            debug!("Native SMB user enumeration failed: {}", e);
+            enumerator.disconnect().await;
+            None
+        }
+    }
+}
+
+/// Enumerate users using rpcclient (fallback)
+async fn enumerate_users_rpcclient(target_ip: &str, timeout: Duration, depth: EnumDepth) -> Vec<Finding> {
     let mut findings = Vec::new();
 
     // Use rpcclient to enumerate users
@@ -440,8 +557,53 @@ async fn enumerate_users_enum4linux(target_ip: &str, timeout: Duration) -> Optio
     }
 }
 
-/// Enumerate groups
+/// Enumerate groups using native SMB with fallback
 async fn enumerate_groups(target_ip: &str, timeout: Duration) -> Vec<Finding> {
+    // Try native SMB group enumeration first
+    if let Some(findings) = enumerate_groups_native(target_ip).await {
+        if !findings.is_empty() {
+            info!("Native SMB group enumeration successful");
+            return findings;
+        }
+    }
+
+    // Fall back to rpcclient
+    debug!("Falling back to rpcclient for group enumeration");
+    enumerate_groups_rpcclient(target_ip, timeout).await
+}
+
+/// Enumerate groups using native SMB implementation
+async fn enumerate_groups_native(target_ip: &str) -> Option<Vec<Finding>> {
+    let mut enumerator = SmbEnumerator::new(target_ip);
+
+    if let Err(e) = enumerator.connect().await {
+        debug!("Native SMB connection for groups failed: {}", e);
+        return None;
+    }
+
+    match enumerator.enumerate_groups().await {
+        Ok(groups) => {
+            let findings: Vec<Finding> = groups
+                .into_iter()
+                .map(|group| {
+                    Finding::new(FindingType::Group, group.name)
+                        .with_metadata("rid".to_string(), format!("0x{:x}", group.rid))
+                        .with_metadata("source".to_string(), "native_smb".to_string())
+                })
+                .collect();
+            enumerator.disconnect().await;
+            Some(findings)
+        }
+        Err(e) => {
+            debug!("Native SMB group enumeration failed: {}", e);
+            enumerator.disconnect().await;
+            None
+        }
+    }
+}
+
+/// Enumerate groups using rpcclient (fallback)
+async fn enumerate_groups_rpcclient(target_ip: &str, timeout: Duration) -> Vec<Finding> {
     let mut findings = Vec::new();
 
     // Use rpcclient to enumerate groups
