@@ -5,6 +5,7 @@
 
 use anyhow::{anyhow, Result};
 use ldap3::{Ldap, LdapConnAsync, LdapConnSettings, Scope, SearchEntry};
+use ldap3::adapters::{Adapter, PagedResults};
 use log::{debug, info, warn};
 use std::time::Duration;
 
@@ -170,34 +171,35 @@ impl AdLdapClient {
     ) -> Result<Vec<SearchEntry>> {
         let base = if base.is_empty() { &self.base_dn } else { base };
         let mut all_entries = Vec::new();
-        let _cookie: Vec<u8> = Vec::new();
 
         debug!("LDAP paged search: base={}, filter={}, page_size={}", base, filter, page_size);
 
-        loop {
-            // For now, use regular search without explicit paging
-            // ldap3 handles server-side paging automatically for compatible servers
-            let (rs, _res) = self.ldap
-                .search(base, scope, filter, attrs.clone())
-                .await?
-                .success()?;
+        // Use streaming search with paged results adapter for proper pagination
+        let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
+            Box::new(PagedResults::new(page_size as i32))
+        ];
 
-            let entries: Vec<SearchEntry> = rs
-                .into_iter()
-                .map(SearchEntry::construct)
-                .collect();
+        let mut stream = self.ldap
+            .streaming_search_with(adapters, base, scope, filter, attrs)
+            .await?;
 
-            all_entries.extend(entries);
+        // Collect results from all pages
+        while let Some(entry) = stream.next().await? {
+            let search_entry = SearchEntry::construct(entry);
+            all_entries.push(search_entry);
 
-            // Check if we've hit the max
+            // Check if we've hit the max results limit
             if max_results > 0 && all_entries.len() >= max_results as usize {
+                // Finish the stream to clean up
+                let _ = stream.finish().await;
                 all_entries.truncate(max_results as usize);
-                break;
+                debug!("Paged search hit max_results limit: {}", max_results);
+                return Ok(all_entries);
             }
-
-            // For now, break after first page - paging control would need more setup
-            break;
         }
+
+        // Finish the stream and check for errors
+        let _result = stream.finish().await;
 
         debug!("Paged search returned {} total entries", all_entries.len());
 
@@ -257,6 +259,16 @@ pub mod ldap_utils {
     /// Get all string attribute values
     pub fn get_attrs(entry: &SearchEntry, attr: &str) -> Vec<String> {
         entry.attrs.get(attr).cloned().unwrap_or_default()
+    }
+
+    /// Get a binary attribute value (e.g., nTSecurityDescriptor, objectSid)
+    pub fn get_binary_attr(entry: &SearchEntry, attr: &str) -> Option<Vec<u8>> {
+        entry.bin_attrs.get(attr)?.first().cloned()
+    }
+
+    /// Get all binary attribute values
+    pub fn get_binary_attrs(entry: &SearchEntry, attr: &str) -> Vec<Vec<u8>> {
+        entry.bin_attrs.get(attr).cloned().unwrap_or_default()
     }
 
     /// Get a boolean attribute (from "TRUE"/"FALSE" string)

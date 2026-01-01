@@ -41,6 +41,7 @@
 //! let results = run_ad_assessment(&config).await?;
 //! ```
 
+pub mod acl_parser;
 pub mod enumeration;
 pub mod ldap_client;
 pub mod types;
@@ -202,6 +203,61 @@ pub async fn run_ad_assessment(config: &AdAssessmentConfig) -> Result<AdAssessme
         Vec::new()
     };
 
+    // Enumerate password policy
+    let password_policy = if opts.check_password_policy {
+        match enumeration::enumerate_password_policy(&mut client).await {
+            Ok(policy) => {
+                info!("Enumerated password policy");
+                Some(policy)
+            }
+            Err(e) => {
+                warn!("Failed to enumerate password policy: {}", e);
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    // Enumerate trusts
+    let trusts = if opts.check_trusts {
+        match enumeration::enumerate_trusts(&mut client).await {
+            Ok(t) => {
+                info!("Enumerated {} trusts", t.len());
+                t
+            }
+            Err(e) => {
+                warn!("Failed to enumerate trusts: {}", e);
+                Vec::new()
+            }
+        }
+    } else {
+        Vec::new()
+    };
+
+    // Enumerate ADCS (Certificate Services)
+    let (certificate_templates, certificate_authorities) = if opts.check_adcs {
+        match enumeration::enumerate_certificate_services(&mut client).await {
+            Ok((templates, cas)) => {
+                info!("Enumerated {} certificate templates, {} CAs", templates.len(), cas.len());
+                (templates, cas)
+            }
+            Err(e) => {
+                warn!("Failed to enumerate ADCS: {}", e);
+                (Vec::new(), Vec::new())
+            }
+        }
+    } else {
+        (Vec::new(), Vec::new())
+    };
+
+    // Enumerate dangerous ACLs (on high-value objects)
+    let dangerous_acls = if opts.check_acls {
+        enumerate_dangerous_acls(&mut client, &users, &groups, domain_info.as_ref()).await
+    } else {
+        Vec::new()
+    };
+
     // Close the LDAP connection
     if let Err(e) = client.close().await {
         warn!("Error closing LDAP connection: {}", e);
@@ -211,7 +267,27 @@ pub async fn run_ad_assessment(config: &AdAssessmentConfig) -> Result<AdAssessme
     let spns = extract_spns(&users, &computers);
 
     // Generate security findings
-    let findings = generate_findings(&users, &groups, &computers, &spns, domain_info.as_ref());
+    let mut findings = generate_findings(&users, &groups, &computers, &spns, domain_info.as_ref());
+
+    // Add password policy findings
+    if let Some(ref policy) = password_policy {
+        findings.extend(generate_password_policy_findings(policy));
+    }
+
+    // Add trust findings
+    if !trusts.is_empty() {
+        findings.extend(generate_trust_findings(&trusts));
+    }
+
+    // Add dangerous ACL findings
+    if !dangerous_acls.is_empty() {
+        findings.extend(generate_acl_findings(&dangerous_acls));
+    }
+
+    // Add ADCS findings
+    if !certificate_templates.is_empty() {
+        findings.extend(generate_adcs_findings(&certificate_templates));
+    }
 
     // Calculate summary
     let summary = calculate_summary(&users, &computers, &findings);
@@ -232,12 +308,12 @@ pub async fn run_ad_assessment(config: &AdAssessmentConfig) -> Result<AdAssessme
         computers,
         organizational_units,
         group_policies,
-        password_policy: None, // TODO: Implement password policy enumeration
-        trusts: Vec::new(),    // TODO: Implement trust enumeration
+        password_policy,
+        trusts,
         spns,
-        dangerous_acls: Vec::new(), // TODO: Implement ACL analysis
-        certificate_templates: Vec::new(), // TODO: Implement ADCS enumeration
-        certificate_authorities: Vec::new(),
+        dangerous_acls,
+        certificate_templates,
+        certificate_authorities,
         findings,
         summary,
     })
@@ -675,6 +751,468 @@ fn calculate_risk_score(critical: u32, high: u32, medium: u32, low: u32) -> u8 {
     // Normalize to 0-100 with diminishing returns
     let score = 100.0 * (1.0 - (-raw_score / 100.0).exp());
     score.min(100.0) as u8
+}
+
+// ============================================================================
+// Dangerous ACL Enumeration
+// ============================================================================
+
+/// Enumerate dangerous ACLs on high-value AD objects
+async fn enumerate_dangerous_acls(
+    client: &mut AdLdapClient,
+    users: &[AdUser],
+    groups: &[AdGroup],
+    domain_info: Option<&AdDomainInfo>,
+) -> Vec<AdDangerousAcl> {
+    use ldap3::Scope;
+
+    let mut all_dangerous = Vec::new();
+    let base_dn = client.base_dn().to_string();
+
+    // Collect domain SID for exclusions
+    let excluded_sids: Vec<String> = domain_info
+        .and_then(|d| d.domain_sid.clone())
+        .map(|sid| vec![format!("{}-512", sid), format!("{}-519", sid), format!("{}-516", sid)])
+        .unwrap_or_default();
+
+    // Query domain object for DCSync rights
+    let domain_attrs = vec!["nTSecurityDescriptor"];
+    if let Ok(entries) = client.search(&base_dn, Scope::Base, "(objectClass=domain)", domain_attrs).await {
+        for entry in entries {
+            if let Some(sd_bytes) = ldap_client::ldap_utils::get_binary_attr(&entry, "nTSecurityDescriptor") {
+                if let Ok(sd) = acl_parser::parse_security_descriptor(&sd_bytes) {
+                    let dangerous = acl_parser::find_dangerous_permissions(&sd, &base_dn, "domain", &excluded_sids);
+                    all_dangerous.extend(dangerous);
+                }
+            }
+        }
+    }
+
+    // Query AdminSDHolder for modifications
+    let adminsdholder_dn = format!("CN=AdminSDHolder,CN=System,{}", base_dn);
+    if let Ok(entries) = client.search(&adminsdholder_dn, Scope::Base, "(objectClass=*)", vec!["nTSecurityDescriptor"]).await {
+        for entry in entries {
+            if let Some(sd_bytes) = ldap_client::ldap_utils::get_binary_attr(&entry, "nTSecurityDescriptor") {
+                if let Ok(sd) = acl_parser::parse_security_descriptor(&sd_bytes) {
+                    let dangerous = acl_parser::find_dangerous_permissions(&sd, &adminsdholder_dn, "adminSDHolder", &excluded_sids);
+                    all_dangerous.extend(dangerous);
+                }
+            }
+        }
+    }
+
+    // Query privileged groups for write permissions
+    let privileged_groups: Vec<_> = groups.iter().filter(|g| g.is_privileged).collect();
+    for group in privileged_groups.iter().take(10) {
+        if let Ok(entries) = client.search(&group.dn, Scope::Base, "(objectClass=*)", vec!["nTSecurityDescriptor"]).await {
+            for entry in entries {
+                if let Some(sd_bytes) = ldap_client::ldap_utils::get_binary_attr(&entry, "nTSecurityDescriptor") {
+                    if let Ok(sd) = acl_parser::parse_security_descriptor(&sd_bytes) {
+                        let dangerous = acl_parser::find_dangerous_permissions(&sd, &group.dn, "group", &excluded_sids);
+                        all_dangerous.extend(dangerous);
+                    }
+                }
+            }
+        }
+    }
+
+    // Sample admin users for ForceChangePassword and other dangerous perms
+    let admin_users: Vec<_> = users.iter().filter(|u| u.admin_count).take(20).collect();
+    for user in admin_users {
+        if let Ok(entries) = client.search(&user.dn, Scope::Base, "(objectClass=*)", vec!["nTSecurityDescriptor"]).await {
+            for entry in entries {
+                if let Some(sd_bytes) = ldap_client::ldap_utils::get_binary_attr(&entry, "nTSecurityDescriptor") {
+                    if let Ok(sd) = acl_parser::parse_security_descriptor(&sd_bytes) {
+                        let dangerous = acl_parser::find_dangerous_permissions(&sd, &user.dn, "user", &excluded_sids);
+                        all_dangerous.extend(dangerous);
+                    }
+                }
+            }
+        }
+    }
+
+    info!("Found {} dangerous ACL entries", all_dangerous.len());
+    all_dangerous
+}
+
+// ============================================================================
+// Finding Generation Functions
+// ============================================================================
+
+/// Generate findings from password policy analysis
+fn generate_password_policy_findings(policy: &AdPasswordPolicy) -> Vec<AdSecurityFinding> {
+    let mut findings = Vec::new();
+
+    // Check for weak password length
+    if policy.min_password_length < 12 {
+        findings.push(AdSecurityFinding {
+            id: Uuid::new_v4().to_string(),
+            title: "Weak Minimum Password Length".to_string(),
+            description: format!(
+                "Domain password policy requires only {} characters minimum. \
+                 NIST recommends at least 12-14 characters for user passwords.",
+                policy.min_password_length
+            ),
+            severity: if policy.min_password_length < 8 {
+                FindingSeverity::High
+            } else {
+                FindingSeverity::Medium
+            },
+            category: FindingCategory::PasswordPolicy,
+            mitre_attack_ids: vec!["T1110".to_string()],
+            affected_objects: vec!["Domain Password Policy".to_string()],
+            affected_count: 1,
+            remediation: "Increase minimum password length to at least 14 characters.".to_string(),
+            risk_score: if policy.min_password_length < 8 { 70 } else { 50 },
+            evidence: {
+                let mut ev = HashMap::new();
+                ev.insert("min_length".to_string(), serde_json::json!(policy.min_password_length));
+                ev
+            },
+            references: vec![
+                "https://pages.nist.gov/800-63-3/sp800-63b.html".to_string(),
+            ],
+        });
+    }
+
+    // Check for no complexity
+    if !policy.complexity_enabled {
+        findings.push(AdSecurityFinding {
+            id: Uuid::new_v4().to_string(),
+            title: "Password Complexity Not Enabled".to_string(),
+            description: "Domain password policy does not require password complexity. \
+                 Passwords may be composed of dictionary words or simple patterns.".to_string(),
+            severity: FindingSeverity::Medium,
+            category: FindingCategory::PasswordPolicy,
+            mitre_attack_ids: vec!["T1110".to_string()],
+            affected_objects: vec!["Domain Password Policy".to_string()],
+            affected_count: 1,
+            remediation: "Enable password complexity requirements or implement a stronger passphrase policy.".to_string(),
+            risk_score: 45,
+            evidence: HashMap::new(),
+            references: vec![
+                "https://docs.microsoft.com/en-us/windows/security/threat-protection/security-policy-settings/password-must-meet-complexity-requirements".to_string(),
+            ],
+        });
+    }
+
+    // Check for no lockout threshold
+    if policy.lockout_threshold == 0 {
+        findings.push(AdSecurityFinding {
+            id: Uuid::new_v4().to_string(),
+            title: "No Account Lockout Policy".to_string(),
+            description: "Domain has no account lockout threshold configured. \
+                 Attackers can perform unlimited password guessing attacks.".to_string(),
+            severity: FindingSeverity::High,
+            category: FindingCategory::PasswordPolicy,
+            mitre_attack_ids: vec!["T1110.001".to_string()],
+            affected_objects: vec!["Domain Password Policy".to_string()],
+            affected_count: 1,
+            remediation: "Configure account lockout threshold (5-10 attempts) with reasonable lockout duration.".to_string(),
+            risk_score: 65,
+            evidence: HashMap::new(),
+            references: vec![
+                "https://attack.mitre.org/techniques/T1110/001/".to_string(),
+            ],
+        });
+    }
+
+    // Check for reversible encryption
+    if policy.reversible_encryption_enabled {
+        findings.push(AdSecurityFinding {
+            id: Uuid::new_v4().to_string(),
+            title: "Reversible Password Encryption Enabled".to_string(),
+            description: "Domain is configured to store passwords using reversible encryption. \
+                 This effectively stores passwords in plaintext in the AD database.".to_string(),
+            severity: FindingSeverity::Critical,
+            category: FindingCategory::PasswordPolicy,
+            mitre_attack_ids: vec!["T1003.006".to_string()],
+            affected_objects: vec!["Domain Password Policy".to_string()],
+            affected_count: 1,
+            remediation: "Disable 'Store password using reversible encryption' unless absolutely required for legacy applications.".to_string(),
+            risk_score: 90,
+            evidence: HashMap::new(),
+            references: vec![
+                "https://attack.mitre.org/techniques/T1003/006/".to_string(),
+            ],
+        });
+    }
+
+    findings
+}
+
+/// Generate findings from trust analysis
+fn generate_trust_findings(trusts: &[AdTrust]) -> Vec<AdSecurityFinding> {
+    let mut findings = Vec::new();
+
+    // Check for external trusts without SID filtering
+    let risky_trusts: Vec<_> = trusts
+        .iter()
+        .filter(|t| matches!(t.trust_type, TrustType::External | TrustType::Forest) && !t.sid_filtering_enabled)
+        .collect();
+
+    if !risky_trusts.is_empty() {
+        findings.push(AdSecurityFinding {
+            id: Uuid::new_v4().to_string(),
+            title: "External Trust Without SID Filtering".to_string(),
+            description: format!(
+                "Found {} external/forest trust(s) without SID filtering enabled. \
+                 Attackers in the trusted domain could forge SIDs to gain access.",
+                risky_trusts.len()
+            ),
+            severity: FindingSeverity::High,
+            category: FindingCategory::TrustRelationship,
+            mitre_attack_ids: vec!["T1134.005".to_string()],
+            affected_objects: risky_trusts.iter().map(|t| t.trusted_domain.clone()).collect(),
+            affected_count: risky_trusts.len() as u32,
+            remediation: "Enable SID filtering (quarantine) on all external and forest trusts.".to_string(),
+            risk_score: 75,
+            evidence: {
+                let mut ev = HashMap::new();
+                ev.insert(
+                    "trusts".to_string(),
+                    serde_json::json!(risky_trusts.iter().map(|t| &t.trusted_domain).collect::<Vec<_>>()),
+                );
+                ev
+            },
+            references: vec![
+                "https://attack.mitre.org/techniques/T1134/005/".to_string(),
+                "https://docs.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2003/cc773178(v=ws.10)".to_string(),
+            ],
+        });
+    }
+
+    // Check for bidirectional external trusts
+    let bidir_external: Vec<_> = trusts
+        .iter()
+        .filter(|t| matches!(t.trust_type, TrustType::External) && matches!(t.direction, TrustDirection::Bidirectional))
+        .collect();
+
+    if !bidir_external.is_empty() {
+        findings.push(AdSecurityFinding {
+            id: Uuid::new_v4().to_string(),
+            title: "Bidirectional External Trust".to_string(),
+            description: format!(
+                "Found {} bidirectional external trust(s). \
+                 This allows users from external domains full authentication to this domain.",
+                bidir_external.len()
+            ),
+            severity: FindingSeverity::Medium,
+            category: FindingCategory::TrustRelationship,
+            mitre_attack_ids: vec!["T1199".to_string()],
+            affected_objects: bidir_external.iter().map(|t| t.trusted_domain.clone()).collect(),
+            affected_count: bidir_external.len() as u32,
+            remediation: "Review trust necessity. Consider one-way trusts or selective authentication.".to_string(),
+            risk_score: 55,
+            evidence: HashMap::new(),
+            references: vec![
+                "https://attack.mitre.org/techniques/T1199/".to_string(),
+            ],
+        });
+    }
+
+    findings
+}
+
+/// Generate findings from dangerous ACL analysis
+fn generate_acl_findings(dangerous_acls: &[AdDangerousAcl]) -> Vec<AdSecurityFinding> {
+    let mut findings = Vec::new();
+
+    // DCSync permissions
+    let dcsync: Vec<_> = dangerous_acls
+        .iter()
+        .filter(|a| matches!(a.permission, AdPermissionType::DsSyncReplication))
+        .collect();
+
+    if !dcsync.is_empty() {
+        findings.push(AdSecurityFinding {
+            id: Uuid::new_v4().to_string(),
+            title: "DCSync Rights Detected".to_string(),
+            description: format!(
+                "Found {} non-standard principal(s) with DCSync rights. \
+                 These accounts can extract all password hashes from the domain.",
+                dcsync.len()
+            ),
+            severity: FindingSeverity::Critical,
+            category: FindingCategory::Permissions,
+            mitre_attack_ids: vec!["T1003.006".to_string()],
+            affected_objects: dcsync.iter().map(|a| a.principal.clone()).collect(),
+            affected_count: dcsync.len() as u32,
+            remediation: "Remove GetChanges/GetChangesAll rights from non-DC accounts. Only Domain Controllers should have DCSync permissions.".to_string(),
+            risk_score: 95,
+            evidence: {
+                let mut ev = HashMap::new();
+                ev.insert(
+                    "principals".to_string(),
+                    serde_json::json!(dcsync.iter().map(|a| &a.principal).collect::<Vec<_>>()),
+                );
+                ev
+            },
+            references: vec![
+                "https://attack.mitre.org/techniques/T1003/006/".to_string(),
+            ],
+        });
+    }
+
+    // GenericAll on high-value targets
+    let generic_all: Vec<_> = dangerous_acls
+        .iter()
+        .filter(|a| matches!(a.permission, AdPermissionType::GenericAll))
+        .collect();
+
+    if !generic_all.is_empty() {
+        findings.push(AdSecurityFinding {
+            id: Uuid::new_v4().to_string(),
+            title: "Excessive GenericAll Permissions".to_string(),
+            description: format!(
+                "Found {} instance(s) of GenericAll permissions on high-value objects. \
+                 Full control allows complete object manipulation including password resets.",
+                generic_all.len()
+            ),
+            severity: FindingSeverity::High,
+            category: FindingCategory::Permissions,
+            mitre_attack_ids: vec!["T1222.001".to_string()],
+            affected_objects: generic_all.iter().map(|a| format!("{} -> {}", a.principal, a.object_dn)).collect(),
+            affected_count: generic_all.len() as u32,
+            remediation: "Review and remove unnecessary GenericAll permissions. Apply least privilege principle.".to_string(),
+            risk_score: 80,
+            evidence: HashMap::new(),
+            references: vec![
+                "https://attack.mitre.org/techniques/T1222/001/".to_string(),
+                "https://bloodhound.readthedocs.io/en/latest/data-analysis/edges.html".to_string(),
+            ],
+        });
+    }
+
+    // WriteDACL permissions
+    let write_dacl: Vec<_> = dangerous_acls
+        .iter()
+        .filter(|a| matches!(a.permission, AdPermissionType::WriteDacl))
+        .collect();
+
+    if !write_dacl.is_empty() {
+        findings.push(AdSecurityFinding {
+            id: Uuid::new_v4().to_string(),
+            title: "WriteDACL Permissions on Sensitive Objects".to_string(),
+            description: format!(
+                "Found {} instance(s) of WriteDACL permissions. \
+                 This allows modifying permissions to escalate to full control.",
+                write_dacl.len()
+            ),
+            severity: FindingSeverity::High,
+            category: FindingCategory::Permissions,
+            mitre_attack_ids: vec!["T1222.001".to_string()],
+            affected_objects: write_dacl.iter().map(|a| format!("{} -> {}", a.principal, a.object_dn)).collect(),
+            affected_count: write_dacl.len() as u32,
+            remediation: "Remove WriteDACL from non-administrative principals.".to_string(),
+            risk_score: 75,
+            evidence: HashMap::new(),
+            references: vec![
+                "https://bloodhound.readthedocs.io/en/latest/data-analysis/edges.html#writedacl".to_string(),
+            ],
+        });
+    }
+
+    findings
+}
+
+/// Generate findings from ADCS analysis
+fn generate_adcs_findings(templates: &[AdCertificateTemplate]) -> Vec<AdSecurityFinding> {
+    let mut findings = Vec::new();
+
+    // Collect vulnerable templates
+    let esc1: Vec<_> = templates
+        .iter()
+        .filter(|t| t.vulnerabilities.iter().any(|v| v.contains("ESC1")))
+        .collect();
+
+    if !esc1.is_empty() {
+        findings.push(AdSecurityFinding {
+            id: Uuid::new_v4().to_string(),
+            title: "ESC1: Vulnerable Certificate Templates".to_string(),
+            description: format!(
+                "Found {} certificate template(s) vulnerable to ESC1 attack. \
+                 Enrollee can supply arbitrary Subject Alternative Name (SAN) for authentication.",
+                esc1.len()
+            ),
+            severity: FindingSeverity::Critical,
+            category: FindingCategory::CertificateServices,
+            mitre_attack_ids: vec!["T1649".to_string()],
+            affected_objects: esc1.iter().map(|t| t.name.clone()).collect(),
+            affected_count: esc1.len() as u32,
+            remediation: "Remove 'ENROLLEE_SUPPLIES_SUBJECT' flag or require manager approval on these templates.".to_string(),
+            risk_score: 90,
+            evidence: {
+                let mut ev = HashMap::new();
+                ev.insert(
+                    "templates".to_string(),
+                    serde_json::json!(esc1.iter().map(|t| &t.name).collect::<Vec<_>>()),
+                );
+                ev
+            },
+            references: vec![
+                "https://posts.specterops.io/certified-pre-owned-d95910965cd2".to_string(),
+            ],
+        });
+    }
+
+    let esc2: Vec<_> = templates
+        .iter()
+        .filter(|t| t.vulnerabilities.iter().any(|v| v.contains("ESC2")))
+        .collect();
+
+    if !esc2.is_empty() {
+        findings.push(AdSecurityFinding {
+            id: Uuid::new_v4().to_string(),
+            title: "ESC2: Any Purpose EKU Templates".to_string(),
+            description: format!(
+                "Found {} certificate template(s) with Any Purpose or no EKU. \
+                 These certificates can be used for any purpose including authentication.",
+                esc2.len()
+            ),
+            severity: FindingSeverity::High,
+            category: FindingCategory::CertificateServices,
+            mitre_attack_ids: vec!["T1649".to_string()],
+            affected_objects: esc2.iter().map(|t| t.name.clone()).collect(),
+            affected_count: esc2.len() as u32,
+            remediation: "Restrict template EKUs to specific purposes. Avoid 'Any Purpose' EKU.".to_string(),
+            risk_score: 75,
+            evidence: HashMap::new(),
+            references: vec![
+                "https://posts.specterops.io/certified-pre-owned-d95910965cd2".to_string(),
+            ],
+        });
+    }
+
+    let esc3: Vec<_> = templates
+        .iter()
+        .filter(|t| t.vulnerabilities.iter().any(|v| v.contains("ESC3")))
+        .collect();
+
+    if !esc3.is_empty() {
+        findings.push(AdSecurityFinding {
+            id: Uuid::new_v4().to_string(),
+            title: "ESC3: Certificate Request Agent Templates".to_string(),
+            description: format!(
+                "Found {} certificate template(s) with Certificate Request Agent EKU. \
+                 Allows enrolling on behalf of other users.",
+                esc3.len()
+            ),
+            severity: FindingSeverity::High,
+            category: FindingCategory::CertificateServices,
+            mitre_attack_ids: vec!["T1649".to_string()],
+            affected_objects: esc3.iter().map(|t| t.name.clone()).collect(),
+            affected_count: esc3.len() as u32,
+            remediation: "Restrict enrollment on Certificate Request Agent templates to highly trusted accounts.".to_string(),
+            risk_score: 70,
+            evidence: HashMap::new(),
+            references: vec![
+                "https://posts.specterops.io/certified-pre-owned-d95910965cd2".to_string(),
+            ],
+        });
+    }
+
+    findings
 }
 
 #[cfg(test)]
