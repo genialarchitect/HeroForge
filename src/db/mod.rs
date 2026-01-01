@@ -210,6 +210,19 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     .execute(pool)
     .await?;
 
+    // Add is_active column if it doesn't exist (for databases created before this column was added)
+    let has_is_active: bool = sqlx::query_scalar(
+        "SELECT COUNT(*) > 0 FROM pragma_table_info('users') WHERE name = 'is_active'"
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if !has_is_active {
+        sqlx::query("ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
+            .execute(pool)
+            .await?;
+    }
+
     // Create scan_results table
     sqlx::query(
         r#"

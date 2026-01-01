@@ -522,6 +522,10 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .configure(api::secret_findings::configure)
                     // AI Prioritization endpoints
                     .configure(api::ai::configure)
+                    // AI LLM Orchestrator endpoints
+                    .configure(api::ai_llm::configure)
+                    // AI ML Pipeline endpoints
+                    .configure(api::ai_ml::configure)
                     // AI Chat endpoints
                     .configure(api::chat::configure)
                     // CI/CD integration endpoints

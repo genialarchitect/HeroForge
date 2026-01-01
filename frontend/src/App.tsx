@@ -121,6 +121,8 @@ const SoarPlaybooksPage = lazy(() => import('./pages/SoarPlaybooksPage'));
 // AI/ML Security (Sprint 15 - Priority 2)
 const AiSecurityPage = lazy(() => import('./pages/AiSecurityPage'));
 const LlmTestingPage = lazy(() => import('./pages/LlmTestingPage'));
+const AiReportsPage = lazy(() => import('./pages/AiReportsPage'));
+const MlModelsPage = lazy(() => import('./pages/MlModelsPage'));
 
 // CRM pages
 const CrmDashboard = lazy(() => import('./pages/crm/CrmDashboard'));
@@ -792,6 +794,26 @@ function App() {
             element={
               <ProtectedRoute>
                 <LlmTestingPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* AI Reports & Analysis */}
+          <Route
+            path="/ai-reports"
+            element={
+              <ProtectedRoute>
+                <AiReportsPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* ML Model Management */}
+          <Route
+            path="/ml-models"
+            element={
+              <ProtectedRoute>
+                <MlModelsPage />
               </ProtectedRoute>
             }
           />

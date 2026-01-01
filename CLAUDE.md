@@ -72,8 +72,11 @@ cargo test -- --nocapture             # With output
 cargo test -- --test-threads=1        # Sequential (for DB-dependent tests)
 cargo test scanner::                  # Test specific module
 cargo test scanner::comparison::tests::test_compare_scans  # Specific test
+cargo test --test '*'                 # Integration tests only
 RUST_BACKTRACE=1 cargo test           # With stack traces on failure
 ```
+
+**Note:** DB-dependent tests use `#[serial_test::serial]` macro. Run with `--test-threads=1` if encountering database lock issues.
 
 ### Frontend (React/TypeScript)
 
@@ -86,34 +89,6 @@ npm run build                         # Production build
 npm run build:check                   # TypeScript check + build
 npm run dev                           # Development server (proxies /api to :8080)
 npm run lint                          # ESLint with strict warnings
-```
-
-### Testing
-
-```bash
-# Run all tests
-cargo test
-
-# Run tests with output
-cargo test -- --nocapture
-
-# Run specific test module
-cargo test scanner::
-
-# Run specific test function
-cargo test scanner::comparison::tests::test_compare_scans
-
-# Run database-dependent tests sequentially (avoid conflicts)
-cargo test -- --test-threads=1
-
-# Run tests with backtrace for debugging
-RUST_BACKTRACE=1 cargo test
-
-# Run tests for a specific module with verbose output
-cargo test --package heroforge --lib scanner::tests -- --nocapture
-
-# Run integration tests only
-cargo test --test '*'
 ```
 
 ### Deployment
@@ -187,6 +162,9 @@ src/
 │   └── analyzer.rs, scanner.rs, scoring.rs
 ├── agents/              # Distributed scanning agents and mesh networking
 ├── ai/                  # AI-powered vulnerability prioritization
+│   ├── mod.rs           # AI module entrypoint
+│   ├── llm_orchestrator.rs  # LLM API orchestration (Claude, GPT, local models)
+│   └── ml_pipeline.rs   # ML pipeline for vulnerability classification
 ├── ai_security/         # AI/ML model security scanning
 ├── asm/                 # Attack Surface Management
 ├── binary_analysis/     # Binary/malware analysis (PE/ELF/Mach-O parsing, entropy)
@@ -255,7 +233,7 @@ Full API documentation available via Swagger UI at `/api/docs` (requires running
 - `/api/admin/*` - User management, audit logs (admin role required)
 - `/api/agents/*` - Distributed scanning agent management
 - `/api/plugins/*` - Plugin marketplace and management
-- `/api/ai/*` - AI-powered vulnerability prioritization
+- `/api/ai/*` - AI-powered vulnerability prioritization, LLM integration, ML models
 - `/api/siem/*` - SIEM log ingestion and correlation
 - `/api/threat-intel/*` - Threat intelligence feeds
 - `/api/crm/*` - Customer relationship management
@@ -350,8 +328,9 @@ HeroForge implements a comprehensive security operations framework organized by 
 | File | Purpose |
 |------|---------|
 | `heroforge.toml` | Scan configuration (generated with `heroforge config`) |
-| `/root/docker-compose.yml` | Container definition with Traefik SSL |
+| `/root/docker-compose.yml` | Container definition with Traefik SSL (note: not in this repo) |
 | `deploy.sh` | Automated deployment (frontend + backend + Docker) |
+| `docs/AI_QUICK_START.md` | Quick start guide for AI/ML features |
 
 ### Environment Variables
 
@@ -373,6 +352,7 @@ HeroForge implements a comprehensive security operations framework organized by 
 | `GOOGLE_APPLICATION_CREDENTIALS` | Path to GCP service account JSON for cloud scanning |
 | `SAML_IDP_METADATA_URL` | SAML Identity Provider metadata URL for SSO |
 | `OAUTH_CLIENT_ID`, `OAUTH_CLIENT_SECRET` | OAuth 2.0 credentials for SSO |
+| `ANTHROPIC_API_KEY` | Anthropic Claude API key for AI chat and LLM-powered features |
 
 ## Integrations
 

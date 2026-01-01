@@ -16,6 +16,8 @@
 pub mod chat;
 pub mod context;
 pub mod features;
+pub mod llm_orchestrator;
+pub mod ml_pipeline;
 pub mod models;
 pub mod prioritization;
 

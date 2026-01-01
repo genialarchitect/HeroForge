@@ -6117,3 +6117,72 @@ export const aiSecurityAPI = {
   createTestCase: (data: { category: string; name: string; description?: string; payload: string; expected_behavior?: string; severity: string; cwe_id?: string }) =>
     api.post('/ai-security/llm-security/test-cases', data),
 };
+
+// ============================================================================
+// AI LLM Orchestrator API
+// ============================================================================
+
+export const aiLlmAPI = {
+  // Report Generation
+  generateExecutiveReport: (scanId: string) =>
+    api.post(`/ai/llm/reports/executive/${scanId}`),
+  generateTechnicalReport: (scanId: string) =>
+    api.post(`/ai/llm/reports/technical/${scanId}`),
+
+  // Scan Planning
+  planScan: (data: { targets: string[]; objectives: string[] }) =>
+    api.post('/ai/llm/scan-plan', data),
+
+  // Exploit Analysis
+  analyzeExploit: (data: { code: string; context?: string }) =>
+    api.post('/ai/llm/analyze-exploit', data),
+
+  // Policy Generation
+  generatePolicy: (data: { policy_type: string; organization: string; compliance_frameworks: string[] }) =>
+    api.post('/ai/llm/policy/generate', data),
+
+  // Remediation Guidance
+  getRemediationGuidance: (data: { vulnerability: string; context: string }) =>
+    api.post('/ai/llm/remediation-guidance', data),
+};
+
+// ============================================================================
+// ML Models API
+// ============================================================================
+
+export interface MLModelInfo {
+  name: string;
+  version: number;
+  trained_at: string;
+  status: string;
+}
+
+export const mlModelsAPI = {
+  // Model Training
+  trainThreatClassifier: () => api.post('/ml/train/threat-classifier'),
+  trainAssetFingerprinter: () => api.post('/ml/train/asset-fingerprinter'),
+  trainAttackDetector: () => api.post('/ml/train/attack-detector'),
+  trainRemediationPredictor: () => api.post('/ml/train/remediation-predictor'),
+
+  // Predictions
+  predictThreat: (data: {
+    features: {
+      severity_score: number;
+      has_cve: boolean;
+      has_exploit: boolean;
+      age_days: number;
+      affected_hosts: number;
+    };
+  }) => api.post('/ml/predict/threat', data),
+
+  predictRemediationTime: (data: {
+    severity: string;
+    complexity: string;
+    team_size: number;
+  }) => api.post('/ml/predict/remediation-time', data),
+
+  // Model Management
+  listModels: () => api.get<MLModelInfo[]>('/ml/models'),
+  getModelInfo: (name: string) => api.get<MLModelInfo>(`/ml/models/${name}`),
+  getModelMetrics: (name: string) => api.get(`/ml/models/${name}/metrics`),
+};

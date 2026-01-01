@@ -98,6 +98,10 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     create_secret_findings_table(pool).await?;
     // AI Prioritization tables
     create_ai_prioritization_tables(pool).await?;
+    // ML Models and AI Enhancement tables
+    create_ml_models_table(pool).await?;
+    create_ai_feedback_table(pool).await?;
+    create_ai_reports_table(pool).await?;
     // CI/CD integration tables
     create_cicd_tokens_table(pool).await?;
     create_cicd_runs_table(pool).await?;
@@ -1004,6 +1008,19 @@ async fn add_mfa_columns_to_users(pool: &SqlitePool) -> Result<()> {
 
     if !has_recovery_codes {
         sqlx::query("ALTER TABLE users ADD COLUMN recovery_codes TEXT")
+            .execute(pool)
+            .await?;
+    }
+
+    // Add is_active column if it doesn't exist
+    let has_is_active: bool = sqlx::query_scalar(
+        "SELECT COUNT(*) > 0 FROM pragma_table_info('users') WHERE name = 'is_active'"
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if !has_is_active {
+        sqlx::query("ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
             .execute(pool)
             .await?;
     }
@@ -22999,5 +23016,120 @@ async fn seed_iot_credentials(pool: &SqlitePool) -> Result<()> {
     }
 
     log::info!("Seeded IoT default credentials database");
+    Ok(())
+}
+
+/// Create ML models table for storing trained ML models
+async fn create_ml_models_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ml_trained_models (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            model_type TEXT NOT NULL,
+            model_data TEXT NOT NULL,
+            trained_at TEXT NOT NULL,
+            version INTEGER NOT NULL DEFAULT 1,
+            metrics TEXT,
+            training_samples INTEGER,
+            hyperparameters TEXT,
+            created_by TEXT,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            UNIQUE(name, version)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ml_trained_models_name ON ml_trained_models(name)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ml_trained_models_active ON ml_trained_models(is_active)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created ml_trained_models table");
+    Ok(())
+}
+
+/// Create AI ML feedback table for ML model learning and improvement
+async fn create_ai_feedback_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ai_ml_feedback (
+            id TEXT PRIMARY KEY,
+            feedback_type TEXT NOT NULL,
+            reference_id TEXT NOT NULL,
+            predicted_value TEXT,
+            actual_value TEXT,
+            user_rating INTEGER,
+            feedback_notes TEXT,
+            metadata TEXT,
+            created_by TEXT,
+            created_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ai_ml_feedback_type ON ai_ml_feedback(feedback_type)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ai_ml_feedback_ref ON ai_ml_feedback(reference_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ai_ml_feedback_created ON ai_ml_feedback(created_at)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created ai_ml_feedback table");
+    Ok(())
+}
+
+/// Create AI reports table for storing generated reports
+async fn create_ai_reports_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ai_reports (
+            id TEXT PRIMARY KEY,
+            scan_id TEXT NOT NULL,
+            report_type TEXT NOT NULL,
+            title TEXT NOT NULL,
+            summary TEXT,
+            content TEXT NOT NULL,
+            key_findings TEXT,
+            recommendations TEXT,
+            risk_score INTEGER,
+            metadata TEXT,
+            created_by TEXT,
+            created_at TIMESTAMP NOT NULL,
+            FOREIGN KEY (scan_id) REFERENCES scan_results(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ai_reports_scan_id ON ai_reports(scan_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ai_reports_type ON ai_reports(report_type)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ai_reports_created ON ai_reports(created_at)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created ai_reports table");
     Ok(())
 }

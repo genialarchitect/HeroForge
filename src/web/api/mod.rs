@@ -3,6 +3,8 @@ pub mod admin;
 pub mod agents;
 pub mod asm;
 pub mod ai;
+pub mod ai_llm;
+pub mod ai_ml;
 pub mod ai_security;
 pub mod analytics;
 pub mod api_keys;

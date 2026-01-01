@@ -297,6 +297,8 @@ const Header: React.FC = () => {
     { to: '/remediation', icon: <Layers className="h-4 w-4" />, label: 'Remediation' },
     { to: '/ai-security', icon: <Brain className="h-4 w-4" />, label: 'AI Security' },
     { to: '/llm-testing', icon: <Sparkles className="h-4 w-4" />, label: 'LLM Testing' },
+    { to: '/ai-reports', icon: <FileText className="h-4 w-4" />, label: 'AI Reports' },
+    { to: '/ml-models', icon: <Cpu className="h-4 w-4" />, label: 'ML Models' },
   ];
 
   // WHITE TEAM - GRC / Governance, Risk, Compliance
