@@ -32,6 +32,7 @@ pub mod service_detection;
 pub mod smb_native;
 pub mod ssl_scanner;
 pub mod syn_scanner;
+pub mod template_engine;
 pub mod udp_probes;
 pub mod udp_scanner;
 pub mod udp_service_detection;

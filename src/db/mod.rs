@@ -176,8 +176,16 @@ pub async fn init_database(database_url: &str) -> Result<SqlitePool> {
         log::warn!("For production use, set REQUIRE_DB_ENCRYPTION=true to enforce encryption.");
     }
 
+    // Get pool size from environment or use default
+    let max_connections: u32 = std::env::var("DB_POOL_SIZE")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(10);
+
     let pool = SqlitePoolOptions::new()
-        .max_connections(5)
+        .max_connections(max_connections)
+        .acquire_timeout(std::time::Duration::from_secs(30))
+        .idle_timeout(Some(std::time::Duration::from_secs(600)))
         .connect_with(connect_options)
         .await?;
 
@@ -185,7 +193,13 @@ pub async fn init_database(database_url: &str) -> Result<SqlitePool> {
     sqlx::query("PRAGMA journal_mode=WAL").execute(&pool).await?;
     sqlx::query("PRAGMA synchronous=NORMAL").execute(&pool).await?;
     sqlx::query("PRAGMA foreign_keys=ON").execute(&pool).await?;
-    sqlx::query("PRAGMA busy_timeout=5000").execute(&pool).await?;
+    sqlx::query("PRAGMA busy_timeout=10000").execute(&pool).await?;
+    // Cache size: negative value = KB, positive = pages. -32000 = ~32MB cache
+    sqlx::query("PRAGMA cache_size=-32000").execute(&pool).await?;
+    // Memory-mapped I/O for improved read performance
+    sqlx::query("PRAGMA mmap_size=268435456").execute(&pool).await?; // 256MB
+    // Temp store in memory for faster temp table operations
+    sqlx::query("PRAGMA temp_store=MEMORY").execute(&pool).await?;
 
     // Run migrations
     run_migrations(&pool).await?;

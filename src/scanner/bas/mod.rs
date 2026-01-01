@@ -36,6 +36,7 @@
 //! println!("Detection rate: {:.1}%", result.summary.detection_rate * 100.0);
 //! ```
 
+pub mod automation;
 pub mod detection;
 pub mod engine;
 pub mod payloads;
@@ -80,6 +81,14 @@ pub use payloads::{PayloadExecutor, PayloadResult};
 // Re-export detection
 #[allow(unused_imports)]
 pub use detection::{DetectionValidator, DetectionResult};
+
+// Re-export automation
+#[allow(unused_imports)]
+pub use automation::{
+    AttackSimulationAutomation, AttackChain, AttackChainStep, AttackChainResult,
+    CampaignType, CampaignTemplate, ScheduledSimulation, ContinuousValidation,
+    AutomationProgress, ChainExecutionStatus,
+};
 
 use anyhow::Result;
 

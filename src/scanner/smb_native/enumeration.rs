@@ -7,11 +7,12 @@ use super::rpc::{samr::*, srvsvc::*, types::*};
 use super::smb2::ioctl_codes;
 use super::types::*;
 use log::{debug, info, warn};
+use std::cell::Cell;
 
 /// SMB enumeration client
 pub struct SmbEnumerator {
     client: SmbClient,
-    call_id: u32,
+    call_id: Cell<u32>,
 }
 
 impl SmbEnumerator {
@@ -19,7 +20,7 @@ impl SmbEnumerator {
     pub fn new(host: &str) -> Self {
         Self {
             client: SmbClient::new(host),
-            call_id: 1,
+            call_id: Cell::new(1),
         }
     }
 
@@ -27,7 +28,7 @@ impl SmbEnumerator {
     pub fn with_credentials(host: &str, domain: &str, username: &str, password: &str) -> Self {
         Self {
             client: SmbClient::new(host).with_credentials(domain, username, password),
-            call_id: 1,
+            call_id: Cell::new(1),
         }
     }
 
@@ -36,16 +37,20 @@ impl SmbEnumerator {
         self.client.connect().await
     }
 
-    /// Get next call ID
-    fn next_call_id(&mut self) -> u32 {
-        let id = self.call_id;
-        self.call_id += 1;
+    /// Get next call ID (interior mutability via Cell)
+    fn next_call_id(&self) -> u32 {
+        let id = self.call_id.get();
+        self.call_id.set(id + 1);
         id
     }
 
     /// Enumerate shares via SRVSVC
     pub async fn enumerate_shares(&mut self) -> SmbResult<Vec<SmbShare>> {
         info!("Enumerating shares via SRVSVC");
+
+        // Pre-allocate call IDs before borrowing connection
+        let bind_call_id = self.next_call_id();
+        let enum_call_id = self.next_call_id();
 
         // Connect to IPC$ share
         self.client.connect_share("IPC$").await?;
@@ -56,7 +61,7 @@ impl SmbEnumerator {
         let file_id = conn.open_pipe("srvsvc").await?;
 
         // Bind to SRVSVC
-        let bind = create_srvsvc_bind(self.next_call_id());
+        let bind = create_srvsvc_bind(bind_call_id);
         let bind_response = conn
             .ioctl(ioctl_codes::FSCTL_PIPE_TRANSCEIVE, file_id, &bind)
             .await?;
@@ -72,7 +77,7 @@ impl SmbEnumerator {
 
         // Enumerate shares
         let server_name = conn.state().server_guid.iter().map(|b| format!("{:02x}", b)).collect::<String>();
-        let request = create_share_enum_request(&server_name, self.next_call_id());
+        let request = create_share_enum_request(&server_name, enum_call_id);
 
         let response = conn
             .ioctl(ioctl_codes::FSCTL_PIPE_TRANSCEIVE, file_id, &request)
@@ -88,6 +93,7 @@ impl SmbEnumerator {
 
         // Cleanup
         conn.close(file_id).await.ok();
+        drop(conn); // Explicitly drop to release borrow
         self.client.disconnect_share().await.ok();
 
         Ok(shares)
@@ -97,13 +103,17 @@ impl SmbEnumerator {
     pub async fn get_server_info(&mut self) -> SmbResult<ServerInfo> {
         info!("Getting server information via SRVSVC");
 
+        // Pre-allocate call IDs
+        let bind_call_id = self.next_call_id();
+        let info_call_id = self.next_call_id();
+
         self.client.connect_share("IPC$").await?;
         let conn = self.client.connection();
 
         let file_id = conn.open_pipe("srvsvc").await?;
 
         // Bind
-        let bind = create_srvsvc_bind(self.next_call_id());
+        let bind = create_srvsvc_bind(bind_call_id);
         let bind_response = conn
             .ioctl(ioctl_codes::FSCTL_PIPE_TRANSCEIVE, file_id, &bind)
             .await?;
@@ -116,7 +126,7 @@ impl SmbEnumerator {
         }
 
         // Get server info (level 101)
-        let request = create_server_get_info_request("", 101, self.next_call_id());
+        let request = create_server_get_info_request("", 101, info_call_id);
 
         let response = conn
             .ioctl(ioctl_codes::FSCTL_PIPE_TRANSCEIVE, file_id, &request)
@@ -128,6 +138,7 @@ impl SmbEnumerator {
         let server_info = parse_server_get_info_response(&rpc_response.stub_data)?;
 
         conn.close(file_id).await.ok();
+        drop(conn);
         self.client.disconnect_share().await.ok();
 
         Ok(server_info)
@@ -137,13 +148,17 @@ impl SmbEnumerator {
     pub async fn enumerate_sessions(&mut self) -> SmbResult<Vec<SessionInfo>> {
         info!("Enumerating sessions via SRVSVC");
 
+        // Pre-allocate call IDs
+        let bind_call_id = self.next_call_id();
+        let enum_call_id = self.next_call_id();
+
         self.client.connect_share("IPC$").await?;
         let conn = self.client.connection();
 
         let file_id = conn.open_pipe("srvsvc").await?;
 
         // Bind
-        let bind = create_srvsvc_bind(self.next_call_id());
+        let bind = create_srvsvc_bind(bind_call_id);
         let bind_response = conn
             .ioctl(ioctl_codes::FSCTL_PIPE_TRANSCEIVE, file_id, &bind)
             .await?;
@@ -155,7 +170,7 @@ impl SmbEnumerator {
             return Err(SmbError::Protocol("SRVSVC bind rejected".to_string()));
         }
 
-        let request = create_session_enum_request("", self.next_call_id());
+        let request = create_session_enum_request("", enum_call_id);
 
         let response = conn
             .ioctl(ioctl_codes::FSCTL_PIPE_TRANSCEIVE, file_id, &request)
@@ -167,6 +182,7 @@ impl SmbEnumerator {
         let sessions = parse_session_enum_response(&rpc_response.stub_data)?;
 
         conn.close(file_id).await.ok();
+        drop(conn);
         self.client.disconnect_share().await.ok();
 
         Ok(sessions)
@@ -176,13 +192,23 @@ impl SmbEnumerator {
     pub async fn enumerate_users(&mut self) -> SmbResult<Vec<SamrUserEntry>> {
         info!("Enumerating users via SAMR");
 
+        // Pre-allocate all call IDs (8 operations)
+        let bind_id = self.next_call_id();
+        let connect_id = self.next_call_id();
+        let enum_domains_id = self.next_call_id();
+        let lookup_domain_id = self.next_call_id();
+        let open_domain_id = self.next_call_id();
+        let enum_users_id = self.next_call_id();
+        let close_domain_id = self.next_call_id();
+        let close_server_id = self.next_call_id();
+
         self.client.connect_share("IPC$").await?;
         let conn = self.client.connection();
 
         let file_id = conn.open_pipe("samr").await?;
 
         // Bind to SAMR
-        let bind = create_samr_bind(self.next_call_id());
+        let bind = create_samr_bind(bind_id);
         let bind_response = conn
             .ioctl(ioctl_codes::FSCTL_PIPE_TRANSCEIVE, file_id, &bind)
             .await?;
@@ -200,7 +226,7 @@ impl SmbEnumerator {
         let connect_req = create_samr_connect(
             "",
             samr_access::SAM_SERVER_ENUMERATE_DOMAINS | samr_access::SAM_SERVER_LOOKUP_DOMAIN,
-            self.next_call_id(),
+            connect_id,
         );
 
         let response = conn
@@ -214,7 +240,7 @@ impl SmbEnumerator {
         debug!("Got SAM server handle");
 
         // Enumerate domains
-        let enum_domains_req = create_enumerate_domains(&server_handle, self.next_call_id());
+        let enum_domains_req = create_enumerate_domains(&server_handle, enum_domains_id);
 
         let response = conn
             .ioctl(ioctl_codes::FSCTL_PIPE_TRANSCEIVE, file_id, &enum_domains_req)
@@ -236,6 +262,7 @@ impl SmbEnumerator {
             Some(d) => d,
             None => {
                 conn.close(file_id).await.ok();
+                drop(conn);
                 self.client.disconnect_share().await.ok();
                 return Ok(Vec::new());
             }
@@ -244,7 +271,7 @@ impl SmbEnumerator {
         debug!("Using domain: {}", target_domain.name);
 
         // Lookup domain SID
-        let lookup_req = create_lookup_domain(&server_handle, &target_domain.name, self.next_call_id());
+        let lookup_req = create_lookup_domain(&server_handle, &target_domain.name, lookup_domain_id);
 
         let response = conn
             .ioctl(ioctl_codes::FSCTL_PIPE_TRANSCEIVE, file_id, &lookup_req)
@@ -261,7 +288,7 @@ impl SmbEnumerator {
             &server_handle,
             &domain_sid,
             samr_access::DOMAIN_LIST_ACCOUNTS | samr_access::DOMAIN_LOOKUP,
-            self.next_call_id(),
+            open_domain_id,
         );
 
         let response = conn
@@ -278,7 +305,7 @@ impl SmbEnumerator {
         let enum_users_req = create_enumerate_users(
             &domain_handle,
             0, // All users
-            self.next_call_id(),
+            enum_users_id,
         );
 
         let response = conn
@@ -292,17 +319,18 @@ impl SmbEnumerator {
         info!("Found {} users", users.len());
 
         // Cleanup handles
-        let close_req = create_close_handle(&domain_handle, self.next_call_id());
+        let close_req = create_close_handle(&domain_handle, close_domain_id);
         conn.ioctl(ioctl_codes::FSCTL_PIPE_TRANSCEIVE, file_id, &close_req)
             .await
             .ok();
 
-        let close_req = create_close_handle(&server_handle, self.next_call_id());
+        let close_req = create_close_handle(&server_handle, close_server_id);
         conn.ioctl(ioctl_codes::FSCTL_PIPE_TRANSCEIVE, file_id, &close_req)
             .await
             .ok();
 
         conn.close(file_id).await.ok();
+        drop(conn);
         self.client.disconnect_share().await.ok();
 
         Ok(users)
@@ -312,13 +340,23 @@ impl SmbEnumerator {
     pub async fn enumerate_groups(&mut self) -> SmbResult<Vec<SamrGroupEntry>> {
         info!("Enumerating groups via SAMR");
 
+        // Pre-allocate all call IDs (8 operations)
+        let bind_id = self.next_call_id();
+        let connect_id = self.next_call_id();
+        let enum_domains_id = self.next_call_id();
+        let lookup_domain_id = self.next_call_id();
+        let open_domain_id = self.next_call_id();
+        let enum_groups_id = self.next_call_id();
+        let close_domain_id = self.next_call_id();
+        let close_server_id = self.next_call_id();
+
         self.client.connect_share("IPC$").await?;
         let conn = self.client.connection();
 
         let file_id = conn.open_pipe("samr").await?;
 
         // Bind to SAMR
-        let bind = create_samr_bind(self.next_call_id());
+        let bind = create_samr_bind(bind_id);
         let bind_response = conn
             .ioctl(ioctl_codes::FSCTL_PIPE_TRANSCEIVE, file_id, &bind)
             .await?;
@@ -334,7 +372,7 @@ impl SmbEnumerator {
         let connect_req = create_samr_connect(
             "",
             samr_access::SAM_SERVER_ENUMERATE_DOMAINS | samr_access::SAM_SERVER_LOOKUP_DOMAIN,
-            self.next_call_id(),
+            connect_id,
         );
 
         let response = conn
@@ -347,7 +385,7 @@ impl SmbEnumerator {
         let server_handle = parse_samr_connect_response(&rpc_response.stub_data)?;
 
         // Enumerate domains
-        let enum_domains_req = create_enumerate_domains(&server_handle, self.next_call_id());
+        let enum_domains_req = create_enumerate_domains(&server_handle, enum_domains_id);
 
         let response = conn
             .ioctl(ioctl_codes::FSCTL_PIPE_TRANSCEIVE, file_id, &enum_domains_req)
@@ -367,13 +405,14 @@ impl SmbEnumerator {
             Some(d) => d,
             None => {
                 conn.close(file_id).await.ok();
+                drop(conn);
                 self.client.disconnect_share().await.ok();
                 return Ok(Vec::new());
             }
         };
 
         // Lookup domain SID
-        let lookup_req = create_lookup_domain(&server_handle, &target_domain.name, self.next_call_id());
+        let lookup_req = create_lookup_domain(&server_handle, &target_domain.name, lookup_domain_id);
 
         let response = conn
             .ioctl(ioctl_codes::FSCTL_PIPE_TRANSCEIVE, file_id, &lookup_req)
@@ -389,7 +428,7 @@ impl SmbEnumerator {
             &server_handle,
             &domain_sid,
             samr_access::DOMAIN_LIST_ACCOUNTS,
-            self.next_call_id(),
+            open_domain_id,
         );
 
         let response = conn
@@ -402,7 +441,7 @@ impl SmbEnumerator {
         let domain_handle = parse_open_domain_response(&rpc_response.stub_data)?;
 
         // Enumerate groups
-        let enum_groups_req = create_enumerate_groups(&domain_handle, self.next_call_id());
+        let enum_groups_req = create_enumerate_groups(&domain_handle, enum_groups_id);
 
         let response = conn
             .ioctl(ioctl_codes::FSCTL_PIPE_TRANSCEIVE, file_id, &enum_groups_req)
@@ -415,17 +454,18 @@ impl SmbEnumerator {
         info!("Found {} groups", groups.len());
 
         // Cleanup
-        let close_req = create_close_handle(&domain_handle, self.next_call_id());
+        let close_req = create_close_handle(&domain_handle, close_domain_id);
         conn.ioctl(ioctl_codes::FSCTL_PIPE_TRANSCEIVE, file_id, &close_req)
             .await
             .ok();
 
-        let close_req = create_close_handle(&server_handle, self.next_call_id());
+        let close_req = create_close_handle(&server_handle, close_server_id);
         conn.ioctl(ioctl_codes::FSCTL_PIPE_TRANSCEIVE, file_id, &close_req)
             .await
             .ok();
 
         conn.close(file_id).await.ok();
+        drop(conn);
         self.client.disconnect_share().await.ok();
 
         Ok(groups)

@@ -323,7 +323,7 @@ impl FastFluxDetector {
                 }
 
                 // Akamai ranges (simplified)
-                if octets[0] == 23 && (octets[1] >= 0 && octets[1] <= 79) {
+                if octets[0] == 23 && octets[1] <= 79 {
                     return true;
                 }
 

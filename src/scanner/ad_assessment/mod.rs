@@ -961,7 +961,7 @@ fn generate_trust_findings(trusts: &[AdTrust]) -> Vec<AdSecurityFinding> {
                 risky_trusts.len()
             ),
             severity: FindingSeverity::High,
-            category: FindingCategory::TrustRelationship,
+            category: FindingCategory::Trusts,
             mitre_attack_ids: vec!["T1134.005".to_string()],
             affected_objects: risky_trusts.iter().map(|t| t.trusted_domain.clone()).collect(),
             affected_count: risky_trusts.len() as u32,
@@ -998,7 +998,7 @@ fn generate_trust_findings(trusts: &[AdTrust]) -> Vec<AdSecurityFinding> {
                 bidir_external.len()
             ),
             severity: FindingSeverity::Medium,
-            category: FindingCategory::TrustRelationship,
+            category: FindingCategory::Trusts,
             mitre_attack_ids: vec!["T1199".to_string()],
             affected_objects: bidir_external.iter().map(|t| t.trusted_domain.clone()).collect(),
             affected_count: bidir_external.len() as u32,
@@ -1136,7 +1136,7 @@ fn generate_adcs_findings(templates: &[AdCertificateTemplate]) -> Vec<AdSecurity
                 esc1.len()
             ),
             severity: FindingSeverity::Critical,
-            category: FindingCategory::CertificateServices,
+            category: FindingCategory::Adcs,
             mitre_attack_ids: vec!["T1649".to_string()],
             affected_objects: esc1.iter().map(|t| t.name.clone()).collect(),
             affected_count: esc1.len() as u32,
@@ -1171,7 +1171,7 @@ fn generate_adcs_findings(templates: &[AdCertificateTemplate]) -> Vec<AdSecurity
                 esc2.len()
             ),
             severity: FindingSeverity::High,
-            category: FindingCategory::CertificateServices,
+            category: FindingCategory::Adcs,
             mitre_attack_ids: vec!["T1649".to_string()],
             affected_objects: esc2.iter().map(|t| t.name.clone()).collect(),
             affected_count: esc2.len() as u32,
@@ -1199,7 +1199,7 @@ fn generate_adcs_findings(templates: &[AdCertificateTemplate]) -> Vec<AdSecurity
                 esc3.len()
             ),
             severity: FindingSeverity::High,
-            category: FindingCategory::CertificateServices,
+            category: FindingCategory::Adcs,
             mitre_attack_ids: vec!["T1649".to_string()],
             affected_objects: esc3.iter().map(|t| t.name.clone()).collect(),
             affected_count: esc3.len() as u32,

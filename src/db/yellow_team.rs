@@ -1402,6 +1402,8 @@ mod tests {
             repository_url: Some("https://github.com/test/repo".to_string()),
             branch: Some("main".to_string()),
             languages: vec!["python".to_string(), "javascript".to_string()],
+            customer_id: None,
+            engagement_id: None,
         };
 
         let json = serde_json::to_string(&request).unwrap();

@@ -1,5 +1,6 @@
 pub mod bitbucket;
 pub mod cicd;
+pub mod edr;
 pub mod github;
 pub mod gitlab;
 pub mod jira;
@@ -11,3 +12,10 @@ pub mod shodan;
 pub mod siem;
 pub mod slack;
 pub mod teams;
+
+// Re-export EDR types for convenience
+pub use edr::{
+    CrowdStrikeClient, DefenderClient, SentinelOneClient,
+    EdrManager, EdrConnector, EdrAlert, EdrEndpoint, EdrIoc,
+    EdrPlatform, AlertSeverity, AlertStatus, ResponseAction,
+};

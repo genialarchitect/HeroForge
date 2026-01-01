@@ -491,6 +491,10 @@ impl Default for DependencyGraph {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::yellow_team::types::{
+        SbomComponent, ComponentType,
+        DependencyType as SbomDependencyType,
+    };
 
     #[test]
     fn test_empty_graph() {
@@ -507,12 +511,15 @@ mod tests {
                 project_id: "proj-1".to_string(),
                 name: "package-a".to_string(),
                 version: "1.0.0".to_string(),
-                purl: None,
+                purl: "pkg:npm/package-a@1.0.0".to_string(),
                 cpe: None,
-                license: None,
-                license_risk: LicenseRisk::Low,
-                is_direct: true,
-                parent_id: None,
+                component_type: ComponentType::Library,
+                supplier: None,
+                licenses: Vec::new(),
+                hashes: std::collections::HashMap::new(),
+                description: None,
+                dependency_type: SbomDependencyType::Direct,
+                external_refs: Vec::new(),
                 vulnerabilities: Vec::new(),
                 created_at: chrono::Utc::now(),
             },
@@ -521,12 +528,15 @@ mod tests {
                 project_id: "proj-1".to_string(),
                 name: "package-b".to_string(),
                 version: "2.0.0".to_string(),
-                purl: None,
+                purl: "pkg:npm/package-b@2.0.0".to_string(),
                 cpe: None,
-                license: None,
-                license_risk: LicenseRisk::Low,
-                is_direct: false,
-                parent_id: Some("comp-1".to_string()),
+                component_type: ComponentType::Library,
+                supplier: None,
+                licenses: Vec::new(),
+                hashes: std::collections::HashMap::new(),
+                description: None,
+                dependency_type: SbomDependencyType::Transitive,
+                external_refs: Vec::new(),
                 vulnerabilities: Vec::new(),
                 created_at: chrono::Utc::now(),
             },

@@ -20,6 +20,52 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 /// Read/write timeout
 const IO_TIMEOUT: Duration = Duration::from_secs(30);
 
+// Internal: send raw data
+async fn send_raw(stream: &mut TcpStream, data: &[u8]) -> SmbResult<()> {
+    timeout(IO_TIMEOUT, stream.write_all(data))
+        .await
+        .map_err(|_| SmbError::Timeout)?
+        .map_err(SmbError::Io)?;
+
+    timeout(IO_TIMEOUT, stream.flush())
+        .await
+        .map_err(|_| SmbError::Timeout)?
+        .map_err(SmbError::Io)?;
+
+    Ok(())
+}
+
+// Internal: receive raw data (NetBIOS framed)
+async fn recv_raw(stream: &mut TcpStream) -> SmbResult<Vec<u8>> {
+    // Read NetBIOS header (4 bytes)
+    let mut header = [0u8; 4];
+    timeout(IO_TIMEOUT, stream.read_exact(&mut header))
+        .await
+        .map_err(|_| SmbError::Timeout)?
+        .map_err(SmbError::Io)?;
+
+    // Parse length (24-bit big-endian)
+    let length =
+        ((header[1] as usize) << 16) | ((header[2] as usize) << 8) | (header[3] as usize);
+
+    if length > 16 * 1024 * 1024 {
+        // 16MB max
+        return Err(SmbError::Protocol(format!(
+            "Response too large: {} bytes",
+            length
+        )));
+    }
+
+    // Read payload
+    let mut payload = vec![0u8; length];
+    timeout(IO_TIMEOUT, stream.read_exact(&mut payload))
+        .await
+        .map_err(|_| SmbError::Timeout)?
+        .map_err(SmbError::Io)?;
+
+    Ok(payload)
+}
+
 /// SMB client connection
 pub struct SmbConnection {
     stream: Option<TcpStream>,
@@ -65,9 +111,9 @@ impl SmbConnection {
         let packet = wrap_netbios(&request);
 
         trace!("Sending NEGOTIATE request");
-        self.send_raw(stream, &packet).await?;
+        send_raw(stream, &packet).await?;
 
-        let response_data = self.recv_raw(stream).await?;
+        let response_data = recv_raw(stream).await?;
         let smb_data = unwrap_netbios(&response_data)?;
 
         // Parse header first to check status
@@ -109,9 +155,9 @@ impl SmbConnection {
         let packet = wrap_netbios(&request.serialize(msg_id, 0));
 
         trace!("Sending SESSION_SETUP with NTLM Type 1");
-        self.send_raw(stream, &packet).await?;
+        send_raw(stream, &packet).await?;
 
-        let response_data = self.recv_raw(stream).await?;
+        let response_data = recv_raw(stream).await?;
         let smb_data = unwrap_netbios(&response_data)?;
 
         let header = Smb2Header::parse(smb_data)?;
@@ -137,9 +183,9 @@ impl SmbConnection {
         let packet = wrap_netbios(&request.serialize(msg_id, session_id));
 
         trace!("Sending SESSION_SETUP with NTLM Type 3");
-        self.send_raw(stream, &packet).await?;
+        send_raw(stream, &packet).await?;
 
-        let response_data = self.recv_raw(stream).await?;
+        let response_data = recv_raw(stream).await?;
         let smb_data = unwrap_netbios(&response_data)?;
 
         let header = Smb2Header::parse(smb_data)?;
@@ -173,9 +219,9 @@ impl SmbConnection {
         let packet = wrap_netbios(&request.serialize(msg_id, self.state.session_id));
 
         trace!("Sending TREE_CONNECT to {}", path);
-        self.send_raw(stream, &packet).await?;
+        send_raw(stream, &packet).await?;
 
-        let response_data = self.recv_raw(stream).await?;
+        let response_data = recv_raw(stream).await?;
         let smb_data = unwrap_netbios(&response_data)?;
 
         let header = Smb2Header::parse(smb_data)?;
@@ -207,9 +253,9 @@ impl SmbConnection {
         ));
 
         trace!("Sending TREE_DISCONNECT");
-        self.send_raw(stream, &packet).await?;
+        send_raw(stream, &packet).await?;
 
-        let response_data = self.recv_raw(stream).await?;
+        let response_data = recv_raw(stream).await?;
         let smb_data = unwrap_netbios(&response_data)?;
 
         let header = Smb2Header::parse(smb_data)?;
@@ -235,9 +281,9 @@ impl SmbConnection {
         ));
 
         trace!("Opening named pipe: {}", pipe_name);
-        self.send_raw(stream, &packet).await?;
+        send_raw(stream, &packet).await?;
 
-        let response_data = self.recv_raw(stream).await?;
+        let response_data = recv_raw(stream).await?;
         let smb_data = unwrap_netbios(&response_data)?;
 
         let header = Smb2Header::parse(smb_data)?;
@@ -265,9 +311,9 @@ impl SmbConnection {
         ));
 
         trace!("Closing file handle");
-        self.send_raw(stream, &packet).await?;
+        send_raw(stream, &packet).await?;
 
-        let response_data = self.recv_raw(stream).await?;
+        let response_data = recv_raw(stream).await?;
         let smb_data = unwrap_netbios(&response_data)?;
 
         let header = Smb2Header::parse(smb_data)?;
@@ -297,9 +343,9 @@ impl SmbConnection {
         ));
 
         trace!("Sending IOCTL 0x{:08x}", ctl_code);
-        self.send_raw(stream, &packet).await?;
+        send_raw(stream, &packet).await?;
 
-        let response_data = self.recv_raw(stream).await?;
+        let response_data = recv_raw(stream).await?;
         let smb_data = unwrap_netbios(&response_data)?;
 
         let header = Smb2Header::parse(smb_data)?;
@@ -330,9 +376,9 @@ impl SmbConnection {
         ));
 
         trace!("Reading {} bytes at offset {}", length, offset);
-        self.send_raw(stream, &packet).await?;
+        send_raw(stream, &packet).await?;
 
-        let response_data = self.recv_raw(stream).await?;
+        let response_data = recv_raw(stream).await?;
         let smb_data = unwrap_netbios(&response_data)?;
 
         let header = Smb2Header::parse(smb_data)?;
@@ -358,9 +404,9 @@ impl SmbConnection {
         ));
 
         trace!("Writing {} bytes at offset {}", data.len(), offset);
-        self.send_raw(stream, &packet).await?;
+        send_raw(stream, &packet).await?;
 
-        let response_data = self.recv_raw(stream).await?;
+        let response_data = recv_raw(stream).await?;
         let smb_data = unwrap_netbios(&response_data)?;
 
         let header = Smb2Header::parse(smb_data)?;
@@ -381,9 +427,9 @@ impl SmbConnection {
         let packet = wrap_netbios(&Smb2LogoffRequest::serialize(msg_id, self.state.session_id));
 
         trace!("Sending LOGOFF");
-        self.send_raw(stream, &packet).await?;
+        send_raw(stream, &packet).await?;
 
-        let response_data = self.recv_raw(stream).await?;
+        let response_data = recv_raw(stream).await?;
         let smb_data = unwrap_netbios(&response_data)?;
 
         let header = Smb2Header::parse(smb_data)?;
@@ -422,57 +468,6 @@ impl SmbConnection {
     /// Get negotiated dialect
     pub fn dialect(&self) -> Option<SmbDialect> {
         self.state.dialect
-    }
-
-    // Internal: send raw data
-    async fn send_raw(&mut self, stream: &mut TcpStream, data: &[u8]) -> SmbResult<()> {
-        timeout(IO_TIMEOUT, stream.write_all(data))
-            .await
-            .map_err(|_| SmbError::Timeout)?
-            .map_err(|e| SmbError::Io(e))?;
-
-        timeout(IO_TIMEOUT, stream.flush())
-            .await
-            .map_err(|_| SmbError::Timeout)?
-            .map_err(|e| SmbError::Io(e))?;
-
-        Ok(())
-    }
-
-    // Internal: receive raw data (NetBIOS framed)
-    async fn recv_raw(&mut self, stream: &mut TcpStream) -> SmbResult<Vec<u8>> {
-        // Read NetBIOS header (4 bytes)
-        let mut header = [0u8; 4];
-        timeout(IO_TIMEOUT, stream.read_exact(&mut header))
-            .await
-            .map_err(|_| SmbError::Timeout)?
-            .map_err(|e| SmbError::Io(e))?;
-
-        // Parse length (24-bit big-endian)
-        let length =
-            ((header[1] as usize) << 16) | ((header[2] as usize) << 8) | (header[3] as usize);
-
-        if length > 16 * 1024 * 1024 {
-            // 16MB max
-            return Err(SmbError::Protocol(format!(
-                "Response too large: {} bytes",
-                length
-            )));
-        }
-
-        // Read payload
-        let mut payload = vec![0u8; length];
-        timeout(IO_TIMEOUT, stream.read_exact(&mut payload))
-            .await
-            .map_err(|_| SmbError::Timeout)?
-            .map_err(|e| SmbError::Io(e))?;
-
-        // Return full frame including header
-        let mut result = Vec::with_capacity(4 + length);
-        result.extend_from_slice(&header);
-        result.extend_from_slice(&payload);
-
-        Ok(result)
     }
 }
 

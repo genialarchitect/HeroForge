@@ -3,6 +3,7 @@
 //!
 //! This module provides integration with multiple threat intelligence sources:
 //! - **Shodan**: Exposed service detection and historical data
+//! - **Censys**: Internet-wide scanning and certificate intelligence
 //! - **ExploitDB**: Known exploit correlation for services and CVEs
 //! - **NVD/CISA KEV**: Real-time CVE announcements and known exploited vulnerabilities
 //! - **MISP**: Malware Information Sharing Platform integration
@@ -11,6 +12,7 @@
 //!
 //! The feed manager coordinates lookups across sources and generates actionable alerts.
 
+pub mod censys;
 pub mod cve_feeds;
 pub mod exploit_db;
 pub mod misp;
@@ -32,6 +34,7 @@ use sqlx::SqlitePool;
 use std::sync::Arc;
 use uuid::Uuid;
 
+pub use censys::{CensysClient, CensysHostInfo, CensysService, CensysCertificate, merge_host_intel, MergedHostIntel};
 pub use cve_feeds::CveFeedsClient;
 pub use exploit_db::ExploitDbClient;
 pub use misp::{MispClient, MispEvent, MispAttribute};

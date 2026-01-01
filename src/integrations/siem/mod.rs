@@ -1,14 +1,19 @@
 // Allow unused code for public API features not yet exposed via web routes
 #![allow(dead_code)]
 
-pub mod syslog;
-pub mod splunk;
+pub mod azure_sentinel;
+pub mod chronicle;
 pub mod elasticsearch;
+pub mod splunk;
+pub mod syslog;
 
 use anyhow::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+
+pub use azure_sentinel::{AzureSentinelExporter, SentinelConfig};
+pub use chronicle::{ChronicleExporter, ChronicleConfig};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -16,6 +21,8 @@ pub enum SiemType {
     Syslog,
     Splunk,
     Elasticsearch,
+    AzureSentinel,
+    Chronicle,
 }
 
 impl SiemType {
@@ -24,6 +31,8 @@ impl SiemType {
             Self::Syslog => "syslog",
             Self::Splunk => "splunk",
             Self::Elasticsearch => "elasticsearch",
+            Self::AzureSentinel => "azure_sentinel",
+            Self::Chronicle => "chronicle",
         }
     }
 
@@ -32,6 +41,8 @@ impl SiemType {
             "syslog" => Some(Self::Syslog),
             "splunk" => Some(Self::Splunk),
             "elasticsearch" => Some(Self::Elasticsearch),
+            "azure_sentinel" | "sentinel" => Some(Self::AzureSentinel),
+            "chronicle" | "google_chronicle" => Some(Self::Chronicle),
             _ => None,
         }
     }
@@ -89,6 +100,24 @@ pub async fn create_exporter(config: SiemConfig) -> Result<Box<dyn SiemExporter>
                 &config.endpoint_url,
                 config.api_key.as_deref(),
             )?;
+            Ok(Box::new(exporter))
+        }
+        SiemType::AzureSentinel => {
+            // Azure Sentinel requires workspace ID and shared key
+            // endpoint_url should be workspace_id, api_key should be shared_key
+            let sentinel_config = SentinelConfig::new(
+                config.endpoint_url.clone(),
+                config.api_key.ok_or_else(|| {
+                    anyhow::anyhow!("Shared key required for Azure Sentinel")
+                })?,
+            );
+            let exporter = AzureSentinelExporter::new(sentinel_config)?;
+            Ok(Box::new(exporter))
+        }
+        SiemType::Chronicle => {
+            // Chronicle requires project_id, customer_id, and credentials JSON
+            // This requires more complex configuration, use from_env for simplicity
+            let exporter = ChronicleExporter::from_env()?;
             Ok(Box::new(exporter))
         }
     }

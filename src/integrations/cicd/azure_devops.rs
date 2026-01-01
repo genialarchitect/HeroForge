@@ -524,28 +524,29 @@ pub fn generate_task_definition() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{HostInfo, PortInfo, Vulnerability};
+    use crate::types::{HostInfo, ScanTarget, Vulnerability};
+    use std::net::IpAddr;
+    use std::str::FromStr;
+    use std::time::Duration;
 
     #[test]
     fn test_generate_sarif_report() {
-        let mut host = HostInfo {
-            ip: "192.168.1.1".to_string(),
-            hostname: Some("test-host".to_string()),
-            os: None,
+        let host = HostInfo {
+            target: ScanTarget {
+                ip: IpAddr::from_str("192.168.1.1").unwrap(),
+                hostname: Some("test-host".to_string()),
+            },
+            is_alive: true,
+            os_guess: None,
             ports: vec![],
             vulnerabilities: vec![Vulnerability {
                 title: "Test Vulnerability".to_string(),
                 description: "Test description".to_string(),
                 severity: Severity::High,
-                port: 80,
-                service: Some("http".to_string()),
                 cve_id: Some("CVE-2024-1234".to_string()),
-                cvss_score: Some(7.5),
-                remediation: Some("Update to latest version".to_string()),
-                references: vec![],
-                exploitable: false,
-                exploits_available: false,
+                affected_service: Some("http".to_string()),
             }],
+            scan_duration: Duration::from_secs(1),
         };
 
         let result = generate_sarif_report("scan-1", &[host], "Test Scan");
@@ -561,6 +562,9 @@ mod tests {
     #[test]
     fn test_generate_pipeline_yaml() {
         let quality_gate = QualityGate {
+            id: "gate-1".to_string(),
+            user_id: "user-1".to_string(),
+            name: "Test Gate".to_string(),
             fail_on_severity: "high".to_string(),
             max_vulnerabilities: Some(10),
             max_critical: Some(0),
@@ -568,6 +572,10 @@ mod tests {
             max_medium: Some(10),
             max_low: None,
             fail_on_new_vulns: false,
+            baseline_scan_id: None,
+            is_default: false,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
         };
 
         let yaml = generate_pipeline_yaml(
