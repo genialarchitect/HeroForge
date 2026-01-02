@@ -121,7 +121,7 @@ src/scanner/smb_native/
 
 ---
 
-### Sprint 3: Native Vulnerability Template Engine
+### Sprint 3: Native Vulnerability Template Engine ✅ COMPLETE
 
 Replace Nuclei with a native template-based vulnerability scanner.
 
@@ -180,7 +180,7 @@ src/scanner/template_engine/
 
 ## Phase 2: Advanced Capabilities (Sprints 4-6)
 
-### Sprint 4: Native Password Cracking Engine
+### Sprint 4: Native Password Cracking Engine ✅ COMPLETE
 
 Replace Hashcat/John with native GPU-accelerated password cracking.
 

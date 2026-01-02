@@ -166,6 +166,14 @@ goblin = "0.9"           # PE/ELF/Mach-O parsing
 memmap2 = "0.9"          # Memory-mapped file access
 entropy = "0.4"          # Entropy calculation
 
+# Native password cracking
+md5 = "0.7"              # MD5 hashing
+des = "0.8"              # DES for LM hash
+argon2 = "0.5"           # Argon2 password hashing
+scrypt = "0.11"          # scrypt password hashing
+pbkdf2 = { version = "0.12", features = ["simple"] }  # PBKDF2 key derivation
+num_cpus = "1.16"        # CPU count for parallel processing
+
 [dev-dependencies]
 mockito = "1.5"
 tokio-test = "0.4"
