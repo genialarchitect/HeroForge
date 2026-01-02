@@ -39,6 +39,7 @@ pub mod udp_service_detection;
 pub mod webapp;
 pub mod whois;
 pub mod wireless;
+pub mod wireless_native;
 pub mod yara;
 pub mod tls_analysis;
 
