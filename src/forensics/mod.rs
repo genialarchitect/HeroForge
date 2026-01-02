@@ -5,8 +5,10 @@
 //! - Disk analysis (timeline, deleted files, registry, browser artifacts)
 //! - Network analysis (PCAP parsing, protocol statistics, suspicious indicators)
 //! - Artifact collection (Windows, Linux, Web artifacts)
+//! - Native memory forensics (no external dependencies like Volatility)
 
 pub mod memory;
+pub mod memory_native;
 pub mod disk;
 pub mod network;
 pub mod artifacts;
