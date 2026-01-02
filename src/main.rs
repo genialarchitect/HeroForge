@@ -56,6 +56,7 @@ mod plugins;
 mod purple_team;
 mod rbac;
 mod replication;
+mod resilience;
 mod reports;
 mod scanner;
 mod siem;

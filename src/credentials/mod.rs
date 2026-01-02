@@ -173,7 +173,7 @@ impl CredentialManager {
     }
 
     /// Import credentials from discovery
-    pub fn import_discovered(&self) -> Result<usize> {
+    pub fn import_discovered(&mut self) -> Result<usize> {
         let creds = self.discovery.take_credentials();
         let count = creds.len();
 
