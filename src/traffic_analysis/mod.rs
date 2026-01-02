@@ -7,6 +7,7 @@
 //! - JA3/JA3S TLS fingerprinting
 //! - Beacon detection and C2 analysis
 //! - File carving from network streams
+//! - Credential extraction from network traffic
 //! - Traffic replay capabilities
 
 pub mod types;
@@ -16,6 +17,7 @@ pub mod ids;
 pub mod fingerprinting;
 pub mod beacon;
 pub mod carving;
+pub mod cred_extraction;
 
 pub use types::*;
 pub use pcap::PcapParser;
@@ -24,3 +26,4 @@ pub use ids::{IdsEngine, load_emerging_threats_rules};
 pub use fingerprinting::Ja3Fingerprinter;
 pub use beacon::BeaconDetector;
 pub use carving::FileCarver;
+pub use cred_extraction::{CredentialExtractor, NetworkCredential, NetworkCredType};
