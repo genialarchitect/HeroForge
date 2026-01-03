@@ -33,16 +33,16 @@ impl JobQueue {
 
         // Store job data
         let job_key = format!("{}:job:{}", self.queue_prefix, job.id);
-        self.redis.set(&job_key, &job_json).await?;
+        self.redis.set::<_, _, ()>(&job_key, &job_json).await?;
 
         // Add to priority queue (sorted set by priority and created_at)
         let queue_key = format!("{}:queue", self.queue_prefix);
         let score = self.calculate_priority_score(&job);
-        self.redis.zadd(&queue_key, &job.id, score).await?;
+        self.redis.zadd::<_, _, _, ()>(&queue_key, &job.id, score).await?;
 
         // Track job status
         let status_key = format!("{}:status:{:?}", self.queue_prefix, job.status);
-        self.redis.sadd(&status_key, &job.id).await?;
+        self.redis.sadd::<_, _, ()>(&status_key, &job.id).await?;
 
         debug!("Enqueued job {} with priority {:?}", job.id, job.priority);
         Ok(())
@@ -84,15 +84,15 @@ impl JobQueue {
         let job_key = format!("{}:job:{}", self.queue_prefix, job.id);
 
         // Update job data
-        self.redis.set(&job_key, &job_json).await?;
+        self.redis.set::<_, _, ()>(&job_key, &job_json).await?;
 
         // Update status tracking
         for status in &[JobStatus::Pending, JobStatus::Running, JobStatus::Completed, JobStatus::Failed, JobStatus::Retrying] {
             let status_key = format!("{}:status:{:?}", self.queue_prefix, status);
             if *status == job.status {
-                self.redis.sadd(&status_key, &job.id).await?;
+                self.redis.sadd::<_, _, ()>(&status_key, &job.id).await?;
             } else {
-                self.redis.srem(&status_key, &job.id).await?;
+                self.redis.srem::<_, _, ()>(&status_key, &job.id).await?;
             }
         }
 
@@ -120,12 +120,12 @@ impl JobQueue {
         // Get job to determine status
         if let Some(job) = self.get_job(job_id).await? {
             let status_key = format!("{}:status:{:?}", self.queue_prefix, job.status);
-            self.redis.srem(&status_key, job_id).await?;
+            self.redis.srem::<_, _, ()>(&status_key, job_id).await?;
         }
 
         // Remove from queue and delete job data
-        self.redis.zrem(&queue_key, job_id).await?;
-        self.redis.del(&job_key).await?;
+        self.redis.zrem::<_, _, ()>(&queue_key, job_id).await?;
+        self.redis.del::<_, ()>(&job_key).await?;
 
         debug!("Deleted job {}", job_id);
         Ok(())
@@ -142,7 +142,7 @@ impl JobQueue {
         // Re-add to queue
         let queue_key = format!("{}:queue", self.queue_prefix);
         let score = self.calculate_priority_score(&job);
-        self.redis.zadd(&queue_key, &job.id, score).await?;
+        self.redis.zadd::<_, _, _, ()>(&queue_key, &job.id, score).await?;
 
         self.update_job(&job).await?;
 
@@ -251,7 +251,7 @@ impl JobQueue {
         let keys: Vec<String> = self.redis.keys(&pattern).await?;
 
         if !keys.is_empty() {
-            self.redis.del(keys).await?;
+            self.redis.del::<_, ()>(keys).await?;
         }
 
         info!("Cleared all jobs from queue");
