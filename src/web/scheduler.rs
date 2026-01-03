@@ -773,13 +773,32 @@ async fn generate_vulnerability_report(
             if format == "html" {
                 std::fs::write(&filepath, html_content)?;
             } else {
-                // For PDF, write HTML first then convert
-                let html_path = format!("{}/temp_{}.html", reports_dir, timestamp);
+                // For PDF, write HTML first then convert using wkhtmltopdf or chromium
+                let html_path = std::path::Path::new(reports_dir).join(format!("temp_{}.html", timestamp));
+                let pdf_path = std::path::Path::new(&filepath);
                 std::fs::write(&html_path, &html_content)?;
-                // TODO: Use PDF generation library
-                // For now, just use HTML
-                std::fs::write(&filepath.replace(".pdf", ".html"), &html_content)?;
+
+                // Try PDF generation using the reports module
+                let pdf_result = tokio::task::block_in_place(|| {
+                    tokio::runtime::Handle::current().block_on(async {
+                        crate::reports::formats::pdf::try_wkhtmltopdf(&html_path, pdf_path).await
+                            .or_else(|_| {
+                                tokio::runtime::Handle::current().block_on(
+                                    crate::reports::formats::pdf::try_chromium(&html_path, pdf_path)
+                                )
+                            })
+                    })
+                });
+
+                // Clean up temp HTML
                 let _ = std::fs::remove_file(&html_path);
+
+                if let Err(e) = pdf_result {
+                    log::warn!("PDF generation failed, falling back to HTML: {}", e);
+                    // Fall back to HTML if PDF generation fails
+                    let html_fallback = filepath.replace(".pdf", ".html");
+                    std::fs::write(&html_fallback, &html_content)?;
+                }
             }
         }
         _ => {

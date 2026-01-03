@@ -147,6 +147,41 @@ pub async fn create_scan(
             return;
         }
 
+        // Lookup credentials from database if provided
+        let credentials_id = if let Some(cred_id) = &db_request.credentials_id {
+            // Verify credentials exist and belong to user
+            let cred_exists = sqlx::query_scalar::<_, i64>(
+                "SELECT COUNT(*) FROM cloud_credentials WHERE id = ?"
+            )
+            .bind(cred_id)
+            .fetch_one(&pool_clone)
+            .await
+            .unwrap_or(0);
+
+            if cred_exists > 0 {
+                Some(cred_id.clone())
+            } else {
+                log::warn!("Credentials {} not found, proceeding without", cred_id);
+                None
+            }
+        } else {
+            // Try to find default credentials for this provider
+            let default_creds = sqlx::query_scalar::<_, String>(
+                "SELECT id FROM cloud_credentials WHERE provider = ? AND is_default = 1 LIMIT 1"
+            )
+            .bind(format!("{:?}", provider).to_lowercase())
+            .fetch_optional(&pool_clone)
+            .await
+            .ok()
+            .flatten();
+
+            if default_creds.is_some() {
+                log::info!("Using default credentials for provider {:?}", provider);
+            }
+
+            default_creds
+        };
+
         // Create scan config
         let config = CloudScanConfig {
             provider,
@@ -156,7 +191,7 @@ pub async fn create_scan(
                 regions
             },
             scan_types,
-            credentials_id: None, // TODO: Handle credentials
+            credentials_id,
             demo_mode,
         };
 

@@ -5,6 +5,7 @@ use uuid::Uuid;
 use chrono::Utc;
 
 use crate::data_lake::types::*;
+use crate::data_lake::types::FilterOperator;
 
 /// GET /api/data-lake/sources - List data sources
 pub async fn list_sources(pool: web::Data<SqlitePool>) -> HttpResponse {
@@ -155,16 +156,168 @@ pub async fn get_source(
 
 /// POST /api/data-lake/query - Query data lake
 pub async fn query_data_lake(
-    _pool: web::Data<SqlitePool>,
+    pool: web::Data<SqlitePool>,
     body: web::Json<DataLakeQueryRequest>,
 ) -> HttpResponse {
-    // TODO: Implement actual data lake querying
     log::info!("Querying data lake: {:?}", body);
+    let start = std::time::Instant::now();
+
+    // Build the data lake storage manager
+    let base_path = std::env::var("DATA_LAKE_PATH").unwrap_or_else(|_| "./data_lake".to_string());
+    let local_config = crate::data_lake::storage::LocalConfig {
+        base_path,
+        max_size_bytes: None,
+        retention_days: None,
+    };
+    let backend = crate::data_lake::storage::StorageBackend::Local(local_config);
+    let storage_manager = crate::data_lake::storage::StorageManager::new(backend);
+
+    // Query records from storage based on time range and source filters
+    let mut all_records = Vec::new();
+
+    // Determine which sources to query
+    let source_ids = match &body.source_ids {
+        Some(ids) if !ids.is_empty() => ids.clone(),
+        _ => {
+            // If no sources specified, get all enabled sources from database
+            match sqlx::query_as::<_, (String,)>("SELECT id FROM data_lake_sources WHERE enabled = 1")
+                .fetch_all(pool.get_ref())
+                .await
+            {
+                Ok(rows) => rows.into_iter().map(|r| r.0).collect(),
+                Err(e) => {
+                    log::error!("Failed to fetch sources: {}", e);
+                    return HttpResponse::InternalServerError().json(json!({
+                        "error": "Failed to fetch data sources",
+                        "details": e.to_string()
+                    }));
+                }
+            }
+        }
+    };
+
+    // Query records from each source
+    for source_id in &source_ids {
+        match storage_manager
+            .retrieve_records(source_id, body.time_range.start, body.time_range.end)
+            .await
+        {
+            Ok(records) => {
+                all_records.extend(records);
+            }
+            Err(e) => {
+                log::warn!("Failed to retrieve records for source {}: {}", source_id, e);
+            }
+        }
+    }
+
+    // Apply filters to records
+    let filtered_records: Vec<_> = all_records
+        .into_iter()
+        .filter(|record| {
+            // Apply each filter condition
+            for filter in &body.filters {
+                let field_value = record.data.get(&filter.field);
+                let matches = match (&filter.operator, field_value) {
+                    (FilterOperator::Equals, Some(v)) => v == &filter.value,
+                    (FilterOperator::NotEquals, Some(v)) => v != &filter.value,
+                    (FilterOperator::Contains, Some(v)) => {
+                        if let (Some(haystack), Some(needle)) = (v.as_str(), filter.value.as_str()) {
+                            haystack.contains(needle)
+                        } else {
+                            false
+                        }
+                    }
+                    (FilterOperator::StartsWith, Some(v)) => {
+                        if let (Some(haystack), Some(needle)) = (v.as_str(), filter.value.as_str()) {
+                            haystack.starts_with(needle)
+                        } else {
+                            false
+                        }
+                    }
+                    (FilterOperator::EndsWith, Some(v)) => {
+                        if let (Some(haystack), Some(needle)) = (v.as_str(), filter.value.as_str()) {
+                            haystack.ends_with(needle)
+                        } else {
+                            false
+                        }
+                    }
+                    (FilterOperator::GreaterThan, Some(v)) => {
+                        if let (Some(a), Some(b)) = (v.as_f64(), filter.value.as_f64()) {
+                            a > b
+                        } else {
+                            false
+                        }
+                    }
+                    (FilterOperator::LessThan, Some(v)) => {
+                        if let (Some(a), Some(b)) = (v.as_f64(), filter.value.as_f64()) {
+                            a < b
+                        } else {
+                            false
+                        }
+                    }
+                    (FilterOperator::GreaterThanOrEqual, Some(v)) => {
+                        if let (Some(a), Some(b)) = (v.as_f64(), filter.value.as_f64()) {
+                            a >= b
+                        } else {
+                            false
+                        }
+                    }
+                    (FilterOperator::LessThanOrEqual, Some(v)) => {
+                        if let (Some(a), Some(b)) = (v.as_f64(), filter.value.as_f64()) {
+                            a <= b
+                        } else {
+                            false
+                        }
+                    }
+                    (FilterOperator::In, Some(v)) => {
+                        if let Some(arr) = filter.value.as_array() {
+                            arr.contains(v)
+                        } else {
+                            false
+                        }
+                    }
+                    (FilterOperator::NotIn, Some(v)) => {
+                        if let Some(arr) = filter.value.as_array() {
+                            !arr.contains(v)
+                        } else {
+                            true
+                        }
+                    }
+                    _ => true, // Field not present, skip filter
+                };
+                if !matches {
+                    return false;
+                }
+            }
+            true
+        })
+        .collect();
+
+    let total_count = filtered_records.len() as i64;
+
+    // Apply offset and limit
+    let offset = body.offset.unwrap_or(0) as usize;
+    let limit = body.limit.unwrap_or(100) as usize;
+
+    let paginated_records: Vec<_> = filtered_records
+        .into_iter()
+        .skip(offset)
+        .take(limit)
+        .collect();
+
+    let execution_time_ms = start.elapsed().as_millis() as i64;
+
+    log::info!(
+        "Data lake query completed: {} records in {}ms",
+        total_count,
+        execution_time_ms
+    );
 
     HttpResponse::Ok().json(DataLakeQueryResponse {
-        records: vec![],
-        total_count: 0,
-        execution_time_ms: 0,
+        records: paginated_records,
+        total_count,
+        execution_time_ms,
     })
 }
 

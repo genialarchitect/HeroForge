@@ -16,6 +16,7 @@ use crate::cracking::types::{
     CreateCrackingJobRequest, HashType,
 };
 use crate::cracking::hashcat::HashcatRunner;
+use crate::cracking::john::run_john_job;
 
 /// Cracking engine for managing password cracking jobs
 pub struct CrackingEngine {
@@ -122,6 +123,9 @@ impl CrackingEngine {
         let hash_type = job.hash_type;
         let cracker_type = job.cracker_type;
 
+        // Capture start time for duration calculation
+        let start_time = std::time::Instant::now();
+
         // Spawn the cracking task
         let task = tokio::spawn(async move {
             let result = match cracker_type {
@@ -136,13 +140,22 @@ impl CrackingEngine {
                     ).await
                 }
                 CrackerType::John => {
-                    // John the Ripper support - TODO: implement
-                    Err(anyhow::anyhow!("John the Ripper support not yet implemented"))
+                    run_john_job(
+                        &pool,
+                        &job_id_owned,
+                        hash_type,
+                        &hashes,
+                        &config,
+                        progress_tx.clone(),
+                    ).await
                 }
             };
 
             // Remove from running jobs
             running_jobs.write().await.remove(&job_id_owned);
+
+            // Calculate elapsed time from start
+            let duration_secs = start_time.elapsed().as_secs();
 
             // Update final status
             match result {
@@ -156,7 +169,7 @@ impl CrackingEngine {
                     let _ = progress_tx.send(CrackingProgressMessage::JobCompleted {
                         job_id: job_id_owned,
                         total_cracked: cracked_count,
-                        duration_secs: 0, // TODO: calculate actual duration
+                        duration_secs,
                     });
                 }
                 Err(e) => {

@@ -183,10 +183,13 @@ impl ApplicationLogConnector {
     fn parse_json_log(&self, source_id: &str, log_line: &str) -> Result<DataRecord> {
         let data: serde_json::Value = serde_json::from_str(log_line)?;
 
+        // Extract timestamp from common JSON log fields
+        let timestamp = extract_timestamp_from_json(&data).unwrap_or_else(Utc::now);
+
         Ok(DataRecord {
             id: uuid::Uuid::new_v4().to_string(),
             source_id: source_id.to_string(),
-            timestamp: Utc::now(), // TODO: Extract from log
+            timestamp,
             data,
             metadata: serde_json::json!({
                 "format": "json"

@@ -56,7 +56,66 @@ pub async fn create_assessment(
     .await
     .map_err(|e| ApiError::internal(e.to_string()))?;
 
-    // TODO: Queue assessment for background processing
+    // Queue assessment for background processing
+    let pool_clone = pool.get_ref().clone();
+    let assessment_id_clone = assessment_id.clone();
+    let config_clone = req.config.clone();
+
+    tokio::spawn(async move {
+        log::info!("Starting emerging tech assessment: {}", assessment_id_clone);
+
+        // Update status to running
+        let _ = sqlx::query(
+            "UPDATE emerging_tech_assessments SET status = 'running' WHERE id = ?"
+        )
+        .bind(&assessment_id_clone)
+        .execute(&pool_clone)
+        .await;
+
+        // Run the assessment
+        match emerging_tech::run_emerging_tech_assessment(&config_clone).await {
+            Ok(assessment) => {
+                // Store results
+                let results_json = serde_json::to_string(&assessment).unwrap_or_default();
+                let findings_count = assessment.fiveg_findings.len()
+                    + assessment.adversarial_ml_findings.len()
+                    + assessment.xr_findings.len();
+
+                let completed_at = chrono::Utc::now().to_rfc3339();
+
+                let _ = sqlx::query(
+                    r#"
+                    UPDATE emerging_tech_assessments
+                    SET status = 'completed', results = ?, findings_count = ?, completed_at = ?
+                    WHERE id = ?
+                    "#,
+                )
+                .bind(&results_json)
+                .bind(findings_count as i32)
+                .bind(&completed_at)
+                .bind(&assessment_id_clone)
+                .execute(&pool_clone)
+                .await;
+
+                log::info!(
+                    "Emerging tech assessment {} completed with {} findings",
+                    assessment_id_clone,
+                    findings_count
+                );
+            }
+            Err(e) => {
+                log::error!("Emerging tech assessment {} failed: {}", assessment_id_clone, e);
+
+                let _ = sqlx::query(
+                    "UPDATE emerging_tech_assessments SET status = 'failed', error_message = ? WHERE id = ?"
+                )
+                .bind(format!("{}", e))
+                .bind(&assessment_id_clone)
+                .execute(&pool_clone)
+                .await;
+            }
+        }
+    });
 
     Ok(HttpResponse::Ok().json(EmergingTechAssessmentResponse {
         id: assessment_id,

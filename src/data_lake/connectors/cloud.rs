@@ -481,10 +481,24 @@ impl CloudConnector {
 pub fn parse_cloudtrail_event(source_id: &str, event_json: &str) -> Result<DataRecord> {
     let event: serde_json::Value = serde_json::from_str(event_json)?;
 
+    // Extract timestamp from CloudTrail event
+    // CloudTrail uses "eventTime" field in RFC3339 format
+    let timestamp = event.get("eventTime")
+        .and_then(|t| t.as_str())
+        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+        .map(|dt| dt.with_timezone(&Utc))
+        .unwrap_or_else(Utc::now);
+
+    // Extract event ID for record ID
+    let event_id = event.get("eventID")
+        .and_then(|e| e.as_str())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+
     Ok(DataRecord {
-        id: uuid::Uuid::new_v4().to_string(),
+        id: event_id,
         source_id: source_id.to_string(),
-        timestamp: Utc::now(), // TODO: Parse from event
+        timestamp,
         data: event,
         metadata: serde_json::json!({
             "source_type": "cloudtrail"

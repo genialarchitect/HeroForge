@@ -42,6 +42,7 @@
 pub mod types;
 pub mod engine;
 pub mod hashcat;
+pub mod john;
 pub mod native;
 
 // Re-export commonly used types
