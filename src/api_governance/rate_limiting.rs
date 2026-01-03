@@ -185,17 +185,110 @@ impl RateLimiter {
     }
 
     /// Leaky bucket algorithm implementation
+    ///
+    /// The leaky bucket processes requests at a fixed rate. Incoming requests
+    /// are queued and "leak" out at a steady rate. If the bucket overflows,
+    /// requests are rejected.
     fn check_leaky_bucket(&self, state: &mut RateLimiterState, key: &str) -> RateLimitDecision {
-        // TODO: Implement leaky bucket
-        // For now, use token bucket as fallback
-        self.check_token_bucket(state, key)
+        let now = Instant::now();
+        let leak_rate = self.config.max_requests as f64 / self.config.window.as_secs_f64();
+
+        let tracker = state.requests.entry(key.to_string()).or_insert_with(|| {
+            RequestTracker {
+                tokens: 0.0, // In leaky bucket, this represents the "water level"
+                last_update: now,
+                request_times: Vec::new(),
+            }
+        });
+
+        // Calculate how much has "leaked" since last update
+        let elapsed = now.duration_since(tracker.last_update).as_secs_f64();
+        let leaked = elapsed * leak_rate;
+
+        // Reduce the water level by the amount that leaked (but not below 0)
+        tracker.tokens = (tracker.tokens - leaked).max(0.0);
+        tracker.last_update = now;
+
+        // Check if we can add a new request (1 unit of "water")
+        if tracker.tokens < self.config.max_requests as f64 {
+            tracker.tokens += 1.0;
+            let remaining = (self.config.max_requests as f64 - tracker.tokens).max(0.0) as u64;
+
+            RateLimitDecision {
+                allowed: true,
+                limit: self.config.max_requests,
+                remaining,
+                reset_at: now + self.config.window,
+                retry_after: None,
+            }
+        } else {
+            // Bucket is full - calculate when 1 unit will leak
+            let time_to_leak_one = 1.0 / leak_rate;
+
+            RateLimitDecision {
+                allowed: false,
+                limit: self.config.max_requests,
+                remaining: 0,
+                reset_at: now + Duration::from_secs_f64(time_to_leak_one),
+                retry_after: Some(Duration::from_secs_f64(time_to_leak_one)),
+            }
+        }
     }
 
     /// Fixed window algorithm implementation
+    ///
+    /// Divides time into fixed windows and counts requests per window.
+    /// Simple and efficient but allows bursts at window boundaries.
     fn check_fixed_window(&self, state: &mut RateLimiterState, key: &str) -> RateLimitDecision {
-        // TODO: Implement fixed window
-        // For now, use sliding window as fallback
-        self.check_sliding_window(state, key)
+        let now = Instant::now();
+
+        let tracker = state.requests.entry(key.to_string()).or_insert_with(|| {
+            RequestTracker {
+                tokens: 0.0, // In fixed window, this represents request count
+                last_update: now,
+                request_times: Vec::new(),
+            }
+        });
+
+        // Calculate the elapsed time since window start
+        let elapsed_since_start = now.duration_since(tracker.last_update);
+
+        // Check if we've moved to a new window
+        if elapsed_since_start >= self.config.window {
+            // New window - reset the count
+            tracker.tokens = 0.0;
+            tracker.last_update = now;
+        }
+
+        // Check if we can make a request in this window
+        let current_count = tracker.tokens as u64;
+
+        if current_count < self.config.max_requests {
+            tracker.tokens += 1.0;
+            let remaining = self.config.max_requests - current_count - 1;
+
+            // Calculate when this window ends
+            let window_remaining = self.config.window.saturating_sub(elapsed_since_start);
+
+            RateLimitDecision {
+                allowed: true,
+                limit: self.config.max_requests,
+                remaining,
+                reset_at: now + window_remaining,
+                retry_after: None,
+            }
+        } else {
+            // Window is full - must wait until next window
+            let window_remaining = self.config.window.saturating_sub(elapsed_since_start);
+
+            RateLimitDecision {
+                allowed: false,
+                limit: self.config.max_requests,
+                remaining: 0,
+                reset_at: now + window_remaining,
+                retry_after: Some(window_remaining),
+            }
+        }
     }
 
     /// Clean up old entries
@@ -268,6 +361,92 @@ mod tests {
         }
 
         // User 2 should still have their quota
+        let decision = limiter.check("user2").await.unwrap();
+        assert!(decision.allowed);
+    }
+
+    #[tokio::test]
+    async fn test_leaky_bucket() {
+        let limiter = RateLimiter::new(RateLimiterConfig {
+            algorithm: RateLimitAlgorithm::LeakyBucket,
+            max_requests: 5,
+            window: Duration::from_secs(10),
+            adaptive: false,
+        });
+
+        // First 5 requests should succeed (filling the bucket)
+        for i in 0..5 {
+            let decision = limiter.check("test-user").await.unwrap();
+            assert!(decision.allowed, "Request {} should be allowed", i);
+        }
+
+        // 6th request should be rate limited (bucket is full)
+        let decision = limiter.check("test-user").await.unwrap();
+        assert!(!decision.allowed, "Request 6 should be rate limited");
+        assert!(decision.retry_after.is_some(), "Should have retry_after");
+    }
+
+    #[tokio::test]
+    async fn test_fixed_window() {
+        let limiter = RateLimiter::new(RateLimiterConfig {
+            algorithm: RateLimitAlgorithm::FixedWindow,
+            max_requests: 3,
+            window: Duration::from_secs(5),
+            adaptive: false,
+        });
+
+        // First 3 requests should succeed
+        for i in 0..3 {
+            let decision = limiter.check("test-user").await.unwrap();
+            assert!(decision.allowed, "Request {} should be allowed", i);
+        }
+
+        // 4th request should be rate limited
+        let decision = limiter.check("test-user").await.unwrap();
+        assert!(!decision.allowed, "Request 4 should be rate limited");
+        assert!(decision.retry_after.is_some(), "Should have retry_after");
+    }
+
+    #[tokio::test]
+    async fn test_leaky_bucket_different_users() {
+        let limiter = RateLimiter::new(RateLimiterConfig {
+            algorithm: RateLimitAlgorithm::LeakyBucket,
+            max_requests: 2,
+            window: Duration::from_secs(10),
+            adaptive: false,
+        });
+
+        // User 1 fills their bucket
+        for _ in 0..2 {
+            let decision = limiter.check("user1").await.unwrap();
+            assert!(decision.allowed);
+        }
+        let decision = limiter.check("user1").await.unwrap();
+        assert!(!decision.allowed);
+
+        // User 2 should have their own bucket
+        let decision = limiter.check("user2").await.unwrap();
+        assert!(decision.allowed);
+    }
+
+    #[tokio::test]
+    async fn test_fixed_window_different_users() {
+        let limiter = RateLimiter::new(RateLimiterConfig {
+            algorithm: RateLimitAlgorithm::FixedWindow,
+            max_requests: 2,
+            window: Duration::from_secs(10),
+            adaptive: false,
+        });
+
+        // User 1 uses their quota
+        for _ in 0..2 {
+            let decision = limiter.check("user1").await.unwrap();
+            assert!(decision.allowed);
+        }
+        let decision = limiter.check("user1").await.unwrap();
+        assert!(!decision.allowed);
+
+        // User 2 should have their own window
         let decision = limiter.check("user2").await.unwrap();
         assert!(decision.allowed);
     }

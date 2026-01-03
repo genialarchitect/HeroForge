@@ -16,6 +16,8 @@ pub enum QuotaType {
     Storage,
     /// Scan quota
     Scans,
+    /// Report generation quota
+    Reports,
     /// Custom quota type
     Custom,
 }
@@ -75,6 +77,25 @@ impl QuotaManager {
         }
     }
 
+    /// Set default quota for a quota type (used for all users without explicit quota)
+    pub fn set_default_quota(&mut self, quota_type: QuotaType, limit: u64) {
+        // Default quotas are stored under a special "_default" key
+        // This is a synchronous method used during initialization
+        let mut configs = self.configs.blocking_write();
+        let default_configs = configs.entry("_default".to_string()).or_insert_with(Vec::new);
+
+        // Remove existing default for this type
+        default_configs.retain(|c| c.quota_type != quota_type);
+
+        // Add new default
+        default_configs.push(QuotaConfig {
+            quota_type,
+            limit,
+            period: QuotaPeriod::Daily,
+            alert_threshold: 0.8,
+        });
+    }
+
     /// Set quota for a user
     pub async fn set_quota(&self, user_id: &str, config: QuotaConfig) -> Result<()> {
         let mut configs = self.configs.write().await;
@@ -82,6 +103,11 @@ impl QuotaManager {
             .or_insert_with(Vec::new)
             .push(config);
         Ok(())
+    }
+
+    /// Increment usage for a user
+    pub async fn increment_usage(&mut self, user_id: &str, quota_type: &QuotaType, amount: u64) -> Result<()> {
+        self.record_usage(user_id, *quota_type, amount).await
     }
 
     /// Check if quota allows the operation

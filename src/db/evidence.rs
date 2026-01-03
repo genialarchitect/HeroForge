@@ -406,6 +406,105 @@ pub async fn delete_control_mapping(pool: &SqlitePool, id: &str) -> Result<()> {
     Ok(())
 }
 
+/// List all control mappings with optional filters
+pub async fn list_all_mappings(
+    pool: &SqlitePool,
+    framework_id: Option<&str>,
+    control_id: Option<&str>,
+    evidence_id: Option<&str>,
+    limit: Option<i32>,
+    offset: Option<i32>,
+) -> Result<Vec<EvidenceControlMapping>> {
+    let limit = limit.unwrap_or(100) as i64;
+    let offset = offset.unwrap_or(0) as i64;
+
+    // Build dynamic WHERE clause
+    let mut conditions = vec!["1=1".to_string()];
+    let mut param_idx = 1;
+
+    if framework_id.is_some() {
+        conditions.push(format!("framework_id = ?{}", param_idx));
+        param_idx += 1;
+    }
+    if control_id.is_some() {
+        conditions.push(format!("control_id = ?{}", param_idx));
+        param_idx += 1;
+    }
+    if evidence_id.is_some() {
+        conditions.push(format!("evidence_id = ?{}", param_idx));
+    }
+
+    let where_clause = conditions.join(" AND ");
+
+    let query = format!(
+        r#"
+        SELECT * FROM evidence_control_mapping
+        WHERE {}
+        ORDER BY created_at DESC
+        LIMIT {} OFFSET {}
+        "#,
+        where_clause, limit, offset
+    );
+
+    // Execute query with appropriate parameters
+    let rows: Vec<MappingRow> = match (framework_id, control_id, evidence_id) {
+        (Some(f), Some(c), Some(e)) => {
+            sqlx::query_as(&query)
+                .bind(f)
+                .bind(c)
+                .bind(e)
+                .fetch_all(pool)
+                .await?
+        }
+        (Some(f), Some(c), None) => {
+            sqlx::query_as(&query)
+                .bind(f)
+                .bind(c)
+                .fetch_all(pool)
+                .await?
+        }
+        (Some(f), None, Some(e)) => {
+            sqlx::query_as(&query)
+                .bind(f)
+                .bind(e)
+                .fetch_all(pool)
+                .await?
+        }
+        (None, Some(c), Some(e)) => {
+            sqlx::query_as(&query)
+                .bind(c)
+                .bind(e)
+                .fetch_all(pool)
+                .await?
+        }
+        (Some(f), None, None) => {
+            sqlx::query_as(&query)
+                .bind(f)
+                .fetch_all(pool)
+                .await?
+        }
+        (None, Some(c), None) => {
+            sqlx::query_as(&query)
+                .bind(c)
+                .fetch_all(pool)
+                .await?
+        }
+        (None, None, Some(e)) => {
+            sqlx::query_as(&query)
+                .bind(e)
+                .fetch_all(pool)
+                .await?
+        }
+        (None, None, None) => {
+            sqlx::query_as(&query)
+                .fetch_all(pool)
+                .await?
+        }
+    };
+
+    Ok(rows.into_iter().map(mapping_from_row).collect())
+}
+
 // ============================================================================
 // Collection Schedule Operations
 // ============================================================================
@@ -530,6 +629,44 @@ pub async fn update_schedule_after_run(
     .bind(next_run_at)
     .bind(now)
     .bind(id)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Update collection schedule
+pub async fn update_collection_schedule(
+    pool: &SqlitePool,
+    schedule: &EvidenceCollectionSchedule,
+) -> Result<()> {
+    let now = Utc::now();
+
+    let collection_source_str = collection_source_to_str(&schedule.collection_source);
+    let control_ids_json = serde_json::to_string(&schedule.control_ids)?;
+    let framework_ids_json = serde_json::to_string(&schedule.framework_ids)?;
+    let config_json = serde_json::to_string(&schedule.config)?;
+
+    sqlx::query(
+        r#"
+        UPDATE evidence_collection_schedule
+        SET name = ?1, description = ?2, collection_source = ?3, cron_expression = ?4,
+            control_ids = ?5, framework_ids = ?6, enabled = ?7,
+            next_run_at = ?8, config = ?9, updated_at = ?10
+        WHERE id = ?11
+        "#,
+    )
+    .bind(&schedule.name)
+    .bind(&schedule.description)
+    .bind(collection_source_str)
+    .bind(&schedule.cron_expression)
+    .bind(&control_ids_json)
+    .bind(&framework_ids_json)
+    .bind(schedule.enabled)
+    .bind(schedule.next_run_at)
+    .bind(&config_json)
+    .bind(now)
+    .bind(&schedule.id)
     .execute(pool)
     .await?;
 

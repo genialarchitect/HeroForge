@@ -450,8 +450,12 @@ impl AdvancedDetectionEngine {
             severity = "medium".to_string();
         }
 
-        // Check for holiday (would need holiday list)
-        // TODO: Add holiday detection
+        // Check for holiday
+        let is_holiday = self.is_holiday(user_id, timestamp).await.unwrap_or(false);
+        if is_holiday {
+            risk_multiplier *= self.config.weekend_multiplier;
+            severity = "medium".to_string();
+        }
 
         if typical_off_hours {
             severity = "low".to_string();
@@ -470,7 +474,7 @@ impl AdvancedDetectionEngine {
             working_hours_end: end_time,
             working_days: working_days.clone(),
             is_weekend,
-            is_holiday: false,
+            is_holiday,
             typical_off_hours_rate: off_hours_baseline.unwrap_or(0.0),
             severity,
             risk_multiplier,
@@ -519,7 +523,7 @@ impl AdvancedDetectionEngine {
         // Check peer group comparison
         let peer_comparison = self.compare_data_access_to_peers(&entity.id, resource_type, resource_path).await?;
 
-        if peer_comparison.is_some_and(|p| p.deviation > 2.0) {
+        if peer_comparison.is_some_and(|p| p.deviation_score > 1.5) {
             anomalies.push(DataAccessAnomaly::PeerGroupDeviation);
             risk_score += 15;
         }
@@ -936,6 +940,48 @@ impl AdvancedDetectionEngine {
         Ok(baseline.and_then(|b| b.0))
     }
 
+    /// Check if a given timestamp falls on a holiday for the user's organization
+    async fn is_holiday(&self, user_id: &str, timestamp: &DateTime<Utc>) -> Result<bool> {
+        // Format the date as YYYY-MM-DD for comparison
+        let date_str = timestamp.format("%Y-%m-%d").to_string();
+
+        // Check for exact date match in organization holidays
+        let holiday: Option<(i64,)> = sqlx::query_as(
+            r#"
+            SELECT 1 FROM organization_holidays
+            WHERE user_id = ?
+            AND date = ?
+            LIMIT 1
+            "#,
+        )
+        .bind(user_id)
+        .bind(&date_str)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        if holiday.is_some() {
+            return Ok(true);
+        }
+
+        // Check for recurring holidays (month-day match regardless of year)
+        let month_day = timestamp.format("%m-%d").to_string();
+        let recurring: Option<(i64,)> = sqlx::query_as(
+            r#"
+            SELECT 1 FROM organization_holidays
+            WHERE user_id = ?
+            AND is_recurring = TRUE
+            AND strftime('%m-%d', date) = ?
+            LIMIT 1
+            "#,
+        )
+        .bind(user_id)
+        .bind(&month_day)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(recurring.is_some())
+    }
+
     async fn is_first_time_access(&self, entity_id: &str, resource_path: &str) -> Result<bool> {
         let existing: Option<(i64,)> = sqlx::query_as(
             r#"
@@ -972,7 +1018,7 @@ impl AdvancedDetectionEngine {
         Ok(sensitivity.map(|s| s.0))
     }
 
-    async fn compare_data_access_to_peers(&self, entity_id: &str, _resource_type: &str, _resource_path: &str) -> Result<Option<PeerComparison>> {
+    async fn compare_data_access_to_peers(&self, entity_id: &str, resource_type: &str, resource_path: &str) -> Result<Option<PeerComparison>> {
         // Get entity's peer group
         let entity: Option<UebaEntity> = sqlx::query_as(
             "SELECT * FROM ueba_entities WHERE id = ?"
@@ -981,13 +1027,86 @@ impl AdvancedDetectionEngine {
         .fetch_optional(&self.pool)
         .await?;
 
-        let _peer_group_id = match entity.and_then(|e| e.peer_group_id) {
+        let peer_group_id = match entity.and_then(|e| e.peer_group_id) {
             Some(id) => id,
             None => return Ok(None),
         };
 
-        // TODO: Implement peer comparison logic
-        Ok(None)
+        // Get peer group member IDs (excluding the current entity)
+        let peer_ids: Vec<(String,)> = sqlx::query_as(
+            r#"SELECT id FROM ueba_entities
+               WHERE peer_group_id = ? AND id != ?"#
+        )
+        .bind(&peer_group_id)
+        .bind(entity_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        if peer_ids.is_empty() {
+            return Ok(None);
+        }
+
+        let peer_count = peer_ids.len() as i64;
+
+        // Count how many peers have accessed this specific resource
+        let peers_with_access: (i64,) = sqlx::query_as(
+            r#"SELECT COUNT(DISTINCT entity_id) FROM ueba_data_accesses
+               WHERE entity_id IN (SELECT id FROM ueba_entities WHERE peer_group_id = ? AND id != ?)
+               AND resource_type = ?
+               AND resource_path = ?"#
+        )
+        .bind(&peer_group_id)
+        .bind(entity_id)
+        .bind(resource_type)
+        .bind(resource_path)
+        .fetch_one(&self.pool)
+        .await?;
+
+        // Calculate peer percentage
+        let peer_percentage = if peer_count > 0 {
+            (peers_with_access.0 as f64 / peer_count as f64) * 100.0
+        } else {
+            0.0
+        };
+
+        // Get average access count for this resource among peers
+        let avg_access: Option<(Option<f64>,)> = sqlx::query_as(
+            r#"SELECT AVG(access_count) FROM (
+                SELECT COUNT(*) as access_count FROM ueba_data_accesses
+                WHERE entity_id IN (SELECT id FROM ueba_entities WHERE peer_group_id = ? AND id != ?)
+                AND resource_type = ?
+                AND resource_path = ?
+                GROUP BY entity_id
+            )"#
+        )
+        .bind(&peer_group_id)
+        .bind(entity_id)
+        .bind(resource_type)
+        .bind(resource_path)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        let avg_peer_access = avg_access.and_then(|a| a.0).unwrap_or(0.0);
+
+        // Calculate how unusual this access is (lower percentage = more unusual)
+        let deviation_score = if peer_percentage < 10.0 {
+            2.0  // Very unusual - less than 10% of peers access this
+        } else if peer_percentage < 30.0 {
+            1.5  // Somewhat unusual
+        } else if peer_percentage < 50.0 {
+            1.2  // Slightly unusual
+        } else {
+            1.0  // Normal
+        };
+
+        Ok(Some(PeerComparison {
+            peer_group_id,
+            peer_count,
+            peers_with_access: peers_with_access.0,
+            peer_percentage,
+            avg_peer_access,
+            deviation_score,
+        }))
     }
 
     async fn get_data_volume_baseline(&self, entity_id: &str, access_type: &str) -> Result<Option<(f64, f64)>> {
@@ -1399,10 +1518,11 @@ pub struct DataExfiltrationResult {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PeerComparison {
     pub peer_group_id: String,
-    pub peer_mean: f64,
-    pub peer_std_dev: f64,
-    pub entity_value: f64,
-    pub deviation: f64,
+    pub peer_count: i64,
+    pub peers_with_access: i64,
+    pub peer_percentage: f64,
+    pub avg_peer_access: f64,
+    pub deviation_score: f64,
 }
 
 #[cfg(test)]

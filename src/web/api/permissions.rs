@@ -627,8 +627,19 @@ pub async fn share_resource(
 ) -> Result<HttpResponse, ApiError> {
     let (resource_type, resource_id) = path.into_inner();
 
-    // TODO: Verify user has permission to share this resource
-    // For now, just allow it
+    // Verify user has permission to share this resource (must own it or be admin)
+    let ctx = PermissionContext::new(&claims.sub, "default", "manage", &resource_type)
+        .with_resource(&resource_id);
+
+    let perm_result = db::permissions::evaluation::check_permission(pool.get_ref(), &ctx)
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?;
+
+    if !perm_result.allowed {
+        return Err(ApiError::forbidden(
+            "You don't have permission to share this resource".to_string()
+        ));
+    }
 
     let share = db::permissions::evaluation::share_resource(
         pool.get_ref(),
@@ -659,12 +670,24 @@ pub async fn share_resource(
 #[get("/resources/{resource_type}/{resource_id}/shares")]
 pub async fn list_resource_shares(
     pool: web::Data<SqlitePool>,
-    _claims: Claims,
+    claims: Claims,
     path: web::Path<(String, String)>,
 ) -> Result<HttpResponse, ApiError> {
     let (resource_type, resource_id) = path.into_inner();
 
-    // TODO: Verify user has permission to view shares
+    // Verify user has permission to view shares (read access to resource)
+    let ctx = PermissionContext::new(&claims.sub, "default", "read", &resource_type)
+        .with_resource(&resource_id);
+
+    let perm_result = db::permissions::evaluation::check_permission(pool.get_ref(), &ctx)
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?;
+
+    if !perm_result.allowed {
+        return Err(ApiError::forbidden(
+            "You don't have permission to view shares for this resource".to_string()
+        ));
+    }
 
     let shares = db::permissions::evaluation::list_resource_shares(pool.get_ref(), &resource_type, &resource_id)
         .await
@@ -693,7 +716,19 @@ pub async fn unshare_resource(
     let shared_with_type = OwnerType::from_str(&req.shared_with_type)
         .ok_or_else(|| ApiError::bad_request("Invalid shared_with_type".to_string()))?;
 
-    // TODO: Verify user has permission to manage shares
+    // Verify user has permission to manage shares (must own resource or be admin)
+    let ctx = PermissionContext::new(&claims.sub, "default", "manage", &resource_type)
+        .with_resource(&resource_id);
+
+    let perm_result = db::permissions::evaluation::check_permission(pool.get_ref(), &ctx)
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?;
+
+    if !perm_result.allowed {
+        return Err(ApiError::forbidden(
+            "You don't have permission to manage shares for this resource".to_string()
+        ));
+    }
 
     db::permissions::evaluation::unshare_resource(
         pool.get_ref(),

@@ -4,6 +4,24 @@ use actix_web::{web, HttpResponse, Result};
 use serde::{Serialize, Deserialize};
 use sqlx::SqlitePool;
 use chrono::Utc;
+use std::sync::OnceLock;
+use std::time::Instant;
+
+/// Application start time for uptime tracking
+static APP_START_TIME: OnceLock<Instant> = OnceLock::new();
+
+/// Initialize the application start time (call once at startup)
+pub fn init_start_time() {
+    APP_START_TIME.get_or_init(Instant::now);
+}
+
+/// Get the current uptime in seconds
+fn get_uptime_seconds() -> u64 {
+    APP_START_TIME
+        .get()
+        .map(|start| start.elapsed().as_secs())
+        .unwrap_or(0)
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct HealthResponse {
@@ -60,7 +78,7 @@ pub async fn readiness(pool: web::Data<SqlitePool>) -> Result<HttpResponse> {
         status: if all_healthy { "ready".to_string() } else { "not_ready".to_string() },
         timestamp: Utc::now().to_rfc3339(),
         version: env!("CARGO_PKG_VERSION").to_string(),
-        uptime_seconds: 0, // TODO: Implement actual uptime tracking
+        uptime_seconds: get_uptime_seconds(),
         checks: HealthChecks {
             database: db_check,
             redis: CheckStatus {

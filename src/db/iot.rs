@@ -657,6 +657,28 @@ pub async fn get_iot_dashboard_stats(pool: &SqlitePool, user_id: &str) -> Result
     .fetch_one(pool)
     .await?;
 
+    // Protocol usage - parse protocols from all devices and count
+    let device_protocols: Vec<(String,)> = sqlx::query_as(
+        "SELECT protocols FROM iot_devices WHERE user_id = ? AND protocols != '[]'"
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?;
+
+    let mut protocol_counts: std::collections::HashMap<String, i32> = std::collections::HashMap::new();
+    for (protocol_json,) in device_protocols {
+        if let Ok(protocols) = serde_json::from_str::<Vec<IotProtocolType>>(&protocol_json) {
+            for protocol in protocols {
+                let proto_name = format!("{:?}", protocol);
+                *protocol_counts.entry(proto_name).or_insert(0) += 1;
+            }
+        }
+    }
+    let protocol_usage: Vec<ProtocolCount> = protocol_counts
+        .into_iter()
+        .map(|(protocol, count)| ProtocolCount { protocol, count })
+        .collect();
+
     Ok(IotDashboardStats {
         total_devices: total.0 as i32,
         devices_by_type: devices_by_type.into_iter()
@@ -672,6 +694,6 @@ pub async fn get_iot_dashboard_stats(pool: &SqlitePool, user_id: &str) -> Result
             RiskCount { risk_level: "Medium".to_string(), count: risk_medium.0 as i32 },
             RiskCount { risk_level: "High".to_string(), count: risk_high.0 as i32 },
         ],
-        protocol_usage: Vec::new(), // TODO: Calculate from devices
+        protocol_usage,
     })
 }

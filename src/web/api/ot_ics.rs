@@ -119,10 +119,96 @@ pub async fn start_scan(
             actix_web::error::ErrorInternalServerError("Failed to create scan")
         })?;
 
-    // TODO: Spawn async scan task here
-    // For now, just return the scan record
+    // Spawn async scan task
+    let scan_id = scan.id.clone();
+    let target_range = request.target_range.clone();
+    let protocols: Vec<crate::ot_ics::types::OtProtocolType> = request.protocols_enabled
+        .as_ref()
+        .map(|p| p.iter().filter_map(|s| s.parse().ok()).collect())
+        .unwrap_or_default();
+    let pool_clone = pool.get_ref().clone();
+
+    tokio::spawn(async move {
+        log::info!("Starting OT scan {} for network {}", scan_id, target_range);
+
+        // Update status to running
+        if let Err(e) = ot_ics::update_ot_scan_status(&pool_clone, &scan_id, "running", None).await {
+            log::error!("Failed to update scan status to running: {}", e);
+            return;
+        }
+
+        // Parse target network into IPs
+        let targets: Vec<std::net::IpAddr> = match parse_target_network(&target_range) {
+            Ok(ips) => ips,
+            Err(e) => {
+                log::error!("Failed to parse target network: {}", e);
+                let _ = ot_ics::update_ot_scan_status(&pool_clone, &scan_id, "failed", Some(&e.to_string())).await;
+                return;
+            }
+        };
+
+        // Run discovery
+        let engine = crate::ot_ics::OtDiscoveryEngine::default();
+        match engine.discover(&targets, &protocols).await {
+            Ok(discovered) => {
+                let asset_count = discovered.len() as i32;
+                let vuln_count = discovered.iter()
+                    .flat_map(|a| &a.scan_results)
+                    .map(|r| r.security_issues.len())
+                    .sum::<usize>() as i32;
+
+                // Update scan results
+                if let Err(e) = ot_ics::update_ot_scan_results(&pool_clone, &scan_id, asset_count, vuln_count).await {
+                    log::error!("Failed to update scan results: {}", e);
+                }
+
+                // Mark as completed
+                if let Err(e) = ot_ics::update_ot_scan_status(&pool_clone, &scan_id, "completed", None).await {
+                    log::error!("Failed to update scan status to completed: {}", e);
+                }
+
+                log::info!("OT scan {} completed: {} assets discovered, {} vulnerabilities", scan_id, asset_count, vuln_count);
+            }
+            Err(e) => {
+                log::error!("OT scan {} failed: {}", scan_id, e);
+                let _ = ot_ics::update_ot_scan_status(&pool_clone, &scan_id, "failed", Some(&e.to_string())).await;
+            }
+        }
+    });
 
     Ok(HttpResponse::Accepted().json(scan))
+}
+
+/// Parse target network string into IP addresses
+fn parse_target_network(network: &str) -> anyhow::Result<Vec<std::net::IpAddr>> {
+    let mut ips = Vec::new();
+
+    // Try parsing as CIDR
+    if let Ok(network) = network.parse::<ipnetwork::IpNetwork>() {
+        for ip in network.iter().take(256) {  // Limit to 256 for safety
+            ips.push(ip);
+        }
+    } else if let Ok(ip) = network.parse::<std::net::IpAddr>() {
+        // Single IP
+        ips.push(ip);
+    } else {
+        // Try parsing as IP range (e.g., "192.168.1.1-192.168.1.10")
+        if let Some((start, end)) = network.split_once('-') {
+            let start_ip: std::net::Ipv4Addr = start.trim().parse()?;
+            let end_ip: std::net::Ipv4Addr = end.trim().parse()?;
+
+            let start_u32 = u32::from(start_ip);
+            let end_u32 = u32::from(end_ip);
+
+            for ip_u32 in start_u32..=end_u32.min(start_u32 + 255) {
+                ips.push(std::net::IpAddr::V4(std::net::Ipv4Addr::from(ip_u32)));
+            }
+        } else {
+            anyhow::bail!("Invalid network format: {}", network);
+        }
+    }
+
+    Ok(ips)
 }
 
 /// Get all OT scans

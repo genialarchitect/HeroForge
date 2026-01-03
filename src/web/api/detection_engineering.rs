@@ -1338,6 +1338,9 @@ pub async fn get_dashboard(
         0.0
     };
 
+    // Get recent activity - last 10 updated detections
+    let recent_activity = get_recent_detection_activity(pool.get_ref()).await.unwrap_or_default();
+
     Ok(HttpResponse::Ok().json(DashboardResponse {
         total_detections: stats.total_detections,
         production_detections: stats.production_detections,
@@ -1348,7 +1351,7 @@ pub async fn get_dashboard(
         passing_tests: stats.passing_tests,
         test_pass_rate,
         unique_techniques_covered: stats.unique_techniques_covered,
-        recent_activity: Vec::new(), // TODO: Add recent activity
+        recent_activity,
     }))
 }
 
@@ -1533,6 +1536,72 @@ fn row_to_test_run_response(row: &db::TestRunRow) -> TestRunResponse {
         triggered_by: row.triggered_by.clone(),
         run_at: row.run_at.clone(),
     }
+}
+
+/// Get recent detection activity for dashboard
+async fn get_recent_detection_activity(pool: &sqlx::SqlitePool) -> anyhow::Result<Vec<serde_json::Value>> {
+    // Query recent detection updates
+    let rows = sqlx::query_as::<_, (String, String, String, String, String)>(
+        r#"
+        SELECT d.id, d.name, d.status, d.updated_at, COALESCE(u.username, 'Unknown')
+        FROM detections d
+        LEFT JOIN users u ON d.author_id = u.id
+        ORDER BY d.updated_at DESC
+        LIMIT 10
+        "#
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let mut activities = Vec::new();
+    for (id, name, status, updated_at, author) in rows {
+        activities.push(serde_json::json!({
+            "id": id,
+            "name": name,
+            "type": "detection_update",
+            "status": status,
+            "timestamp": updated_at,
+            "author": author,
+            "description": format!("Detection '{}' was updated", name)
+        }));
+    }
+
+    // Also get recent false positives
+    let fp_rows = sqlx::query_as::<_, (String, String, String, String)>(
+        r#"
+        SELECT fp.id, d.name, fp.status, fp.created_at
+        FROM detection_false_positives fp
+        JOIN detections d ON fp.detection_id = d.id
+        ORDER BY fp.created_at DESC
+        LIMIT 5
+        "#
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+
+    for (fp_id, detection_name, status, created_at) in fp_rows {
+        activities.push(serde_json::json!({
+            "id": fp_id,
+            "name": detection_name,
+            "type": "false_positive",
+            "status": status,
+            "timestamp": created_at,
+            "description": format!("False positive reported for '{}'", detection_name)
+        }));
+    }
+
+    // Sort by timestamp descending
+    activities.sort_by(|a, b| {
+        let ts_a = a.get("timestamp").and_then(|v| v.as_str()).unwrap_or("");
+        let ts_b = b.get("timestamp").and_then(|v| v.as_str()).unwrap_or("");
+        ts_b.cmp(ts_a)
+    });
+
+    // Return top 10 combined
+    activities.truncate(10);
+
+    Ok(activities)
 }
 
 // =============================================================================

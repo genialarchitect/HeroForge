@@ -333,20 +333,41 @@ impl DistributedScheduler {
         let expires_at = Utc::now() + Duration::seconds(self.config.offer_timeout_secs as i64);
 
         // Create task offer message
-        let _message = MeshMessage::TaskOffer {
+        let message = MeshMessage::TaskOffer {
             task: task.clone(),
             from_agent: self.local_agent_id.clone(),
             expires_at,
             priority_boost: 0,
         };
 
-        // Send offer to peer
-        // In production, this would actually send the message
         log::info!(
             "Offering task {} to peer {}",
             task.id,
             peer.agent_id
         );
+
+        // Send the task offer message to the peer
+        match self.discovery.send_message(peer, message).await {
+            Ok(()) => {
+                log::debug!(
+                    "Task offer sent successfully to peer {} for task {}",
+                    peer.agent_id,
+                    task.id
+                );
+            }
+            Err(e) => {
+                log::warn!(
+                    "Failed to send task offer to peer {}: {}",
+                    peer.agent_id,
+                    e
+                );
+                return Err(anyhow!(
+                    "Failed to send task offer to peer {}: {}",
+                    peer.agent_id,
+                    e
+                ));
+            }
+        }
 
         // Record pending delegation
         let delegation = PendingDelegation {
@@ -513,8 +534,8 @@ impl DistributedScheduler {
             busiest.current_tasks
         );
 
-        // Create steal request
-        let _message = MeshMessage::TaskStealRequest {
+        // Create steal request message
+        let message = MeshMessage::TaskStealRequest {
             from_agent: local_agent_id.to_string(),
             max_tasks: config.max_steal_batch,
             min_priority: config.min_steal_priority,
@@ -522,16 +543,38 @@ impl DistributedScheduler {
             network_zones: vec![],
         };
 
-        // In production, send the message and handle response
-        // For now, simulate the statistics update
+        // Send the work steal request to the busy peer
+        // Note: The response will be handled asynchronously via the message handler
+        match discovery.send_message(busiest, message).await {
+            Ok(()) => {
+                log::debug!(
+                    "Work steal request sent to peer {} for up to {} tasks",
+                    busiest.agent_id,
+                    config.max_steal_batch
+                );
 
-        let mut stats = stats.write().await;
-        stats.tasks_stolen += 1; // Would be actual count from response
+                // Increment steal request count in stats
+                // The actual tasks_stolen will be updated when we receive TaskStealResponse
+                let mut stats = stats.write().await;
+                stats.tasks_stolen += 1; // Will be corrected when response arrives
 
-        let _ = events.send(SchedulerEvent::WorkStealingComplete {
-            tasks_stolen: 1,
-            from_peer: busiest.agent_id.clone(),
-        });
+                let _ = events.send(SchedulerEvent::WorkStealingComplete {
+                    tasks_stolen: 0, // Actual count will be updated on response
+                    from_peer: busiest.agent_id.clone(),
+                });
+            }
+            Err(e) => {
+                log::warn!(
+                    "Failed to send work steal request to peer {}: {}",
+                    busiest.agent_id,
+                    e
+                );
+                return Err(anyhow!(
+                    "Failed to send work steal request: {}",
+                    e
+                ));
+            }
+        }
 
         Ok(())
     }

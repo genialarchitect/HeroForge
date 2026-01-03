@@ -671,8 +671,52 @@ async fn count_concurrent_scans(pool: &SqlitePool, organization_id: &str) -> Res
     Ok(count.0)
 }
 
-async fn get_storage_usage(_pool: &SqlitePool, _organization_id: &str) -> Result<i64> {
-    // TODO: Implement actual storage calculation
-    // This would sum up report file sizes, scan result sizes, etc.
-    Ok(0)
+async fn get_storage_usage(pool: &SqlitePool, organization_id: &str) -> Result<i64> {
+    // Sum up file sizes from reports, template assets, and other storage
+    let mut total_storage: i64 = 0;
+
+    // Reports file sizes (via user's organization)
+    let report_size: (Option<i64>,) = sqlx::query_as(
+        r#"SELECT COALESCE(SUM(r.file_size), 0) FROM reports r
+           JOIN users u ON r.user_id = u.id
+           JOIN user_organizations uo ON u.id = uo.user_id
+           WHERE uo.organization_id = ? AND r.file_size IS NOT NULL"#,
+    )
+    .bind(organization_id)
+    .fetch_one(pool)
+    .await?;
+    total_storage += report_size.0.unwrap_or(0);
+
+    // Template assets file sizes
+    let asset_size: (Option<i64>,) = sqlx::query_as(
+        "SELECT COALESCE(SUM(file_size), 0) FROM template_assets WHERE organization_id = ?",
+    )
+    .bind(organization_id)
+    .fetch_one(pool)
+    .await?;
+    total_storage += asset_size.0.unwrap_or(0);
+
+    // Evidence files (compliance evidence)
+    let evidence_size: (Option<i64>,) = sqlx::query_as(
+        "SELECT COALESCE(SUM(file_size), 0) FROM compliance_evidence WHERE organization_id = ? AND file_size IS NOT NULL",
+    )
+    .bind(organization_id)
+    .fetch_one(pool)
+    .await?;
+    total_storage += evidence_size.0.unwrap_or(0);
+
+    // Assessment evidence files
+    let assessment_evidence_size: (Option<i64>,) = sqlx::query_as(
+        r#"SELECT COALESCE(SUM(ae.file_size), 0) FROM assessment_evidence ae
+           JOIN manual_assessments ma ON ae.assessment_id = ma.id
+           JOIN users u ON ma.user_id = u.id
+           JOIN user_organizations uo ON u.id = uo.user_id
+           WHERE uo.organization_id = ? AND ae.file_size IS NOT NULL"#,
+    )
+    .bind(organization_id)
+    .fetch_one(pool)
+    .await?;
+    total_storage += assessment_evidence_size.0.unwrap_or(0);
+
+    Ok(total_storage)
 }

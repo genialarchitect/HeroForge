@@ -6,8 +6,9 @@ use crate::scanner::template_engine::matcher::{execute_matchers, ResponseData};
 use crate::scanner::template_engine::types::*;
 use log::debug;
 use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::time::Instant;
-use trust_dns_resolver::config::{ResolverConfig, ResolverOpts};
+use trust_dns_resolver::config::{NameServerConfig, Protocol, ResolverConfig, ResolverOpts};
 use trust_dns_resolver::TokioAsyncResolver;
 
 /// DNS protocol handler
@@ -44,12 +45,51 @@ impl DnsHandler {
 
         debug!("Querying DNS: {} (type: {})", name, request.query_type);
 
-        // Create resolver
+        // Create resolver with custom nameservers if provided
         let resolver = if request.resolvers.is_empty() {
             TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default())
         } else {
-            // TODO: Use custom resolvers
-            TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default())
+            // Build custom resolver configuration from provided resolvers
+            let nameservers: Vec<NameServerConfig> = request
+                .resolvers
+                .iter()
+                .filter_map(|resolver_addr| {
+                    // Parse the resolver address (supports "ip:port" or just "ip" with default port 53)
+                    let socket_addr: SocketAddr = if resolver_addr.contains(':') {
+                        resolver_addr.parse().ok()?
+                    } else {
+                        format!("{}:53", resolver_addr).parse().ok()?
+                    };
+
+                    // Create nameserver configs for both UDP and TCP protocols
+                    Some(vec![
+                        NameServerConfig {
+                            socket_addr,
+                            protocol: Protocol::Udp,
+                            tls_dns_name: None,
+                            trust_negative_responses: true,
+                            bind_addr: None,
+                        },
+                        NameServerConfig {
+                            socket_addr,
+                            protocol: Protocol::Tcp,
+                            tls_dns_name: None,
+                            trust_negative_responses: true,
+                            bind_addr: None,
+                        },
+                    ])
+                })
+                .flatten()
+                .collect();
+
+            if nameservers.is_empty() {
+                debug!("No valid custom resolvers parsed, using system defaults");
+                TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default())
+            } else {
+                debug!("Using {} custom nameservers", nameservers.len() / 2);
+                let config = ResolverConfig::from_parts(None, vec![], nameservers);
+                TokioAsyncResolver::tokio(config, ResolverOpts::default())
+            }
         };
 
         let query_type = request.query_type.to_uppercase();

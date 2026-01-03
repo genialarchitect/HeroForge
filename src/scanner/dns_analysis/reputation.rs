@@ -568,17 +568,40 @@ fn similar_to_domain(domain: &str, target: &str) -> f64 {
     calculate_similarity(domain, target)
 }
 
-/// Decode punycode domain (simplified)
+/// Decode punycode domain using the idna crate for proper IDN handling
 fn decode_punycode_domain(domain: &str) -> Option<String> {
-    // This is a simplified implementation
-    // In production, use the `idna` crate for proper decoding
+    // If domain doesn't contain punycode, return as-is
     if !domain.contains("xn--") {
         return Some(domain.to_string());
     }
 
-    // For now, just return the domain as-is
-    // A full implementation would decode punycode segments
-    Some(domain.to_string())
+    // Use the idna crate to properly decode the domain
+    // The domain_to_unicode function handles punycode decoding according to IDNA 2008
+    let (decoded, result) = idna::domain_to_unicode(domain);
+
+    if result.is_ok() {
+        Some(decoded)
+    } else {
+        // If decoding fails, try decoding each label individually
+        let labels: Vec<String> = domain
+            .split('.')
+            .map(|label| {
+                if label.starts_with("xn--") {
+                    // Try to decode this punycode label
+                    let (decoded_label, label_result) = idna::domain_to_unicode(label);
+                    if label_result.is_ok() {
+                        decoded_label
+                    } else {
+                        label.to_string()
+                    }
+                } else {
+                    label.to_string()
+                }
+            })
+            .collect();
+
+        Some(labels.join("."))
+    }
 }
 
 /// Reconstruct ASCII domain from homograph

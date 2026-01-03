@@ -60,7 +60,7 @@ pub struct SecurityCheck {
 }
 
 /// Type of security check
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SecurityCheckType {
     Sast,
@@ -133,12 +133,15 @@ pub fn summarize_pipelines(pipelines: &[PipelineStatus]) -> PipelineSummary {
             })
         })
         .collect();
-    
+
     let avg_duration = if durations.is_empty() {
         0
     } else {
         durations.iter().sum::<u32>() / durations.len() as u32
     };
+
+    // Calculate common failure reasons from security checks
+    let common_failures = calculate_common_failures(pipelines);
 
     PipelineSummary {
         total_today: total,
@@ -146,8 +149,54 @@ pub fn summarize_pipelines(pipelines: &[PipelineStatus]) -> PipelineSummary {
         failed_today: failed,
         blocked_by_security: blocked,
         avg_duration_seconds: avg_duration,
-        common_failures: Vec::new(), // Would be calculated from actual data
+        common_failures,
     }
+}
+
+/// Calculate common failure reasons across pipelines
+fn calculate_common_failures(pipelines: &[PipelineStatus]) -> Vec<FailureReason> {
+    use std::collections::HashMap;
+
+    // Count failures by check type and reason
+    let mut failure_counts: HashMap<(SecurityCheckType, String), u32> = HashMap::new();
+
+    for pipeline in pipelines {
+        if matches!(pipeline.status, PipelineState::Failed | PipelineState::Blocked) {
+            for check in &pipeline.security_checks {
+                if matches!(check.status, CheckStatus::Failed) {
+                    // Create failure reason based on check type and findings
+                    let reason = if check.critical_count > 0 {
+                        format!("{} critical findings", check.critical_count)
+                    } else if check.high_count > 0 {
+                        format!("{} high findings", check.high_count)
+                    } else if check.findings_count > 0 {
+                        format!("{} findings", check.findings_count)
+                    } else {
+                        "Check failed".to_string()
+                    };
+
+                    *failure_counts.entry((check.check_type, reason)).or_insert(0) += 1;
+                }
+            }
+        }
+    }
+
+    // Convert to sorted list of FailureReason
+    let mut failures: Vec<FailureReason> = failure_counts
+        .into_iter()
+        .map(|((check_type, reason), count)| FailureReason {
+            reason,
+            check_type,
+            count,
+        })
+        .collect();
+
+    // Sort by count descending
+    failures.sort_by(|a, b| b.count.cmp(&a.count));
+
+    // Return top 10 most common failures
+    failures.truncate(10);
+    failures
 }
 
 #[cfg(test)]

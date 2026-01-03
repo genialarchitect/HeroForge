@@ -605,19 +605,20 @@ pub async fn get_mappings(
     _claims: web::ReqData<auth::Claims>,
     query: web::Query<ListMappingsQuery>,
 ) -> Result<HttpResponse> {
-    // Get mappings based on filters
-    let mappings = if let (Some(ref framework_id), Some(ref control_id)) = (&query.framework_id, &query.control_id) {
-        db::evidence::get_mappings_for_control(pool.get_ref(), framework_id, control_id)
-            .await
-            .map_err(|e| {
-                log::error!("Failed to get mappings: {}", e);
-                actix_web::error::ErrorInternalServerError("Failed to get mappings")
-            })?
-    } else {
-        // For now, return empty if no specific filters
-        // TODO: Add general listing in db::evidence
-        Vec::new()
-    };
+    // Get mappings based on filters using the general listing function
+    let mappings = db::evidence::list_all_mappings(
+        pool.get_ref(),
+        query.framework_id.as_deref(),
+        query.control_id.as_deref(),
+        query.evidence_id.as_deref(),
+        None, // Use default limit
+        None, // Use default offset
+    )
+    .await
+    .map_err(|e| {
+        log::error!("Failed to get mappings: {}", e);
+        actix_web::error::ErrorInternalServerError("Failed to get mappings")
+    })?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "mappings": mappings,
@@ -902,10 +903,13 @@ pub async fn update_schedule(
         updated_at: now,
     };
 
-    // For now, we need to add an update function to the DB layer
-    // As a workaround, we return success since the get proved it exists
-    // TODO: Add db::evidence::update_collection_schedule
-    log::info!("Schedule {} would be updated", schedule_id);
+    // Update the schedule in the database
+    db::evidence::update_collection_schedule(pool.get_ref(), &updated)
+        .await
+        .map_err(|e| {
+            log::error!("Failed to update schedule: {}", e);
+            actix_web::error::ErrorInternalServerError("Failed to update schedule")
+        })?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "message": "Schedule updated successfully",

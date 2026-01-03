@@ -174,6 +174,9 @@ scrypt = "0.11"          # scrypt password hashing
 pbkdf2 = { version = "0.12", features = ["simple"] }  # PBKDF2 key derivation
 num_cpus = "1.16"        # CPU count for parallel processing
 
+# IDN/punycode handling for domain reputation analysis
+idna = "1.0"
+
 [dev-dependencies]
 mockito = "1.5"
 tokio-test = "0.4"

@@ -452,16 +452,55 @@ async fn probe_mqtt_broker(addr: SocketAddr, timeout_dur: Duration) -> Option<Di
     None
 }
 
-/// Parse target range (simplified - just single IPs for now)
+/// Parse target range with support for:
+/// - Single IPs: "192.168.1.1"
+/// - Comma-separated IPs: "192.168.1.1, 192.168.1.2"
+/// - CIDR notation: "192.168.1.0/24"
+/// - IP ranges: "192.168.1.1-192.168.1.10"
 fn parse_target_range(range: &str) -> Result<Vec<IpAddr>> {
     let mut ips = Vec::new();
 
     for part in range.split(',') {
         let part = part.trim();
+
+        // Try parsing as single IP
         if let Ok(ip) = part.parse::<IpAddr>() {
             ips.push(ip);
+            continue;
         }
-        // TODO: Add CIDR support
+
+        // Try parsing as CIDR notation
+        if part.contains('/') {
+            if let Ok(network) = part.parse::<ipnetwork::IpNetwork>() {
+                // Limit to 256 IPs to prevent excessive scanning
+                for ip in network.iter().take(256) {
+                    ips.push(ip);
+                }
+                continue;
+            }
+        }
+
+        // Try parsing as IP range (e.g., "192.168.1.1-192.168.1.10")
+        if let Some((start_str, end_str)) = part.split_once('-') {
+            if let (Ok(start_ip), Ok(end_ip)) = (
+                start_str.trim().parse::<std::net::Ipv4Addr>(),
+                end_str.trim().parse::<std::net::Ipv4Addr>(),
+            ) {
+                let start_u32 = u32::from(start_ip);
+                let end_u32 = u32::from(end_ip);
+
+                // Limit range to 256 IPs
+                let actual_end = end_u32.min(start_u32 + 255);
+
+                for ip_u32 in start_u32..=actual_end {
+                    ips.push(IpAddr::V4(std::net::Ipv4Addr::from(ip_u32)));
+                }
+                continue;
+            }
+        }
+
+        // If we get here, the format is not recognized - log a warning
+        log::warn!("Unrecognized target format: {}", part);
     }
 
     Ok(ips)

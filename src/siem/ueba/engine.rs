@@ -882,6 +882,34 @@ impl UebaEngine {
         .fetch_all(&self.pool)
         .await?;
 
+        // Activity trend - daily counts for the last 14 days
+        let activity_trend_raw: Vec<(String, i64, i64)> = sqlx::query_as(
+            r#"
+            SELECT
+                date(a.timestamp) as day,
+                COUNT(*) as total_activities,
+                SUM(CASE WHEN a.is_anomalous = 1 THEN 1 ELSE 0 END) as anomalous_activities
+            FROM ueba_activities a
+            JOIN ueba_entities e ON a.entity_id = e.id
+            WHERE e.user_id = ?
+            AND a.timestamp >= date('now', '-14 days')
+            GROUP BY date(a.timestamp)
+            ORDER BY day DESC
+            "#,
+        )
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let activity_trend: Vec<ActivityTrendPoint> = activity_trend_raw
+            .into_iter()
+            .map(|(timestamp, total_activities, anomalous_activities)| ActivityTrendPoint {
+                timestamp,
+                total_activities,
+                anomalous_activities,
+            })
+            .collect();
+
         Ok(UebaDashboardStats {
             total_entities: total_entities.0,
             high_risk_entities: high_risk.0,
@@ -905,7 +933,7 @@ impl UebaEngine {
                     last_activity_at: None,
                 })
                 .collect(),
-            activity_trend: Vec::new(), // TODO: Implement activity trend
+            activity_trend,
         })
     }
 }

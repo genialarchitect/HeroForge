@@ -121,6 +121,7 @@ pub struct CryptoInventory {
     pub certificate_stores: Vec<String>,
     pub encryption_libraries: Vec<String>,
     pub applications: Vec<ApplicationCrypto>,
+    pub assets: Vec<CryptoAsset>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -131,6 +132,18 @@ pub struct ApplicationCrypto {
     pub protocols: Vec<String>,
 }
 
+/// Cryptographic asset for inventory
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct CryptoAsset {
+    pub name: String,
+    pub algorithms: Vec<String>,
+    pub has_hardcoded_crypto: bool,
+    pub uses_crypto_abstraction: bool,
+    pub uses_central_crypto_lib: bool,
+    pub data_sensitivity: String,
+    pub data_retention_years: u32,
+}
+
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct QuantumReadinessAssessment {
     pub overall_risk: QuantumRisk,
@@ -138,6 +151,7 @@ pub struct QuantumReadinessAssessment {
     pub pqc_recommendations: Vec<PQCRecommendation>,
     pub migration_plan: MigrationPlan,
     pub harvest_now_decrypt_later_risk: HNDLRisk,
+    pub hybrid_recommendations: Vec<HybridSchemeRecommendation>,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -173,15 +187,30 @@ pub struct MigrationPlan {
     pub phases: Vec<MigrationPhase>,
     pub estimated_duration: String,
     pub crypto_agility_score: f64,
+    pub estimated_total_months: u32,
+    pub priority: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MigrationPhase {
     pub phase_number: u32,
     pub name: String,
+    pub description: String,
+    pub duration_months: u32,
     pub tasks: Vec<String>,
     pub dependencies: Vec<String>,
     pub estimated_effort: String,
+    pub estimated_cost: String,
+}
+
+/// Hybrid classical/PQC scheme recommendation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HybridSchemeRecommendation {
+    pub use_case: String,
+    pub classical_algorithm: String,
+    pub pqc_algorithm: String,
+    pub combination_method: String,
+    pub standards_reference: String,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]

@@ -8,7 +8,7 @@
 //! - API triggers
 
 use crate::green_team::types::*;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Datelike, Timelike, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -137,9 +137,97 @@ impl ScheduleConfig {
 
     /// Calculate next run time from cron expression
     pub fn calculate_next_run(&mut self, from: DateTime<Utc>) {
-        // In production, use a cron library to parse and calculate
-        // For now, just add 24 hours as a placeholder
+        // Parse cron expression and calculate next run time
+        // Cron format: minute hour day month weekday
+        // Examples: "0 0 * * *" = daily at midnight, "0 */6 * * *" = every 6 hours
+
+        let parts: Vec<&str> = self.cron_expression.trim().split_whitespace().collect();
+        if parts.len() < 5 {
+            // Invalid cron, default to 24 hours
+            self.next_run = Some(from + chrono::Duration::hours(24));
+            return;
+        }
+
+        let minute = Self::parse_cron_field(parts[0], 0, 59);
+        let hour = Self::parse_cron_field(parts[1], 0, 23);
+        let day = Self::parse_cron_field(parts[2], 1, 31);
+        let month = Self::parse_cron_field(parts[3], 1, 12);
+        let weekday = Self::parse_cron_field(parts[4], 0, 6);
+
+        // Calculate next run based on cron fields
+        // Start from current time and find next matching time
+        let mut candidate = from + chrono::Duration::minutes(1);
+
+        for _ in 0..525600 {
+            // Max one year of iterations
+            let cand_minute = candidate.minute();
+            let cand_hour = candidate.hour();
+            let cand_day = candidate.day();
+            let cand_month = candidate.month();
+            let cand_weekday = candidate.weekday().num_days_from_sunday();
+
+            let minute_match = minute.is_empty() || minute.contains(&cand_minute);
+            let hour_match = hour.is_empty() || hour.contains(&cand_hour);
+            let day_match = day.is_empty() || day.contains(&cand_day);
+            let month_match = month.is_empty() || month.contains(&cand_month);
+            let weekday_match = weekday.is_empty() || weekday.contains(&cand_weekday);
+
+            if minute_match && hour_match && day_match && month_match && weekday_match {
+                self.next_run = Some(candidate);
+                return;
+            }
+
+            candidate = candidate + chrono::Duration::minutes(1);
+        }
+
+        // Fallback to 24 hours if no match found
         self.next_run = Some(from + chrono::Duration::hours(24));
+    }
+
+    /// Parse a single cron field into a set of valid values
+    fn parse_cron_field(field: &str, min: u32, max: u32) -> Vec<u32> {
+        if field == "*" {
+            return vec![]; // Empty means "any"
+        }
+
+        let mut values = Vec::new();
+
+        // Handle step values (e.g., */5)
+        if field.starts_with("*/") {
+            if let Ok(step) = field[2..].parse::<u32>() {
+                if step > 0 {
+                    let mut val = min;
+                    while val <= max {
+                        values.push(val);
+                        val += step;
+                    }
+                }
+            }
+            return values;
+        }
+
+        // Handle comma-separated values and ranges
+        for part in field.split(',') {
+            if let Some(dash_pos) = part.find('-') {
+                // Range (e.g., 1-5)
+                let start = part[..dash_pos].parse::<u32>().unwrap_or(min);
+                let end = part[dash_pos + 1..].parse::<u32>().unwrap_or(max);
+                for v in start..=end {
+                    if v >= min && v <= max {
+                        values.push(v);
+                    }
+                }
+            } else {
+                // Single value
+                if let Ok(v) = part.parse::<u32>() {
+                    if v >= min && v <= max {
+                        values.push(v);
+                    }
+                }
+            }
+        }
+
+        values
     }
 }
 

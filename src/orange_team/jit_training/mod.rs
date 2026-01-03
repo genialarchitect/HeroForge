@@ -188,41 +188,61 @@ impl Default for JitTrainingEngine {
     }
 }
 
+/// Generate a deterministic UUID from a seed string (for default module references)
+fn generate_module_uuid(seed: &str) -> Uuid {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    let mut hasher = DefaultHasher::new();
+    seed.hash(&mut hasher);
+    let hash = hasher.finish();
+
+    // Create UUID v4-like format from hash
+    Uuid::from_u128((hash as u128) << 64 | (hash as u128))
+}
+
 /// Create default JIT training triggers
 fn create_default_triggers() -> Vec<JitTrainingTrigger> {
+    // Use deterministic UUIDs for default training module references
+    // These can be replaced when actual modules are configured
+    let phishing_module_id = generate_module_uuid("default-phishing-awareness-module");
+    let quiz_module_id = generate_module_uuid("default-quiz-remediation-module");
+    let incident_module_id = generate_module_uuid("default-incident-response-module");
+    let login_module_id = generate_module_uuid("default-account-security-module");
+
     vec![
         JitTrainingTrigger {
-            id: Uuid::new_v4(),
+            id: generate_module_uuid("trigger-phishing-click"),
             name: "Phishing Click Response".to_string(),
             trigger_type: JitTriggerType::PhishingClick,
-            training_module_id: Uuid::nil(), // Would be set to actual module
+            training_module_id: phishing_module_id,
             delay_minutes: 0,
             is_active: true,
             created_at: Utc::now(),
         },
         JitTrainingTrigger {
-            id: Uuid::new_v4(),
+            id: generate_module_uuid("trigger-failed-quiz"),
             name: "Failed Quiz Remediation".to_string(),
             trigger_type: JitTriggerType::FailedQuiz,
-            training_module_id: Uuid::nil(),
+            training_module_id: quiz_module_id,
             delay_minutes: 60,
             is_active: true,
             created_at: Utc::now(),
         },
         JitTrainingTrigger {
-            id: Uuid::new_v4(),
+            id: generate_module_uuid("trigger-security-incident"),
             name: "Security Incident Response".to_string(),
             trigger_type: JitTriggerType::SecurityIncident,
-            training_module_id: Uuid::nil(),
+            training_module_id: incident_module_id,
             delay_minutes: 30,
             is_active: true,
             created_at: Utc::now(),
         },
         JitTrainingTrigger {
-            id: Uuid::new_v4(),
+            id: generate_module_uuid("trigger-suspicious-login"),
             name: "Suspicious Login Training".to_string(),
             trigger_type: JitTriggerType::SuspiciousLogin,
-            training_module_id: Uuid::nil(),
+            training_module_id: login_module_id,
             delay_minutes: 0,
             is_active: true,
             created_at: Utc::now(),

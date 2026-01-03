@@ -2537,6 +2537,50 @@ pub struct RuleEffectivenessWithInfo {
     pub calculated_at: DateTime<Utc>,
 }
 
+/// Calculate trend for a rule by comparing recent vs older effectiveness scores
+async fn calculate_rule_trend(pool: &SqlitePool, rule_id: &str) -> f64 {
+    // Get average score from last 7 days vs previous 7 days
+    let recent_avg: Option<(Option<f64>,)> = sqlx::query_as(
+        r#"SELECT AVG(effectiveness_score) FROM yara_rule_effectiveness
+           WHERE rule_id = ? AND date >= date('now', '-7 days')"#
+    )
+    .bind(rule_id)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+
+    let older_avg: Option<(Option<f64>,)> = sqlx::query_as(
+        r#"SELECT AVG(effectiveness_score) FROM yara_rule_effectiveness
+           WHERE rule_id = ? AND date >= date('now', '-14 days') AND date < date('now', '-7 days')"#
+    )
+    .bind(rule_id)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+
+    match (recent_avg, older_avg) {
+        (Some((Some(recent),)), Some((Some(older),))) if older > 0.0 => {
+            ((recent - older) / older) * 100.0  // Percentage change
+        }
+        _ => 0.0,
+    }
+}
+
+/// Get last match timestamp for a rule
+async fn get_rule_last_match_at(pool: &SqlitePool, rule_id: &str) -> Option<DateTime<Utc>> {
+    sqlx::query_scalar::<_, String>(
+        "SELECT MAX(created_at) FROM yara_matches WHERE rule_id = ?"
+    )
+    .bind(rule_id)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten()
+    .and_then(|s| DateTime::parse_from_rfc3339(&s).ok().map(|dt| dt.with_timezone(&Utc)))
+}
+
 /// Get all rule effectiveness scores for a user
 pub async fn get_all_yara_rule_effectiveness(
     pool: &SqlitePool,
@@ -2565,22 +2609,30 @@ pub async fn get_all_yara_rule_effectiveness(
     .fetch_all(pool)
     .await?;
 
-    Ok(rows.into_iter().map(|r| RuleEffectivenessWithInfo {
-        rule_id: r.rule_id,
-        rule_name: r.rule_name,
-        score: r.score.unwrap_or(0.5) * 100.0,
-        total_matches: r.total_matches.unwrap_or(0),
-        true_positives: r.true_positives.unwrap_or(0),
-        false_positives: r.false_positives.unwrap_or(0),
-        pending_verification: r.pending_verification.unwrap_or(0),
-        avg_scan_time_ms: r.avg_scan_time_ms.unwrap_or(0.0),
-        trend: 0.0, // TODO: Calculate trend from history
-        confidence: if r.total_matches.unwrap_or(0) >= 10 { 0.9 } else { 0.5 },
-        last_match_at: None, // TODO: Track last match
-        calculated_at: DateTime::parse_from_rfc3339(&r.calculated_at)
-            .map(|dt| dt.with_timezone(&Utc))
-            .unwrap_or_else(|_| Utc::now()),
-    }).collect())
+    let mut results = Vec::with_capacity(rows.len());
+    for r in rows {
+        let trend = calculate_rule_trend(pool, &r.rule_id).await;
+        let last_match_at = get_rule_last_match_at(pool, &r.rule_id).await;
+
+        results.push(RuleEffectivenessWithInfo {
+            rule_id: r.rule_id,
+            rule_name: r.rule_name,
+            score: r.score.unwrap_or(0.5) * 100.0,
+            total_matches: r.total_matches.unwrap_or(0),
+            true_positives: r.true_positives.unwrap_or(0),
+            false_positives: r.false_positives.unwrap_or(0),
+            pending_verification: r.pending_verification.unwrap_or(0),
+            avg_scan_time_ms: r.avg_scan_time_ms.unwrap_or(0.0),
+            trend,
+            confidence: if r.total_matches.unwrap_or(0) >= 10 { 0.9 } else { 0.5 },
+            last_match_at,
+            calculated_at: DateTime::parse_from_rfc3339(&r.calculated_at)
+                .map(|dt| dt.with_timezone(&Utc))
+                .unwrap_or_else(|_| Utc::now()),
+        });
+    }
+
+    Ok(results)
 }
 
 #[derive(sqlx::FromRow)]
@@ -2623,22 +2675,30 @@ pub async fn get_yara_rule_effectiveness(
     .fetch_optional(pool)
     .await?;
 
-    Ok(row.map(|r| RuleEffectivenessWithInfo {
-        rule_id: r.rule_id,
-        rule_name: r.rule_name,
-        score: r.score.unwrap_or(0.5) * 100.0,
-        total_matches: r.total_matches.unwrap_or(0),
-        true_positives: r.true_positives.unwrap_or(0),
-        false_positives: r.false_positives.unwrap_or(0),
-        pending_verification: r.pending_verification.unwrap_or(0),
-        avg_scan_time_ms: r.avg_scan_time_ms.unwrap_or(0.0),
-        trend: 0.0,
-        confidence: if r.total_matches.unwrap_or(0) >= 10 { 0.9 } else { 0.5 },
-        last_match_at: None,
-        calculated_at: DateTime::parse_from_rfc3339(&r.calculated_at)
-            .map(|dt| dt.with_timezone(&Utc))
-            .unwrap_or_else(|_| Utc::now()),
-    }))
+    match row {
+        Some(r) => {
+            let trend = calculate_rule_trend(pool, &r.rule_id).await;
+            let last_match_at = get_rule_last_match_at(pool, &r.rule_id).await;
+
+            Ok(Some(RuleEffectivenessWithInfo {
+                rule_id: r.rule_id,
+                rule_name: r.rule_name,
+                score: r.score.unwrap_or(0.5) * 100.0,
+                total_matches: r.total_matches.unwrap_or(0),
+                true_positives: r.true_positives.unwrap_or(0),
+                false_positives: r.false_positives.unwrap_or(0),
+                pending_verification: r.pending_verification.unwrap_or(0),
+                avg_scan_time_ms: r.avg_scan_time_ms.unwrap_or(0.0),
+                trend,
+                confidence: if r.total_matches.unwrap_or(0) >= 10 { 0.9 } else { 0.5 },
+                last_match_at,
+                calculated_at: DateTime::parse_from_rfc3339(&r.calculated_at)
+                    .map(|dt| dt.with_timezone(&Utc))
+                    .unwrap_or_else(|_| Utc::now()),
+            }))
+        }
+        None => Ok(None),
+    }
 }
 
 /// Get rules that need review (low effectiveness or high FP rate)
@@ -2675,22 +2735,30 @@ pub async fn get_yara_rules_needing_review(
     .fetch_all(pool)
     .await?;
 
-    Ok(rows.into_iter().map(|r| RuleEffectivenessWithInfo {
-        rule_id: r.rule_id,
-        rule_name: r.rule_name,
-        score: r.score.unwrap_or(0.5) * 100.0,
-        total_matches: r.total_matches.unwrap_or(0),
-        true_positives: r.true_positives.unwrap_or(0),
-        false_positives: r.false_positives.unwrap_or(0),
-        pending_verification: r.pending_verification.unwrap_or(0),
-        avg_scan_time_ms: r.avg_scan_time_ms.unwrap_or(0.0),
-        trend: 0.0,
-        confidence: if r.total_matches.unwrap_or(0) >= 10 { 0.9 } else { 0.5 },
-        last_match_at: None,
-        calculated_at: DateTime::parse_from_rfc3339(&r.calculated_at)
-            .map(|dt| dt.with_timezone(&Utc))
-            .unwrap_or_else(|_| Utc::now()),
-    }).collect())
+    let mut results = Vec::with_capacity(rows.len());
+    for r in rows {
+        let trend = calculate_rule_trend(pool, &r.rule_id).await;
+        let last_match_at = get_rule_last_match_at(pool, &r.rule_id).await;
+
+        results.push(RuleEffectivenessWithInfo {
+            rule_id: r.rule_id,
+            rule_name: r.rule_name,
+            score: r.score.unwrap_or(0.5) * 100.0,
+            total_matches: r.total_matches.unwrap_or(0),
+            true_positives: r.true_positives.unwrap_or(0),
+            false_positives: r.false_positives.unwrap_or(0),
+            pending_verification: r.pending_verification.unwrap_or(0),
+            avg_scan_time_ms: r.avg_scan_time_ms.unwrap_or(0.0),
+            trend,
+            confidence: if r.total_matches.unwrap_or(0) >= 10 { 0.9 } else { 0.5 },
+            last_match_at,
+            calculated_at: DateTime::parse_from_rfc3339(&r.calculated_at)
+                .map(|dt| dt.with_timezone(&Utc))
+                .unwrap_or_else(|_| Utc::now()),
+        });
+    }
+
+    Ok(results)
 }
 
 /// Effectiveness summary stats

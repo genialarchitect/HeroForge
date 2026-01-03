@@ -132,9 +132,36 @@ pub async fn execute_hypothesis(
 
 /// GET /api/threat-hunting/campaigns - List campaigns
 pub async fn list_campaigns(pool: web::Data<SqlitePool>) -> HttpResponse {
-    // TODO: Implement campaign listing
-    let _ = pool;
-    HttpResponse::Ok().json(Vec::<HuntCampaign>::new())
+    let rows = sqlx::query_as::<_, (String, String, Option<String>, Option<String>, Option<String>, String, Option<String>, String)>(
+        "SELECT id, name, description, start_date, end_date, status, created_by, created_at FROM hunt_campaigns ORDER BY created_at DESC"
+    )
+    .fetch_all(pool.get_ref())
+    .await;
+
+    match rows {
+        Ok(rows) => {
+            let campaigns: Vec<HuntCampaign> = rows.into_iter().filter_map(|(id, name, description, start_date, end_date, status, created_by, created_at)| {
+                Some(HuntCampaign {
+                    id,
+                    name,
+                    description,
+                    start_date: start_date.and_then(|d| chrono::DateTime::parse_from_rfc3339(&d).ok().map(|dt| dt.with_timezone(&chrono::Utc))),
+                    end_date: end_date.and_then(|d| chrono::DateTime::parse_from_rfc3339(&d).ok().map(|dt| dt.with_timezone(&chrono::Utc))),
+                    status: status.parse().unwrap_or(CampaignStatus::Planning),
+                    created_by,
+                    created_at: chrono::DateTime::parse_from_rfc3339(&created_at).ok().map(|dt| dt.with_timezone(&chrono::Utc)).unwrap_or_else(chrono::Utc::now),
+                })
+            }).collect();
+            HttpResponse::Ok().json(campaigns)
+        }
+        Err(e) => {
+            log::error!("Failed to list campaigns: {}", e);
+            HttpResponse::InternalServerError().json(json!({
+                "error": "Failed to list campaigns",
+                "details": e.to_string()
+            }))
+        }
+    }
 }
 
 /// POST /api/threat-hunting/campaigns - Create campaign
@@ -143,18 +170,60 @@ pub async fn create_campaign(
     claims: Claims,
     body: web::Json<CreateCampaignRequest>,
 ) -> HttpResponse {
-    // TODO: Implement campaign creation
-    let _ = (pool, claims, body);
-    HttpResponse::NotImplemented().json(json!({
-        "error": "Campaign creation not yet implemented"
-    }))
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = chrono::Utc::now();
+    let request = body.into_inner();
+
+    let result = sqlx::query(
+        "INSERT INTO hunt_campaigns (id, name, description, start_date, end_date, status, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+    )
+    .bind(&id)
+    .bind(&request.name)
+    .bind(&request.description)
+    .bind(request.start_date.map(|d| d.to_rfc3339()))
+    .bind(request.end_date.map(|d| d.to_rfc3339()))
+    .bind(CampaignStatus::Planning.to_string())
+    .bind(&claims.sub)
+    .bind(now.to_rfc3339())
+    .execute(pool.get_ref())
+    .await;
+
+    match result {
+        Ok(_) => {
+            let campaign = HuntCampaign {
+                id,
+                name: request.name,
+                description: request.description,
+                start_date: request.start_date,
+                end_date: request.end_date,
+                status: CampaignStatus::Planning,
+                created_by: Some(claims.sub.clone()),
+                created_at: now,
+            };
+            HttpResponse::Created().json(campaign)
+        }
+        Err(e) => {
+            log::error!("Failed to create campaign: {}", e);
+            HttpResponse::InternalServerError().json(json!({
+                "error": "Failed to create campaign",
+                "details": e.to_string()
+            }))
+        }
+    }
 }
 
 /// GET /api/threat-hunting/executions - List hunt executions
 pub async fn list_executions(pool: web::Data<SqlitePool>) -> HttpResponse {
-    // TODO: Implement execution listing
-    let _ = pool;
-    HttpResponse::Ok().json(Vec::<HuntExecution>::new())
+    match automation::get_execution_history(pool.get_ref(), None, 100).await {
+        Ok(executions) => HttpResponse::Ok().json(executions),
+        Err(e) => {
+            log::error!("Failed to list executions: {}", e);
+            HttpResponse::InternalServerError().json(json!({
+                "error": "Failed to list executions",
+                "details": e.to_string()
+            }))
+        }
+    }
 }
 
 /// POST /api/threat-hunting/queries/parse - Parse DSL query
@@ -176,17 +245,51 @@ pub async fn parse_query(body: web::Json<ParseQueryRequest>) -> HttpResponse {
 }
 
 /// POST /api/threat-hunting/queries/execute - Execute query
-pub async fn execute_query(body: web::Json<ExecuteQueryRequest>) -> HttpResponse {
+pub async fn execute_query(
+    pool: web::Data<SqlitePool>,
+    body: web::Json<ExecuteQueryRequest>,
+) -> HttpResponse {
+    let start_time = std::time::Instant::now();
     let mut parser = QueryParser::new(body.query.clone());
 
     match parser.parse() {
-        Ok(_ast) => {
-            // TODO: Execute query against data lake
-            HttpResponse::Ok().json(ExecuteQueryResponse {
-                results: vec![],
-                count: 0,
-                execution_time_ms: 0,
-            })
+        Ok(ast) => {
+            // Create query context from request parameters
+            let now = chrono::Utc::now();
+            let time_range = body.time_range.clone().unwrap_or(TimeRange {
+                start: now - chrono::Duration::days(7),
+                end: now,
+            });
+            let limit = body.limit.unwrap_or(1000);
+
+            let context = crate::threat_hunting::query_dsl::QueryContext {
+                start_time: time_range.start,
+                end_time: time_range.end,
+                source_filter: None,
+                max_results: limit,
+                offset: 0,
+            };
+
+            // Execute the query
+            let mut executor = crate::threat_hunting::query_dsl::QueryExecutor::new(pool.get_ref().clone());
+            match executor.execute_with_context(&ast, &context).await {
+                Ok(results) => {
+                    let execution_time = start_time.elapsed();
+                    let count = results.len() as i64;
+                    HttpResponse::Ok().json(ExecuteQueryResponse {
+                        results,
+                        count,
+                        execution_time_ms: execution_time.as_millis() as i64,
+                    })
+                }
+                Err(e) => {
+                    log::error!("Query execution failed: {}", e);
+                    HttpResponse::InternalServerError().json(json!({
+                        "error": "Query execution failed",
+                        "details": e.to_string()
+                    }))
+                }
+            }
         }
         Err(e) => {
             HttpResponse::BadRequest().json(json!({

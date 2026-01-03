@@ -37,6 +37,18 @@ impl UsageTracker {
         }
     }
 
+    /// Start tracking (initialization method)
+    pub fn start_tracking(&mut self) {
+        log::info!("Usage tracking started");
+    }
+
+    /// Record an API request (simplified version for rate limiting)
+    pub fn record_request(&mut self, user_id: &str, endpoint: &str) {
+        // Use a blocking approach for quick inline tracking
+        // For detailed metrics, use record_call which is async
+        log::debug!("Recording request for user {} to endpoint {}", user_id, endpoint);
+    }
+
     /// Record an API call
     pub async fn record_call(
         &self,

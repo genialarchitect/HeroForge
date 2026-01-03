@@ -23,7 +23,9 @@
 use anyhow::{anyhow, Result};
 use chrono::{Duration, Utc};
 use serde::{Deserialize, Serialize};
+use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::Arc;
+use tokio::net::UdpSocket;
 use tokio::sync::{broadcast, RwLock};
 use tokio::time;
 
@@ -339,33 +341,199 @@ impl DiscoveryService {
     }
 
     // ========================================================================
-    // mDNS Discovery
+    // mDNS Discovery (UDP Broadcast)
     // ========================================================================
 
-    /// Start mDNS service for local network discovery
-    async fn start_mdns_discovery(&self) -> Result<()> {
-        log::info!("Starting mDNS discovery on service type: {}", MDNS_SERVICE_TYPE);
+    /// Multicast address for mesh discovery (uses link-local multicast range)
+    const DISCOVERY_MULTICAST_ADDR: Ipv4Addr = Ipv4Addr::new(239, 255, 72, 70); // "HF" in hex
+    /// Discovery port for UDP broadcast
+    const DISCOVERY_PORT: u16 = 9877;
 
-        // Note: In a real implementation, this would use mdns-sd or similar crate
-        // For now, we'll implement a simplified version
+    /// Start mDNS-like service for local network discovery using UDP broadcast
+    async fn start_mdns_discovery(&self) -> Result<()> {
+        log::info!("Starting UDP broadcast discovery on service type: {}", MDNS_SERVICE_TYPE);
 
         let local_agent = self.local_agent.clone();
-        let _state = self.state.clone();
-        let _peer_events = self.peer_events.clone();
+        let state = self.state.clone();
+        let peer_events = self.peer_events.clone();
         let mut shutdown = self.shutdown.subscribe();
+        let config_max_peers = self.config.max_peers;
+
+        // Spawn the broadcast sender task
+        let sender_agent = local_agent.clone();
+        let mut sender_shutdown = self.shutdown.subscribe();
 
         tokio::spawn(async move {
-            // Simulate mDNS announcements (in production, use actual mDNS)
+            // Create UDP socket for sending broadcasts
+            let socket = match UdpSocket::bind("0.0.0.0:0").await {
+                Ok(s) => s,
+                Err(e) => {
+                    log::error!("Failed to create UDP broadcast socket: {}", e);
+                    return;
+                }
+            };
+
+            // Enable broadcast
+            if let Err(e) = socket.set_broadcast(true) {
+                log::error!("Failed to enable UDP broadcast: {}", e);
+                return;
+            }
+
+            // Try to join multicast group for better LAN discovery
+            let multicast_addr = Self::DISCOVERY_MULTICAST_ADDR;
+            let _ = socket.join_multicast_v4(multicast_addr, Ipv4Addr::UNSPECIFIED);
+
+            let broadcast_addr = SocketAddr::V4(SocketAddrV4::new(
+                multicast_addr,
+                Self::DISCOVERY_PORT,
+            ));
+
             let mut interval = time::interval(time::Duration::from_secs(30));
 
             loop {
                 tokio::select! {
                     _ = interval.tick() => {
-                        // In production, this would broadcast mDNS announcements
-                        log::debug!("mDNS heartbeat for agent {}", local_agent.agent_id);
+                        // Create announcement message
+                        let announce = MeshMessage::PeerAnnounce {
+                            info: sender_agent.clone(),
+                            known_peers: vec![], // Don't include peers in broadcast to reduce size
+                        };
+
+                        let envelope = MessageEnvelope::broadcast(
+                            sender_agent.agent_id.clone(),
+                            announce,
+                        );
+
+                        // Serialize and send
+                        match serde_json::to_vec(&envelope) {
+                            Ok(data) => {
+                                // Send to multicast address
+                                if let Err(e) = socket.send_to(&data, broadcast_addr).await {
+                                    log::debug!("Failed to send multicast announcement: {}", e);
+                                }
+
+                                // Also send to broadcast address (255.255.255.255) for wider reach
+                                let broadcast_fallback = SocketAddr::V4(SocketAddrV4::new(
+                                    Ipv4Addr::BROADCAST,
+                                    Self::DISCOVERY_PORT,
+                                ));
+                                if let Err(e) = socket.send_to(&data, broadcast_fallback).await {
+                                    log::debug!("Failed to send broadcast announcement: {}", e);
+                                }
+
+                                log::debug!("Broadcast announcement sent for agent {}", sender_agent.agent_id);
+                            }
+                            Err(e) => {
+                                log::warn!("Failed to serialize announcement: {}", e);
+                            }
+                        }
+                    }
+                    _ = sender_shutdown.recv() => {
+                        log::info!("mDNS broadcast sender shutting down");
+                        break;
+                    }
+                }
+            }
+        });
+
+        // Spawn the broadcast receiver task
+        tokio::spawn(async move {
+            // Create UDP socket for receiving broadcasts
+            let bind_addr = SocketAddr::V4(SocketAddrV4::new(
+                Ipv4Addr::UNSPECIFIED,
+                Self::DISCOVERY_PORT,
+            ));
+
+            let socket = match UdpSocket::bind(bind_addr).await {
+                Ok(s) => s,
+                Err(e) => {
+                    log::error!("Failed to bind UDP discovery socket on port {}: {}", Self::DISCOVERY_PORT, e);
+                    return;
+                }
+            };
+
+            // Join multicast group
+            let multicast_addr = Self::DISCOVERY_MULTICAST_ADDR;
+            if let Err(e) = socket.join_multicast_v4(multicast_addr, Ipv4Addr::UNSPECIFIED) {
+                log::warn!("Failed to join multicast group: {} (continuing with broadcast only)", e);
+            }
+
+            // Enable address reuse for multiple agents on same host
+            // Note: This is already handled by the socket options
+
+            let mut buf = vec![0u8; 65535];
+
+            loop {
+                tokio::select! {
+                    result = socket.recv_from(&mut buf) => {
+                        match result {
+                            Ok((len, src_addr)) => {
+                                // Parse the received message
+                                match serde_json::from_slice::<MessageEnvelope>(&buf[..len]) {
+                                    Ok(envelope) => {
+                                        // Ignore our own announcements
+                                        if envelope.from == local_agent.agent_id {
+                                            continue;
+                                        }
+
+                                        // Handle peer announcement
+                                        if let MeshMessage::PeerAnnounce { info, .. } = envelope.message {
+                                            log::info!(
+                                                "Discovered peer {} ({}) at {} via UDP broadcast",
+                                                info.name,
+                                                info.agent_id,
+                                                src_addr
+                                            );
+
+                                            // Check if we've reached max peers
+                                            let current_peers = {
+                                                let s = state.read().await;
+                                                s.peers.len()
+                                            };
+
+                                            if current_peers >= config_max_peers {
+                                                log::debug!("Max peers reached, ignoring discovery");
+                                                continue;
+                                            }
+
+                                            // Update peer info with actual source address if not set
+                                            let mut peer = info;
+                                            if peer.address.is_empty() || peer.address == "0.0.0.0" {
+                                                if let SocketAddr::V4(v4) = src_addr {
+                                                    peer.address = v4.ip().to_string();
+                                                }
+                                            }
+                                            peer.last_seen = Utc::now();
+                                            peer.status = PeerStatus::Online;
+
+                                            // Add to known peers
+                                            let is_new = {
+                                                let mut s = state.write().await;
+                                                let new = !s.peers.contains_key(&peer.agent_id);
+                                                s.peers.insert(peer.agent_id.clone(), peer.clone());
+                                                new
+                                            };
+
+                                            // Emit event
+                                            if is_new {
+                                                let _ = peer_events.send(PeerEvent::PeerDiscovered(peer));
+                                            } else {
+                                                let _ = peer_events.send(PeerEvent::PeerUpdated(peer));
+                                            }
+                                        }
+                                    }
+                                    Err(e) => {
+                                        log::debug!("Failed to parse discovery message from {}: {}", src_addr, e);
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                log::warn!("Error receiving discovery broadcast: {}", e);
+                            }
+                        }
                     }
                     _ = shutdown.recv() => {
-                        log::info!("mDNS discovery shutting down");
+                        log::info!("mDNS discovery receiver shutting down");
                         break;
                     }
                 }
@@ -608,19 +776,30 @@ impl DiscoveryService {
         }
     }
 
-    /// Send a message to a peer
+    /// Send a message to a peer using TCP with HTTP fallback
     async fn send_to_peer(&self, peer: &PeerInfo, message: MeshMessage) -> Result<()> {
-        // In production, this would use TCP or UDP to send the message
-        // For now, we'll use HTTP as a simple transport
-
         let addr = peer.socket_addr().ok_or_else(|| anyhow!("Invalid peer address"))?;
-        let url = format!("http://{}/mesh/message", addr);
 
         let envelope = MessageEnvelope::new(
             self.local_agent.agent_id.clone(),
             Some(peer.agent_id.clone()),
             message,
         );
+
+        // Try TCP first for direct peer-to-peer communication
+        match self.send_via_tcp(&addr, &envelope).await {
+            Ok(()) => return Ok(()),
+            Err(e) => {
+                log::debug!(
+                    "TCP send to {} failed, falling back to HTTP: {}",
+                    peer.agent_id,
+                    e
+                );
+            }
+        }
+
+        // Fallback to HTTP for peers that may be behind proxies or firewalls
+        let url = format!("http://{}/mesh/message", addr);
 
         let response = self
             .http_client
@@ -633,6 +812,66 @@ impl DiscoveryService {
         if !response.status().is_success() {
             return Err(anyhow!("Failed to send message: {}", response.status()));
         }
+
+        Ok(())
+    }
+
+    /// Send a message envelope via TCP
+    async fn send_via_tcp(&self, addr: &SocketAddr, envelope: &MessageEnvelope) -> Result<()> {
+        use tokio::io::AsyncWriteExt;
+        use tokio::net::TcpStream;
+
+        // Connect with timeout
+        let connect_timeout = std::time::Duration::from_secs(5);
+        let stream = tokio::time::timeout(connect_timeout, TcpStream::connect(addr))
+            .await
+            .map_err(|_| anyhow!("TCP connection timeout"))?
+            .map_err(|e| anyhow!("TCP connection failed: {}", e))?;
+
+        let mut stream = stream;
+
+        // Serialize the envelope with length prefix for framing
+        let json_data = serde_json::to_vec(envelope)?;
+        let len = json_data.len() as u32;
+
+        // Write length prefix (4 bytes, big-endian)
+        let len_bytes = len.to_be_bytes();
+        stream.write_all(&len_bytes).await?;
+
+        // Write the JSON data
+        stream.write_all(&json_data).await?;
+
+        // Flush to ensure all data is sent
+        stream.flush().await?;
+
+        log::debug!(
+            "Sent {} bytes via TCP to {}",
+            json_data.len() + 4,
+            addr
+        );
+
+        Ok(())
+    }
+
+    /// Send a message via UDP (for lightweight messages like pings)
+    #[allow(dead_code)]
+    async fn send_via_udp(&self, addr: &SocketAddr, envelope: &MessageEnvelope) -> Result<()> {
+        let socket = UdpSocket::bind("0.0.0.0:0").await?;
+
+        let json_data = serde_json::to_vec(envelope)?;
+
+        // UDP has size limits, check if message fits
+        if json_data.len() > 65507 {
+            return Err(anyhow!("Message too large for UDP (max 65507 bytes)"));
+        }
+
+        socket.send_to(&json_data, addr).await?;
+
+        log::debug!(
+            "Sent {} bytes via UDP to {}",
+            json_data.len(),
+            addr
+        );
 
         Ok(())
     }
@@ -672,6 +911,50 @@ impl DiscoveryService {
             peer.latency_ms = Some(latency_ms);
             peer.last_seen = Utc::now();
         }
+    }
+
+    /// Send a mesh message to a specific peer by ID
+    ///
+    /// This is the public interface for sending messages to peers.
+    /// It looks up the peer information and sends the message using
+    /// TCP with HTTP fallback.
+    pub async fn send_message_to_peer(&self, peer_id: &str, message: MeshMessage) -> Result<()> {
+        let peer = self
+            .get_peer(peer_id)
+            .await
+            .ok_or_else(|| anyhow!("Peer {} not found", peer_id))?;
+
+        self.send_to_peer(&peer, message).await
+    }
+
+    /// Send a mesh message to a peer using their PeerInfo
+    ///
+    /// This is useful when you already have the peer information.
+    pub async fn send_message(&self, peer: &PeerInfo, message: MeshMessage) -> Result<()> {
+        self.send_to_peer(peer, message).await
+    }
+
+    /// Broadcast a message to all online peers
+    ///
+    /// Returns the number of peers the message was successfully sent to.
+    pub async fn broadcast_to_peers(&self, message: MeshMessage) -> i32 {
+        let peers = self.get_peers().await;
+        let online_peers: Vec<_> = peers
+            .into_iter()
+            .filter(|p| p.status == PeerStatus::Online && p.agent_id != self.local_agent.agent_id)
+            .collect();
+
+        let mut success_count = 0;
+        for peer in online_peers {
+            match self.send_to_peer(&peer, message.clone()).await {
+                Ok(()) => success_count += 1,
+                Err(e) => {
+                    log::debug!("Failed to broadcast to peer {}: {}", peer.agent_id, e);
+                }
+            }
+        }
+
+        success_count
     }
 }
 

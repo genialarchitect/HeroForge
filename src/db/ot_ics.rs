@@ -575,6 +575,60 @@ pub async fn get_ot_dashboard_stats(pool: &SqlitePool, user_id: &str) -> Result<
         offset: Some(0),
     }).await?;
 
+    // Calculate total vulnerabilities by summing vulnerabilities_found from scans
+    let vuln_count: (i64,) = sqlx::query_as(
+        "SELECT COALESCE(SUM(vulnerabilities_found), 0) FROM ot_scans WHERE user_id = ?"
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await?;
+    let total_vulnerabilities = vuln_count.0 as i32;
+
+    // Get vulnerability severity breakdown by parsing vulnerabilities JSON from assets
+    let asset_vulns: Vec<(String,)> = sqlx::query_as(
+        "SELECT vulnerabilities FROM ot_assets WHERE user_id = ? AND vulnerabilities != '[]'"
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?;
+
+    // Parse and count vulnerabilities by severity
+    let mut severity_counts: std::collections::HashMap<String, i32> = std::collections::HashMap::new();
+    for (vuln_json,) in asset_vulns {
+        if let Ok(vulns) = serde_json::from_str::<Vec<OtVulnerability>>(&vuln_json) {
+            for vuln in vulns {
+                *severity_counts.entry(vuln.severity.to_string()).or_insert(0) += 1;
+            }
+        }
+    }
+    let vulnerabilities_by_severity: Vec<SeverityCount> = severity_counts
+        .into_iter()
+        .map(|(severity, count)| SeverityCount { severity, count })
+        .collect();
+
+    // Get distinct protocols from all assets
+    let asset_protocols: Vec<(String,)> = sqlx::query_as(
+        "SELECT protocols FROM ot_assets WHERE user_id = ? AND protocols != '[]'"
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?;
+
+    // Parse and count protocols
+    let mut protocol_counts: std::collections::HashMap<String, i32> = std::collections::HashMap::new();
+    for (protocol_json,) in asset_protocols {
+        if let Ok(protocols) = serde_json::from_str::<Vec<OtProtocolType>>(&protocol_json) {
+            for protocol in protocols {
+                let proto_name = format!("{:?}", protocol);
+                *protocol_counts.entry(proto_name).or_insert(0) += 1;
+            }
+        }
+    }
+    let protocols_detected: Vec<ProtocolCount> = protocol_counts
+        .into_iter()
+        .map(|(protocol, count)| ProtocolCount { protocol, count })
+        .collect();
+
     Ok(OtDashboardStats {
         total_assets: total.0 as i32,
         assets_by_type: assets_by_type.into_iter()
@@ -598,9 +652,9 @@ pub async fn get_ot_dashboard_stats(pool: &SqlitePool, user_id: &str) -> Result<
                 PurdueCount { level: l, name, count: count as i32 }
             })
             .collect(),
-        total_vulnerabilities: 0, // TODO: Calculate from assets
-        vulnerabilities_by_severity: Vec::new(),
+        total_vulnerabilities,
+        vulnerabilities_by_severity,
         recent_scans,
-        protocols_detected: Vec::new(), // TODO: Calculate from assets
+        protocols_detected,
     })
 }

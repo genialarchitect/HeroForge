@@ -116,8 +116,74 @@ pub async fn start_scan(
             actix_web::error::ErrorInternalServerError("Failed to create scan")
         })?;
 
-    // TODO: Spawn async scan task here
-    // For now, just return the scan record
+    // Spawn async scan task
+    let scan_id = scan.id.clone();
+    let target_range = request.target_range.clone();
+    let scan_type = request.scan_type.clone();
+    let pool_clone = pool.get_ref().clone();
+
+    tokio::spawn(async move {
+        log::info!("Starting IoT scan {} (type: {})", scan_id, scan_type);
+
+        // Update status to running
+        if let Err(e) = iot::update_iot_scan_status(&pool_clone, &scan_id, "running").await {
+            log::error!("Failed to update IoT scan status to running: {}", e);
+            return;
+        }
+
+        // Build scan config
+        let config = crate::iot::types::IotScanConfig {
+            name: format!("Scan {}", scan_id),
+            target_range,
+            scan_type: match scan_type.as_str() {
+                "discovery" => crate::iot::types::IotScanType::Discovery,
+                "vulnerability" => crate::iot::types::IotScanType::Vulnerability,
+                "credential" | "credential_check" => crate::iot::types::IotScanType::Credential,
+                "comprehensive" | "full" => crate::iot::types::IotScanType::Comprehensive,
+                _ => crate::iot::types::IotScanType::Discovery,
+            },
+            enable_mdns: true,
+            enable_ssdp: true,
+            enable_mqtt: true,
+            check_credentials: scan_type == "credential_check" || scan_type == "full",
+            timeout_secs: 30,
+            max_concurrent: 20,
+            customer_id: None,
+            engagement_id: None,
+        };
+
+        // Run discovery
+        let engine = crate::iot::discovery::IotDiscoveryEngine::new(
+            std::time::Duration::from_secs(config.timeout_secs),
+            config.max_concurrent,
+        );
+
+        match engine.discover(&config).await {
+            Ok(discovered) => {
+                let device_count = discovered.len() as i32;
+                // Count high-risk devices (devices on common vulnerable ports)
+                let vuln_count = discovered.iter()
+                    .filter(|d| d.open_ports.iter().any(|p| [23, 21, 80, 8080].contains(p)))
+                    .count() as i32;
+
+                // Update scan results
+                if let Err(e) = iot::update_iot_scan_results(&pool_clone, &scan_id, device_count, vuln_count).await {
+                    log::error!("Failed to update IoT scan results: {}", e);
+                }
+
+                // Mark as completed
+                if let Err(e) = iot::update_iot_scan_status(&pool_clone, &scan_id, "completed").await {
+                    log::error!("Failed to update IoT scan status to completed: {}", e);
+                }
+
+                log::info!("IoT scan {} completed: {} devices discovered, {} vulnerabilities", scan_id, device_count, vuln_count);
+            }
+            Err(e) => {
+                log::error!("IoT scan {} failed: {}", scan_id, e);
+                let _ = iot::update_iot_scan_status(&pool_clone, &scan_id, "failed").await;
+            }
+        }
+    });
 
     Ok(HttpResponse::Accepted().json(scan))
 }
