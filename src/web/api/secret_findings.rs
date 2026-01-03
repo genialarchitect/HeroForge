@@ -466,24 +466,103 @@ async fn run_git_secret_scan(
     .await;
 
     // Determine the repository path
+    let had_local_path = repo_path.is_some();
     let path = if let Some(p) = repo_path {
         PathBuf::from(p)
-    } else if let Some(_url) = &repo_url {
-        // TODO: Clone the repository to a temporary directory
-        // For now, we just error out if only URL is provided
-        let _ = sqlx::query(
-            "UPDATE git_secret_scans SET status = 'failed', error_message = ?1, completed_at = ?2, updated_at = ?3 WHERE id = ?4",
-        )
-        .bind("Repository URL cloning not yet implemented. Please provide a local path.")
-        .bind(Utc::now())
-        .bind(Utc::now())
-        .bind(scan_id)
-        .execute(pool)
-        .await;
-        return;
+    } else if let Some(url) = &repo_url {
+        // Clone the repository to a temporary directory
+        let temp_dir = match std::env::var("GIT_CLONE_DIR") {
+            Ok(dir) => PathBuf::from(dir),
+            Err(_) => std::env::temp_dir().join("heroforge_git_scans"),
+        };
+
+        // Create temp directory if needed
+        if let Err(e) = std::fs::create_dir_all(&temp_dir) {
+            let _ = sqlx::query(
+                "UPDATE git_secret_scans SET status = 'failed', error_message = ?1, completed_at = ?2, updated_at = ?3 WHERE id = ?4",
+            )
+            .bind(format!("Failed to create temp directory: {}", e))
+            .bind(Utc::now())
+            .bind(Utc::now())
+            .bind(scan_id)
+            .execute(pool)
+            .await;
+            return;
+        }
+
+        // Generate unique clone path using scan_id
+        let clone_path = temp_dir.join(format!("repo_{}", scan_id));
+
+        // Remove existing directory if present
+        if clone_path.exists() {
+            let _ = std::fs::remove_dir_all(&clone_path);
+        }
+
+        // Clone using git command (most reliable for various auth scenarios)
+        let clone_result = tokio::process::Command::new("git")
+            .args(["clone", "--depth", "1", "--single-branch"])
+            .arg(url)
+            .arg(&clone_path)
+            .output()
+            .await;
+
+        match clone_result {
+            Ok(output) if output.status.success() => {
+                log::info!("Successfully cloned repository {} to {:?}", url, clone_path);
+
+                // If we need full history for historical scanning, fetch more
+                if scan_history && history_depth > 1 {
+                    let fetch_result = tokio::process::Command::new("git")
+                        .current_dir(&clone_path)
+                        .args(["fetch", "--depth", &history_depth.to_string()])
+                        .output()
+                        .await;
+
+                    if let Err(e) = fetch_result {
+                        log::warn!("Failed to fetch history depth: {}", e);
+                    }
+                }
+
+                clone_path
+            }
+            Ok(output) => {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                let error_msg = format!("Git clone failed: {}", stderr);
+                log::error!("{}", error_msg);
+
+                let _ = sqlx::query(
+                    "UPDATE git_secret_scans SET status = 'failed', error_message = ?1, completed_at = ?2, updated_at = ?3 WHERE id = ?4",
+                )
+                .bind(&error_msg)
+                .bind(Utc::now())
+                .bind(Utc::now())
+                .bind(scan_id)
+                .execute(pool)
+                .await;
+                return;
+            }
+            Err(e) => {
+                let error_msg = format!("Failed to execute git clone: {}", e);
+                log::error!("{}", error_msg);
+
+                let _ = sqlx::query(
+                    "UPDATE git_secret_scans SET status = 'failed', error_message = ?1, completed_at = ?2, updated_at = ?3 WHERE id = ?4",
+                )
+                .bind(&error_msg)
+                .bind(Utc::now())
+                .bind(Utc::now())
+                .bind(scan_id)
+                .execute(pool)
+                .await;
+                return;
+            }
+        }
     } else {
         return;
     };
+
+    // Track if we cloned so we can cleanup later
+    let is_cloned = repo_url.is_some() && !had_local_path;
 
     // Create scanner configuration
     let mut config = GitScanConfig::default();
@@ -588,6 +667,15 @@ async fn run_git_secret_scan(
             .await;
 
             log::error!("Git secret scan {} failed: {}", scan_id, e);
+        }
+    }
+
+    // Cleanup cloned repository if we cloned it
+    if is_cloned {
+        if let Err(e) = std::fs::remove_dir_all(&path) {
+            log::warn!("Failed to cleanup cloned repository at {:?}: {}", path, e);
+        } else {
+            log::debug!("Cleaned up cloned repository at {:?}", path);
         }
     }
 }
