@@ -3,13 +3,30 @@
 //! Implements the GitPlatformClient trait for GitHub's REST API.
 
 use anyhow::{anyhow, Result};
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
 use log::{debug, warn};
 use reqwest::{Client, StatusCode};
-use serde::Deserialize;
-use std::time::Duration;
+use serde::{Deserialize, Serialize};
+use std::sync::Mutex;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use super::types::*;
 use super::GitPlatformClient;
+
+/// JWT claims for GitHub App authentication
+#[derive(Debug, Serialize)]
+struct GitHubAppJwtClaims {
+    iat: u64,  // Issued at time
+    exp: u64,  // Expiration time (max 10 minutes)
+    iss: String,  // GitHub App ID
+}
+
+/// Cached installation token
+struct CachedToken {
+    token: String,
+    expires_at: u64,
+}
 
 /// GitHub API client
 #[allow(dead_code)]
@@ -17,6 +34,7 @@ pub struct GitHubClient {
     client: Client,
     base_url: String,
     auth: GitAuthMethod,
+    installation_token_cache: Mutex<Option<CachedToken>>,
 }
 
 impl GitHubClient {
@@ -37,6 +55,7 @@ impl GitHubClient {
             client,
             base_url: "https://api.github.com".to_string(),
             auth,
+            installation_token_cache: Mutex::new(None),
         }
     }
 
@@ -52,10 +71,114 @@ impl GitHubClient {
             client,
             base_url: base_url.trim_end_matches('/').to_string(),
             auth,
+            installation_token_cache: Mutex::new(None),
         }
     }
 
+    /// Generate a JWT for GitHub App authentication
+    fn generate_app_jwt(app_id: &str, private_key: &str) -> Result<String> {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|e| anyhow!("Time error: {}", e))?
+            .as_secs();
+
+        let claims = GitHubAppJwtClaims {
+            iat: now - 60, // Allow for clock drift
+            exp: now + 600, // JWT valid for 10 minutes
+            iss: app_id.to_string(),
+        };
+
+        let header = Header::new(Algorithm::RS256);
+        let key = EncodingKey::from_rsa_pem(private_key.as_bytes())
+            .map_err(|e| anyhow!("Invalid private key: {}", e))?;
+
+        encode(&header, &claims, &key)
+            .map_err(|e| anyhow!("JWT encoding error: {}", e))
+    }
+
+    /// Get installation access token (cached)
+    async fn get_installation_token(&self, app_id: &str, installation_id: &str, private_key: &str) -> Result<String> {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|e| anyhow!("Time error: {}", e))?
+            .as_secs();
+
+        // Check cache
+        {
+            let cache = self.installation_token_cache.lock().unwrap();
+            if let Some(ref cached) = *cache {
+                if cached.expires_at > now + 60 {
+                    return Ok(cached.token.clone());
+                }
+            }
+        }
+
+        // Generate JWT
+        let jwt = Self::generate_app_jwt(app_id, private_key)?;
+
+        // Request installation token
+        let url = format!("{}/app/installations/{}/access_tokens", self.base_url, installation_id);
+        let response = self.client
+            .post(&url)
+            .header("Accept", "application/vnd.github+json")
+            .header("Authorization", format!("Bearer {}", jwt))
+            .send()
+            .await
+            .map_err(|e| anyhow!("Request error: {}", e))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(anyhow!("Failed to get installation token: {} - {}", status, body));
+        }
+
+        #[derive(Deserialize)]
+        struct TokenResponse {
+            token: String,
+            expires_at: String,
+        }
+
+        let token_response: TokenResponse = response.json().await
+            .map_err(|e| anyhow!("Failed to parse token response: {}", e))?;
+
+        // Parse expiration and cache
+        let expires_at = chrono::DateTime::parse_from_rfc3339(&token_response.expires_at)
+            .map(|dt| dt.timestamp() as u64)
+            .unwrap_or(now + 3600);
+
+        {
+            let mut cache = self.installation_token_cache.lock().unwrap();
+            *cache = Some(CachedToken {
+                token: token_response.token.clone(),
+                expires_at,
+            });
+        }
+
+        Ok(token_response.token)
+    }
+
     /// Build a request with appropriate headers
+    async fn build_request_async(&self, url: &str) -> Result<reqwest::RequestBuilder> {
+        let mut req = self.client.get(url).header("Accept", "application/vnd.github+json");
+
+        match &self.auth {
+            GitAuthMethod::Token(token) => {
+                req = req.header("Authorization", format!("Bearer {}", token));
+            }
+            GitAuthMethod::OAuth { token } => {
+                req = req.header("Authorization", format!("token {}", token));
+            }
+            GitAuthMethod::GitHubApp { app_id, installation_id, private_key } => {
+                let token = self.get_installation_token(app_id, installation_id, private_key).await?;
+                req = req.header("Authorization", format!("token {}", token));
+            }
+            GitAuthMethod::None => {}
+        }
+
+        Ok(req)
+    }
+
+    /// Build a request with appropriate headers (sync version for simple auth)
     fn build_request(&self, url: &str) -> reqwest::RequestBuilder {
         let mut req = self.client.get(url).header("Accept", "application/vnd.github+json");
 
@@ -67,7 +190,10 @@ impl GitHubClient {
                 req = req.header("Authorization", format!("token {}", token));
             }
             GitAuthMethod::None => {}
-            _ => {} // Other auth methods not yet implemented
+            GitAuthMethod::GitHubApp { .. } => {
+                // For App auth, use build_request_async instead
+                warn!("GitHubApp auth requires async token fetch, use build_request_async");
+            }
         }
 
         req
@@ -85,7 +211,7 @@ impl GitHubClient {
 
         loop {
             let paginated_url = format!("{}?per_page={}&page={}", url, per_page, page);
-            let response = self.build_request(&paginated_url).send().await?;
+            let response = self.build_request_async(&paginated_url).await?.send().await?;
 
             if response.status() == StatusCode::NOT_FOUND {
                 break;

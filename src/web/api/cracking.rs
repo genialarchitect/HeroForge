@@ -2,11 +2,15 @@
 
 #![allow(dead_code)]
 
+use actix_multipart::Multipart;
 use actix_web::{web, HttpResponse};
 use sqlx::sqlite::SqlitePool;
 use serde::Deserialize;
 use std::sync::Arc;
+use std::io::BufRead;
 use tokio::sync::RwLock;
+use tokio::io::AsyncWriteExt;
+use futures_util::StreamExt;
 
 use crate::cracking::{
     CrackingEngine, CreateCrackingJobRequest, CrackerType, HashType,
@@ -183,17 +187,120 @@ pub async fn list_wordlists(
     Ok(HttpResponse::Ok().json(wordlists))
 }
 
-/// Upload a new wordlist
+/// Upload a new wordlist (multipart file upload)
 pub async fn upload_wordlist(
-    _pool: web::Data<SqlitePool>,
-    _claims: Claims,
-    _body: web::Json<CreateWordlistRequest>,
+    pool: web::Data<SqlitePool>,
+    claims: Claims,
+    mut payload: Multipart,
 ) -> Result<HttpResponse, ApiError> {
-    // In a real implementation, this would handle multipart file upload
-    // For now, return a placeholder response
-    Ok(HttpResponse::NotImplemented().json(serde_json::json!({
-        "error": "Wordlist upload via file not yet implemented. Use file path for now."
-    })))
+    let mut name: Option<String> = None;
+    let mut description: Option<String> = None;
+    let mut category: Option<String> = None;
+    let mut file_data: Option<Vec<u8>> = None;
+    let mut original_filename: Option<String> = None;
+
+    // Parse multipart form fields
+    while let Some(item) = payload.next().await {
+        let mut field = item.map_err(|e| ApiError::bad_request(format!("Multipart error: {}", e)))?;
+
+        // Get content disposition, skip if not present
+        let content_disposition = match field.content_disposition() {
+            Some(cd) => cd,
+            None => continue,
+        };
+
+        let field_name = content_disposition.get_name();
+
+        match field_name {
+            Some("name") => {
+                let mut data = Vec::new();
+                while let Some(chunk) = field.next().await {
+                    let chunk = chunk.map_err(|e| ApiError::bad_request(e.to_string()))?;
+                    data.extend_from_slice(&chunk);
+                }
+                name = Some(String::from_utf8_lossy(&data).to_string());
+            }
+            Some("description") => {
+                let mut data = Vec::new();
+                while let Some(chunk) = field.next().await {
+                    let chunk = chunk.map_err(|e| ApiError::bad_request(e.to_string()))?;
+                    data.extend_from_slice(&chunk);
+                }
+                description = Some(String::from_utf8_lossy(&data).to_string());
+            }
+            Some("category") => {
+                let mut data = Vec::new();
+                while let Some(chunk) = field.next().await {
+                    let chunk = chunk.map_err(|e| ApiError::bad_request(e.to_string()))?;
+                    data.extend_from_slice(&chunk);
+                }
+                category = Some(String::from_utf8_lossy(&data).to_string());
+            }
+            Some("file") => {
+                original_filename = content_disposition.get_filename().map(String::from);
+                let mut data = Vec::new();
+                while let Some(chunk) = field.next().await {
+                    let chunk = chunk.map_err(|e| ApiError::bad_request(e.to_string()))?;
+                    data.extend_from_slice(&chunk);
+                }
+                file_data = Some(data);
+            }
+            _ => {}
+        }
+    }
+
+    // Validate required fields
+    let name = name.ok_or_else(|| ApiError::bad_request("name field is required".to_string()))?;
+    let file_data = file_data.ok_or_else(|| ApiError::bad_request("file field is required".to_string()))?;
+
+    // Create wordlists directory if it doesn't exist
+    let wordlist_dir = std::path::PathBuf::from("./wordlists");
+    tokio::fs::create_dir_all(&wordlist_dir).await
+        .map_err(|e| ApiError::internal(format!("Failed to create wordlists directory: {}", e)))?;
+
+    // Generate unique filename
+    let wordlist_id = uuid::Uuid::new_v4().to_string();
+    let extension = original_filename
+        .as_ref()
+        .and_then(|f| std::path::Path::new(f).extension())
+        .and_then(|e| e.to_str())
+        .unwrap_or("txt");
+    let filename = format!("{}_{}.{}", claims.sub, wordlist_id, extension);
+    let file_path = wordlist_dir.join(&filename);
+
+    // Write file to disk
+    let mut file = tokio::fs::File::create(&file_path).await
+        .map_err(|e| ApiError::internal(format!("Failed to create file: {}", e)))?;
+    file.write_all(&file_data).await
+        .map_err(|e| ApiError::internal(format!("Failed to write file: {}", e)))?;
+    file.flush().await
+        .map_err(|e| ApiError::internal(format!("Failed to flush file: {}", e)))?;
+
+    // Count lines in the file
+    let line_count = std::io::BufReader::new(
+        std::fs::File::open(&file_path)
+            .map_err(|e| ApiError::internal(format!("Failed to read file: {}", e)))?
+    ).lines().count() as i64;
+
+    let size_bytes = file_data.len() as i64;
+    let file_path_str = file_path.to_string_lossy().to_string();
+    let category_str = category.unwrap_or_else(|| "custom".to_string());
+
+    // Create wordlist entry in database
+    let wordlist = db::cracking::create_wordlist(
+        pool.get_ref(),
+        &wordlist_id,
+        Some(&claims.sub),
+        &name,
+        description.as_deref(),
+        &file_path_str,
+        size_bytes,
+        line_count,
+        false, // not builtin
+        &category_str,
+    ).await.map_err(|e| ApiError::internal(format!("Failed to save wordlist: {}", e)))?;
+
+    Ok(HttpResponse::Created().json(wordlist))
 }
 
 /// Delete a wordlist

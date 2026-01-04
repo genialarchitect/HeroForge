@@ -10,6 +10,12 @@ pub mod opcua;
 pub mod bacnet;
 pub mod ethernetip;
 pub mod s7;
+pub mod iec61850;
+pub mod profinet;
+pub mod hart;
+pub mod cip;
+pub mod mqtt;
+pub mod coap;
 
 use crate::ot_ics::types::{OtProtocolType, ProtocolDetails, SecurityIssue};
 use anyhow::Result;
@@ -70,6 +76,12 @@ pub fn create_scanners() -> Vec<Box<dyn ProtocolScanner>> {
         Box::new(bacnet::BacnetScanner::new()),
         Box::new(ethernetip::EthernetIpScanner::new()),
         Box::new(s7::S7Scanner::new()),
+        Box::new(iec61850::Iec61850Scanner::new()),
+        Box::new(profinet::ProfinetScanner::new()),
+        Box::new(hart::HartScanner::new()),
+        Box::new(cip::CipScanner::new()),
+        Box::new(mqtt::MqttScanner::new()),
+        Box::new(coap::CoapScanner::new()),
     ]
 }
 
@@ -82,6 +94,11 @@ pub fn get_scanner(protocol: &OtProtocolType) -> Option<Box<dyn ProtocolScanner>
         OtProtocolType::Bacnet => Some(Box::new(bacnet::BacnetScanner::new())),
         OtProtocolType::EthernetIp => Some(Box::new(ethernetip::EthernetIpScanner::new())),
         OtProtocolType::S7 => Some(Box::new(s7::S7Scanner::new())),
-        _ => None, // Other protocols not yet implemented
+        OtProtocolType::Iec61850 => Some(Box::new(iec61850::Iec61850Scanner::new())),
+        OtProtocolType::Profinet => Some(Box::new(profinet::ProfinetScanner::new())),
+        OtProtocolType::Hart => Some(Box::new(hart::HartScanner::new())),
+        OtProtocolType::Cip => Some(Box::new(cip::CipScanner::new())),
+        OtProtocolType::Mqtt => Some(Box::new(mqtt::MqttScanner::new())),
+        OtProtocolType::Coap => Some(Box::new(coap::CoapScanner::new())),
     }
 }

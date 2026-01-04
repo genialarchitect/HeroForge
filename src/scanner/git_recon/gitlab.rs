@@ -52,13 +52,19 @@ impl GitLabClient {
 
         match &self.auth {
             GitAuthMethod::Token(token) => {
+                // GitLab uses PRIVATE-TOKEN header for personal/project access tokens
                 req = req.header("PRIVATE-TOKEN", token);
             }
             GitAuthMethod::OAuth { token } => {
+                // GitLab OAuth2 tokens use Bearer authentication
                 req = req.header("Authorization", format!("Bearer {}", token));
             }
+            GitAuthMethod::GitHubApp { .. } => {
+                // GitHub App authentication is not applicable to GitLab
+                // For GitLab apps, use OAuth or personal access tokens instead
+                warn!("GitHubApp auth is not supported for GitLab, use OAuth or Token");
+            }
             GitAuthMethod::None => {}
-            _ => {} // Other auth methods not yet implemented
         }
 
         req
