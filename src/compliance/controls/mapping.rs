@@ -171,6 +171,12 @@ impl VulnerabilityMapper {
             ComplianceFramework::HitrustCsf => {
                 frameworks::hitrust::map_vulnerability(vuln_title, cve_id, port, service)
             }
+            ComplianceFramework::Iso27001 => {
+                frameworks::iso27001::map_vulnerability(vuln_title, cve_id, port, service)
+            }
+            ComplianceFramework::Gdpr => {
+                frameworks::gdpr::map_vulnerability(vuln_title, cve_id, port, service)
+            }
         }
     }
 }

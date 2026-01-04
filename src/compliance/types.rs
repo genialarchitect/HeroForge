@@ -31,6 +31,10 @@ pub enum ComplianceFramework {
     OwaspTop10,
     /// HITRUST CSF - Health Information Trust Alliance Common Security Framework
     HitrustCsf,
+    /// ISO 27001:2022 - Information Security Management System
+    Iso27001,
+    /// GDPR - General Data Protection Regulation
+    Gdpr,
 }
 
 impl ComplianceFramework {
@@ -46,6 +50,8 @@ impl ComplianceFramework {
             Self::Soc2,
             Self::OwaspTop10,
             Self::HitrustCsf,
+            Self::Iso27001,
+            Self::Gdpr,
         ]
     }
 
@@ -61,6 +67,8 @@ impl ComplianceFramework {
             Self::Soc2 => "soc2",
             Self::OwaspTop10 => "owasp_top10",
             Self::HitrustCsf => "hitrust_csf",
+            Self::Iso27001 => "iso_27001",
+            Self::Gdpr => "gdpr",
         }
     }
 
@@ -76,6 +84,8 @@ impl ComplianceFramework {
             Self::Soc2 => "SOC 2",
             Self::OwaspTop10 => "OWASP Top 10",
             Self::HitrustCsf => "HITRUST CSF",
+            Self::Iso27001 => "ISO 27001:2022",
+            Self::Gdpr => "GDPR",
         }
     }
 
@@ -91,6 +101,8 @@ impl ComplianceFramework {
             Self::Soc2 => "2017",
             Self::OwaspTop10 => "2021",
             Self::HitrustCsf => "v11.3",
+            Self::Iso27001 => "2022",
+            Self::Gdpr => "2018",
         }
     }
 
@@ -106,6 +118,8 @@ impl ComplianceFramework {
             Self::Soc2 => "Trust Services Criteria for service organization security, availability, and confidentiality",
             Self::OwaspTop10 => "Top 10 web application security risks identified by OWASP",
             Self::HitrustCsf => "Comprehensive healthcare security framework integrating HIPAA, NIST, PCI-DSS, and ISO 27001 controls",
+            Self::Iso27001 => "International standard for information security management systems (ISMS)",
+            Self::Gdpr => "EU regulation on data protection and privacy for individuals",
         }
     }
 
@@ -121,6 +135,8 @@ impl ComplianceFramework {
             "soc2" | "soc_2" => Some(Self::Soc2),
             "owasp" | "owasp_top10" | "owasp_top_10" => Some(Self::OwaspTop10),
             "hitrust" | "hitrust_csf" | "hitrustcsf" => Some(Self::HitrustCsf),
+            "iso27001" | "iso_27001" | "iso27k" => Some(Self::Iso27001),
+            "gdpr" => Some(Self::Gdpr),
             _ => None,
         }
     }

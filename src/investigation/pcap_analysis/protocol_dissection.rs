@@ -6,6 +6,18 @@ use anyhow::{Result, Context};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+/// Check if a value is a GREASE (Generate Random Extensions And Sustain Extensibility) value
+/// GREASE values follow the pattern 0x?A?A where ? is any hex digit
+/// Examples: 0x0A0A, 0x1A1A, 0x2A2A, etc.
+#[inline]
+fn is_grease_value(value: u16) -> bool {
+    // GREASE values: 0x0A0A, 0x1A1A, 0x2A2A, 0x3A3A, 0x4A4A, 0x5A5A,
+    // 0x6A6A, 0x7A7A, 0x8A8A, 0x9A9A, 0xAAAA, 0xBABA, 0xCACA, 0xDADA, 0xEAEA, 0xFAFA
+    let high = (value >> 8) as u8;
+    let low = (value & 0xFF) as u8;
+    high == low && (high & 0x0F) == 0x0A
+}
+
 /// HTTP request/response dissection result
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HttpDissection {
@@ -528,6 +540,8 @@ pub fn dissect_tls(payload: &[u8]) -> Result<serde_json::Value> {
     let mut server_name = None;
     let mut cipher_suites = Vec::new();
     let mut extensions = Vec::new();
+    let mut elliptic_curves: Vec<String> = Vec::new();
+    let mut ec_point_formats: Vec<String> = Vec::new();
 
     // Check for suspicious TLS versions
     if version_major < 3 || (version_major == 3 && version_minor < 1) {
@@ -621,6 +635,30 @@ pub fn dissect_tls(payload: &[u8]) -> Result<serde_json::Value> {
                             }
                         }
 
+                        // Extract supported_groups (elliptic curves) - ext_type 10
+                        if ext_type == 10 && offset + ext_data_len <= payload.len() && ext_data_len >= 2 {
+                            let groups_len = u16::from_be_bytes([payload[offset], payload[offset + 1]]) as usize;
+                            let mut groups_offset = 2;
+                            while groups_offset + 2 <= groups_len + 2 && offset + groups_offset + 2 <= payload.len() {
+                                let group = u16::from_be_bytes([
+                                    payload[offset + groups_offset],
+                                    payload[offset + groups_offset + 1],
+                                ]);
+                                elliptic_curves.push(group.to_string());
+                                groups_offset += 2;
+                            }
+                        }
+
+                        // Extract ec_point_formats - ext_type 11
+                        if ext_type == 11 && offset + ext_data_len <= payload.len() && ext_data_len >= 1 {
+                            let formats_len = payload[offset] as usize;
+                            for i in 0..formats_len {
+                                if offset + 1 + i < payload.len() {
+                                    ec_point_formats.push(payload[offset + 1 + i].to_string());
+                                }
+                            }
+                        }
+
                         extensions.push(TlsExtension {
                             extension_type: ext_type,
                             name: ext_name.to_string(),
@@ -638,17 +676,49 @@ pub fn dissect_tls(payload: &[u8]) -> Result<serde_json::Value> {
         }
     }
 
-    // Calculate JA3 fingerprint (simplified)
+    // Calculate JA3 fingerprint
+    // JA3 format: SSLVersion,Ciphers,Extensions,EllipticCurves,EllipticCurvePointFormats
     let ja3_fingerprint = if !cipher_suites.is_empty() {
         use sha2::{Sha256, Digest};
         let mut hasher = Sha256::new();
+
+        // TLS version as decimal (e.g., 771 for TLS 1.2)
+        let tls_version = (version_major as u16) << 8 | version_minor as u16;
+
+        // Cipher suites as decimal values, separated by dashes
+        let cipher_str = cipher_suites.iter()
+            .map(|c| c.trim_start_matches("0x"))
+            .filter_map(|c| u16::from_str_radix(c, 16).ok())
+            .map(|c| c.to_string())
+            .collect::<Vec<_>>()
+            .join("-");
+
+        // Extensions as decimal values, separated by dashes (excluding GREASE values)
+        let ext_str = extensions.iter()
+            .map(|e| e.extension_type)
+            .filter(|&e| !is_grease_value(e))
+            .map(|e| e.to_string())
+            .collect::<Vec<_>>()
+            .join("-");
+
+        // Elliptic curves (supported groups) as decimal, excluding GREASE
+        let ec_str = elliptic_curves.iter()
+            .filter_map(|c| c.parse::<u16>().ok())
+            .filter(|&c| !is_grease_value(c))
+            .map(|c| c.to_string())
+            .collect::<Vec<_>>()
+            .join("-");
+
+        // EC point formats as decimal
+        let ecpf_str = ec_point_formats.join("-");
+
         let ja3_string = format!(
             "{},{},{},{},{}",
-            format!("{}", (version_major as u16) << 8 | version_minor as u16),
-            cipher_suites.join("-"),
-            extensions.iter().map(|e| e.extension_type.to_string()).collect::<Vec<_>>().join("-"),
-            "", // elliptic_curves placeholder
-            "", // ec_point_formats placeholder
+            tls_version,
+            cipher_str,
+            ext_str,
+            ec_str,
+            ecpf_str,
         );
         hasher.update(ja3_string.as_bytes());
         Some(format!("{:x}", hasher.finalize()))

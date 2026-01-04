@@ -1360,3 +1360,548 @@ pub async fn bulk_add_assets_to_group(
 
     Ok(added_count)
 }
+
+// ============================================================================
+// Organization-Scoped Asset Functions (Multi-Tenancy)
+// ============================================================================
+
+/// Create or update an asset from scan results with organization scope
+pub async fn upsert_asset_for_org(
+    pool: &SqlitePool,
+    user_id: &str,
+    organization_id: &str,
+    ip_address: &str,
+    hostname: Option<&str>,
+    mac_address: Option<&str>,
+    os_family: Option<&str>,
+    os_version: Option<&str>,
+    scan_id: &str,
+) -> Result<models::Asset> {
+    let now = Utc::now();
+
+    // Try to get existing asset by org + IP
+    let existing: Option<models::Asset> = sqlx::query_as(
+        "SELECT * FROM assets WHERE organization_id = ?1 AND ip_address = ?2",
+    )
+    .bind(organization_id)
+    .bind(ip_address)
+    .fetch_optional(pool)
+    .await?;
+
+    if let Some(mut asset) = existing {
+        // Track changes for history
+        let mut changes = serde_json::Map::new();
+
+        if let Some(h) = hostname {
+            if asset.hostname.as_deref() != Some(h) {
+                changes.insert("hostname".to_string(), serde_json::json!({
+                    "from": asset.hostname,
+                    "to": h
+                }));
+                asset.hostname = Some(h.to_string());
+            }
+        }
+
+        if let Some(m) = mac_address {
+            if asset.mac_address.as_deref() != Some(m) {
+                changes.insert("mac_address".to_string(), serde_json::json!({
+                    "from": asset.mac_address,
+                    "to": m
+                }));
+                asset.mac_address = Some(m.to_string());
+            }
+        }
+
+        if let Some(os_f) = os_family {
+            if asset.os_family.as_deref() != Some(os_f) {
+                changes.insert("os_family".to_string(), serde_json::json!({
+                    "from": asset.os_family,
+                    "to": os_f
+                }));
+                asset.os_family = Some(os_f.to_string());
+            }
+        }
+
+        if let Some(os_v) = os_version {
+            if asset.os_version.as_deref() != Some(os_v) {
+                changes.insert("os_version".to_string(), serde_json::json!({
+                    "from": asset.os_version,
+                    "to": os_v
+                }));
+                asset.os_version = Some(os_v.to_string());
+            }
+        }
+
+        // Update asset
+        asset.last_seen = now;
+        asset.scan_count += 1;
+
+        sqlx::query(
+            r#"
+            UPDATE assets
+            SET hostname = ?1, mac_address = ?2, last_seen = ?3, scan_count = ?4,
+                os_family = ?5, os_version = ?6
+            WHERE id = ?7
+            "#,
+        )
+        .bind(&asset.hostname)
+        .bind(&asset.mac_address)
+        .bind(now)
+        .bind(asset.scan_count)
+        .bind(&asset.os_family)
+        .bind(&asset.os_version)
+        .bind(&asset.id)
+        .execute(pool)
+        .await?;
+
+        // Record changes if any
+        if !changes.is_empty() {
+            record_asset_history(pool, &asset.id, scan_id, &changes).await?;
+        }
+
+        Ok(asset)
+    } else {
+        // Create new asset with organization scope
+        let id = Uuid::new_v4().to_string();
+        let tags_json = "[]";
+
+        let asset = sqlx::query_as::<_, models::Asset>(
+            r#"
+            INSERT INTO assets (id, user_id, ip_address, hostname, mac_address, first_seen, last_seen, scan_count, os_family, os_version, status, tags, organization_id)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+            RETURNING *
+            "#,
+        )
+        .bind(&id)
+        .bind(user_id)
+        .bind(ip_address)
+        .bind(hostname)
+        .bind(mac_address)
+        .bind(now)
+        .bind(now)
+        .bind(1)
+        .bind(os_family)
+        .bind(os_version)
+        .bind("active")
+        .bind(tags_json)
+        .bind(organization_id)
+        .fetch_one(pool)
+        .await?;
+
+        // Record creation in history
+        let mut changes = serde_json::Map::new();
+        changes.insert("created".to_string(), serde_json::json!(true));
+        changes.insert("organization_id".to_string(), serde_json::json!(organization_id));
+        record_asset_history(pool, &asset.id, scan_id, &changes).await?;
+
+        Ok(asset)
+    }
+}
+
+/// Get all assets for an organization with optional filtering
+pub async fn get_organization_assets(
+    pool: &SqlitePool,
+    organization_id: &str,
+    status: Option<&str>,
+    tags: Option<&[String]>,
+    days_inactive: Option<i64>,
+) -> Result<Vec<models::Asset>> {
+    let mut query = String::from("SELECT * FROM assets WHERE organization_id = ?1");
+    let mut params: Vec<String> = vec![organization_id.to_string()];
+
+    if let Some(s) = status {
+        query.push_str(" AND status = ?");
+        params.push(s.to_string());
+    }
+
+    if let Some(tag_list) = tags {
+        for tag in tag_list {
+            query.push_str(" AND tags LIKE ?");
+            params.push(format!("%\"{}%", tag));
+        }
+    }
+
+    if let Some(days) = days_inactive {
+        let cutoff_date = Utc::now() - chrono::Duration::days(days);
+        query.push_str(" AND last_seen < ?");
+        params.push(cutoff_date.to_rfc3339());
+    }
+
+    query.push_str(" ORDER BY last_seen DESC");
+
+    let mut q = sqlx::query_as::<_, models::Asset>(&query);
+    for param in &params {
+        q = q.bind(param);
+    }
+
+    let assets = q.fetch_all(pool).await?;
+    Ok(assets)
+}
+
+/// Get asset by ID with organization scope check
+pub async fn get_asset_by_id_for_org(
+    pool: &SqlitePool,
+    asset_id: &str,
+    organization_id: &str,
+) -> Result<Option<models::Asset>> {
+    let asset = sqlx::query_as::<_, models::Asset>(
+        "SELECT * FROM assets WHERE id = ?1 AND organization_id = ?2",
+    )
+    .bind(asset_id)
+    .bind(organization_id)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(asset)
+}
+
+/// Update asset metadata with organization scope
+pub async fn update_asset_for_org(
+    pool: &SqlitePool,
+    asset_id: &str,
+    organization_id: &str,
+    request: &models::UpdateAssetRequest,
+) -> Result<models::Asset> {
+    if let Some(status) = &request.status {
+        sqlx::query("UPDATE assets SET status = ?1 WHERE id = ?2 AND organization_id = ?3")
+            .bind(status)
+            .bind(asset_id)
+            .bind(organization_id)
+            .execute(pool)
+            .await?;
+    }
+
+    if let Some(tags) = &request.tags {
+        let tags_json = serde_json::to_string(tags)?;
+        sqlx::query("UPDATE assets SET tags = ?1 WHERE id = ?2 AND organization_id = ?3")
+            .bind(&tags_json)
+            .bind(asset_id)
+            .bind(organization_id)
+            .execute(pool)
+            .await?;
+    }
+
+    if let Some(notes) = &request.notes {
+        sqlx::query("UPDATE assets SET notes = ?1 WHERE id = ?2 AND organization_id = ?3")
+            .bind(notes)
+            .bind(asset_id)
+            .bind(organization_id)
+            .execute(pool)
+            .await?;
+    }
+
+    let asset = sqlx::query_as::<_, models::Asset>(
+        "SELECT * FROM assets WHERE id = ?1 AND organization_id = ?2",
+    )
+    .bind(asset_id)
+    .bind(organization_id)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(asset)
+}
+
+/// Delete an asset with organization scope
+pub async fn delete_asset_for_org(
+    pool: &SqlitePool,
+    asset_id: &str,
+    organization_id: &str,
+) -> Result<bool> {
+    let result = sqlx::query("DELETE FROM assets WHERE id = ?1 AND organization_id = ?2")
+        .bind(asset_id)
+        .bind(organization_id)
+        .execute(pool)
+        .await?;
+
+    Ok(result.rows_affected() > 0)
+}
+
+/// Get asset detail with organization scope
+pub async fn get_asset_detail_for_org(
+    pool: &SqlitePool,
+    asset_id: &str,
+    organization_id: &str,
+) -> Result<Option<models::AssetDetail>> {
+    let asset = get_asset_by_id_for_org(pool, asset_id, organization_id).await?;
+
+    if let Some(asset) = asset {
+        // Get ports
+        let ports = sqlx::query_as::<_, models::AssetPort>(
+            "SELECT * FROM asset_ports WHERE asset_id = ?1 ORDER BY port ASC",
+        )
+        .bind(asset_id)
+        .fetch_all(pool)
+        .await?;
+
+        // Get history with scan names
+        let history_raw: Vec<(String, String, String, String, DateTime<Utc>)> = sqlx::query_as(
+            r#"
+            SELECT
+                ah.id,
+                ah.scan_id,
+                sr.name as scan_name,
+                ah.changes,
+                ah.recorded_at
+            FROM asset_history ah
+            JOIN scan_results sr ON ah.scan_id = sr.id
+            WHERE ah.asset_id = ?1
+            ORDER BY ah.recorded_at DESC
+            LIMIT 50
+            "#,
+        )
+        .bind(asset_id)
+        .fetch_all(pool)
+        .await?;
+
+        let history: Vec<models::AssetHistoryWithScan> = history_raw
+            .into_iter()
+            .map(|(id, scan_id, scan_name, changes_str, recorded_at)| {
+                let changes = serde_json::from_str::<serde_json::Value>(&changes_str)
+                    .unwrap_or(serde_json::json!({}));
+                models::AssetHistoryWithScan {
+                    id,
+                    scan_id,
+                    scan_name,
+                    changes,
+                    recorded_at,
+                }
+            })
+            .collect();
+
+        Ok(Some(models::AssetDetail {
+            asset,
+            ports,
+            history,
+        }))
+    } else {
+        Ok(None)
+    }
+}
+
+/// Get organization asset statistics
+pub async fn get_organization_asset_stats(
+    pool: &SqlitePool,
+    organization_id: &str,
+) -> Result<OrganizationAssetStats> {
+    let total: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM assets WHERE organization_id = ?1",
+    )
+    .bind(organization_id)
+    .fetch_one(pool)
+    .await?;
+
+    let active: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM assets WHERE organization_id = ?1 AND status = 'active'",
+    )
+    .bind(organization_id)
+    .fetch_one(pool)
+    .await?;
+
+    let inactive: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM assets WHERE organization_id = ?1 AND status = 'inactive'",
+    )
+    .bind(organization_id)
+    .fetch_one(pool)
+    .await?;
+
+    // Calculate assets not seen in last 30 days
+    let cutoff = Utc::now() - chrono::Duration::days(30);
+    let stale: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM assets WHERE organization_id = ?1 AND last_seen < ?2",
+    )
+    .bind(organization_id)
+    .bind(cutoff)
+    .fetch_one(pool)
+    .await?;
+
+    // Count unique OS families
+    let os_families: Vec<(Option<String>, i64)> = sqlx::query_as(
+        r#"
+        SELECT os_family, COUNT(*) as count
+        FROM assets
+        WHERE organization_id = ?1
+        GROUP BY os_family
+        ORDER BY count DESC
+        "#,
+    )
+    .bind(organization_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(OrganizationAssetStats {
+        total,
+        active,
+        inactive,
+        stale,
+        by_os_family: os_families
+            .into_iter()
+            .map(|(os, count)| (os.unwrap_or_else(|| "Unknown".to_string()), count))
+            .collect(),
+    })
+}
+
+/// Statistics for organization assets
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct OrganizationAssetStats {
+    pub total: i64,
+    pub active: i64,
+    pub inactive: i64,
+    pub stale: i64,
+    pub by_os_family: Vec<(String, i64)>,
+}
+
+/// Transfer assets between users within an organization
+pub async fn transfer_assets_within_org(
+    pool: &SqlitePool,
+    organization_id: &str,
+    from_user_id: &str,
+    to_user_id: &str,
+    asset_ids: &[String],
+) -> Result<usize> {
+    let mut transferred = 0;
+
+    for asset_id in asset_ids {
+        let result = sqlx::query(
+            r#"
+            UPDATE assets
+            SET user_id = ?1
+            WHERE id = ?2 AND organization_id = ?3 AND user_id = ?4
+            "#,
+        )
+        .bind(to_user_id)
+        .bind(asset_id)
+        .bind(organization_id)
+        .bind(from_user_id)
+        .execute(pool)
+        .await?;
+
+        if result.rows_affected() > 0 {
+            transferred += 1;
+        }
+    }
+
+    Ok(transferred)
+}
+
+/// Set organization for existing assets (bulk operation for migration)
+pub async fn set_assets_organization(
+    pool: &SqlitePool,
+    user_id: &str,
+    organization_id: &str,
+    asset_ids: Option<&[String]>,
+) -> Result<usize> {
+    if let Some(ids) = asset_ids {
+        // Update specific assets
+        let mut updated = 0;
+        for asset_id in ids {
+            let result = sqlx::query(
+                "UPDATE assets SET organization_id = ?1 WHERE id = ?2 AND user_id = ?3",
+            )
+            .bind(organization_id)
+            .bind(asset_id)
+            .bind(user_id)
+            .execute(pool)
+            .await?;
+            updated += result.rows_affected() as usize;
+        }
+        Ok(updated)
+    } else {
+        // Update all user's assets without an organization
+        let result = sqlx::query(
+            "UPDATE assets SET organization_id = ?1 WHERE user_id = ?2 AND organization_id IS NULL",
+        )
+        .bind(organization_id)
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+        Ok(result.rows_affected() as usize)
+    }
+}
+
+/// Get assets shared across teams within an organization
+pub async fn get_organization_assets_by_team(
+    pool: &SqlitePool,
+    organization_id: &str,
+    team_id: &str,
+) -> Result<Vec<models::Asset>> {
+    // Get assets where the user belongs to the specified team
+    let assets = sqlx::query_as::<_, models::Asset>(
+        r#"
+        SELECT DISTINCT a.*
+        FROM assets a
+        JOIN user_teams ut ON a.user_id = ut.user_id
+        WHERE a.organization_id = ?1 AND ut.team_id = ?2
+        ORDER BY a.last_seen DESC
+        "#,
+    )
+    .bind(organization_id)
+    .bind(team_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(assets)
+}
+
+/// Get organization assets with their owner information
+pub async fn get_organization_assets_with_owners(
+    pool: &SqlitePool,
+    organization_id: &str,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<AssetWithOwner>> {
+    let assets_raw: Vec<(String, String, String, Option<String>, Option<String>, String, DateTime<Utc>, DateTime<Utc>, i32, Option<String>, Option<String>, String, String, Option<String>, Option<String>, Option<String>)> = sqlx::query_as(
+        r#"
+        SELECT
+            a.id, a.user_id, a.ip_address, a.hostname, a.mac_address, a.status,
+            a.first_seen, a.last_seen, a.scan_count, a.os_family, a.os_version,
+            a.tags, u.username, u.email, a.notes, a.organization_id
+        FROM assets a
+        JOIN users u ON a.user_id = u.id
+        WHERE a.organization_id = ?1
+        ORDER BY a.last_seen DESC
+        LIMIT ?2 OFFSET ?3
+        "#,
+    )
+    .bind(organization_id)
+    .bind(limit)
+    .bind(offset)
+    .fetch_all(pool)
+    .await?;
+
+    let assets_with_owners = assets_raw
+        .into_iter()
+        .map(|(id, user_id, ip_address, hostname, mac_address, status, first_seen, last_seen, scan_count, os_family, os_version, tags, username, email, notes, organization_id)| {
+            AssetWithOwner {
+                asset: models::Asset {
+                    id,
+                    user_id: user_id.clone(),
+                    ip_address,
+                    hostname,
+                    mac_address,
+                    first_seen,
+                    last_seen,
+                    scan_count,
+                    os_family,
+                    os_version,
+                    status,
+                    tags,
+                    notes,
+                    organization_id,
+                },
+                owner_username: username,
+                owner_email: email,
+            }
+        })
+        .collect();
+
+    Ok(assets_with_owners)
+}
+
+/// Asset with owner information for organization views
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct AssetWithOwner {
+    #[serde(flatten)]
+    pub asset: models::Asset,
+    pub owner_username: String,
+    pub owner_email: Option<String>,
+}

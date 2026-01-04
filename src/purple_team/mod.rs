@@ -11,6 +11,7 @@ pub mod gap_analysis;
 pub mod engine;
 pub mod live_exercises;
 pub mod attack_library;
+pub mod attack_execution;
 
 #[allow(unused_imports)]
 pub use types::*;
@@ -25,3 +26,5 @@ pub use gap_analysis::{GapAnalyzer, GapStatistics};
 pub use engine::{PurpleTeamEngine, PurpleTeamProgress, ExercisePhase, ExerciseResult, AvailableAttack, AttackParameter, ParameterType};
 pub use live_exercises::*;
 pub use attack_library::*;
+#[allow(unused_imports)]
+pub use attack_execution::{AtomicExecutor, AtomicTest, AtomicTestResult, AtomicExecutorConfig, BuiltInAtomics};

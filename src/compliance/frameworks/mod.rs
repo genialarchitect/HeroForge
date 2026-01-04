@@ -19,6 +19,8 @@ pub mod ferpa;
 pub mod soc2;
 pub mod owasp;
 pub mod hitrust;
+pub mod iso27001;
+pub mod gdpr;
 
 use super::types::{ComplianceControl, ComplianceFramework};
 
@@ -34,6 +36,8 @@ pub fn get_controls(framework: ComplianceFramework) -> Vec<ComplianceControl> {
         ComplianceFramework::Soc2 => soc2::get_controls(),
         ComplianceFramework::OwaspTop10 => owasp::get_controls(),
         ComplianceFramework::HitrustCsf => hitrust::get_controls(),
+        ComplianceFramework::Iso27001 => iso27001::get_controls(),
+        ComplianceFramework::Gdpr => gdpr::get_controls(),
     }
 }
 
@@ -49,6 +53,8 @@ pub fn get_control_count(framework: ComplianceFramework) -> usize {
         ComplianceFramework::Soc2 => soc2::CONTROL_COUNT,
         ComplianceFramework::OwaspTop10 => owasp::CONTROL_COUNT,
         ComplianceFramework::HitrustCsf => hitrust::CONTROL_COUNT,
+        ComplianceFramework::Iso27001 => iso27001::CONTROL_COUNT,
+        ComplianceFramework::Gdpr => gdpr::CONTROL_COUNT,
     }
 }
 
@@ -64,6 +70,8 @@ pub fn get_automated_percentage(framework: ComplianceFramework) -> f32 {
         ComplianceFramework::Soc2 => 45.0,
         ComplianceFramework::OwaspTop10 => 70.0,
         ComplianceFramework::HitrustCsf => 55.0,  // ~85 of 156 controls automatable
+        ComplianceFramework::Iso27001 => 45.0,   // ~42 of 93 controls automatable
+        ComplianceFramework::Gdpr => 40.0,       // ~18 of 45 controls automatable
     }
 }
 

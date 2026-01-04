@@ -95,6 +95,7 @@ pub mod sca;
 pub mod threat_modeling;
 pub mod yellow_team;
 pub mod ot_ics;
+pub mod soar_cases;
 // Phase 4 Sprint 2-10 database modules
 pub mod investigation;
 pub mod threat_intel_enhanced;
@@ -767,6 +768,52 @@ pub use permissions::{
     cache::get_cache_stats,
     cache::warmup_user_cache,
     cache::CacheStats,
+};
+
+// ============================================================================
+// Re-exports from soar_cases module
+// ============================================================================
+
+pub use soar_cases::{
+    // Types
+    SoarCaseRow,
+    CaseTaskRow,
+    CaseEvidenceRow,
+    CaseCommentRow,
+    CaseTimelineRow,
+    CaseStats,
+    CaseFilter,
+    // Request types
+    CreateCaseRequest as SoarCreateCaseRequest,
+    UpdateCaseRequest as SoarUpdateCaseRequest,
+    CreateTaskRequest as SoarCreateTaskRequest,
+    AddEvidenceRequest as SoarAddEvidenceRequest,
+    // Case operations
+    create_case as create_soar_case,
+    get_case_by_id as get_soar_case_by_id,
+    get_case_by_number as get_soar_case_by_number,
+    list_cases as list_soar_cases,
+    update_case as update_soar_case,
+    update_case_status as update_soar_case_status,
+    assign_case as assign_soar_case,
+    resolve_case as resolve_soar_case,
+    delete_case as delete_soar_case,
+    // Task operations
+    add_task as add_soar_task,
+    get_case_tasks as get_soar_case_tasks,
+    update_task_status as update_soar_task_status,
+    // Evidence operations
+    add_evidence as add_soar_evidence,
+    get_case_evidence as get_soar_case_evidence,
+    // Comment operations
+    add_comment as add_soar_comment,
+    get_case_comments as get_soar_case_comments,
+    // Timeline operations
+    add_timeline_event as add_soar_timeline_event,
+    get_case_timeline as get_soar_case_timeline,
+    // Statistics
+    get_case_stats as get_soar_case_stats,
+    user_can_access_case,
 };
 
 // ============================================================================
