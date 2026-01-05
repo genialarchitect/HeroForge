@@ -3,8 +3,32 @@
 //! Generates remediation scripts and applies fixes for cloud misconfigurations
 
 use super::*;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use std::collections::HashMap;
+
+/// Cloud provider configuration for SDK execution
+#[derive(Debug, Clone)]
+pub struct CloudProviderConfig {
+    /// AWS region for API calls
+    pub aws_region: Option<String>,
+    /// Azure subscription ID
+    pub azure_subscription_id: Option<String>,
+    /// Azure resource group for operations
+    pub azure_resource_group: Option<String>,
+    /// GCP project ID
+    pub gcp_project_id: Option<String>,
+}
+
+impl Default for CloudProviderConfig {
+    fn default() -> Self {
+        Self {
+            aws_region: std::env::var("AWS_REGION").ok().or_else(|| Some("us-east-1".to_string())),
+            azure_subscription_id: std::env::var("AZURE_SUBSCRIPTION_ID").ok(),
+            azure_resource_group: std::env::var("AZURE_RESOURCE_GROUP").ok(),
+            gcp_project_id: std::env::var("GCP_PROJECT_ID").ok(),
+        }
+    }
+}
 
 /// Remediation action types
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -43,6 +67,7 @@ pub struct RemediationResult {
 pub struct RemediationEngine {
     approval_required: bool,
     dry_run: bool,
+    cloud_config: CloudProviderConfig,
 }
 
 impl RemediationEngine {
@@ -50,6 +75,7 @@ impl RemediationEngine {
         Self {
             approval_required: true,
             dry_run: true,
+            cloud_config: CloudProviderConfig::default(),
         }
     }
 
@@ -60,6 +86,11 @@ impl RemediationEngine {
 
     pub fn with_dry_run(mut self, dry_run: bool) -> Self {
         self.dry_run = dry_run;
+        self
+    }
+
+    pub fn with_cloud_config(mut self, config: CloudProviderConfig) -> Self {
+        self.cloud_config = config;
         self
     }
 
@@ -367,21 +398,876 @@ resource "aws_db_instance" "{}_encrypted" {{
     }
 
     async fn execute_remediation(&self, finding: &CspmFinding) -> Result<RemediationResult> {
-        // In production, would execute the actual remediation commands
-        // For now, simulate successful remediation
-
         log::info!(
             "Applying remediation for {} on {}",
             finding.finding_type,
             finding.resource_id
         );
 
-        Ok(RemediationResult {
-            finding_id: finding.resource_id.clone(),
-            success: true,
-            message: format!("Successfully remediated {}", finding.finding_type),
-            applied_at: chrono::Utc::now(),
-        })
+        // Route to appropriate cloud provider
+        let result = match finding.resource_type.as_str() {
+            rt if rt.starts_with("AWS::") || rt.starts_with("aws_") => {
+                self.execute_aws_remediation(finding).await
+            }
+            rt if rt.contains("Microsoft.") || rt.starts_with("azure_") => {
+                self.execute_azure_remediation(finding).await
+            }
+            rt if rt.contains("gcp.") || rt.starts_with("google_") => {
+                self.execute_gcp_remediation(finding).await
+            }
+            _ => {
+                // Fall back to CLI execution
+                self.execute_cli_remediation(finding).await
+            }
+        };
+
+        result
+    }
+
+    /// Execute AWS SDK remediation
+    async fn execute_aws_remediation(&self, finding: &CspmFinding) -> Result<RemediationResult> {
+        use aws_config::BehaviorVersion;
+
+        let region = self.cloud_config.aws_region.clone()
+            .unwrap_or_else(|| "us-east-1".to_string());
+
+        let config = aws_config::defaults(BehaviorVersion::latest())
+            .region(aws_config::Region::new(region))
+            .load()
+            .await;
+
+        match finding.finding_type.as_str() {
+            "SECURITY_GROUP_OPEN_TO_WORLD" => {
+                self.remediate_aws_security_group(&config, finding).await
+            }
+            "S3_BUCKET_PUBLIC" => {
+                self.remediate_aws_s3_public_access(&config, finding).await
+            }
+            "S3_BUCKET_NOT_ENCRYPTED" => {
+                self.remediate_aws_s3_encryption(&config, finding).await
+            }
+            "IMDSV1_ENABLED" => {
+                self.remediate_aws_imdsv2(&config, finding).await
+            }
+            "RDS_NOT_ENCRYPTED" => {
+                // RDS encryption can't be enabled on existing instances
+                Ok(RemediationResult {
+                    finding_id: finding.resource_id.clone(),
+                    success: false,
+                    message: "RDS encryption requires creating a new instance from encrypted snapshot. Manual intervention required.".to_string(),
+                    applied_at: chrono::Utc::now(),
+                })
+            }
+            "RDS_PUBLIC_ACCESS" => {
+                self.remediate_aws_rds_public_access(&config, finding).await
+            }
+            "IAM_POLICY_TOO_PERMISSIVE" => {
+                Ok(RemediationResult {
+                    finding_id: finding.resource_id.clone(),
+                    success: false,
+                    message: "IAM policy remediation requires manual review of required permissions.".to_string(),
+                    applied_at: chrono::Utc::now(),
+                })
+            }
+            _ => Ok(RemediationResult {
+                finding_id: finding.resource_id.clone(),
+                success: false,
+                message: format!("No automated remediation available for {}", finding.finding_type),
+                applied_at: chrono::Utc::now(),
+            }),
+        }
+    }
+
+    /// Remediate AWS security group open to world
+    async fn remediate_aws_security_group(
+        &self,
+        config: &aws_config::SdkConfig,
+        finding: &CspmFinding,
+    ) -> Result<RemediationResult> {
+        let ec2_client = aws_sdk_ec2::Client::new(config);
+
+        // Parse security group ID and rule details from finding
+        let sg_id = &finding.resource_id;
+
+        // Revoke SSH (port 22) from 0.0.0.0/0
+        let result = ec2_client
+            .revoke_security_group_ingress()
+            .group_id(sg_id)
+            .ip_permissions(
+                aws_sdk_ec2::types::IpPermission::builder()
+                    .ip_protocol("tcp")
+                    .from_port(22)
+                    .to_port(22)
+                    .ip_ranges(
+                        aws_sdk_ec2::types::IpRange::builder()
+                            .cidr_ip("0.0.0.0/0")
+                            .build()
+                    )
+                    .build()
+            )
+            .send()
+            .await;
+
+        match result {
+            Ok(_) => {
+                log::info!("Successfully revoked SSH from 0.0.0.0/0 for {}", sg_id);
+
+                // Also try to revoke RDP (port 3389)
+                let _ = ec2_client
+                    .revoke_security_group_ingress()
+                    .group_id(sg_id)
+                    .ip_permissions(
+                        aws_sdk_ec2::types::IpPermission::builder()
+                            .ip_protocol("tcp")
+                            .from_port(3389)
+                            .to_port(3389)
+                            .ip_ranges(
+                                aws_sdk_ec2::types::IpRange::builder()
+                                    .cidr_ip("0.0.0.0/0")
+                                    .build()
+                            )
+                            .build()
+                    )
+                    .send()
+                    .await;
+
+                Ok(RemediationResult {
+                    finding_id: finding.resource_id.clone(),
+                    success: true,
+                    message: "Revoked open SSH/RDP access from 0.0.0.0/0".to_string(),
+                    applied_at: chrono::Utc::now(),
+                })
+            }
+            Err(e) => Ok(RemediationResult {
+                finding_id: finding.resource_id.clone(),
+                success: false,
+                message: format!("Failed to revoke security group ingress: {}", e),
+                applied_at: chrono::Utc::now(),
+            }),
+        }
+    }
+
+    /// Remediate S3 bucket public access
+    async fn remediate_aws_s3_public_access(
+        &self,
+        config: &aws_config::SdkConfig,
+        finding: &CspmFinding,
+    ) -> Result<RemediationResult> {
+        let s3_client = aws_sdk_s3::Client::new(config);
+        let bucket_name = &finding.resource_id;
+
+        let result = s3_client
+            .put_public_access_block()
+            .bucket(bucket_name)
+            .public_access_block_configuration(
+                aws_sdk_s3::types::PublicAccessBlockConfiguration::builder()
+                    .block_public_acls(true)
+                    .ignore_public_acls(true)
+                    .block_public_policy(true)
+                    .restrict_public_buckets(true)
+                    .build()
+            )
+            .send()
+            .await;
+
+        match result {
+            Ok(_) => {
+                log::info!("Successfully enabled public access block for bucket {}", bucket_name);
+                Ok(RemediationResult {
+                    finding_id: finding.resource_id.clone(),
+                    success: true,
+                    message: "Enabled public access block for S3 bucket".to_string(),
+                    applied_at: chrono::Utc::now(),
+                })
+            }
+            Err(e) => Ok(RemediationResult {
+                finding_id: finding.resource_id.clone(),
+                success: false,
+                message: format!("Failed to enable public access block: {}", e),
+                applied_at: chrono::Utc::now(),
+            }),
+        }
+    }
+
+    /// Remediate S3 bucket encryption
+    async fn remediate_aws_s3_encryption(
+        &self,
+        config: &aws_config::SdkConfig,
+        finding: &CspmFinding,
+    ) -> Result<RemediationResult> {
+        let s3_client = aws_sdk_s3::Client::new(config);
+        let bucket_name = &finding.resource_id;
+
+        // Build the encryption configuration
+        let encryption_default = aws_sdk_s3::types::ServerSideEncryptionByDefault::builder()
+            .sse_algorithm(aws_sdk_s3::types::ServerSideEncryption::Aes256)
+            .build()
+            .map_err(|e| anyhow!("Failed to build encryption default: {}", e))?;
+
+        let encryption_rule = aws_sdk_s3::types::ServerSideEncryptionRule::builder()
+            .apply_server_side_encryption_by_default(encryption_default)
+            .build();
+
+        let encryption_config = aws_sdk_s3::types::ServerSideEncryptionConfiguration::builder()
+            .rules(encryption_rule)
+            .build()
+            .map_err(|e| anyhow!("Failed to build encryption config: {}", e))?;
+
+        let result = s3_client
+            .put_bucket_encryption()
+            .bucket(bucket_name)
+            .server_side_encryption_configuration(encryption_config)
+            .send()
+            .await;
+
+        match result {
+            Ok(_) => {
+                log::info!("Successfully enabled default encryption for bucket {}", bucket_name);
+                Ok(RemediationResult {
+                    finding_id: finding.resource_id.clone(),
+                    success: true,
+                    message: "Enabled AES-256 default encryption for S3 bucket".to_string(),
+                    applied_at: chrono::Utc::now(),
+                })
+            }
+            Err(e) => Ok(RemediationResult {
+                finding_id: finding.resource_id.clone(),
+                success: false,
+                message: format!("Failed to enable bucket encryption: {}", e),
+                applied_at: chrono::Utc::now(),
+            }),
+        }
+    }
+
+    /// Remediate EC2 IMDSv2 enforcement
+    async fn remediate_aws_imdsv2(
+        &self,
+        config: &aws_config::SdkConfig,
+        finding: &CspmFinding,
+    ) -> Result<RemediationResult> {
+        let ec2_client = aws_sdk_ec2::Client::new(config);
+        let instance_id = &finding.resource_id;
+
+        let result = ec2_client
+            .modify_instance_metadata_options()
+            .instance_id(instance_id)
+            .http_tokens(aws_sdk_ec2::types::HttpTokensState::Required)
+            .http_endpoint(aws_sdk_ec2::types::InstanceMetadataEndpointState::Enabled)
+            .send()
+            .await;
+
+        match result {
+            Ok(_) => {
+                log::info!("Successfully enforced IMDSv2 for instance {}", instance_id);
+                Ok(RemediationResult {
+                    finding_id: finding.resource_id.clone(),
+                    success: true,
+                    message: "Enforced IMDSv2 (http-tokens=required) for EC2 instance".to_string(),
+                    applied_at: chrono::Utc::now(),
+                })
+            }
+            Err(e) => Ok(RemediationResult {
+                finding_id: finding.resource_id.clone(),
+                success: false,
+                message: format!("Failed to enforce IMDSv2: {}", e),
+                applied_at: chrono::Utc::now(),
+            }),
+        }
+    }
+
+    /// Remediate RDS public access
+    async fn remediate_aws_rds_public_access(
+        &self,
+        config: &aws_config::SdkConfig,
+        finding: &CspmFinding,
+    ) -> Result<RemediationResult> {
+        let rds_client = aws_sdk_rds::Client::new(config);
+        let db_instance_id = &finding.resource_id;
+
+        let result = rds_client
+            .modify_db_instance()
+            .db_instance_identifier(db_instance_id)
+            .publicly_accessible(false)
+            .apply_immediately(true)
+            .send()
+            .await;
+
+        match result {
+            Ok(_) => {
+                log::info!("Successfully disabled public access for RDS instance {}", db_instance_id);
+                Ok(RemediationResult {
+                    finding_id: finding.resource_id.clone(),
+                    success: true,
+                    message: "Disabled public accessibility for RDS instance".to_string(),
+                    applied_at: chrono::Utc::now(),
+                })
+            }
+            Err(e) => Ok(RemediationResult {
+                finding_id: finding.resource_id.clone(),
+                success: false,
+                message: format!("Failed to disable RDS public access: {}", e),
+                applied_at: chrono::Utc::now(),
+            }),
+        }
+    }
+
+    /// Execute Azure SDK remediation
+    async fn execute_azure_remediation(&self, finding: &CspmFinding) -> Result<RemediationResult> {
+        let subscription_id = self.cloud_config.azure_subscription_id.as_ref()
+            .ok_or_else(|| anyhow!("Azure subscription ID not configured"))?;
+        let resource_group = self.cloud_config.azure_resource_group.as_ref()
+            .ok_or_else(|| anyhow!("Azure resource group not configured"))?;
+
+        match finding.finding_type.as_str() {
+            "STORAGE_PUBLIC_ACCESS_ENABLED" => {
+                self.remediate_azure_storage_public_access(
+                    subscription_id,
+                    resource_group,
+                    finding,
+                ).await
+            }
+            "NSG_OPEN_TO_WORLD" => {
+                self.remediate_azure_nsg(subscription_id, resource_group, finding).await
+            }
+            "AAD_LEGACY_AUTH_ALLOWED" => {
+                Ok(RemediationResult {
+                    finding_id: finding.resource_id.clone(),
+                    success: false,
+                    message: "Blocking legacy auth requires Azure AD Conditional Access policy. Create via Azure Portal.".to_string(),
+                    applied_at: chrono::Utc::now(),
+                })
+            }
+            _ => Ok(RemediationResult {
+                finding_id: finding.resource_id.clone(),
+                success: false,
+                message: format!("No automated Azure remediation for {}", finding.finding_type),
+                applied_at: chrono::Utc::now(),
+            }),
+        }
+    }
+
+    /// Remediate Azure storage account public access
+    async fn remediate_azure_storage_public_access(
+        &self,
+        subscription_id: &str,
+        resource_group: &str,
+        finding: &CspmFinding,
+    ) -> Result<RemediationResult> {
+        let storage_account_name = &finding.resource_id;
+        let token = self.get_azure_access_token().await?;
+
+        // Use Azure REST API to update storage account
+        let url = format!(
+            "https://management.azure.com/subscriptions/{}/resourceGroups/{}/providers/Microsoft.Storage/storageAccounts/{}?api-version=2023-01-01",
+            subscription_id, resource_group, storage_account_name
+        );
+
+        let client = reqwest::Client::new();
+        let response = client
+            .patch(&url)
+            .bearer_auth(&token)
+            .header("Content-Type", "application/json")
+            .json(&serde_json::json!({
+                "properties": {
+                    "allowBlobPublicAccess": false,
+                    "publicNetworkAccess": "Enabled",
+                    "networkAcls": {
+                        "defaultAction": "Deny",
+                        "bypass": "AzureServices"
+                    }
+                }
+            }))
+            .send()
+            .await
+            .map_err(|e| anyhow!("Azure API request failed: {}", e))?;
+
+        if response.status().is_success() {
+            log::info!("Successfully disabled public access for storage account {}", storage_account_name);
+            Ok(RemediationResult {
+                finding_id: finding.resource_id.clone(),
+                success: true,
+                message: "Disabled public blob access and set default network action to deny".to_string(),
+                applied_at: chrono::Utc::now(),
+            })
+        } else {
+            let error_text = response.text().await.unwrap_or_default();
+            Ok(RemediationResult {
+                finding_id: finding.resource_id.clone(),
+                success: false,
+                message: format!("Azure API error: {}", error_text),
+                applied_at: chrono::Utc::now(),
+            })
+        }
+    }
+
+    /// Remediate Azure NSG open to world
+    async fn remediate_azure_nsg(
+        &self,
+        subscription_id: &str,
+        resource_group: &str,
+        finding: &CspmFinding,
+    ) -> Result<RemediationResult> {
+        let nsg_name = &finding.resource_id;
+        let token = self.get_azure_access_token().await?;
+
+        // Get current NSG rules
+        let get_url = format!(
+            "https://management.azure.com/subscriptions/{}/resourceGroups/{}/providers/Microsoft.Network/networkSecurityGroups/{}?api-version=2023-09-01",
+            subscription_id, resource_group, nsg_name
+        );
+
+        let client = reqwest::Client::new();
+        let response = client
+            .get(&get_url)
+            .bearer_auth(&token)
+            .send()
+            .await
+            .map_err(|e| anyhow!("Azure API request failed: {}", e))?;
+
+        if !response.status().is_success() {
+            return Ok(RemediationResult {
+                finding_id: finding.resource_id.clone(),
+                success: false,
+                message: "Failed to retrieve NSG configuration".to_string(),
+                applied_at: chrono::Utc::now(),
+            });
+        }
+
+        let nsg_config: serde_json::Value = response.json().await
+            .map_err(|e| anyhow!("Failed to parse NSG config: {}", e))?;
+
+        // Find and remove rules with source 0.0.0.0/0 or * for SSH/RDP
+        let mut modified = false;
+        let mut updated_rules: Vec<serde_json::Value> = Vec::new();
+
+        if let Some(rules) = nsg_config["properties"]["securityRules"].as_array() {
+            for rule in rules {
+                let source = rule["properties"]["sourceAddressPrefix"].as_str().unwrap_or("");
+                let dest_port = rule["properties"]["destinationPortRange"].as_str().unwrap_or("");
+                let access = rule["properties"]["access"].as_str().unwrap_or("");
+                let direction = rule["properties"]["direction"].as_str().unwrap_or("");
+
+                // Skip rules that allow SSH/RDP from internet
+                if (source == "*" || source == "0.0.0.0/0" || source == "Internet")
+                    && access == "Allow"
+                    && direction == "Inbound"
+                    && (dest_port == "22" || dest_port == "3389" || dest_port == "*") {
+                    modified = true;
+                    log::info!("Removing insecure rule: {:?}", rule["name"]);
+                    continue;
+                }
+                updated_rules.push(rule.clone());
+            }
+        }
+
+        if !modified {
+            return Ok(RemediationResult {
+                finding_id: finding.resource_id.clone(),
+                success: true,
+                message: "No insecure rules found to remove".to_string(),
+                applied_at: chrono::Utc::now(),
+            });
+        }
+
+        // Update NSG with filtered rules
+        let mut updated_config = nsg_config.clone();
+        updated_config["properties"]["securityRules"] = serde_json::json!(updated_rules);
+
+        let update_response = client
+            .put(&get_url)
+            .bearer_auth(&token)
+            .header("Content-Type", "application/json")
+            .json(&updated_config)
+            .send()
+            .await
+            .map_err(|e| anyhow!("Azure API update failed: {}", e))?;
+
+        if update_response.status().is_success() {
+            Ok(RemediationResult {
+                finding_id: finding.resource_id.clone(),
+                success: true,
+                message: "Removed insecure NSG rules allowing SSH/RDP from internet".to_string(),
+                applied_at: chrono::Utc::now(),
+            })
+        } else {
+            let error_text = update_response.text().await.unwrap_or_default();
+            Ok(RemediationResult {
+                finding_id: finding.resource_id.clone(),
+                success: false,
+                message: format!("Failed to update NSG: {}", error_text),
+                applied_at: chrono::Utc::now(),
+            })
+        }
+    }
+
+    /// Execute GCP SDK remediation
+    async fn execute_gcp_remediation(&self, finding: &CspmFinding) -> Result<RemediationResult> {
+        let project_id = self.cloud_config.gcp_project_id.as_ref()
+            .ok_or_else(|| anyhow!("GCP project ID not configured"))?;
+
+        match finding.finding_type.as_str() {
+            "GCS_BUCKET_PUBLIC" => {
+                self.remediate_gcp_bucket_public_access(project_id, finding).await
+            }
+            "FIREWALL_SSH_OPEN_TO_INTERNET" => {
+                self.remediate_gcp_firewall_rule(project_id, finding).await
+            }
+            "COMPUTE_DEFAULT_SERVICE_ACCOUNT" => {
+                Ok(RemediationResult {
+                    finding_id: finding.resource_id.clone(),
+                    success: false,
+                    message: "Changing service account requires creating new VM. Consider recreating the instance with a custom service account.".to_string(),
+                    applied_at: chrono::Utc::now(),
+                })
+            }
+            _ => Ok(RemediationResult {
+                finding_id: finding.resource_id.clone(),
+                success: false,
+                message: format!("No automated GCP remediation for {}", finding.finding_type),
+                applied_at: chrono::Utc::now(),
+            }),
+        }
+    }
+
+    /// Remediate GCP bucket public access
+    async fn remediate_gcp_bucket_public_access(
+        &self,
+        project_id: &str,
+        finding: &CspmFinding,
+    ) -> Result<RemediationResult> {
+        // Use GCP REST API with Application Default Credentials
+        let bucket_name = &finding.resource_id;
+
+        // Get access token from metadata server or ADC
+        let token = self.get_gcp_access_token().await?;
+
+        let client = reqwest::Client::new();
+
+        // Remove allUsers and allAuthenticatedUsers from IAM bindings
+        let iam_url = format!(
+            "https://storage.googleapis.com/storage/v1/b/{}/iam",
+            bucket_name
+        );
+
+        let iam_response = client
+            .get(&iam_url)
+            .bearer_auth(&token)
+            .send()
+            .await
+            .map_err(|e| anyhow!("GCP IAM request failed: {}", e))?;
+
+        if !iam_response.status().is_success() {
+            return Ok(RemediationResult {
+                finding_id: finding.resource_id.clone(),
+                success: false,
+                message: "Failed to retrieve bucket IAM policy".to_string(),
+                applied_at: chrono::Utc::now(),
+            });
+        }
+
+        let mut iam_policy: serde_json::Value = iam_response.json().await
+            .map_err(|e| anyhow!("Failed to parse IAM policy: {}", e))?;
+
+        // Filter out public bindings
+        let mut modified = false;
+        if let Some(bindings) = iam_policy["bindings"].as_array_mut() {
+            for binding in bindings.iter_mut() {
+                if let Some(members) = binding["members"].as_array() {
+                    let filtered: Vec<&serde_json::Value> = members.iter()
+                        .filter(|m| {
+                            let member = m.as_str().unwrap_or("");
+                            if member == "allUsers" || member == "allAuthenticatedUsers" {
+                                modified = true;
+                                false
+                            } else {
+                                true
+                            }
+                        })
+                        .collect();
+                    binding["members"] = serde_json::json!(filtered);
+                }
+            }
+        }
+
+        if !modified {
+            return Ok(RemediationResult {
+                finding_id: finding.resource_id.clone(),
+                success: true,
+                message: "No public access bindings found to remove".to_string(),
+                applied_at: chrono::Utc::now(),
+            });
+        }
+
+        // Update IAM policy
+        let update_response = client
+            .put(&iam_url)
+            .bearer_auth(&token)
+            .header("Content-Type", "application/json")
+            .json(&iam_policy)
+            .send()
+            .await
+            .map_err(|e| anyhow!("GCP IAM update failed: {}", e))?;
+
+        if update_response.status().is_success() {
+            log::info!("Successfully removed public access from bucket {}", bucket_name);
+            Ok(RemediationResult {
+                finding_id: finding.resource_id.clone(),
+                success: true,
+                message: "Removed allUsers and allAuthenticatedUsers from bucket IAM policy".to_string(),
+                applied_at: chrono::Utc::now(),
+            })
+        } else {
+            let error_text = update_response.text().await.unwrap_or_default();
+            Ok(RemediationResult {
+                finding_id: finding.resource_id.clone(),
+                success: false,
+                message: format!("Failed to update bucket IAM: {}", error_text),
+                applied_at: chrono::Utc::now(),
+            })
+        }
+    }
+
+    /// Remediate GCP firewall rule allowing SSH from internet
+    async fn remediate_gcp_firewall_rule(
+        &self,
+        project_id: &str,
+        finding: &CspmFinding,
+    ) -> Result<RemediationResult> {
+        let token = self.get_gcp_access_token().await?;
+        let firewall_rule_name = &finding.resource_id;
+
+        let client = reqwest::Client::new();
+
+        // Get current firewall rule
+        let get_url = format!(
+            "https://compute.googleapis.com/compute/v1/projects/{}/global/firewalls/{}",
+            project_id, firewall_rule_name
+        );
+
+        let response = client
+            .get(&get_url)
+            .bearer_auth(&token)
+            .send()
+            .await
+            .map_err(|e| anyhow!("GCP firewall request failed: {}", e))?;
+
+        if !response.status().is_success() {
+            return Ok(RemediationResult {
+                finding_id: finding.resource_id.clone(),
+                success: false,
+                message: "Failed to retrieve firewall rule".to_string(),
+                applied_at: chrono::Utc::now(),
+            });
+        }
+
+        let mut firewall_rule: serde_json::Value = response.json().await
+            .map_err(|e| anyhow!("Failed to parse firewall rule: {}", e))?;
+
+        // Replace 0.0.0.0/0 with internal ranges only
+        if let Some(source_ranges) = firewall_rule["sourceRanges"].as_array() {
+            let has_public = source_ranges.iter().any(|r| {
+                let range = r.as_str().unwrap_or("");
+                range == "0.0.0.0/0" || range == "::/0"
+            });
+
+            if has_public {
+                // Replace with RFC1918 private ranges
+                firewall_rule["sourceRanges"] = serde_json::json!([
+                    "10.0.0.0/8",
+                    "172.16.0.0/12",
+                    "192.168.0.0/16"
+                ]);
+
+                // Update the firewall rule
+                let update_url = format!(
+                    "https://compute.googleapis.com/compute/v1/projects/{}/global/firewalls/{}",
+                    project_id, firewall_rule_name
+                );
+
+                let update_response = client
+                    .put(&update_url)
+                    .bearer_auth(&token)
+                    .header("Content-Type", "application/json")
+                    .json(&firewall_rule)
+                    .send()
+                    .await
+                    .map_err(|e| anyhow!("GCP firewall update failed: {}", e))?;
+
+                if update_response.status().is_success() {
+                    log::info!("Successfully restricted firewall rule {}", firewall_rule_name);
+                    Ok(RemediationResult {
+                        finding_id: finding.resource_id.clone(),
+                        success: true,
+                        message: "Restricted firewall rule to private IP ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16)".to_string(),
+                        applied_at: chrono::Utc::now(),
+                    })
+                } else {
+                    let error_text = update_response.text().await.unwrap_or_default();
+                    Ok(RemediationResult {
+                        finding_id: finding.resource_id.clone(),
+                        success: false,
+                        message: format!("Failed to update firewall rule: {}", error_text),
+                        applied_at: chrono::Utc::now(),
+                    })
+                }
+            } else {
+                Ok(RemediationResult {
+                    finding_id: finding.resource_id.clone(),
+                    success: true,
+                    message: "Firewall rule does not have public source ranges".to_string(),
+                    applied_at: chrono::Utc::now(),
+                })
+            }
+        } else {
+            Ok(RemediationResult {
+                finding_id: finding.resource_id.clone(),
+                success: false,
+                message: "Unable to parse firewall rule source ranges".to_string(),
+                applied_at: chrono::Utc::now(),
+            })
+        }
+    }
+
+    /// Get Azure access token using OAuth2 client credentials
+    async fn get_azure_access_token(&self) -> Result<String> {
+        let tenant_id = std::env::var("AZURE_TENANT_ID")
+            .map_err(|_| anyhow!("AZURE_TENANT_ID not set"))?;
+        let client_id = std::env::var("AZURE_CLIENT_ID")
+            .map_err(|_| anyhow!("AZURE_CLIENT_ID not set"))?;
+        let client_secret = std::env::var("AZURE_CLIENT_SECRET")
+            .map_err(|_| anyhow!("AZURE_CLIENT_SECRET not set"))?;
+
+        let token_url = format!("https://login.microsoftonline.com/{}/oauth2/v2.0/token", tenant_id);
+
+        let client = reqwest::Client::new();
+        let response = client
+            .post(&token_url)
+            .form(&[
+                ("grant_type", "client_credentials"),
+                ("client_id", &client_id),
+                ("client_secret", &client_secret),
+                ("scope", "https://management.azure.com/.default"),
+            ])
+            .send()
+            .await
+            .map_err(|e| anyhow!("Azure token request failed: {}", e))?;
+
+        if !response.status().is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(anyhow!("Azure OAuth2 error: {}", error_text));
+        }
+
+        let token_data: serde_json::Value = response.json().await
+            .map_err(|e| anyhow!("Failed to parse Azure token response: {}", e))?;
+
+        token_data["access_token"]
+            .as_str()
+            .map(|s| s.to_string())
+            .ok_or_else(|| anyhow!("No access_token in Azure response"))
+    }
+
+    /// Get GCP access token from Application Default Credentials
+    async fn get_gcp_access_token(&self) -> Result<String> {
+        // Try metadata server first (for GCE/Cloud Run/GKE)
+        let metadata_url = "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token";
+
+        let client = reqwest::Client::new();
+        let metadata_response = client
+            .get(metadata_url)
+            .header("Metadata-Flavor", "Google")
+            .timeout(std::time::Duration::from_secs(2))
+            .send()
+            .await;
+
+        if let Ok(response) = metadata_response {
+            if response.status().is_success() {
+                let token_data: serde_json::Value = response.json().await
+                    .map_err(|e| anyhow!("Failed to parse token: {}", e))?;
+                if let Some(token) = token_data["access_token"].as_str() {
+                    return Ok(token.to_string());
+                }
+            }
+        }
+
+        // Fall back to gcloud CLI
+        let output = tokio::process::Command::new("gcloud")
+            .args(["auth", "print-access-token"])
+            .output()
+            .await
+            .map_err(|e| anyhow!("Failed to run gcloud: {}", e))?;
+
+        if output.status.success() {
+            let token = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            Ok(token)
+        } else {
+            Err(anyhow!("Failed to get GCP access token. Ensure gcloud is configured or running on GCP."))
+        }
+    }
+
+    /// Execute CLI-based remediation as fallback
+    async fn execute_cli_remediation(&self, finding: &CspmFinding) -> Result<RemediationResult> {
+        // Generate the remediation script
+        let script = self.generate_script_for_finding(finding);
+
+        match script {
+            Some(remediation) => {
+                // Determine which CLI to use
+                let (command, args) = match remediation.remediation_type {
+                    RemediationType::AwsCli => ("aws", remediation.script.clone()),
+                    RemediationType::AzureCli => ("az", remediation.script.clone()),
+                    RemediationType::GCloud => ("gcloud", remediation.script.clone()),
+                    RemediationType::Manual => {
+                        return Ok(RemediationResult {
+                            finding_id: finding.resource_id.clone(),
+                            success: false,
+                            message: format!("Manual remediation required: {}", remediation.description),
+                            applied_at: chrono::Utc::now(),
+                        });
+                    }
+                    _ => {
+                        return Ok(RemediationResult {
+                            finding_id: finding.resource_id.clone(),
+                            success: false,
+                            message: "CLI remediation not available for this type".to_string(),
+                            applied_at: chrono::Utc::now(),
+                        });
+                    }
+                };
+
+                // Parse the script into arguments
+                let shell_args = vec!["sh", "-c", &args];
+
+                let output = tokio::process::Command::new("sh")
+                    .args(&["-c", &args])
+                    .output()
+                    .await
+                    .map_err(|e| anyhow!("Failed to execute CLI command: {}", e))?;
+
+                if output.status.success() {
+                    log::info!("CLI remediation successful for {}", finding.finding_type);
+                    Ok(RemediationResult {
+                        finding_id: finding.resource_id.clone(),
+                        success: true,
+                        message: format!("CLI remediation applied: {}", remediation.description),
+                        applied_at: chrono::Utc::now(),
+                    })
+                } else {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    Ok(RemediationResult {
+                        finding_id: finding.resource_id.clone(),
+                        success: false,
+                        message: format!("CLI remediation failed: {}", stderr),
+                        applied_at: chrono::Utc::now(),
+                    })
+                }
+            }
+            None => Ok(RemediationResult {
+                finding_id: finding.resource_id.clone(),
+                success: false,
+                message: "No remediation script available for this finding type".to_string(),
+                applied_at: chrono::Utc::now(),
+            }),
+        }
     }
 }
 

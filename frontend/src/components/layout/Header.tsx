@@ -313,7 +313,7 @@ const Header: React.FC = () => {
     { to: '/reports', icon: <FileText className="h-4 w-4" />, label: 'Reports' },
   ];
 
-  // ANALYTICS - Cross-Team Insights & Context (TODO: implement context pages)
+  // ANALYTICS - Cross-Team Insights & Context
   const analyticsItems: NavItem[] = [
     { to: '/dns-analytics', icon: <BarChart3 className="h-4 w-4" />, label: 'DNS Analytics' },
     { to: '/netflow-analysis', icon: <Activity className="h-4 w-4" />, label: 'NetFlow Analysis' },

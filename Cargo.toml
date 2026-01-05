@@ -174,6 +174,18 @@ scrypt = "0.11"          # scrypt password hashing
 pbkdf2 = { version = "0.12", features = ["simple"] }  # PBKDF2 key derivation
 num_cpus = "1.16"        # CPU count for parallel processing
 
+# Cryptographic signatures for plugin verification
+ed25519-dalek = { version = "2.1", features = ["rand_core"] }  # Ed25519 signatures
+rsa = "0.9"                    # RSA signatures for GPG compatibility
+
+# WebAssembly runtime for plugin sandboxing
+wasmtime = "27.0"              # WASM runtime
+wasmtime-wasi = "27.0"         # WASI support for WASM
+os_pipe = "1.2"                # Cross-platform pipes for I/O capture
+
+# Packet capture for wireless scanning
+pcap = "2.2"                   # libpcap bindings for packet capture
+
 # IDN/punycode handling for domain reputation analysis
 idna = "1.0"
 

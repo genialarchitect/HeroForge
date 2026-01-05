@@ -618,6 +618,303 @@ pub async fn delete_plugin_settings(
     Ok(HttpResponse::NoContent().finish())
 }
 
+// ============================================================================
+// Marketplace Handlers
+// ============================================================================
+
+use crate::plugins::marketplace::{
+    PluginMarketplace, MarketplaceSearchFilters, MarketplaceSortField, SortOrder,
+};
+
+/// Query parameters for marketplace search
+#[derive(Debug, Deserialize)]
+pub struct MarketplaceSearchQuery {
+    /// Search query
+    pub q: Option<String>,
+    /// Filter by plugin type
+    pub plugin_type: Option<String>,
+    /// Filter by certified only
+    pub certified: Option<bool>,
+    /// Minimum rating
+    pub min_rating: Option<f32>,
+    /// Filter by tags (comma-separated)
+    pub tags: Option<String>,
+    /// Filter by author
+    pub author: Option<String>,
+    /// Sort by field
+    pub sort_by: Option<String>,
+    /// Sort order (asc/desc)
+    pub order: Option<String>,
+    /// Page number
+    pub page: Option<u32>,
+    /// Results per page
+    pub per_page: Option<u32>,
+}
+
+/// GET /api/plugins/marketplace/search - Search the plugin marketplace
+pub async fn marketplace_search(
+    _claims: web::ReqData<auth::Claims>,
+    query: web::Query<MarketplaceSearchQuery>,
+) -> Result<HttpResponse> {
+    let marketplace = PluginMarketplace::new();
+
+    let search_query = query.q.as_deref().unwrap_or("");
+
+    let filters = MarketplaceSearchFilters {
+        plugin_type: query.plugin_type.clone(),
+        certified_only: query.certified,
+        min_rating: query.min_rating,
+        tags: query.tags.as_ref().map(|t| t.split(',').map(|s| s.trim().to_string()).collect()),
+        author: query.author.clone(),
+        sort_by: query.sort_by.as_deref().map(|s| match s {
+            "downloads" => MarketplaceSortField::Downloads,
+            "rating" => MarketplaceSortField::Rating,
+            "updated_at" => MarketplaceSortField::UpdatedAt,
+            "created_at" => MarketplaceSortField::CreatedAt,
+            "name" => MarketplaceSortField::Name,
+            _ => MarketplaceSortField::Downloads,
+        }),
+        sort_order: query.order.as_deref().map(|s| match s {
+            "asc" => SortOrder::Asc,
+            _ => SortOrder::Desc,
+        }),
+        page: query.page,
+        per_page: query.per_page,
+    };
+
+    let results = marketplace
+        .search_with_filters(search_query, filters)
+        .await
+        .map_err(|e| {
+            log::error!("Marketplace search failed: {}", e);
+            actix_web::error::ErrorInternalServerError(format!("Marketplace search failed: {}", e))
+        })?;
+
+    Ok(HttpResponse::Ok().json(results))
+}
+
+/// GET /api/plugins/marketplace/featured - Get featured plugins
+pub async fn marketplace_featured(
+    _claims: web::ReqData<auth::Claims>,
+) -> Result<HttpResponse> {
+    let marketplace = PluginMarketplace::new();
+
+    let plugins = marketplace
+        .get_featured()
+        .await
+        .map_err(|e| {
+            log::error!("Failed to get featured plugins: {}", e);
+            actix_web::error::ErrorInternalServerError("Failed to get featured plugins")
+        })?;
+
+    Ok(HttpResponse::Ok().json(plugins))
+}
+
+/// GET /api/plugins/marketplace/stats - Get marketplace statistics
+pub async fn marketplace_stats(
+    _claims: web::ReqData<auth::Claims>,
+) -> Result<HttpResponse> {
+    let marketplace = PluginMarketplace::new();
+
+    let stats = marketplace
+        .get_stats()
+        .await
+        .map_err(|e| {
+            log::error!("Failed to get marketplace stats: {}", e);
+            actix_web::error::ErrorInternalServerError("Failed to get marketplace stats")
+        })?;
+
+    Ok(HttpResponse::Ok().json(stats))
+}
+
+/// GET /api/plugins/marketplace/{id} - Get plugin details from marketplace
+pub async fn marketplace_get_plugin(
+    _claims: web::ReqData<auth::Claims>,
+    path: web::Path<String>,
+) -> Result<HttpResponse> {
+    let plugin_id = path.into_inner();
+    let marketplace = PluginMarketplace::new();
+
+    let details = marketplace
+        .get_plugin_details(&plugin_id)
+        .await
+        .map_err(|e| {
+            log::error!("Failed to get plugin details: {}", e);
+            actix_web::error::ErrorNotFound(format!("Plugin not found: {}", e))
+        })?;
+
+    Ok(HttpResponse::Ok().json(details))
+}
+
+/// Request body for marketplace install
+#[derive(Debug, Deserialize)]
+pub struct MarketplaceInstallRequest {
+    pub plugin_id: String,
+    pub version: Option<String>,
+}
+
+/// POST /api/plugins/marketplace/install - Install a plugin from the marketplace
+pub async fn marketplace_install(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    body: web::Json<MarketplaceInstallRequest>,
+) -> Result<HttpResponse> {
+    let marketplace = PluginMarketplace::new();
+
+    // Download plugin package
+    let package_data = marketplace
+        .download_plugin(&body.plugin_id, body.version.as_deref())
+        .await
+        .map_err(|e| {
+            log::error!("Failed to download plugin: {}", e);
+            actix_web::error::ErrorInternalServerError(format!("Failed to download plugin: {}", e))
+        })?;
+
+    // Write to temporary file
+    let temp_dir = std::env::temp_dir().join("heroforge_marketplace");
+    std::fs::create_dir_all(&temp_dir).map_err(|e| {
+        log::error!("Failed to create temp dir: {}", e);
+        actix_web::error::ErrorInternalServerError("Failed to create temp directory")
+    })?;
+
+    let temp_path = temp_dir.join(format!("{}.zip", body.plugin_id));
+    std::fs::write(&temp_path, &package_data).map_err(|e| {
+        log::error!("Failed to write plugin file: {}", e);
+        actix_web::error::ErrorInternalServerError("Failed to write plugin file")
+    })?;
+
+    // Install using registry
+    let loader = PluginLoader::new();
+    let registry = PluginRegistry::new(pool.get_ref().clone(), loader);
+
+    let plugin = registry
+        .install_from_file(&temp_path, &claims.sub, true)
+        .await
+        .map_err(|e| {
+            log::error!("Failed to install plugin from marketplace: {}", e);
+            let _ = std::fs::remove_file(&temp_path);
+            actix_web::error::ErrorInternalServerError(format!("Failed to install plugin: {}", e))
+        })?;
+
+    // Clean up
+    let _ = std::fs::remove_file(&temp_path);
+
+    let response: PluginResponse = plugin.try_into().map_err(|e: anyhow::Error| {
+        log::error!("Failed to convert plugin: {}", e);
+        actix_web::error::ErrorInternalServerError("Failed to convert plugin")
+    })?;
+
+    Ok(HttpResponse::Ok().json(InstallResponse {
+        plugin: response,
+        message: format!("Successfully installed {} from marketplace", body.plugin_id),
+    }))
+}
+
+/// GET /api/plugins/marketplace/updates - Check for plugin updates
+pub async fn marketplace_check_updates(
+    pool: web::Data<SqlitePool>,
+    _claims: web::ReqData<auth::Claims>,
+) -> Result<HttpResponse> {
+    // Get all installed plugins
+    let installed = db::plugins::list_plugins(&pool)
+        .await
+        .map_err(|e| {
+            log::error!("Failed to list installed plugins: {}", e);
+            actix_web::error::ErrorInternalServerError("Failed to list plugins")
+        })?;
+
+    // Build list of (plugin_id, version) tuples
+    let installed_refs: Vec<(&str, &str)> = installed
+        .iter()
+        .map(|p| (p.id.as_str(), p.version.as_str()))
+        .collect();
+
+    let marketplace = PluginMarketplace::new();
+    let updates = marketplace
+        .check_updates(&installed_refs)
+        .await
+        .map_err(|e| {
+            log::error!("Failed to check for updates: {}", e);
+            actix_web::error::ErrorInternalServerError("Failed to check for updates")
+        })?;
+
+    Ok(HttpResponse::Ok().json(updates))
+}
+
+/// POST /api/plugins/marketplace/update/{id} - Update a plugin to latest version
+pub async fn marketplace_update_plugin(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    path: web::Path<String>,
+) -> Result<HttpResponse> {
+    let plugin_id = path.into_inner();
+    let marketplace = PluginMarketplace::new();
+
+    // Get latest version info
+    let details = marketplace
+        .get_plugin_details(&plugin_id)
+        .await
+        .map_err(|e| {
+            log::error!("Failed to get plugin details: {}", e);
+            actix_web::error::ErrorNotFound(format!("Plugin not found: {}", e))
+        })?;
+
+    let latest_version = details.versions.first()
+        .map(|v| v.version.as_str())
+        .unwrap_or(&details.plugin.version);
+
+    // Download and install latest version
+    let package_data = marketplace
+        .download_plugin(&plugin_id, Some(latest_version))
+        .await
+        .map_err(|e| {
+            log::error!("Failed to download plugin: {}", e);
+            actix_web::error::ErrorInternalServerError(format!("Failed to download plugin: {}", e))
+        })?;
+
+    // Write to temporary file
+    let temp_dir = std::env::temp_dir().join("heroforge_marketplace");
+    std::fs::create_dir_all(&temp_dir).map_err(|e| {
+        log::error!("Failed to create temp dir: {}", e);
+        actix_web::error::ErrorInternalServerError("Failed to create temp directory")
+    })?;
+
+    let temp_path = temp_dir.join(format!("{}.zip", plugin_id));
+    std::fs::write(&temp_path, &package_data).map_err(|e| {
+        log::error!("Failed to write plugin file: {}", e);
+        actix_web::error::ErrorInternalServerError("Failed to write plugin file")
+    })?;
+
+    // Uninstall old version first
+    let loader = PluginLoader::new();
+    let registry = PluginRegistry::new(pool.get_ref().clone(), loader);
+
+    let _ = registry.uninstall(&plugin_id).await;
+
+    // Install new version
+    let plugin = registry
+        .install_from_file(&temp_path, &claims.sub, true)
+        .await
+        .map_err(|e| {
+            log::error!("Failed to install plugin update: {}", e);
+            let _ = std::fs::remove_file(&temp_path);
+            actix_web::error::ErrorInternalServerError(format!("Failed to update plugin: {}", e))
+        })?;
+
+    // Clean up
+    let _ = std::fs::remove_file(&temp_path);
+
+    let response: PluginResponse = plugin.try_into().map_err(|e: anyhow::Error| {
+        log::error!("Failed to convert plugin: {}", e);
+        actix_web::error::ErrorInternalServerError("Failed to convert plugin")
+    })?;
+
+    Ok(HttpResponse::Ok().json(InstallResponse {
+        plugin: response,
+        message: format!("Successfully updated {} to version {}", plugin_id, latest_version),
+    }))
+}
+
 /// Configure plugin routes
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -628,6 +925,15 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/install", web::post().to(install_plugin_from_url))
             .route("/upload", web::post().to(upload_plugin))
             .route("/validate", web::post().to(validate_plugin))
+            // Marketplace endpoints
+            .route("/marketplace/search", web::get().to(marketplace_search))
+            .route("/marketplace/featured", web::get().to(marketplace_featured))
+            .route("/marketplace/stats", web::get().to(marketplace_stats))
+            .route("/marketplace/install", web::post().to(marketplace_install))
+            .route("/marketplace/updates", web::get().to(marketplace_check_updates))
+            .route("/marketplace/{id}", web::get().to(marketplace_get_plugin))
+            .route("/marketplace/update/{id}", web::post().to(marketplace_update_plugin))
+            // Plugin-specific endpoints
             .route("/{id}", web::get().to(get_plugin))
             .route("/{id}", web::delete().to(uninstall_plugin))
             .route("/{id}/enable", web::post().to(enable_plugin))

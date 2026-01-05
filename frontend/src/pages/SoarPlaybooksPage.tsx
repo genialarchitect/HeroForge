@@ -45,10 +45,10 @@ const SoarPlaybooksPage: React.FC = () => {
       setLoading(true);
       const [playbooksData, actionsData, runsData, approvalsData, integrationsData] = await Promise.all([
         soarAPI.getPlaybooks().then(res => res.data).catch(() => []),
-        soarAPI.getActions().then(data => data).catch(() => []),
+        soarAPI.getActions().then(res => res.data).catch(() => []),
         soarAPI.getRuns().then(res => res.data).catch(() => []),
         soarAPI.getApprovals().then(res => res.data).catch(() => []),
-        soarAPI.getIntegrations().then(data => data).catch(() => [])
+        soarAPI.getIntegrations().then(res => res.data).catch(() => [])
       ]);
       setPlaybooks(playbooksData);
       setActions(actionsData);

@@ -85,58 +85,65 @@ pub async fn test_credential(
     }
 }
 
-/// Test SSH credentials
+/// Test SSH credentials using ssh2 crate
 async fn test_ssh(host: &str, port: u16, credential: &Credential, timeout: Duration) -> Result<bool> {
     let host = host.to_string();
     let port = port;
     let username = credential.username.clone();
-    let _password = credential.password.clone();
+    let password = credential.password.clone();
 
     tokio::task::spawn_blocking(move || {
         let addr = format!("{}:{}", host, port);
 
         // Connect with timeout
-        let stream = TcpStream::connect_timeout(&addr.parse()?, timeout)?;
-        stream.set_read_timeout(Some(timeout))?;
-        stream.set_write_timeout(Some(timeout))?;
+        let tcp = TcpStream::connect_timeout(&addr.parse()?, timeout)?;
+        tcp.set_read_timeout(Some(timeout))?;
+        tcp.set_write_timeout(Some(timeout))?;
 
-        let mut reader = BufReader::new(&stream);
+        // Create SSH session
+        let mut sess = ssh2::Session::new()
+            .map_err(|e| anyhow::anyhow!("Failed to create SSH session: {}", e))?;
 
-        // Read server banner
-        let mut banner = String::new();
-        reader.read_line(&mut banner)?;
+        sess.set_tcp_stream(tcp);
+        sess.set_timeout(timeout.as_millis() as u32);
 
-        if !banner.starts_with("SSH-") {
-            return Err(anyhow::anyhow!("Not an SSH server"));
+        // Perform SSH handshake
+        sess.handshake()
+            .map_err(|e| anyhow::anyhow!("SSH handshake failed: {}", e))?;
+
+        // Get server banner for logging
+        let banner = sess.banner().unwrap_or("");
+        debug!("SSH server banner at {}:{}: {}", host, port, banner);
+
+        // Try password authentication
+        match sess.userauth_password(&username, &password) {
+            Ok(_) => {
+                let authenticated = sess.authenticated();
+                if authenticated {
+                    debug!("SSH authentication successful for {}@{}:{}", username, host, port);
+                    // Cleanly disconnect
+                    let _ = sess.disconnect(None, "HeroForge credential test complete", None);
+                } else {
+                    debug!("SSH authentication returned OK but not authenticated for {}@{}:{}", username, host, port);
+                }
+                Ok(authenticated)
+            }
+            Err(e) => {
+                // Check if it's just an auth failure vs connection error
+                let error_msg = e.to_string().to_lowercase();
+                if error_msg.contains("authentication")
+                    || error_msg.contains("denied")
+                    || error_msg.contains("failed")
+                    || error_msg.contains("password")
+                {
+                    debug!("SSH auth failed for {}@{}:{}: {}", username, host, port, e);
+                    Ok(false)
+                } else {
+                    // Might be a real connection error
+                    Err(anyhow::anyhow!("SSH error: {}", e))
+                }
+            }
         }
-
-        // For actual SSH password auth, we would need to implement the full
-        // SSH protocol or use an SSH library. For now, we'll indicate that
-        // SSH testing requires additional tooling.
-        //
-        // In a real implementation, you would use the `ssh2` crate:
-        // ```
-        // use ssh2::Session;
-        // let tcp = TcpStream::connect(&addr)?;
-        // let mut sess = Session::new()?;
-        // sess.set_tcp_stream(tcp);
-        // sess.handshake()?;
-        // match sess.userauth_password(&username, &password) {
-        //     Ok(_) => Ok(sess.authenticated()),
-        //     Err(_) => Ok(false),
-        // }
-        // ```
-
-        // For security scanning purposes, we'll attempt a basic connection test
-        // Real credential testing would require the ssh2 crate
-        debug!(
-            "SSH server detected at {}:{}, username={} (auth test would require ssh2 crate)",
-            host, port, username
-        );
-
-        // Return false - actual implementation would test auth
-        // This is a placeholder that indicates the service is reachable
-        Ok(false)
     })
     .await?
 }

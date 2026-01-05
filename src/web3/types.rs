@@ -244,6 +244,10 @@ pub enum WalletRiskType {
     SmartContractVulnerability,
     UnverifiedWallet,
     ApprovalRisk,
+    MaliciousInteraction,
+    MixerUsage,
+    SuspiciousActivity,
+    SinglePointOfFailure,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

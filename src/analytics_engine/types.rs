@@ -123,10 +123,42 @@ pub struct StreamConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum StreamSource {
-    Kafka { brokers: Vec<String>, topic: String },
+    Kafka { brokers: Vec<String>, topic: String, group_id: Option<String>, security: Option<KafkaSecurity> },
+    Pulsar { service_url: String, topic: String, subscription: Option<String>, auth: Option<PulsarAuth> },
     Flink { job_id: String },
-    Kinesis { stream_name: String },
+    Kinesis { stream_name: String, region: Option<String> },
+    RedPanda { brokers: Vec<String>, topic: String },
     Custom(String),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KafkaSecurity {
+    pub protocol: KafkaSecurityProtocol,
+    pub sasl_mechanism: Option<String>,
+    pub username: Option<String>,
+    pub password: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum KafkaSecurityProtocol {
+    Plaintext,
+    Ssl,
+    SaslPlaintext,
+    SaslSsl,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PulsarAuth {
+    pub auth_type: PulsarAuthType,
+    pub token: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum PulsarAuthType {
+    None,
+    Token,
+    OAuth2,
+    Tls,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

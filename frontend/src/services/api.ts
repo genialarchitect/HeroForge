@@ -5690,6 +5690,11 @@ export const scaAPI = {
   updateVulnStatus: (projectId: string, vulnId: string, status: string) =>
     api.put(`/sca/projects/${projectId}/vulnerabilities/${vulnId}/status`, { status }),
   getUpdates: (id: string) => api.get(`/sca/projects/${id}/updates`),
+  exportSbom: (id: string, format: 'cyclonedx' | 'spdx') =>
+    api.get(`/sca/projects/${id}/sbom`, {
+      params: { format },
+      responseType: 'blob'
+    }),
 };
 
 // ============================================================================
@@ -5993,11 +5998,11 @@ export const soarAPI = {
   rejectStep: (approvalId: string, reason?: string) =>
     api.post(`/workflows/approvals/${approvalId}/reject`, { reason }),
 
-  // Actions (placeholder - would need actual action library endpoint)
-  getActions: () => Promise.resolve([]), // TODO: Implement action library endpoint
+  // Actions - from SOAR module
+  getActions: () => api.get('/green-team/soar/actions'),
 
-  // Integrations (placeholder)
-  getIntegrations: () => Promise.resolve([]), // TODO: Implement integrations endpoint
+  // Integrations - from SOAR module
+  getIntegrations: () => api.get('/green-team/soar/integrations'),
 };
 
 export default api;

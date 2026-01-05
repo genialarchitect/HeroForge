@@ -42,6 +42,8 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/projects/{id}/vulnerabilities/{vuln_id}/status", web::put().to(update_vuln_status))
             // Updates
             .route("/projects/{id}/updates", web::get().to(get_updates))
+            // SBOM Export
+            .route("/projects/{id}/sbom", web::get().to(export_sbom))
     );
 }
 
@@ -766,4 +768,247 @@ pub async fn get_updates(
     }
 
     HttpResponse::Ok().json(recommendations)
+}
+
+// ============================================================================
+// SBOM Export Endpoint
+// ============================================================================
+
+#[derive(Debug, Deserialize)]
+pub struct SbomExportQuery {
+    /// Export format: "cyclonedx" or "spdx"
+    pub format: Option<String>,
+}
+
+/// Export SBOM (Software Bill of Materials) in CycloneDX or SPDX format
+pub async fn export_sbom(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    path: web::Path<String>,
+    query: web::Query<SbomExportQuery>,
+) -> HttpResponse {
+    let project_id = path.into_inner();
+    let format = query.format.as_deref().unwrap_or("cyclonedx");
+
+    // Verify ownership
+    match sca_db::user_owns_project(pool.get_ref(), &claims.sub, &project_id).await {
+        Ok(true) => {}
+        Ok(false) => {
+            return HttpResponse::Forbidden().json(serde_json::json!({
+                "error": "Not authorized to access this project"
+            }));
+        }
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": e.to_string()
+            }));
+        }
+    }
+
+    // Get project
+    let project = match sca_db::get_project_by_id(pool.get_ref(), &project_id).await {
+        Ok(p) => p,
+        Err(e) => {
+            return HttpResponse::NotFound().json(serde_json::json!({
+                "error": e.to_string()
+            }));
+        }
+    };
+
+    // Get all dependencies
+    let deps = match sca_db::get_project_dependencies(
+        pool.get_ref(),
+        &project_id,
+        None, None, None, None, None, None,
+    ).await {
+        Ok(d) => d,
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": e.to_string()
+            }));
+        }
+    };
+
+    // Get vulnerabilities for each dependency
+    let vulns = sca_db::get_project_vulnerabilities(
+        pool.get_ref(),
+        &project_id,
+        None, None, None, None, None, None,
+    ).await.unwrap_or_default();
+
+    let timestamp = chrono::Utc::now().to_rfc3339();
+
+    match format.to_lowercase().as_str() {
+        "cyclonedx" => {
+            // Generate CycloneDX 1.5 JSON format
+            let components: Vec<serde_json::Value> = deps.iter().map(|dep| {
+                let dep_vulns: Vec<serde_json::Value> = vulns.iter()
+                    .filter(|v| v.dependency_id == dep.id)
+                    .map(|v| {
+                        serde_json::json!({
+                            "id": v.vuln_id,
+                            "source": {
+                                "name": v.source,
+                                "url": format!("https://nvd.nist.gov/vuln/detail/{}", v.vuln_id)
+                            },
+                            "ratings": [{
+                                "score": v.cvss_score.unwrap_or(0.0),
+                                "severity": v.severity,
+                                "method": "CVSSv3"
+                            }],
+                            "description": v.description
+                        })
+                    })
+                    .collect();
+
+                let mut component = serde_json::json!({
+                    "type": "library",
+                    "bom-ref": format!("{}@{}", dep.name, dep.version),
+                    "name": dep.name,
+                    "version": dep.version,
+                    "purl": format!("pkg:{}/{}@{}",
+                        match dep.ecosystem.as_str() {
+                            "npm" => "npm",
+                            "cargo" => "cargo",
+                            "pypi" => "pypi",
+                            "go" => "golang",
+                            "maven" => "maven",
+                            _ => "generic"
+                        },
+                        dep.name,
+                        dep.version
+                    )
+                });
+
+                if let Some(license) = &dep.license {
+                    component["licenses"] = serde_json::json!([{
+                        "license": { "id": license }
+                    }]);
+                }
+
+                if !dep_vulns.is_empty() {
+                    component["vulnerabilities"] = serde_json::json!(dep_vulns);
+                }
+
+                component
+            }).collect();
+
+            let sbom = serde_json::json!({
+                "bomFormat": "CycloneDX",
+                "specVersion": "1.5",
+                "serialNumber": format!("urn:uuid:{}", uuid::Uuid::new_v4()),
+                "version": 1,
+                "metadata": {
+                    "timestamp": timestamp,
+                    "tools": [{
+                        "vendor": "HeroForge",
+                        "name": "HeroForge SCA",
+                        "version": "0.2.0"
+                    }],
+                    "component": {
+                        "type": "application",
+                        "name": project.name,
+                        "version": "1.0.0"
+                    }
+                },
+                "components": components
+            });
+
+            HttpResponse::Ok()
+                .content_type("application/json")
+                .insert_header(("Content-Disposition", format!("attachment; filename=\"{}-sbom-cyclonedx.json\"", project.name)))
+                .json(sbom)
+        }
+        "spdx" => {
+            // Generate SPDX 2.3 JSON format
+            let packages: Vec<serde_json::Value> = deps.iter().enumerate().map(|(idx, dep)| {
+                let mut pkg = serde_json::json!({
+                    "SPDXID": format!("SPDXRef-Package-{}", idx + 1),
+                    "name": dep.name,
+                    "versionInfo": dep.version,
+                    "downloadLocation": "NOASSERTION",
+                    "filesAnalyzed": false,
+                    "externalRefs": [{
+                        "referenceCategory": "PACKAGE-MANAGER",
+                        "referenceType": "purl",
+                        "referenceLocator": format!("pkg:{}/{}@{}",
+                            match dep.ecosystem.as_str() {
+                                "npm" => "npm",
+                                "cargo" => "cargo",
+                                "pypi" => "pypi",
+                                "go" => "golang",
+                                "maven" => "maven",
+                                _ => "generic"
+                            },
+                            dep.name,
+                            dep.version
+                        )
+                    }]
+                });
+
+                if let Some(license) = &dep.license {
+                    pkg["licenseConcluded"] = serde_json::json!(license);
+                    pkg["licenseDeclared"] = serde_json::json!(license);
+                } else {
+                    pkg["licenseConcluded"] = serde_json::json!("NOASSERTION");
+                    pkg["licenseDeclared"] = serde_json::json!("NOASSERTION");
+                }
+
+                // Add vulnerability annotations
+                let dep_vulns: Vec<&_> = vulns.iter()
+                    .filter(|v| v.dependency_id == dep.id)
+                    .collect();
+
+                if !dep_vulns.is_empty() {
+                    let vuln_refs: Vec<serde_json::Value> = dep_vulns.iter().map(|v| {
+                        serde_json::json!({
+                            "referenceCategory": "SECURITY",
+                            "referenceType": "cve",
+                            "referenceLocator": format!("https://nvd.nist.gov/vuln/detail/{}", v.vuln_id)
+                        })
+                    }).collect();
+
+                    if let Some(refs) = pkg.get_mut("externalRefs") {
+                        if let Some(arr) = refs.as_array_mut() {
+                            arr.extend(vuln_refs);
+                        }
+                    }
+                }
+
+                pkg
+            }).collect();
+
+            let relationships: Vec<serde_json::Value> = packages.iter().map(|pkg| {
+                serde_json::json!({
+                    "spdxElementId": "SPDXRef-DOCUMENT",
+                    "relatedSpdxElement": pkg["SPDXID"],
+                    "relationshipType": "DESCRIBES"
+                })
+            }).collect();
+
+            let sbom = serde_json::json!({
+                "spdxVersion": "SPDX-2.3",
+                "dataLicense": "CC0-1.0",
+                "SPDXID": "SPDXRef-DOCUMENT",
+                "name": format!("{}-sbom", project.name),
+                "documentNamespace": format!("https://heroforge.io/spdx/{}/{}", project.id, uuid::Uuid::new_v4()),
+                "creationInfo": {
+                    "created": timestamp,
+                    "creators": ["Tool: HeroForge-SCA-0.2.0"]
+                },
+                "packages": packages,
+                "relationships": relationships
+            });
+
+            HttpResponse::Ok()
+                .content_type("application/json")
+                .insert_header(("Content-Disposition", format!("attachment; filename=\"{}-sbom-spdx.json\"", project.name)))
+                .json(sbom)
+        }
+        _ => {
+            HttpResponse::BadRequest().json(serde_json::json!({
+                "error": "Invalid format. Supported formats: cyclonedx, spdx"
+            }))
+        }
+    }
 }

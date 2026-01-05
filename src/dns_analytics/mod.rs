@@ -14,6 +14,7 @@ pub mod tunnel_detection;
 pub mod fast_flux;
 pub mod passive_dns;
 pub mod nod_tracker;
+pub mod whois;
 
 // Re-export main types
 pub use types::{
@@ -34,6 +35,7 @@ pub use tunnel_detection::{TunnelDetector, TunnelDetectorConfig};
 pub use fast_flux::{FastFluxDetector, FastFluxConfig, DnsResolution};
 pub use passive_dns::{PassiveDnsStore, PassiveDnsConfig};
 pub use nod_tracker::{NodTracker, NodConfig};
+pub use whois::{WhoisClient, WhoisConfig, WhoisResult, WhoisError};
 
 use std::sync::Arc;
 use tokio::sync::RwLock;

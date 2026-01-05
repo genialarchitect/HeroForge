@@ -90,8 +90,21 @@ const ScaPage: React.FC = () => {
   const handleExportSbom = async (format: 'cyclonedx' | 'spdx') => {
     if (!selectedProject) return;
     try {
-      // TODO: Implement SBOM export endpoint
-      toast.info(`SBOM export for ${format.toUpperCase()} is not yet implemented`);
+      toast.info(`Generating ${format.toUpperCase()} SBOM...`);
+      const response = await scaAPI.exportSbom(selectedProject.id, format);
+
+      // Create download link
+      const blob = new Blob([response.data], { type: 'application/json' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${selectedProject.name}-sbom-${format}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      toast.success(`${format.toUpperCase()} SBOM exported successfully`);
     } catch (error) {
       console.error('Failed to export SBOM:', error);
       toast.error('Failed to export SBOM');

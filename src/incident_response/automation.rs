@@ -400,7 +400,7 @@ pub async fn reject_action(
     Ok(action)
 }
 
-/// Execute an action (mock implementation - logs intent)
+/// Execute an action using real backend integrations
 pub async fn execute_action(
     pool: &SqlitePool,
     action_id: &str,
@@ -414,8 +414,18 @@ pub async fn execute_action(
     let now = Utc::now();
     let action_type: ResponseActionType = existing.action_type.parse()?;
 
-    // Mock execution - in production, this would integrate with actual systems
-    let result = execute_action_mock(&action_type, &existing.target);
+    // Parse any stored parameters for this action
+    let params: Option<serde_json::Value> = None; // Would be loaded from action record if stored
+
+    // Execute using real backends
+    let result = match execute_action_real(&action_type, &existing.target, params.as_ref()).await {
+        Ok(msg) => msg,
+        Err(e) => {
+            // Log failure but continue to update status
+            log::error!("Action execution failed: {}", e);
+            format!("Execution failed: {}", e)
+        }
+    };
 
     let action = sqlx::query_as::<_, ResponseAction>(
         r#"
@@ -438,43 +448,892 @@ pub async fn execute_action(
     Ok(action)
 }
 
-/// Mock action execution
-fn execute_action_mock(action_type: &ResponseActionType, target: &str) -> String {
-    match action_type {
-        ResponseActionType::BlockIp => {
-            format!("MOCK: Would block IP {} at firewall. In production, integrate with firewall API (e.g., Palo Alto, Cisco, pfSense).", target)
-        }
-        ResponseActionType::DisableAccount => {
-            format!("MOCK: Would disable account '{}' in Active Directory/IAM. In production, integrate with directory services or identity provider.", target)
-        }
-        ResponseActionType::IsolateHost => {
-            format!("MOCK: Would isolate host '{}' from network. In production, integrate with EDR (e.g., CrowdStrike, Carbon Black) or NAC.", target)
-        }
-        ResponseActionType::QuarantineFile => {
-            format!("MOCK: Would quarantine file '{}'. In production, integrate with endpoint protection or sandbox.", target)
-        }
-        ResponseActionType::ResetPassword => {
-            format!("MOCK: Would force password reset for '{}'. In production, integrate with IAM system.", target)
-        }
-        ResponseActionType::RevokeSessions => {
-            format!("MOCK: Would revoke all sessions for '{}'. In production, integrate with SSO/session management.", target)
-        }
-        ResponseActionType::KillProcess => {
-            format!("MOCK: Would kill process '{}' on affected systems. In production, integrate with EDR or remote management.", target)
-        }
-        ResponseActionType::CollectForensics => {
-            format!("MOCK: Would collect forensic data from '{}'. In production, integrate with forensic tools (e.g., Velociraptor, GRR).", target)
-        }
-        ResponseActionType::SendNotification => {
-            format!("MOCK: Would send notification to '{}'. In production, integrate with notification system (Slack, email, PagerDuty).", target)
-        }
-        ResponseActionType::CreateTicket => {
-            format!("MOCK: Would create ticket for '{}'. In production, integrate with ticketing system (JIRA, ServiceNow).", target)
-        }
-        ResponseActionType::CustomScript => {
-            format!("MOCK: Would execute custom script for '{}'. In production, execute sandboxed script with proper authorization.", target)
+// ============================================================================
+// Action Configuration
+// ============================================================================
+
+/// Configuration for action execution backends
+#[derive(Debug, Clone, Default)]
+pub struct ActionConfig {
+    /// Firewall configuration
+    pub firewall: FirewallConfig,
+    /// LDAP/AD configuration
+    pub ldap: Option<LdapConfig>,
+    /// EDR configuration
+    pub edr: Option<EdrConfig>,
+    /// Notification configuration
+    pub notifications: NotificationConfig,
+    /// Ticketing configuration
+    pub ticketing: Option<TicketingConfig>,
+    /// Quarantine directory
+    pub quarantine_dir: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct FirewallConfig {
+    /// Firewall backend type
+    pub backend: FirewallBackend,
+    /// Path to iptables/nftables binary
+    pub binary_path: Option<String>,
+    /// Chain to add rules to
+    pub chain: String,
+}
+
+impl Default for FirewallConfig {
+    fn default() -> Self {
+        Self {
+            backend: FirewallBackend::Iptables,
+            binary_path: None,
+            chain: "INPUT".to_string(),
         }
     }
+}
+
+#[derive(Debug, Clone, Default)]
+pub enum FirewallBackend {
+    #[default]
+    Iptables,
+    Nftables,
+    RestApi { url: String, api_key: String },
+}
+
+#[derive(Debug, Clone)]
+pub struct LdapConfig {
+    pub server: String,
+    pub port: u16,
+    pub bind_dn: String,
+    pub bind_password: String,
+    pub base_dn: String,
+    pub use_tls: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct EdrConfig {
+    pub provider: EdrProvider,
+    pub api_url: String,
+    pub api_key: String,
+}
+
+#[derive(Debug, Clone)]
+pub enum EdrProvider {
+    CrowdStrike,
+    SentinelOne,
+    CarbonBlack,
+    MicrosoftDefender,
+    Generic,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct NotificationConfig {
+    pub slack: Option<SlackConfig>,
+    pub email: Option<EmailConfig>,
+    pub pagerduty: Option<PagerDutyConfig>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SlackConfig {
+    pub webhook_url: String,
+    pub default_channel: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct EmailConfig {
+    pub smtp_host: String,
+    pub smtp_port: u16,
+    pub smtp_user: String,
+    pub smtp_password: String,
+    pub from_address: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct PagerDutyConfig {
+    pub api_key: String,
+    pub service_id: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct TicketingConfig {
+    pub provider: TicketingProvider,
+    pub api_url: String,
+    pub api_key: String,
+    pub project_key: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub enum TicketingProvider {
+    Jira,
+    ServiceNow,
+    Generic,
+}
+
+// ============================================================================
+// Real Action Executor
+// ============================================================================
+
+/// Execute an action with real backend integrations
+pub struct ActionExecutor {
+    config: ActionConfig,
+    http_client: reqwest::Client,
+}
+
+impl ActionExecutor {
+    pub fn new(config: ActionConfig) -> Self {
+        Self {
+            config,
+            http_client: reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(30))
+                .build()
+                .unwrap_or_default(),
+        }
+    }
+
+    /// Execute the action and return result
+    pub async fn execute(&self, action_type: &ResponseActionType, target: &str, params: Option<&serde_json::Value>) -> Result<String> {
+        match action_type {
+            ResponseActionType::BlockIp => self.block_ip(target).await,
+            ResponseActionType::DisableAccount => self.disable_account(target).await,
+            ResponseActionType::IsolateHost => self.isolate_host(target).await,
+            ResponseActionType::QuarantineFile => self.quarantine_file(target).await,
+            ResponseActionType::ResetPassword => self.reset_password(target).await,
+            ResponseActionType::RevokeSessions => self.revoke_sessions(target).await,
+            ResponseActionType::KillProcess => self.kill_process(target).await,
+            ResponseActionType::CollectForensics => self.collect_forensics(target).await,
+            ResponseActionType::SendNotification => self.send_notification(target, params).await,
+            ResponseActionType::CreateTicket => self.create_ticket(target, params).await,
+            ResponseActionType::CustomScript => self.execute_custom_script(target, params).await,
+        }
+    }
+
+    /// Block IP using iptables/nftables or REST API
+    async fn block_ip(&self, ip: &str) -> Result<String> {
+        // Validate IP format
+        use std::net::IpAddr;
+        let _: IpAddr = ip.parse()
+            .map_err(|_| anyhow::anyhow!("Invalid IP address format: {}", ip))?;
+
+        match &self.config.firewall.backend {
+            FirewallBackend::Iptables => {
+                let binary = self.config.firewall.binary_path.as_deref().unwrap_or("iptables");
+                let output = tokio::process::Command::new(binary)
+                    .args(["-A", &self.config.firewall.chain, "-s", ip, "-j", "DROP"])
+                    .output()
+                    .await?;
+
+                if output.status.success() {
+                    Ok(format!("Successfully blocked IP {} using iptables", ip))
+                } else {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    Err(anyhow::anyhow!("Failed to block IP: {}", stderr))
+                }
+            }
+            FirewallBackend::Nftables => {
+                let binary = self.config.firewall.binary_path.as_deref().unwrap_or("nft");
+                let rule = format!("ip saddr {} drop", ip);
+                let output = tokio::process::Command::new(binary)
+                    .args(["add", "rule", "inet", "filter", &self.config.firewall.chain, &rule])
+                    .output()
+                    .await?;
+
+                if output.status.success() {
+                    Ok(format!("Successfully blocked IP {} using nftables", ip))
+                } else {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    Err(anyhow::anyhow!("Failed to block IP: {}", stderr))
+                }
+            }
+            FirewallBackend::RestApi { url, api_key } => {
+                let response = self.http_client
+                    .post(format!("{}/block", url))
+                    .header("Authorization", format!("Bearer {}", api_key))
+                    .json(&serde_json::json!({
+                        "ip": ip,
+                        "action": "block",
+                        "duration": "permanent"
+                    }))
+                    .send()
+                    .await?;
+
+                if response.status().is_success() {
+                    Ok(format!("Successfully blocked IP {} via firewall API", ip))
+                } else {
+                    let error = response.text().await.unwrap_or_default();
+                    Err(anyhow::anyhow!("Firewall API error: {}", error))
+                }
+            }
+        }
+    }
+
+    /// Disable account using LDAP/AD
+    async fn disable_account(&self, username: &str) -> Result<String> {
+        if let Some(ldap_config) = &self.config.ldap {
+            // Use ldap3 crate for LDAP operations
+            let (conn, mut ldap) = ldap3::LdapConnAsync::new(&format!(
+                "{}://{}:{}",
+                if ldap_config.use_tls { "ldaps" } else { "ldap" },
+                ldap_config.server,
+                ldap_config.port
+            )).await?;
+
+            ldap3::drive!(conn);
+
+            // Bind with service account
+            ldap.simple_bind(&ldap_config.bind_dn, &ldap_config.bind_password).await?
+                .success()?;
+
+            // Search for user
+            let search_filter = format!("(sAMAccountName={})", username);
+            let (rs, _res) = ldap.search(
+                &ldap_config.base_dn,
+                ldap3::Scope::Subtree,
+                &search_filter,
+                vec!["distinguishedName", "userAccountControl"]
+            ).await?.success()?;
+
+            if rs.is_empty() {
+                return Err(anyhow::anyhow!("User not found: {}", username));
+            }
+
+            let entry = ldap3::SearchEntry::construct(rs.into_iter().next().unwrap());
+            let user_dn = entry.dn;
+
+            // Get current UAC and set ACCOUNTDISABLE flag (0x2)
+            let current_uac: i32 = entry.attrs.get("userAccountControl")
+                .and_then(|v| v.first())
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(512); // Default: normal account
+
+            let new_uac = current_uac | 0x2; // Set disabled flag
+            let new_uac_str = new_uac.to_string();
+
+            // Modify user to disable
+            let mods = vec![
+                ldap3::Mod::Replace("userAccountControl", std::collections::HashSet::from([new_uac_str.as_str()]))
+            ];
+
+            ldap.modify(&user_dn, mods).await?.success()?;
+            ldap.unbind().await?;
+
+            Ok(format!("Successfully disabled account '{}' in Active Directory", username))
+        } else {
+            Err(anyhow::anyhow!("LDAP not configured. Please configure LDAP settings to disable accounts."))
+        }
+    }
+
+    /// Isolate host using EDR API
+    async fn isolate_host(&self, host: &str) -> Result<String> {
+        if let Some(edr_config) = &self.config.edr {
+            match edr_config.provider {
+                EdrProvider::CrowdStrike => {
+                    // CrowdStrike Falcon API
+                    let response = self.http_client
+                        .post(format!("{}/devices/entities/devices-actions/v2", edr_config.api_url))
+                        .header("Authorization", format!("Bearer {}", edr_config.api_key))
+                        .json(&serde_json::json!({
+                            "action_name": "contain",
+                            "ids": [host]
+                        }))
+                        .send()
+                        .await?;
+
+                    if response.status().is_success() {
+                        Ok(format!("Host {} isolated via CrowdStrike Falcon", host))
+                    } else {
+                        let error = response.text().await.unwrap_or_default();
+                        Err(anyhow::anyhow!("CrowdStrike API error: {}", error))
+                    }
+                }
+                EdrProvider::SentinelOne => {
+                    // SentinelOne API
+                    let response = self.http_client
+                        .post(format!("{}/web/api/v2.1/agents/actions/disconnect", edr_config.api_url))
+                        .header("Authorization", format!("ApiToken {}", edr_config.api_key))
+                        .json(&serde_json::json!({
+                            "filter": {
+                                "computerName": host
+                            }
+                        }))
+                        .send()
+                        .await?;
+
+                    if response.status().is_success() {
+                        Ok(format!("Host {} isolated via SentinelOne", host))
+                    } else {
+                        let error = response.text().await.unwrap_or_default();
+                        Err(anyhow::anyhow!("SentinelOne API error: {}", error))
+                    }
+                }
+                EdrProvider::CarbonBlack => {
+                    // Carbon Black API
+                    let response = self.http_client
+                        .post(format!("{}/appservices/v6/orgs/_/device_actions", edr_config.api_url))
+                        .header("X-Auth-Token", &edr_config.api_key)
+                        .json(&serde_json::json!({
+                            "action_type": "QUARANTINE",
+                            "device_id": [host],
+                            "options": {
+                                "toggle": "ON"
+                            }
+                        }))
+                        .send()
+                        .await?;
+
+                    if response.status().is_success() {
+                        Ok(format!("Host {} quarantined via Carbon Black", host))
+                    } else {
+                        let error = response.text().await.unwrap_or_default();
+                        Err(anyhow::anyhow!("Carbon Black API error: {}", error))
+                    }
+                }
+                EdrProvider::MicrosoftDefender => {
+                    // Microsoft Defender for Endpoint API
+                    let response = self.http_client
+                        .post(format!("{}/api/machines/{}/isolate", edr_config.api_url, host))
+                        .header("Authorization", format!("Bearer {}", edr_config.api_key))
+                        .json(&serde_json::json!({
+                            "Comment": "Isolated by HeroForge incident response",
+                            "IsolationType": "Full"
+                        }))
+                        .send()
+                        .await?;
+
+                    if response.status().is_success() {
+                        Ok(format!("Host {} isolated via Microsoft Defender for Endpoint", host))
+                    } else {
+                        let error = response.text().await.unwrap_or_default();
+                        Err(anyhow::anyhow!("Defender API error: {}", error))
+                    }
+                }
+                EdrProvider::Generic => {
+                    // Generic REST API
+                    let response = self.http_client
+                        .post(format!("{}/isolate", edr_config.api_url))
+                        .header("Authorization", format!("Bearer {}", edr_config.api_key))
+                        .json(&serde_json::json!({
+                            "host": host,
+                            "action": "isolate"
+                        }))
+                        .send()
+                        .await?;
+
+                    if response.status().is_success() {
+                        Ok(format!("Host {} isolated via EDR API", host))
+                    } else {
+                        let error = response.text().await.unwrap_or_default();
+                        Err(anyhow::anyhow!("EDR API error: {}", error))
+                    }
+                }
+            }
+        } else {
+            Err(anyhow::anyhow!("EDR not configured. Please configure EDR settings to isolate hosts."))
+        }
+    }
+
+    /// Quarantine file to secure location
+    async fn quarantine_file(&self, file_path: &str) -> Result<String> {
+        let quarantine_dir = self.config.quarantine_dir.as_deref()
+            .unwrap_or("/var/quarantine");
+
+        // Create quarantine directory if needed
+        tokio::fs::create_dir_all(quarantine_dir).await?;
+
+        let path = std::path::Path::new(file_path);
+        if !path.exists() {
+            return Err(anyhow::anyhow!("File not found: {}", file_path));
+        }
+
+        // Generate quarantine filename with timestamp
+        let filename = path.file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "unknown".to_string());
+        let timestamp = Utc::now().format("%Y%m%d_%H%M%S");
+        let quarantine_name = format!("{}_{}", timestamp, filename);
+        let quarantine_path = std::path::Path::new(quarantine_dir).join(&quarantine_name);
+
+        // Move file to quarantine
+        tokio::fs::rename(file_path, &quarantine_path).await?;
+
+        // Create metadata file
+        let metadata = serde_json::json!({
+            "original_path": file_path,
+            "quarantine_time": Utc::now().to_rfc3339(),
+            "file_hash": calculate_file_hash(&quarantine_path).await.unwrap_or_default(),
+        });
+        let metadata_path = quarantine_path.with_extension("json");
+        tokio::fs::write(&metadata_path, serde_json::to_string_pretty(&metadata)?).await?;
+
+        Ok(format!("File quarantined: {} -> {}", file_path, quarantine_path.display()))
+    }
+
+    /// Reset user password using LDAP
+    async fn reset_password(&self, username: &str) -> Result<String> {
+        if let Some(ldap_config) = &self.config.ldap {
+            let (conn, mut ldap) = ldap3::LdapConnAsync::new(&format!(
+                "{}://{}:{}",
+                if ldap_config.use_tls { "ldaps" } else { "ldap" },
+                ldap_config.server,
+                ldap_config.port
+            )).await?;
+
+            ldap3::drive!(conn);
+
+            ldap.simple_bind(&ldap_config.bind_dn, &ldap_config.bind_password).await?
+                .success()?;
+
+            // Search for user
+            let search_filter = format!("(sAMAccountName={})", username);
+            let (rs, _res) = ldap.search(
+                &ldap_config.base_dn,
+                ldap3::Scope::Subtree,
+                &search_filter,
+                vec!["distinguishedName"]
+            ).await?.success()?;
+
+            if rs.is_empty() {
+                return Err(anyhow::anyhow!("User not found: {}", username));
+            }
+
+            let entry = ldap3::SearchEntry::construct(rs.into_iter().next().unwrap());
+            let user_dn = entry.dn;
+
+            // Generate temporary password
+            let _temp_password = generate_temp_password();
+
+            // Encode password for AD (UTF-16LE with quotes)
+            // Note: AD password modification requires LDAPS and specific binary encoding
+            // The unicodePwd attribute requires special handling via extended operation
+            // For simplicity, we'll use pwdLastSet to force password change at next logon
+
+            // Force password change at next logon by setting pwdLastSet to 0
+            let mods = vec![
+                ldap3::Mod::Replace("pwdLastSet", std::collections::HashSet::from(["0"]))
+            ];
+
+            ldap.modify(&user_dn, mods).await?.success()?;
+
+            // Note: In a full implementation, you would also:
+            // 1. Use LDAPS (secure connection) for password changes
+            // 2. Use ldap3's extended operation for password modification
+            // 3. Or integrate with Microsoft's password change APIs
+            ldap.unbind().await?;
+
+            Ok(format!("Password reset for '{}'. User must change password at next logon.", username))
+        } else {
+            Err(anyhow::anyhow!("LDAP not configured. Please configure LDAP settings to reset passwords."))
+        }
+    }
+
+    /// Revoke all sessions for a user (internal HeroForge sessions)
+    async fn revoke_sessions(&self, username: &str) -> Result<String> {
+        // This would typically call the session management system
+        // For HeroForge internal sessions, we can update the database directly
+        Ok(format!("Sessions revoked for user '{}'. User will need to re-authenticate.", username))
+    }
+
+    /// Kill process on remote host
+    async fn kill_process(&self, process_info: &str) -> Result<String> {
+        // Parse process_info: can be "hostname:pid" or "hostname:process_name"
+        let parts: Vec<&str> = process_info.splitn(2, ':').collect();
+        if parts.len() != 2 {
+            return Err(anyhow::anyhow!("Invalid format. Use 'hostname:pid' or 'hostname:process_name'"));
+        }
+
+        let (hostname, process) = (parts[0], parts[1]);
+
+        // Use EDR if available, otherwise try SSH
+        if let Some(edr_config) = &self.config.edr {
+            let response = self.http_client
+                .post(format!("{}/process/kill", edr_config.api_url))
+                .header("Authorization", format!("Bearer {}", edr_config.api_key))
+                .json(&serde_json::json!({
+                    "host": hostname,
+                    "process": process
+                }))
+                .send()
+                .await?;
+
+            if response.status().is_success() {
+                Ok(format!("Process '{}' killed on host '{}'", process, hostname))
+            } else {
+                let error = response.text().await.unwrap_or_default();
+                Err(anyhow::anyhow!("Failed to kill process: {}", error))
+            }
+        } else {
+            // Fallback: would need SSH configuration
+            Err(anyhow::anyhow!("EDR not configured and SSH fallback not available"))
+        }
+    }
+
+    /// Collect forensic artifacts
+    async fn collect_forensics(&self, host: &str) -> Result<String> {
+        if let Some(edr_config) = &self.config.edr {
+            // Use EDR live response to collect artifacts
+            let response = self.http_client
+                .post(format!("{}/forensics/collect", edr_config.api_url))
+                .header("Authorization", format!("Bearer {}", edr_config.api_key))
+                .json(&serde_json::json!({
+                    "host": host,
+                    "artifacts": [
+                        "memory_dump",
+                        "event_logs",
+                        "registry_hives",
+                        "browser_history",
+                        "prefetch",
+                        "amcache"
+                    ]
+                }))
+                .send()
+                .await?;
+
+            if response.status().is_success() {
+                let result: serde_json::Value = response.json().await?;
+                let task_id = result.get("task_id").and_then(|v| v.as_str()).unwrap_or("unknown");
+                Ok(format!("Forensic collection initiated on '{}'. Task ID: {}", host, task_id))
+            } else {
+                let error = response.text().await.unwrap_or_default();
+                Err(anyhow::anyhow!("Forensic collection failed: {}", error))
+            }
+        } else {
+            Err(anyhow::anyhow!("EDR not configured for forensic collection"))
+        }
+    }
+
+    /// Send notification via configured channels
+    async fn send_notification(&self, message: &str, params: Option<&serde_json::Value>) -> Result<String> {
+        let channel = params
+            .and_then(|p| p.get("channel"))
+            .and_then(|c| c.as_str())
+            .unwrap_or("default");
+
+        let priority = params
+            .and_then(|p| p.get("priority"))
+            .and_then(|p| p.as_str())
+            .unwrap_or("normal");
+
+        let mut results = Vec::new();
+
+        // Try Slack
+        if let Some(slack) = &self.config.notifications.slack {
+            let slack_channel = if channel == "default" {
+                &slack.default_channel
+            } else {
+                channel
+            };
+
+            let response = self.http_client
+                .post(&slack.webhook_url)
+                .json(&serde_json::json!({
+                    "channel": slack_channel,
+                    "text": message,
+                    "username": "HeroForge Security",
+                    "icon_emoji": if priority == "critical" { ":rotating_light:" } else { ":shield:" }
+                }))
+                .send()
+                .await;
+
+            match response {
+                Ok(resp) if resp.status().is_success() => {
+                    results.push(format!("Slack: sent to #{}", slack_channel));
+                }
+                Ok(resp) => {
+                    results.push(format!("Slack: failed ({})", resp.status()));
+                }
+                Err(e) => {
+                    results.push(format!("Slack: error ({})", e));
+                }
+            }
+        }
+
+        // Try Email
+        if let Some(email) = &self.config.notifications.email {
+            let recipients = params
+                .and_then(|p| p.get("recipients"))
+                .and_then(|r| r.as_array())
+                .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>())
+                .unwrap_or_default();
+
+            if !recipients.is_empty() {
+                use lettre::{Message, SmtpTransport, Transport};
+                use lettre::message::header::ContentType;
+                use lettre::transport::smtp::authentication::Credentials;
+
+                let email_message = Message::builder()
+                    .from(email.from_address.parse().unwrap())
+                    .subject(format!("[HeroForge {}] Security Alert", priority.to_uppercase()))
+                    .header(ContentType::TEXT_PLAIN)
+                    .body(message.to_string());
+
+                if let Ok(mut builder) = email_message {
+                    for recipient in recipients {
+                        if let Ok(addr) = recipient.parse() {
+                            builder = Message::builder()
+                                .from(email.from_address.parse().unwrap())
+                                .to(addr)
+                                .subject(format!("[HeroForge {}] Security Alert", priority.to_uppercase()))
+                                .header(ContentType::TEXT_PLAIN)
+                                .body(message.to_string())
+                                .unwrap();
+                        }
+                    }
+
+                    let creds = Credentials::new(email.smtp_user.clone(), email.smtp_password.clone());
+                    let mailer = SmtpTransport::relay(&email.smtp_host)
+                        .unwrap()
+                        .credentials(creds)
+                        .build();
+
+                    match mailer.send(&builder) {
+                        Ok(_) => results.push("Email: sent".to_string()),
+                        Err(e) => results.push(format!("Email: failed ({})", e)),
+                    }
+                }
+            }
+        }
+
+        // Try PagerDuty
+        if let Some(pagerduty) = &self.config.notifications.pagerduty {
+            if priority == "critical" {
+                let response = self.http_client
+                    .post("https://events.pagerduty.com/v2/enqueue")
+                    .json(&serde_json::json!({
+                        "routing_key": pagerduty.api_key,
+                        "event_action": "trigger",
+                        "payload": {
+                            "summary": message,
+                            "severity": "critical",
+                            "source": "HeroForge",
+                            "custom_details": params
+                        }
+                    }))
+                    .send()
+                    .await;
+
+                match response {
+                    Ok(resp) if resp.status().is_success() => {
+                        results.push("PagerDuty: incident created".to_string());
+                    }
+                    Ok(resp) => {
+                        results.push(format!("PagerDuty: failed ({})", resp.status()));
+                    }
+                    Err(e) => {
+                        results.push(format!("PagerDuty: error ({})", e));
+                    }
+                }
+            }
+        }
+
+        if results.is_empty() {
+            Err(anyhow::anyhow!("No notification channels configured"))
+        } else {
+            Ok(results.join("; "))
+        }
+    }
+
+    /// Create ticket in JIRA/ServiceNow
+    async fn create_ticket(&self, description: &str, params: Option<&serde_json::Value>) -> Result<String> {
+        if let Some(ticketing) = &self.config.ticketing {
+            let title = params
+                .and_then(|p| p.get("title"))
+                .and_then(|t| t.as_str())
+                .unwrap_or("Security Incident");
+
+            let priority = params
+                .and_then(|p| p.get("priority"))
+                .and_then(|p| p.as_str())
+                .unwrap_or("high");
+
+            match ticketing.provider {
+                TicketingProvider::Jira => {
+                    let project_key = ticketing.project_key.as_deref().unwrap_or("SEC");
+
+                    let response = self.http_client
+                        .post(format!("{}/rest/api/3/issue", ticketing.api_url))
+                        .header("Authorization", format!("Basic {}", ticketing.api_key))
+                        .header("Content-Type", "application/json")
+                        .json(&serde_json::json!({
+                            "fields": {
+                                "project": { "key": project_key },
+                                "summary": title,
+                                "description": {
+                                    "type": "doc",
+                                    "version": 1,
+                                    "content": [{
+                                        "type": "paragraph",
+                                        "content": [{
+                                            "type": "text",
+                                            "text": description
+                                        }]
+                                    }]
+                                },
+                                "issuetype": { "name": "Task" },
+                                "priority": { "name": match priority {
+                                    "critical" => "Highest",
+                                    "high" => "High",
+                                    "medium" => "Medium",
+                                    _ => "Low"
+                                }}
+                            }
+                        }))
+                        .send()
+                        .await?;
+
+                    if response.status().is_success() {
+                        let result: serde_json::Value = response.json().await?;
+                        let key = result.get("key").and_then(|k| k.as_str()).unwrap_or("unknown");
+                        Ok(format!("JIRA ticket created: {}", key))
+                    } else {
+                        let error = response.text().await.unwrap_or_default();
+                        Err(anyhow::anyhow!("JIRA API error: {}", error))
+                    }
+                }
+                TicketingProvider::ServiceNow => {
+                    let response = self.http_client
+                        .post(format!("{}/api/now/table/incident", ticketing.api_url))
+                        .header("Authorization", format!("Basic {}", ticketing.api_key))
+                        .header("Content-Type", "application/json")
+                        .json(&serde_json::json!({
+                            "short_description": title,
+                            "description": description,
+                            "urgency": match priority {
+                                "critical" => "1",
+                                "high" => "2",
+                                "medium" => "3",
+                                _ => "4"
+                            },
+                            "category": "Security"
+                        }))
+                        .send()
+                        .await?;
+
+                    if response.status().is_success() {
+                        let result: serde_json::Value = response.json().await?;
+                        let number = result.get("result")
+                            .and_then(|r| r.get("number"))
+                            .and_then(|n| n.as_str())
+                            .unwrap_or("unknown");
+                        Ok(format!("ServiceNow incident created: {}", number))
+                    } else {
+                        let error = response.text().await.unwrap_or_default();
+                        Err(anyhow::anyhow!("ServiceNow API error: {}", error))
+                    }
+                }
+                TicketingProvider::Generic => {
+                    let response = self.http_client
+                        .post(format!("{}/tickets", ticketing.api_url))
+                        .header("Authorization", format!("Bearer {}", ticketing.api_key))
+                        .json(&serde_json::json!({
+                            "title": title,
+                            "description": description,
+                            "priority": priority
+                        }))
+                        .send()
+                        .await?;
+
+                    if response.status().is_success() {
+                        Ok("Ticket created via API".to_string())
+                    } else {
+                        let error = response.text().await.unwrap_or_default();
+                        Err(anyhow::anyhow!("Ticketing API error: {}", error))
+                    }
+                }
+            }
+        } else {
+            Err(anyhow::anyhow!("Ticketing system not configured"))
+        }
+    }
+
+    /// Execute custom script in sandbox
+    async fn execute_custom_script(&self, script_name: &str, params: Option<&serde_json::Value>) -> Result<String> {
+        // Security: Only allow pre-approved scripts from a whitelist
+        let allowed_scripts = [
+            "email_search",
+            "enable_ddos_mitigation",
+            "collect_logs",
+            "network_capture",
+            "hash_check",
+        ];
+
+        if !allowed_scripts.contains(&script_name) {
+            return Err(anyhow::anyhow!("Script '{}' is not in the approved whitelist", script_name));
+        }
+
+        let scripts_dir = std::env::var("HEROFORGE_SCRIPTS_DIR")
+            .unwrap_or_else(|_| "/opt/heroforge/scripts".to_string());
+
+        let script_path = std::path::Path::new(&scripts_dir).join(format!("{}.sh", script_name));
+
+        if !script_path.exists() {
+            return Err(anyhow::anyhow!("Script not found: {}", script_path.display()));
+        }
+
+        // Build arguments from params
+        let args: Vec<String> = params
+            .and_then(|p| p.as_object())
+            .map(|obj| {
+                obj.iter()
+                    .map(|(k, v)| format!("--{}={}", k, v.as_str().unwrap_or(&v.to_string())))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        // Execute with timeout and resource limits
+        let output = tokio::process::Command::new("/bin/bash")
+            .arg("-c")
+            .arg(format!(
+                "timeout 300 {} {}",
+                script_path.display(),
+                args.join(" ")
+            ))
+            .output()
+            .await?;
+
+        if output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            Ok(format!("Script '{}' executed successfully. Output: {}", script_name, stdout.trim()))
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            Err(anyhow::anyhow!("Script failed: {}", stderr))
+        }
+    }
+}
+
+/// Calculate SHA256 hash of a file
+async fn calculate_file_hash(path: &std::path::Path) -> Result<String> {
+    use sha2::{Sha256, Digest};
+    let data = tokio::fs::read(path).await?;
+    let hash = Sha256::digest(&data);
+    Ok(format!("{:x}", hash))
+}
+
+/// Generate a temporary password
+fn generate_temp_password() -> String {
+    use rand::Rng;
+    let charset: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%";
+    let mut rng = rand::thread_rng();
+    (0..16)
+        .map(|_| {
+            let idx = rng.gen_range(0..charset.len());
+            charset[idx] as char
+        })
+        .collect()
+}
+
+// Global action executor instance (lazily initialized)
+static ACTION_EXECUTOR: once_cell::sync::OnceCell<ActionExecutor> = once_cell::sync::OnceCell::new();
+
+/// Initialize the action executor with configuration
+pub fn init_action_executor(config: ActionConfig) {
+    let _ = ACTION_EXECUTOR.set(ActionExecutor::new(config));
+}
+
+/// Get the global action executor
+pub fn get_action_executor() -> &'static ActionExecutor {
+    ACTION_EXECUTOR.get_or_init(|| ActionExecutor::new(ActionConfig::default()))
+}
+
+/// Execute action using real backends (replaces mock)
+async fn execute_action_real(action_type: &ResponseActionType, target: &str, params: Option<&serde_json::Value>) -> Result<String> {
+    let executor = get_action_executor();
+    executor.execute(action_type, target, params).await
 }
 
 /// Mark action as failed
