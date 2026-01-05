@@ -90,6 +90,7 @@ mod emerging_tech;
 mod performance;
 mod analytics_engine;
 mod intelligence_platform;
+mod subscriptions;
 
 use types::{OutputFormat, ScanConfig, ScanType};
 

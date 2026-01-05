@@ -171,6 +171,13 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .route("/callback/saml", web::post().to(api::sso::saml_callback))
                     .route("/callback/oidc", web::get().to(api::sso::oidc_callback))
             )
+            // Subscription and registration routes (public, rate limited)
+            .service(
+                web::scope("/api")
+                    .wrap(rate_limit::RateLimitStatsMiddleware::auth())
+                    .wrap(rate_limit::auth_rate_limiter())
+                    .configure(api::subscriptions::configure)
+            )
             // Phishing tracking routes (public, no auth required)
             .configure(api::phishing::configure_tracking)
             // SMS Phishing tracking routes (public, no auth required)

@@ -18,6 +18,9 @@ const queryClient = new QueryClient({
 });
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
+import RegisterPage from './pages/RegisterPage';
+import VerifyEmailPage from './pages/VerifyEmailPage';
+import ContactSalesPage from './pages/ContactSalesPage';
 
 // Lazy load less frequently used pages
 const AdminPage = lazy(() => import('./pages/AdminPage'));
@@ -224,6 +227,9 @@ function App() {
             <Routes>
           <Route path="/" element={<SalesPage />} />
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          <Route path="/register/verify" element={<VerifyEmailPage />} />
+          <Route path="/contact-sales" element={<ContactSalesPage />} />
           <Route path="/investors" element={<InvestorPage />} />
           <Route path="/pitch" element={<PitchDeckPage />} />
           <Route path="/financials" element={<FinancialModelPage />} />

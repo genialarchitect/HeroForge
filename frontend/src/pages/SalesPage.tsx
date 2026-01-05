@@ -266,13 +266,13 @@ const SalesPage: React.FC = () => {
             Network reconnaissance, vulnerability management, compliance analysis, and client engagement—all in one place.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <a
-              href="#pricing"
+            <Link
+              to="/register"
               className="bg-cyan-600 hover:bg-cyan-700 text-white px-8 py-4 rounded-lg font-semibold text-lg transition-all hover:scale-105 flex items-center gap-2"
             >
               Start Free Trial
               <ArrowRight className="w-5 h-5" />
-            </a>
+            </Link>
             <a
               href="#features"
               className="border border-gray-600 hover:border-gray-500 text-gray-300 hover:text-white px-8 py-4 rounded-lg font-semibold text-lg transition-colors"
@@ -476,15 +476,16 @@ const SalesPage: React.FC = () => {
                     <span className="text-2xl font-bold text-white">Contact Us</span>
                   )}
                 </div>
-                <button
-                  className={`w-full py-3 rounded-lg font-semibold transition-colors mb-6 ${
+                <Link
+                  to={tier.name === 'Enterprise' ? '/contact-sales' : `/register?tier=${tier.name.toLowerCase()}`}
+                  className={`w-full py-3 rounded-lg font-semibold transition-colors mb-6 block text-center ${
                     tier.highlighted
                       ? 'bg-cyan-600 hover:bg-cyan-700 text-white'
                       : 'bg-gray-700 hover:bg-gray-600 text-white'
                   }`}
                 >
                   {tier.cta}
-                </button>
+                </Link>
                 <ul className="space-y-3">
                   {tier.features.map((feature, fIdx) => (
                     <li key={fIdx} className="flex items-start gap-2">
@@ -862,19 +863,19 @@ const SalesPage: React.FC = () => {
             Join hundreds of security professionals who trust HeroForge for their assessments.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <a
-              href="#pricing"
+            <Link
+              to="/register"
               className="bg-cyan-600 hover:bg-cyan-700 text-white px-8 py-4 rounded-lg font-semibold text-lg transition-all hover:scale-105 flex items-center gap-2"
             >
               Start Your Free Trial
               <ArrowRight className="w-5 h-5" />
-            </a>
-            <a
-              href="mailto:sales@genialarchitect.io"
+            </Link>
+            <Link
+              to="/contact-sales"
               className="text-cyan-400 hover:text-cyan-300 font-semibold text-lg transition-colors"
             >
               Contact Sales
-            </a>
+            </Link>
           </div>
         </div>
       </section>

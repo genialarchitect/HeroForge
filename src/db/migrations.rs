@@ -286,6 +286,9 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     create_ot_ics_tables(pool).await?;
     create_iot_tables(pool).await?;
     seed_iot_credentials(pool).await?;
+    // Tiered subscription system
+    create_subscription_tables(pool).await?;
+    seed_subscription_tiers(pool).await?;
     Ok(())
 }
 
@@ -23131,5 +23134,270 @@ async fn create_ai_reports_table(pool: &SqlitePool) -> Result<()> {
         .await?;
 
     log::info!("Created ai_reports table");
+    Ok(())
+}
+
+/// Create subscription system tables for tiered registration
+async fn create_subscription_tables(pool: &SqlitePool) -> Result<()> {
+    // Subscription tiers definition
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS subscription_tiers (
+            id TEXT PRIMARY KEY,
+            name TEXT UNIQUE NOT NULL,
+            display_name TEXT NOT NULL,
+            description TEXT,
+            monthly_price_cents INTEGER,
+            yearly_price_cents INTEGER,
+            stripe_monthly_price_id TEXT,
+            stripe_yearly_price_id TEXT,
+            max_users INTEGER NOT NULL DEFAULT 1,
+            max_scans_per_day INTEGER NOT NULL DEFAULT 10,
+            max_assets INTEGER NOT NULL DEFAULT 100,
+            max_reports_per_month INTEGER NOT NULL DEFAULT 20,
+            max_customer_portals INTEGER NOT NULL DEFAULT 0,
+            feature_flags TEXT NOT NULL DEFAULT '{}',
+            is_active INTEGER NOT NULL DEFAULT 1,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // User subscriptions
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS user_subscriptions (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL UNIQUE,
+            tier_id TEXT NOT NULL,
+            stripe_customer_id TEXT,
+            stripe_subscription_id TEXT,
+            status TEXT NOT NULL DEFAULT 'active',
+            billing_cycle TEXT NOT NULL DEFAULT 'monthly',
+            current_period_start TEXT,
+            current_period_end TEXT,
+            cancel_at_period_end INTEGER NOT NULL DEFAULT 0,
+            canceled_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (tier_id) REFERENCES subscription_tiers(id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Email verification tokens for registration
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS email_verifications (
+            id TEXT PRIMARY KEY,
+            email TEXT NOT NULL,
+            token TEXT NOT NULL UNIQUE,
+            tier_id TEXT NOT NULL,
+            billing_cycle TEXT NOT NULL DEFAULT 'monthly',
+            stripe_session_id TEXT,
+            stripe_customer_id TEXT,
+            pending_data TEXT,
+            verified_at TEXT,
+            payment_verified_at TEXT,
+            expires_at TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (tier_id) REFERENCES subscription_tiers(id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Enterprise sales inquiries
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS enterprise_inquiries (
+            id TEXT PRIMARY KEY,
+            email TEXT NOT NULL,
+            company_name TEXT NOT NULL,
+            contact_name TEXT NOT NULL,
+            phone TEXT,
+            job_title TEXT,
+            company_size TEXT,
+            message TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            assigned_to TEXT,
+            notes TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (assigned_to) REFERENCES users(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Add subscription-related columns to users table
+    let _ = sqlx::query("ALTER TABLE users ADD COLUMN email_verified_at TEXT")
+        .execute(pool)
+        .await;
+
+    let _ = sqlx::query("ALTER TABLE users ADD COLUMN subscription_tier_id TEXT REFERENCES subscription_tiers(id)")
+        .execute(pool)
+        .await;
+
+    // Create indexes
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_subscription_tiers_name ON subscription_tiers(name)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_user_subscriptions_user ON user_subscriptions(user_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_user_subscriptions_status ON user_subscriptions(status)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_email_verifications_email ON email_verifications(email)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_email_verifications_token ON email_verifications(token)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_enterprise_inquiries_status ON enterprise_inquiries(status)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created subscription system tables");
+    Ok(())
+}
+
+/// Seed subscription tiers and tier-specific roles
+async fn seed_subscription_tiers(pool: &SqlitePool) -> Result<()> {
+    let now = chrono::Utc::now().to_rfc3339();
+
+    // Tier definitions with quotas and features
+    let tiers: Vec<(&str, &str, &str, Option<i32>, Option<i32>, i32, i32, i32, i32, i32, &str, i32)> = vec![
+        // (name, display_name, description, monthly_cents, yearly_cents, max_users, max_scans, max_assets, max_reports, max_portals, feature_flags, sort_order)
+        (
+            "solo",
+            "Solo",
+            "Perfect for individual security professionals and freelancers",
+            Some(9900),      // $99/month
+            Some(99000),     // $990/year (2 months free)
+            1,               // max_users
+            10,              // max_scans_per_day
+            100,             // max_assets
+            20,              // max_reports_per_month
+            0,               // max_customer_portals
+            r#"{"scanning": true, "reporting": true, "scheduling": false, "team_management": false, "crm": false, "api_access": false, "custom_branding": false}"#,
+            1
+        ),
+        (
+            "professional",
+            "Professional",
+            "For growing security teams and consultancies",
+            Some(29900),     // $299/month
+            Some(299000),    // $2990/year
+            5,               // max_users
+            50,              // max_scans_per_day
+            500,             // max_assets
+            100,             // max_reports_per_month
+            0,               // max_customer_portals
+            r#"{"scanning": true, "reporting": true, "scheduling": true, "team_management": true, "crm": false, "api_access": true, "custom_branding": false}"#,
+            2
+        ),
+        (
+            "team",
+            "Team",
+            "For established security teams with client management needs",
+            Some(59900),     // $599/month
+            Some(599000),    // $5990/year
+            15,              // max_users
+            200,             // max_scans_per_day
+            2000,            // max_assets
+            500,             // max_reports_per_month
+            10,              // max_customer_portals
+            r#"{"scanning": true, "reporting": true, "scheduling": true, "team_management": true, "crm": true, "api_access": true, "custom_branding": true}"#,
+            3
+        ),
+        (
+            "enterprise",
+            "Enterprise",
+            "Custom solutions for large organizations",
+            None,            // Custom pricing
+            None,
+            -1,              // Unlimited users (-1 = unlimited)
+            -1,              // Unlimited scans
+            -1,              // Unlimited assets
+            -1,              // Unlimited reports
+            -1,              // Unlimited portals
+            r#"{"scanning": true, "reporting": true, "scheduling": true, "team_management": true, "crm": true, "api_access": true, "custom_branding": true, "sso": true, "dedicated_support": true, "on_premise": true}"#,
+            4
+        ),
+    ];
+
+    for (name, display_name, description, monthly_cents, yearly_cents, max_users, max_scans, max_assets, max_reports, max_portals, feature_flags, sort_order) in tiers {
+        let id = format!("tier_{}", name);
+        let _ = sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO subscription_tiers (
+                id, name, display_name, description,
+                monthly_price_cents, yearly_price_cents,
+                max_users, max_scans_per_day, max_assets,
+                max_reports_per_month, max_customer_portals,
+                feature_flags, sort_order, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(&id)
+        .bind(name)
+        .bind(display_name)
+        .bind(description)
+        .bind(monthly_cents)
+        .bind(yearly_cents)
+        .bind(max_users)
+        .bind(max_scans)
+        .bind(max_assets)
+        .bind(max_reports)
+        .bind(max_portals)
+        .bind(feature_flags)
+        .bind(sort_order)
+        .bind(&now)
+        .execute(pool)
+        .await;
+    }
+
+    // Seed tier-specific roles
+    let tier_roles: Vec<(&str, &str, &str)> = vec![
+        ("solo_user", "Solo User", "Basic scanning and reporting for individual users"),
+        ("professional_user", "Professional User", "Scanning, reporting, scheduling, and team features"),
+        ("team_user", "Team User", "Full access including CRM and customer portals"),
+        ("enterprise_user", "Enterprise User", "Full access with SSO and enterprise features"),
+    ];
+
+    for (role_name, display_name, description) in tier_roles {
+        let id = uuid::Uuid::new_v4().to_string();
+        let _ = sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO roles (id, name, display_name, description, is_system, created_at, updated_at)
+            VALUES (?, ?, ?, ?, 1, ?, ?)
+            "#,
+        )
+        .bind(&id)
+        .bind(role_name)
+        .bind(display_name)
+        .bind(description)
+        .bind(&now)
+        .bind(&now)
+        .execute(pool)
+        .await;
+    }
+
+    log::info!("Seeded subscription tiers and tier roles");
     Ok(())
 }

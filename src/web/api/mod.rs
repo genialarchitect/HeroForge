@@ -127,6 +127,7 @@ pub mod ml_advanced;
 pub mod performance;
 pub mod analytics_engine;
 pub mod intelligence_platform;
+pub mod subscriptions;
 
 #[cfg(test)]
 mod tests;

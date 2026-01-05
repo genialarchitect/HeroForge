@@ -413,6 +413,99 @@ export const authAPI = {
     api.put<{ message: string }>('/user/password', data),
 };
 
+// Registration API for tiered signup flow
+export interface SubscriptionTier {
+  id: string;
+  name: string;
+  display_name: string;
+  description?: string;
+  monthly_price?: number;
+  yearly_price?: number;
+  max_users: number;
+  max_scans_per_day: number;
+  max_assets: number;
+  features: Record<string, boolean>;
+}
+
+export interface InitRegistrationRequest {
+  email: string;
+  tier: string;
+  billing_cycle?: 'monthly' | 'yearly';
+}
+
+export interface InitRegistrationResponse {
+  verification_id: string;
+  checkout_url?: string;
+  message: string;
+}
+
+export interface VerifyEmailRequest {
+  token: string;
+}
+
+export interface VerifyEmailResponse {
+  verified: boolean;
+  email: string;
+  tier: string;
+  payment_required: boolean;
+  payment_verified: boolean;
+}
+
+export interface CompleteRegistrationRequest {
+  token: string;
+  username: string;
+  password: string;
+  accept_terms: boolean;
+}
+
+export interface CompleteRegistrationResponse {
+  success: boolean;
+  user_id: string;
+  token: string;
+  message: string;
+}
+
+export interface EnterpriseInquiryRequest {
+  email: string;
+  company_name: string;
+  contact_name: string;
+  phone?: string;
+  job_title?: string;
+  company_size?: string;
+  message?: string;
+}
+
+export interface EnterpriseInquiryResponse {
+  success: boolean;
+  inquiry_id: string;
+  message: string;
+}
+
+export const registrationAPI = {
+  // Get available subscription tiers
+  getTiers: () => api.get<SubscriptionTier[]>('/subscriptions/tiers'),
+
+  // Check if email is available
+  checkEmail: (email: string) =>
+    api.post<{ available: boolean; message: string }>('/auth/register/check-email', { email }),
+
+  // Initialize registration (creates verification, may return Stripe checkout URL)
+  initRegistration: (data: InitRegistrationRequest) =>
+    api.post<InitRegistrationResponse>('/auth/register/init', data),
+
+  // Verify email token
+  verifyEmail: (token: string) =>
+    api.post<VerifyEmailResponse>('/auth/register/verify', { token }),
+
+  // Complete registration after verification and payment
+  completeRegistration: (data: CompleteRegistrationRequest) =>
+    api.post<CompleteRegistrationResponse>('/auth/register/complete', data),
+
+  // Submit enterprise inquiry
+  submitEnterpriseInquiry: (data: EnterpriseInquiryRequest) =>
+    api.post<EnterpriseInquiryResponse>('/enterprise/inquiry', data),
+};
+
 export const mfaAPI = {
   // Protected MFA management routes (at /api/user)
   // Setup MFA - returns secret, QR code URL, and recovery codes
