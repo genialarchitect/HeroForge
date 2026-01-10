@@ -298,6 +298,8 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     sync_compliance_controls(pool).await?;
     // Screenshots table for evidence capture
     create_screenshots_table(pool).await?;
+    // Network topology tables for cATO visualization
+    create_network_topology_tables(pool).await?;
     Ok(())
 }
 
@@ -23873,5 +23875,33 @@ async fn sync_compliance_controls(pool: &SqlitePool) -> Result<()> {
     }
 
     log::info!("Synced {} compliance controls to database", total_synced);
+    Ok(())
+}
+
+/// Create network topology tables for cATO network map visualization
+async fn create_network_topology_tables(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS network_topologies (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            engagement_id TEXT UNIQUE,
+            nodes TEXT NOT NULL DEFAULT '[]',
+            edges TEXT NOT NULL DEFAULT '[]',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (engagement_id) REFERENCES engagements(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_network_topologies_engagement ON network_topologies(engagement_id)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created network topology tables");
     Ok(())
 }

@@ -1147,6 +1147,14 @@ const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImport }) 
 // Main Component
 // ============================================================================
 
+// Engagement type for selector
+interface Engagement {
+  id: string;
+  name: string;
+  customer_name?: string;
+  status: string;
+}
+
 const AtoMapPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [atoData, setAtoData] = useState<AtoMapData | null>(null);
@@ -1156,16 +1164,77 @@ const AtoMapPage: React.FC = () => {
   const [editingControl, setEditingControl] = useState<AtoControl | null>(null);
   const [draggedFamily, setDraggedFamily] = useState<string | null>(null);
   const [highlightedStatus, setHighlightedStatus] = useState<ControlStatus | null>(null);
+  const [engagements, setEngagements] = useState<Engagement[]>([]);
+  const [selectedEngagement, setSelectedEngagement] = useState<string>('');
+  const [dataSource, setDataSource] = useState<'real' | 'sample'>('real');
   const printRef = useRef<HTMLDivElement>(null);
 
+  // Fetch engagements list on mount
   useEffect(() => {
-    // Load sample data on mount
-    setLoading(true);
-    setTimeout(() => {
-      setAtoData(generateSampleData());
-      setLoading(false);
-    }, 500);
+    const fetchEngagements = async () => {
+      try {
+        const response = await api.get('/api/engagements');
+        const engagementList = response.data.engagements || response.data || [];
+        setEngagements(engagementList);
+
+        // Auto-select first engagement if available
+        if (engagementList.length > 0) {
+          setSelectedEngagement(engagementList[0].id);
+        }
+      } catch (error) {
+        console.error('Failed to fetch engagements:', error);
+        // Fall back to sample data if no engagements available
+        setDataSource('sample');
+      }
+    };
+    fetchEngagements();
   }, []);
+
+  // Fetch ATO data when engagement changes or on initial load
+  useEffect(() => {
+    const fetchAtoData = async () => {
+      setLoading(true);
+
+      try {
+        let response;
+
+        if (selectedEngagement && dataSource === 'real') {
+          // Fetch real data for the selected engagement
+          response = await api.get(`/api/ato-map/engagement/${selectedEngagement}`);
+        } else if (dataSource === 'real') {
+          // Fetch general ATO data (from any assessments)
+          response = await api.get('/api/ato-map');
+        } else {
+          // Fetch sample data
+          response = await api.get('/api/ato-map/sample');
+        }
+
+        const data = response.data;
+
+        // Check if we have meaningful data (not just empty controls)
+        const hasRealAssessments = data.controlFamilies?.some(
+          (f: AtoControlFamily) => f.controls.some((c: AtoControl) => c.status !== 'NotAssessed')
+        );
+
+        if (!hasRealAssessments && dataSource === 'real') {
+          // No real assessments found, notify user
+          toast.info('No assessment data found. Showing framework controls for assessment.');
+        }
+
+        setAtoData(data);
+      } catch (error) {
+        console.error('Failed to fetch ATO data:', error);
+        // Fall back to sample data on error
+        toast.warning('Could not load assessment data. Using sample data.');
+        setAtoData(generateSampleData());
+        setDataSource('sample');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchAtoData();
+  }, [selectedEngagement, dataSource]);
 
   const toggleFamily = (familyId: string) => {
     const newExpanded = new Set(expandedFamilies);
@@ -1536,6 +1605,61 @@ const AtoMapPage: React.FC = () => {
               Print
             </Button>
           </div>
+        </div>
+
+        {/* Engagement Selector and Data Source Toggle */}
+        <div className="flex flex-wrap items-center gap-4 mb-6 print:hidden">
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-gray-400">Engagement:</label>
+            <select
+              value={selectedEngagement}
+              onChange={(e) => setSelectedEngagement(e.target.value)}
+              className="px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white text-sm min-w-[200px]"
+              disabled={dataSource === 'sample'}
+            >
+              <option value="">All Assessments</option>
+              {engagements.map((eng) => (
+                <option key={eng.id} value={eng.id}>
+                  {eng.name} {eng.customer_name ? `(${eng.customer_name})` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-gray-400">Data Source:</label>
+            <div className="flex bg-gray-800 rounded-lg border border-gray-600 overflow-hidden">
+              <button
+                onClick={() => setDataSource('real')}
+                className={`px-3 py-2 text-sm ${
+                  dataSource === 'real'
+                    ? 'bg-cyan-500 text-white'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                Real Data
+              </button>
+              <button
+                onClick={() => setDataSource('sample')}
+                className={`px-3 py-2 text-sm ${
+                  dataSource === 'sample'
+                    ? 'bg-cyan-500 text-white'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                Sample Data
+              </button>
+            </div>
+          </div>
+          {dataSource === 'sample' && (
+            <span className="text-xs text-yellow-400 bg-yellow-500/10 px-2 py-1 rounded">
+              Using sample data - no real assessments loaded
+            </span>
+          )}
+          {dataSource === 'real' && engagements.length === 0 && (
+            <span className="text-xs text-orange-400 bg-orange-500/10 px-2 py-1 rounded">
+              No engagements found - create an engagement to load real data
+            </span>
+          )}
         </div>
 
         {/* System Information Card */}

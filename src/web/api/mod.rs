@@ -132,6 +132,7 @@ pub mod subscriptions;
 pub mod whitepapers;
 pub mod client_compliance;
 pub mod ato_map;
+pub mod network_topology;
 
 #[cfg(test)]
 mod tests;

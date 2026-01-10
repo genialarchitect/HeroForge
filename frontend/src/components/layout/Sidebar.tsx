@@ -408,6 +408,7 @@ const Sidebar: React.FC = () => {
     { to: '/evidence', icon: FileText, label: 'Evidence' },
     { to: '/manual-assessments', icon: ClipboardCheck, label: 'Assessments' },
     { to: '/ato-map', icon: Map, label: 'ATO Map' },
+    { to: '/cato-network-map', icon: Network, label: 'cATO Network Map' },
     { to: '/methodology', icon: BookOpenCheck, label: 'Methodology' },
     { to: '/finding-templates', icon: FileWarning, label: 'Finding Templates' },
     { to: '/executive-dashboard', icon: BarChart3, label: 'Executive Dashboard' },

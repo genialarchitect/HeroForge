@@ -42,6 +42,7 @@ const DnsToolsPage = lazy(() => import('./pages/DnsToolsPage'));
 const CompliancePage = lazy(() => import('./pages/CompliancePage'));
 const ClientCompliancePage = lazy(() => import('./pages/ClientCompliancePage'));
 const AtoMapPage = lazy(() => import('./pages/AtoMapPage'));
+const CatoNetworkMap = lazy(() => import('./pages/CatoNetworkMap'));
 const RemediationPage = lazy(() => import('./pages/RemediationPage'));
 const ManualAssessmentPage = lazy(() => import('./pages/ManualAssessmentPage'));
 const AssessmentDetailPage = lazy(() => import('./pages/AssessmentDetailPage'));
@@ -324,6 +325,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <AtoMapPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/cato-network-map"
+            element={
+              <ProtectedRoute>
+                <CatoNetworkMap />
               </ProtectedRoute>
             }
           />

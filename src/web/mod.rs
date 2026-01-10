@@ -440,6 +440,8 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .configure(api::client_compliance::configure)
                     // ATO (Authority to Operate) Map endpoints
                     .configure(api::ato_map::configure)
+                    // Network topology for cATO visualization
+                    .configure(api::network_topology::configure)
                     // DNS reconnaissance endpoints
                     .route("/dns/recon", web::post().to(api::dns::perform_dns_recon))
                     .route("/dns/recon", web::get().to(api::dns::list_dns_recon_results))
