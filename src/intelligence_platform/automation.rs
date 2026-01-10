@@ -9,10 +9,9 @@
 
 use super::types::*;
 use anyhow::{Result, anyhow};
-use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use log::{info, warn};
+use log::info;
 
 /// Global automation state
 static AUTOMATION_STATE: once_cell::sync::Lazy<Arc<RwLock<AutomationState>>> =

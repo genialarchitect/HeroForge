@@ -443,3 +443,184 @@ pub struct CriticalFinding {
     pub severity: String,
     pub description: String,
 }
+
+/// Enterprise inquiry details for sales notification
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnterpriseInquiry {
+    pub inquiry_id: String,
+    pub email: String,
+    pub company_name: String,
+    pub contact_name: String,
+    pub phone: Option<String>,
+    pub job_title: Option<String>,
+    pub company_size: Option<String>,
+    pub message: Option<String>,
+}
+
+impl EmailService {
+    /// Send notification to sales team about new enterprise inquiry
+    pub async fn send_enterprise_inquiry_notification(
+        &self,
+        inquiry: &EnterpriseInquiry,
+    ) -> Result<()> {
+        let sales_email = std::env::var("SALES_TEAM_EMAIL")
+            .unwrap_or_else(|_| "sales@heroforge.io".to_string());
+
+        let subject = format!(
+            "New Enterprise Inquiry: {} - {}",
+            inquiry.company_name, inquiry.contact_name
+        );
+
+        let html_body = format!(
+            r#"<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .header {{ background-color: #4F46E5; color: white; padding: 20px; text-align: center; }}
+        .content {{ background-color: #f9fafb; padding: 20px; }}
+        .inquiry {{ background-color: white; padding: 15px; margin: 10px 0; border-left: 4px solid #4F46E5; }}
+        .field {{ margin: 10px 0; }}
+        .field-label {{ font-weight: bold; color: #4F46E5; }}
+        .footer {{ text-align: center; padding: 20px; color: #6b7280; font-size: 12px; }}
+        .cta {{ background-color: #4F46E5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; display: inline-block; margin: 15px 0; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>New Enterprise Inquiry</h1>
+        </div>
+        <div class="content">
+            <p>A new enterprise inquiry has been submitted through the HeroForge platform.</p>
+
+            <div class="inquiry">
+                <h3>Contact Information</h3>
+                <div class="field">
+                    <span class="field-label">Inquiry ID:</span> {}
+                </div>
+                <div class="field">
+                    <span class="field-label">Contact Name:</span> {}
+                </div>
+                <div class="field">
+                    <span class="field-label">Email:</span> <a href="mailto:{}">{}</a>
+                </div>
+                <div class="field">
+                    <span class="field-label">Company:</span> {}
+                </div>
+                {}
+                {}
+                {}
+            </div>
+
+            {}
+
+            <p><strong>Next Steps:</strong></p>
+            <ul>
+                <li>Review the inquiry details</li>
+                <li>Research the company</li>
+                <li>Reach out within 24 hours</li>
+                <li>Log the interaction in CRM</li>
+            </ul>
+        </div>
+        <div class="footer">
+            <p>This is an automated notification from HeroForge.</p>
+            <p>Inquiry received at: {}</p>
+        </div>
+    </div>
+</body>
+</html>"#,
+            inquiry.inquiry_id,
+            inquiry.contact_name,
+            inquiry.email,
+            inquiry.email,
+            inquiry.company_name,
+            inquiry
+                .phone
+                .as_ref()
+                .map(|p| format!(
+                    r#"<div class="field"><span class="field-label">Phone:</span> {}</div>"#,
+                    p
+                ))
+                .unwrap_or_default(),
+            inquiry
+                .job_title
+                .as_ref()
+                .map(|t| format!(
+                    r#"<div class="field"><span class="field-label">Job Title:</span> {}</div>"#,
+                    t
+                ))
+                .unwrap_or_default(),
+            inquiry
+                .company_size
+                .as_ref()
+                .map(|s| format!(
+                    r#"<div class="field"><span class="field-label">Company Size:</span> {}</div>"#,
+                    s
+                ))
+                .unwrap_or_default(),
+            inquiry
+                .message
+                .as_ref()
+                .map(|m| format!(
+                    r#"<div class="inquiry"><h3>Message</h3><p>{}</p></div>"#,
+                    m
+                ))
+                .unwrap_or_default(),
+            chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC")
+        );
+
+        let text_body = format!(
+            r#"New Enterprise Inquiry
+
+Inquiry ID: {}
+Contact Name: {}
+Email: {}
+Company: {}
+{}{}{}
+{}
+Next Steps:
+- Review the inquiry details
+- Research the company
+- Reach out within 24 hours
+- Log the interaction in CRM
+
+Inquiry received at: {}
+"#,
+            inquiry.inquiry_id,
+            inquiry.contact_name,
+            inquiry.email,
+            inquiry.company_name,
+            inquiry
+                .phone
+                .as_ref()
+                .map(|p| format!("Phone: {}\n", p))
+                .unwrap_or_default(),
+            inquiry
+                .job_title
+                .as_ref()
+                .map(|t| format!("Job Title: {}\n", t))
+                .unwrap_or_default(),
+            inquiry
+                .company_size
+                .as_ref()
+                .map(|s| format!("Company Size: {}\n", s))
+                .unwrap_or_default(),
+            inquiry
+                .message
+                .as_ref()
+                .map(|m| format!("\nMessage:\n{}\n", m))
+                .unwrap_or_default(),
+            chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC")
+        );
+
+        self.send_email(&sales_email, &subject, &text_body, &html_body)
+            .await
+    }
+
+    /// Check if email service is configured
+    pub fn is_configured() -> bool {
+        std::env::var("SMTP_HOST").is_ok() && std::env::var("SMTP_USER").is_ok()
+    }
+}

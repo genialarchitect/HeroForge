@@ -6,8 +6,7 @@
 //! - Time series analysis
 //! - Baseline comparison
 
-use anyhow::Result;
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 

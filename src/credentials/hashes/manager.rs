@@ -3,8 +3,8 @@
 //! Manage hash cracking jobs and correlate results.
 
 use anyhow::{anyhow, Result};
-use chrono::{DateTime, Utc};
-use log::{debug, info, warn};
+use chrono::Utc;
+use log::info;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use uuid::Uuid;

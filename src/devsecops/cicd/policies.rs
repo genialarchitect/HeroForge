@@ -17,7 +17,7 @@ impl PolicyEvaluator {
     ) -> QualityGateResult {
         let mut passed = Vec::new();
         let mut failed = Vec::new();
-        let mut warnings = Vec::new();
+        let warnings = Vec::new();
 
         // Check max new findings
         if let Some(max) = conditions.max_new_findings {

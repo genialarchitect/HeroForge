@@ -8,12 +8,11 @@ pub mod networking;
 pub mod kernel;
 
 pub use tasks::*;
-pub use libraries::*;
 pub use networking::*;
 pub use kernel::*;
 
 use super::dump_parser::ParsedDump;
-use super::types::{Architecture, DumpInfo, OsType};
+use super::types::{DumpInfo, OsType};
 use anyhow::Result;
 
 /// Linux memory analyzer
@@ -170,7 +169,7 @@ impl<'a> LinuxAnalyzer<'a> {
         // - "kallsyms_" strings
         // - Symbol table format
 
-        let mut symbols = std::collections::HashMap::new();
+        let symbols = std::collections::HashMap::new();
 
         // Search for function name patterns that indicate kallsyms presence
         let marker_patterns: &[&[u8]] = &[

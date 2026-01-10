@@ -36,7 +36,7 @@ use anyhow::Result;
 use std::path::Path;
 
 pub use types::*;
-pub use dump_parser::{ParsedDump, MemoryRegion, WindowsAddressTranslator};
+pub use dump_parser::ParsedDump;
 
 /// Native memory forensics analyzer
 pub struct NativeMemoryAnalyzer {

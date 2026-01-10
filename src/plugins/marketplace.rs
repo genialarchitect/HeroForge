@@ -232,7 +232,7 @@ impl PluginMarketplace {
         query: &str,
         filters: MarketplaceSearchFilters,
     ) -> Result<MarketplaceSearchResponse> {
-        let mut url = format!("{}/plugins/search", self.base_url);
+        let url = format!("{}/plugins/search", self.base_url);
 
         // Build query parameters
         let mut params = vec![("q", query.to_string())];

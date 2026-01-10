@@ -299,3 +299,51 @@ impl LLMOrchestrator {
         })
     }
 }
+
+/// Quick standalone chat function for simple AI queries
+///
+/// This function creates a temporary client and makes a single API call.
+/// For repeated use, prefer creating an LLMOrchestrator instance.
+pub async fn quick_chat(system_prompt: &str, user_message: &str) -> Result<String> {
+    let api_key = std::env::var("ANTHROPIC_API_KEY")
+        .map_err(|_| anyhow!("ANTHROPIC_API_KEY not set"))?;
+
+    let client = Client::new();
+
+    let request = ClaudeRequest {
+        model: MODEL.to_string(),
+        max_tokens: 1024,
+        system: system_prompt.to_string(),
+        messages: vec![Message {
+            role: "user".to_string(),
+            content: user_message.to_string(),
+        }],
+    };
+
+    let response = client
+        .post(ANTHROPIC_API_URL)
+        .header("x-api-key", &api_key)
+        .header("anthropic-version", ANTHROPIC_VERSION)
+        .header("content-type", "application/json")
+        .json(&request)
+        .send()
+        .await
+        .map_err(|e| anyhow!("API request failed: {}", e))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(anyhow!("API error {}: {}", status, body));
+    }
+
+    let claude_response: ClaudeResponse = response
+        .json()
+        .await
+        .map_err(|e| anyhow!("Failed to parse response: {}", e))?;
+
+    claude_response
+        .content
+        .first()
+        .map(|c| c.text.clone())
+        .ok_or_else(|| anyhow!("No content in response"))
+}

@@ -5,8 +5,6 @@
 pub mod credentials;
 pub mod browser;
 
-pub use credentials::*;
-pub use browser::*;
 
 use super::dump_parser::ParsedDump;
 use super::types::ProcessInfo;

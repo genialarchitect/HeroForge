@@ -6,7 +6,6 @@ use actix_multipart::Multipart;
 use actix_web::{web, HttpResponse};
 use sqlx::sqlite::SqlitePool;
 use serde::Deserialize;
-use std::sync::Arc;
 use std::io::BufRead;
 use tokio::sync::RwLock;
 use tokio::io::AsyncWriteExt;
@@ -27,7 +26,7 @@ use crate::web::error::ApiError;
 /// Create a new cracking job
 pub async fn create_job(
     _pool: web::Data<SqlitePool>,
-    engine: web::Data<Arc<RwLock<CrackingEngine>>>,
+    engine: web::Data<RwLock<CrackingEngine>>,
     claims: Claims,
     body: web::Json<CreateCrackingJobRequest>,
 ) -> Result<HttpResponse, ApiError> {
@@ -75,7 +74,7 @@ pub async fn get_job(
 /// Start a cracking job
 pub async fn start_job(
     pool: web::Data<SqlitePool>,
-    engine: web::Data<Arc<RwLock<CrackingEngine>>>,
+    engine: web::Data<RwLock<CrackingEngine>>,
     claims: Claims,
     path: web::Path<String>,
 ) -> Result<HttpResponse, ApiError> {
@@ -102,7 +101,7 @@ pub async fn start_job(
 /// Stop a running cracking job
 pub async fn stop_job(
     pool: web::Data<SqlitePool>,
-    engine: web::Data<Arc<RwLock<CrackingEngine>>>,
+    engine: web::Data<RwLock<CrackingEngine>>,
     claims: Claims,
     path: web::Path<String>,
 ) -> Result<HttpResponse, ApiError> {
@@ -129,7 +128,7 @@ pub async fn stop_job(
 /// Delete a cracking job
 pub async fn delete_job(
     pool: web::Data<SqlitePool>,
-    engine: web::Data<Arc<RwLock<CrackingEngine>>>,
+    engine: web::Data<RwLock<CrackingEngine>>,
     claims: Claims,
     path: web::Path<String>,
 ) -> Result<HttpResponse, ApiError> {

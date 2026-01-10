@@ -4,7 +4,7 @@
 //! Uses pattern matching and entity extraction to understand user queries.
 
 use anyhow::Result;
-use chrono::{DateTime, Duration, NaiveDate, Utc};
+use chrono::{Duration, NaiveDate, Utc};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

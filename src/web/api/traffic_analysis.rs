@@ -22,10 +22,10 @@ use std::path::Path;
 use std::fs;
 
 use crate::traffic_analysis::{
-    PcapParser, ProtocolAnalyzer, IdsEngine, Ja3Fingerprinter,
+    PcapParser, IdsEngine, Ja3Fingerprinter,
     BeaconDetector, FileCarver,
 };
-use crate::traffic_analysis::types::{IdsRuleSource, IdsSeverity, SessionType};
+use crate::traffic_analysis::types::{IdsRuleSource, SessionType};
 use crate::web::auth;
 use crate::web::error::ApiError;
 
@@ -870,7 +870,7 @@ async fn analyze_capture(
     let mut carved_count = 0;
 
     if enable_carving {
-        let mut carver = FileCarver::new();
+        let carver = FileCarver::new();
         for session in parser.get_sessions() {
             // Use any extracted files from the session
             for file in &session.extracted_files {

@@ -45,12 +45,11 @@ pub mod protocols;
 pub mod executor;
 
 pub use types::*;
-pub use parser::{parse_template, load_templates_from_dir};
-pub use matcher::{execute_matchers, execute_matcher, ResponseData, MatchResult as MatcherResult};
-pub use executor::{TemplateExecutor, ScanSummary, scan, quick_scan};
+pub use parser::parse_template;
+pub use executor::{TemplateExecutor, quick_scan};
 
 use crate::types::HostInfo;
-use log::{info, warn, debug};
+use log::{info, warn};
 use std::path::Path;
 
 /// Scan a host using templates from a directory

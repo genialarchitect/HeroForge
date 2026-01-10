@@ -3,12 +3,13 @@
 //! Automatic credential extraction from various sources including
 //! scan results, memory dumps, config files, and browsers.
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use chrono::Utc;
 use log::{debug, info, warn};
 use regex::Regex;
 use std::collections::HashMap;
 use std::path::Path;
+use base64::{Engine, engine::general_purpose::STANDARD};
 
 use super::types::*;
 
@@ -792,7 +793,7 @@ impl CredentialDiscovery {
                         },
                         realm: "REALM".to_string(),
                         key_type: 23, // RC4_HMAC
-                        data: base64::encode(&ticket_data),
+                        data: STANDARD.encode(&ticket_data),
                         expires_at: None,
                     });
                 }
@@ -895,7 +896,7 @@ impl CredentialDiscovery {
                         let b64_key = &after[key_start..key_start + end];
 
                         // Decode base64, skip "DPAPI" prefix (5 bytes) on Windows
-                        if let Ok(decoded) = base64::decode(b64_key) {
+                        if let Ok(decoded) = STANDARD.decode(b64_key) {
                             if decoded.len() > 5 && &decoded[0..5] == b"DPAPI" {
                                 // On Linux, we need to decrypt with secret service or use pbkdf2
                                 // For now, return the key portion after DPAPI marker
@@ -1199,7 +1200,7 @@ impl CredentialDiscovery {
         // Firefox encrypted fields are base64-encoded ASN.1 structures
         // Format: SEQUENCE { OID (3DES-CBC), SEQUENCE { IV, encrypted_data } }
 
-        let encrypted = base64::decode(encrypted_b64).ok()?;
+        let encrypted = STANDARD.decode(encrypted_b64).ok()?;
 
         if encrypted.len() < 20 {
             return None;

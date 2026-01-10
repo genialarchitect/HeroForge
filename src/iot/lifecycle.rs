@@ -11,7 +11,6 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc, Duration};
-use std::collections::HashMap;
 
 /// IoT device asset information
 #[derive(Debug, Clone, Serialize, Deserialize)]

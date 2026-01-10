@@ -6,12 +6,9 @@ pub mod injection;
 pub mod rootkit;
 pub mod hidden;
 
-pub use injection::*;
-pub use rootkit::*;
-pub use hidden::*;
 
 use super::dump_parser::ParsedDump;
-use super::types::{InjectionResult, InjectionType, MemoryAnalysisResult, ProcessInfo};
+use super::types::{InjectionResult, MemoryAnalysisResult, ProcessInfo};
 use anyhow::Result;
 
 /// Run all detection routines
@@ -184,7 +181,7 @@ pub struct ScanMatch {
 
 /// Check memory region characteristics for anomalies
 pub fn check_memory_anomalies(dump: &ParsedDump, _process: &ProcessInfo) -> Vec<MemoryAnomaly> {
-    let mut anomalies = Vec::new();
+    let anomalies = Vec::new();
 
     // This would analyze process VADs/VMAs for:
     // - RWX regions

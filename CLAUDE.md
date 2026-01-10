@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 HeroForge is a network reconnaissance and triage tool written in Rust, designed for authorized penetration testing. It provides both a CLI interface and a web dashboard with real-time scanning capabilities.
 
 **Key Technologies:**
-- **Backend:** Rust with Tokio async runtime, Actix-web for HTTP server
+- **Backend:** Rust 1.70+ (edition 2021) with Tokio async runtime, Actix-web for HTTP server
 - **Frontend:** React 18 + TypeScript + Vite + TailwindCSS (see `frontend/CLAUDE.md` for frontend-specific guidance)
 - **State Management:** Zustand (global state) + React Query (server state)
 - **Database:** SQLite with sqlx for async queries, optional SQLCipher encryption (AES-256)
@@ -415,31 +415,22 @@ Some modules use external tools for specialized functionality. These are optiona
 
 ## Development Roadmap
 
-HeroForge follows a structured sprint-based development plan across two priority phases:
+HeroForge follows a structured sprint-based development plan:
 
-### Priority 1 (P1) - ✅ COMPLETE (12 sprints / 6 months)
-**Focus**: Vulnerability research, malware analysis, network traffic analysis, threat intelligence
+### Priority 1 (P1) - ✅ COMPLETE
+**Focus**: Vulnerability research, malware analysis, network traffic analysis, threat intelligence. See `FEATURE_ROADMAP_P1.md`.
 
-See `FEATURE_ROADMAP_P1.md` for detailed sprint breakdown.
+### Priority 2 (P2) - ✅ COMPLETE
+**Focus**: Blue team, DevSecOps, SOAR automation, OT/ICS security, AI/ML security. See `FEATURE_ROADMAP_P2.md`.
 
-### Priority 2 (P2) - ✅ COMPLETE (15 sprints / 7.5 months)
-**Focus**: Blue team enhancement, DevSecOps platform, SOAR automation, OT/ICS security, AI/ML security
+### Priority 3 (P3) - 📋 PLANNED
+**Focus**: Production hardening, performance optimization, zero trust architecture, enterprise scalability, cloud-native features. See `FEATURE_ROADMAP_P3.md`.
 
-**Status: All 15 Sprints Complete (January 2026)**:
-- ✅ Sprint 1-2: Advanced Detection Engineering (YARA, Sigma)
-- ✅ Sprint 3-4: UEBA (User Entity Behavior Analytics)
-- ✅ Sprint 5-6: Network Forensics (NetFlow, DNS Analytics)
-- ✅ Sprint 7-8: DevSecOps (SAST, SCA)
-- ✅ Sprint 9-10: CI/CD Pipeline Security & IDE Integration
-- ✅ Sprint 11-12: SOAR Playbook Engine & Orchestration
-- ✅ Sprint 13-14: OT/ICS & IoT Security
-- ✅ Sprint 15: AI/ML Security Operations
+### Priority 4 (P4) - 📋 PLANNED
+**Focus**: Advanced threat hunting, OT/IoT/Web3 security, AI/ML maturity, quantum-safe cryptography. See `FEATURE_ROADMAP_P4.md`.
 
-See `FEATURE_ROADMAP_P2.md` for details and way-ahead opportunities.
-
-### Comprehensive Feature Matrix
-`docs/FEATURE_ROADMAP.md` provides a complete status overview across all colored team domains:
-- ✅ Implemented | 🔨 Partially Implemented | 📋 Planned | 💡 Proposed
+### Feature Matrix
+`docs/FEATURE_ROADMAP.md` provides complete status overview: ✅ Implemented | 🔨 Partial | 📋 Planned | 💡 Proposed
 
 ## Troubleshooting
 
@@ -474,3 +465,54 @@ cd /root && docker compose restart traefik     # Force refresh
 2. Verify JWT token is valid and not expired
 3. Ensure middleware skips `/ws/` paths (check `src/web/auth/middleware.rs`)
 4. Check Traefik logs: `docker logs root-traefik-1 | grep -i websocket`
+
+## Market Readiness & Launch Materials
+
+### Phase 1 Launch Documents
+
+All Phase 1 (Private Beta) launch materials are located at `/root/HF_Phase1/`:
+
+```
+/root/HF_Phase1/
+├── README.md                        # Overview and implementation checklist
+├── MARKET_READINESS_STATUS.md       # Current status and next steps tracker
+├── ci_cd/
+│   └── ci-cd-pipeline.yml           # Enhanced GitHub Actions workflow (deploy to .github/workflows/)
+├── testing/
+│   └── integration_tests.rs         # Comprehensive integration tests (deploy to tests/integration/)
+├── legal/
+│   ├── Terms_of_Service.md          # Draft ToS (needs legal review)
+│   ├── Privacy_Policy.md            # Draft Privacy Policy (GDPR/CCPA compliant)
+│   └── Acceptable_Use_Policy.md     # Draft AUP (critical for security tool)
+└── support/
+    └── Support_System_Design.md     # Zendesk-based support system design
+```
+
+### Market Readiness Status
+
+**Current Overall Readiness: ~55%**
+
+| Area | Status | Notes |
+|------|--------|-------|
+| Backend Code | 95% ✅ | Production ready |
+| Frontend Code | 85% ✅ | Bundle size needs optimization |
+| Test Coverage | 30% ⚠️ | Integration tests ready to deploy |
+| Legal Framework | 80% 🔨 | Drafts complete, needs legal review |
+| Support System | 80% 🔨 | Design complete, needs implementation |
+| Certifications | 0% ❌ | SOC 2 Type II needed for enterprise |
+
+### Additional Documentation
+
+| Document | Location | Description |
+|----------|----------|-------------|
+| Feature Inventory | `/root/HeroForge_Features.md` | 83 modules, 160+ endpoints, 99 pages |
+| White Paper | `/root/HeroForge_WhitePaper.md` | General market positioning |
+| Novel Approach Paper | `/root/HeroForge_Novel_Approach_WhitePaper.md` | Differentiation and unique use cases |
+
+### Next Steps Priority
+
+When continuing development, check `/root/HF_Phase1/MARKET_READINESS_STATUS.md` for:
+- Current status of all launch items
+- Prioritized action items
+- Technical and business gaps
+- Launch timeline and milestones

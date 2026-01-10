@@ -76,13 +76,6 @@ pub mod enumeration;
 
 // Re-export commonly used types
 pub use types::*;
-pub use enumeration::{
-    SmbEnumerator,
-    enumerate_shares,
-    enumerate_users,
-    enumerate_groups,
-};
-pub use protocol::{SmbClient, SmbConnection, SMB_PORT};
+pub use enumeration::SmbEnumerator;
+pub use protocol::SmbClient;
 pub use ntlm_auth::NtlmCredentials;
-pub use rpc::samr::{SamrUserEntry, SamrGroupEntry, user_flags};
-pub use rpc::srvsvc::{ServerInfo, SessionInfo};

@@ -1,6 +1,6 @@
 use crate::investigation::types::{TimelineEvent, TemporalPattern};
 use anyhow::Result;
-use chrono::{DateTime, Duration, Utc};
+use chrono::Duration;
 use std::collections::HashMap;
 
 /// Detect anomalous timing patterns in events

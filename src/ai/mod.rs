@@ -23,7 +23,7 @@ pub mod prioritization;
 
 use anyhow::Result;
 use chrono::Utc;
-use log::{info, warn};
+use log::{debug, info, warn};
 use sqlx::SqlitePool;
 use std::sync::Arc;
 
@@ -401,9 +401,53 @@ impl AIPrioritizationManager {
     }
 
     /// Check if exploit is available for a vulnerability
-    async fn check_exploit_availability(&self, _vuln_id: &str) -> bool {
-        // In a real implementation, this would query threat intel
-        // For now, return false as default
+    async fn check_exploit_availability(&self, vuln_id: &str) -> bool {
+        // Check if this looks like a CVE ID (CVE-YYYY-NNNNN format)
+        if !vuln_id.to_uppercase().starts_with("CVE-") {
+            return false;
+        }
+
+        // Try to find exploits using ExploitDB client
+        let exploit_db = crate::threat_intel::ExploitDbClient::from_env();
+        match exploit_db.search_by_cve(vuln_id).await {
+            Ok(exploits) => {
+                if !exploits.is_empty() {
+                    debug!("Found {} exploit(s) for {}", exploits.len(), vuln_id);
+                    return true;
+                }
+            }
+            Err(e) => {
+                debug!("ExploitDB lookup failed for {}: {}", vuln_id, e);
+            }
+        }
+
+        // Check the threat intel feed cache for known exploited vulnerabilities
+        let result: Result<Option<String>, _> = sqlx::query_scalar(
+            "SELECT references FROM threat_intel_cves WHERE cve_id = ?"
+        )
+        .bind(vuln_id)
+        .fetch_optional(&*self.pool)
+        .await;
+
+        if let Ok(Some(refs_json)) = result {
+            if let Ok(refs) = serde_json::from_str::<serde_json::Value>(&refs_json) {
+                if let Some(refs_array) = refs.as_array() {
+                    for r in refs_array {
+                        if let Some(url) = r.get("url").and_then(|u| u.as_str()) {
+                            let url_lower = url.to_lowercase();
+                            if url_lower.contains("exploit-db")
+                                || url_lower.contains("packetstorm")
+                                || url_lower.contains("metasploit")
+                                || (url_lower.contains("github.com") && url_lower.contains("poc"))
+                            {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         false
     }
 
@@ -453,10 +497,52 @@ impl AIPrioritizationManager {
     }
 
     /// Get attack path score for a vulnerability
-    async fn get_attack_path_score(&self, _vuln_id: &str) -> f64 {
-        // In a real implementation, this would query attack path analysis
-        // For now, return a default medium score
-        50.0
+    /// Returns a score 0-100 based on attack path involvement
+    async fn get_attack_path_score(&self, vuln_id: &str) -> f64 {
+        // Query attack paths that involve this vulnerability
+        let result: Result<Vec<(String, String, Option<f64>)>, _> = sqlx::query_as(
+            r#"
+            SELECT ap.id, ap.risk_level, ap.probability
+            FROM attack_paths ap
+            JOIN attack_nodes an ON an.path_id = ap.id
+            WHERE an.vulnerability_ids LIKE ?
+            "#
+        )
+        .bind(format!("%{}%", vuln_id))
+        .fetch_all(&*self.pool)
+        .await;
+
+        match result {
+            Ok(paths) if !paths.is_empty() => {
+                // Calculate score based on highest risk path involvement
+                let mut max_score: f64 = 0.0;
+                for (_id, risk_level, probability) in paths {
+                    let risk_base = match risk_level.to_lowercase().as_str() {
+                        "critical" => 100.0,
+                        "high" => 80.0,
+                        "medium" => 50.0,
+                        "low" => 25.0,
+                        _ => 30.0,
+                    };
+                    // Weight by probability if available
+                    let score = risk_base * probability.unwrap_or(0.7);
+                    if score > max_score {
+                        max_score = score;
+                    }
+                }
+                debug!("Attack path score for {}: {}", vuln_id, max_score);
+                max_score
+            }
+            Ok(_) => {
+                // No attack paths involve this vulnerability - low score
+                25.0
+            }
+            Err(e) => {
+                debug!("Attack path query failed for {}: {}", vuln_id, e);
+                // Default to medium if query fails
+                50.0
+            }
+        }
     }
 
     /// Get historical remediation time for similar vulnerabilities
@@ -474,10 +560,62 @@ impl AIPrioritizationManager {
     }
 
     /// Get compliance impact score
-    async fn get_compliance_impact(&self, _vuln_id: &str) -> f64 {
-        // In a real implementation, this would check against compliance frameworks
-        // For now, return a default score
-        50.0
+    /// Returns a score 0-100 based on compliance framework impact
+    async fn get_compliance_impact(&self, vuln_id: &str) -> f64 {
+        // Query compliance findings that reference this vulnerability
+        let result: Result<Vec<(String, String)>, _> = sqlx::query_as(
+            r#"
+            SELECT framework, severity
+            FROM compliance_findings
+            WHERE evidence LIKE ?
+            "#
+        )
+        .bind(format!("%{}%", vuln_id))
+        .fetch_all(&*self.pool)
+        .await;
+
+        match result {
+            Ok(findings) if !findings.is_empty() => {
+                // Score based on number of frameworks impacted and severity
+                let framework_count = findings.iter()
+                    .map(|(f, _)| f.clone())
+                    .collect::<std::collections::HashSet<_>>()
+                    .len();
+
+                // Get highest severity impact
+                let max_severity_score: f64 = findings.iter()
+                    .map(|(_, severity)| match severity.to_lowercase().as_str() {
+                        "critical" => 100.0,
+                        "high" => 80.0,
+                        "medium" => 50.0,
+                        "low" => 25.0,
+                        _ => 30.0,
+                    })
+                    .fold(0.0_f64, |a, b| a.max(b));
+
+                // Weight by number of frameworks (more frameworks = higher impact)
+                let framework_weight = match framework_count {
+                    0 => 0.5,
+                    1 => 0.7,
+                    2 => 0.85,
+                    _ => 1.0, // 3+ frameworks
+                };
+
+                let score = max_severity_score * framework_weight;
+                debug!("Compliance impact for {}: {} ({} frameworks)", vuln_id, score, framework_count);
+                score
+            }
+            Ok(_) => {
+                // No compliance findings reference this vulnerability
+                // Return low score - doesn't mean no compliance impact, just no recorded impact
+                30.0
+            }
+            Err(e) => {
+                debug!("Compliance query failed for {}: {}", vuln_id, e);
+                // Default to medium if query fails
+                50.0
+            }
+        }
     }
 
     /// Calculate business context score

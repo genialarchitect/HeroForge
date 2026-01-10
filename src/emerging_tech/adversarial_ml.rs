@@ -11,9 +11,8 @@
 //! - ML supply chain security
 
 use super::types::*;
-use anyhow::{Result, Context};
-use log::{info, warn, debug};
-use std::collections::HashMap;
+use anyhow::Result;
+use log::{info, debug};
 use rand::Rng;
 
 /// Configuration for adversarial testing

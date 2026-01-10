@@ -7,6 +7,7 @@ use anyhow::{anyhow, Result};
 use chrono::{DateTime, Duration, Utc};
 use log::{debug, info, warn};
 use std::collections::HashMap;
+use base64::{Engine, engine::general_purpose::STANDARD};
 
 use crate::credentials::types::*;
 
@@ -1180,7 +1181,7 @@ pub struct ForgedTicket {
 impl ForgedTicket {
     /// Export as base64-encoded kirbi
     pub fn to_base64(&self) -> String {
-        base64::encode(&self.kirbi_data)
+        STANDARD.encode(&self.kirbi_data)
     }
 
     /// Get ticket as stored credential

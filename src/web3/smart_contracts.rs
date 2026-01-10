@@ -401,7 +401,7 @@ struct KnownVulnerability {
 }
 
 fn get_known_vulnerable_contracts() -> HashMap<String, Vec<KnownVulnerability>> {
-    let mut contracts = HashMap::new();
+    let contracts = HashMap::new();
 
     // Example: Add known vulnerable contracts
     // In production, this would be a database or API call

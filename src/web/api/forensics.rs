@@ -17,24 +17,18 @@ use utoipa::ToSchema;
 
 use crate::forensics::{
     memory::{
-        ConnectionAnalysisResult, MemoryAnalyzer, MemoryConnection, MemoryProcess,
-        MemoryString, ModuleAnalysisResult, ProcessAnalysisResult, StringAnalysisResult,
-        StringCategory, LoadedModule,
+        MemoryAnalyzer, MemoryConnection, MemoryProcess,
+        MemoryString,
+        StringCategory,
     },
     disk::{
-        BrowserArtifactsResult, BrowserCookie, BrowserDownload, BrowserHistoryEntry,
-        DeletedFile, DeletedFilesResult, DiskAnalyzer, DiskImageType, FileEntry,
-        PrefetchEntry, PrefetchResult, RecentFileEntry, RecentFilesResult, TimelineResult,
+        BrowserCookie, BrowserDownload, BrowserHistoryEntry, DiskAnalyzer, DiskImageType, FileEntry,
     },
     network::{
-        ConnectionSummary, DnsAnalysisResult, DnsQuery, HttpAnalysisResult,
-        HttpConversation, NetworkAnalyzer, ProtocolStats, SuspiciousTrafficResult,
+        ConnectionSummary, DnsQuery, NetworkAnalyzer, ProtocolStats,
     },
-    artifacts::{ArtifactCategory, ArtifactCollector, OperatingSystem},
-    types::{
-        AnalysisStatus, CaseStatus, CaseType, FindingSeverity, FindingType,
-        ForensicCase, ForensicFinding, TimelineEvent, TimelineEventType,
-    },
+    artifacts::ArtifactCollector,
+    types::CaseType,
 };
 use crate::web::auth;
 

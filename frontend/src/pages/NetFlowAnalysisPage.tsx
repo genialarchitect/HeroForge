@@ -245,7 +245,7 @@ const CreateCollectorModal: React.FC<{ onClose: () => void; onCreated: () => voi
     e.preventDefault();
     setLoading(true);
     try {
-      await api.post('/api/netflow/collectors', form);
+      await api.post('/netflow/collectors', form);
       onCreated();
       onClose();
     } catch (error) {
@@ -370,7 +370,7 @@ const NetFlowAnalysisPage: React.FC = () => {
 
   const fetchDashboard = async () => {
     try {
-      const res = await api.get('/api/netflow/dashboard');
+      const res = await api.get('/netflow/dashboard');
       setDashboard(res.data);
     } catch (error) {
       console.error('Failed to fetch dashboard:', error);
@@ -379,7 +379,7 @@ const NetFlowAnalysisPage: React.FC = () => {
 
   const fetchCollectors = async () => {
     try {
-      const res = await api.get('/api/netflow/collectors');
+      const res = await api.get('/netflow/collectors');
       setCollectors(res.data.collectors || []);
     } catch (error) {
       console.error('Failed to fetch collectors:', error);
@@ -404,7 +404,7 @@ const NetFlowAnalysisPage: React.FC = () => {
 
   const fetchAnomalies = async () => {
     try {
-      const res = await api.get('/api/netflow/anomalies?limit=50');
+      const res = await api.get('/netflow/anomalies?limit=50');
       setAnomalies(res.data.anomalies || []);
     } catch (error) {
       console.error('Failed to fetch anomalies:', error);

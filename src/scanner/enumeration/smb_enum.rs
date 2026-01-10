@@ -1,8 +1,8 @@
 use super::types::{EnumDepth, EnumerationResult, Finding, FindingType, ServiceType};
-use crate::scanner::smb_native::{self, SmbEnumerator, SmbShare, ShareType};
+use crate::scanner::smb_native::{SmbEnumerator, SmbShare, ShareType};
 use crate::types::{ScanProgressMessage, ScanTarget};
 use anyhow::Result;
-use log::{debug, info, warn};
+use log::{debug, info};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use tokio::process::Command;

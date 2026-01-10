@@ -94,7 +94,7 @@ impl DnsHandler {
 
         let query_type = request.query_type.to_uppercase();
         let mut response_body = String::new();
-        let mut matched = false;
+        let matched = false;
 
         match query_type.as_str() {
             "A" => {

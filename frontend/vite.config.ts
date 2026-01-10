@@ -22,6 +22,9 @@ export default defineConfig({
           'vendor-state': ['zustand', '@tanstack/react-query'],
           // Heavy libraries
           'vendor-charts': ['recharts'],
+          'vendor-utils': ['axios', 'date-fns'],
+          'vendor-markdown': ['react-markdown', 'remark-gfm'],
+          'vendor-viz': ['react-force-graph-2d', 'react-grid-layout'],
         },
       },
     },

@@ -124,6 +124,7 @@ import type {
   CreateFindingTemplateRequest,
   UpdateFindingTemplateRequest,
   CloneTemplateRequest,
+  CloneFindingTemplateRequest,
   FindingTemplateCategory,
   FindingTemplateCategoryFull,
   ApplyTemplateRequest,
@@ -1604,7 +1605,7 @@ export const findingTemplatesAPI = {
   delete: (id: string) => api.delete(`/finding-templates/${id}`),
 
   // Clone a template
-  clone: (id: string, data?: CloneTemplateRequest) =>
+  clone: (id: string, data?: CloneFindingTemplateRequest) =>
     api.post<FindingTemplate>(`/finding-templates/${id}/clone`, data || {}),
 
   // Get categories with counts
@@ -6283,4 +6284,164 @@ export const mlModelsAPI = {
   listModels: () => api.get<MLModelInfo[]>('/ml/models'),
   getModelInfo: (name: string) => api.get<MLModelInfo>(`/ml/models/${name}`),
   getModelMetrics: (name: string) => api.get(`/ml/models/${name}/metrics`),
+};
+
+// ============================================================================
+// Client Compliance Types
+// ============================================================================
+
+export interface ClientComplianceChecklist {
+  id: string;
+  customer_id: string;
+  engagement_id?: string;
+  framework_id: string;
+  name: string;
+  description?: string;
+  status: 'not_started' | 'in_progress' | 'under_review' | 'completed' | 'archived';
+  due_date?: string;
+  assigned_to?: string;
+  reviewed_by?: string;
+  reviewed_at?: string;
+  overall_score: number;
+  total_controls: number;
+  completed_controls: number;
+  compliant_controls: number;
+  non_compliant_controls: number;
+  not_applicable_controls: number;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ClientComplianceItem {
+  id: string;
+  checklist_id: string;
+  control_id: string;
+  control_title: string;
+  control_description?: string;
+  category?: string;
+  is_automated: boolean;
+  status: 'not_assessed' | 'in_progress' | 'compliant' | 'non_compliant' | 'not_applicable';
+  is_checked: boolean;
+  is_applicable: boolean;
+  rating_score?: number;
+  notes?: string;
+  findings?: string;
+  remediation_steps?: string;
+  compensating_controls?: string;
+  assigned_to?: string;
+  due_date?: string;
+  completed_at?: string;
+  completed_by?: string;
+  verified_at?: string;
+  verified_by?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ClientComplianceEvidence {
+  id: string;
+  item_id: string;
+  checklist_id: string;
+  customer_id: string;
+  title: string;
+  description?: string;
+  evidence_type: 'file' | 'image' | 'screenshot' | 'document' | 'link' | 'note';
+  file_path?: string;
+  file_name?: string;
+  file_size?: number;
+  mime_type?: string;
+  external_url?: string;
+  content_hash?: string;
+  uploaded_by: string;
+  uploaded_at: string;
+  expires_at?: string;
+  status: string;
+  metadata?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateClientChecklistRequest {
+  customer_id: string;
+  engagement_id?: string;
+  framework_id: string;
+  name: string;
+  description?: string;
+  due_date?: string;
+  assigned_to?: string;
+}
+
+export interface UpdateItemRequest {
+  status?: 'not_assessed' | 'in_progress' | 'compliant' | 'non_compliant' | 'not_applicable';
+  is_checked?: boolean;
+  is_applicable?: boolean;
+  rating_score?: number;
+  notes?: string;
+  findings?: string;
+  remediation_steps?: string;
+  compensating_controls?: string;
+  assigned_to?: string;
+  due_date?: string;
+}
+
+// ============================================================================
+// Client Compliance API
+// ============================================================================
+
+export const clientComplianceAPI = {
+  // Checklists
+  listChecklists: (params?: { customer_id?: string; engagement_id?: string; limit?: number; offset?: number }) =>
+    api.get<{ checklists: ClientComplianceChecklist[]; total: number }>('/client-compliance/checklists', { params }),
+  getChecklist: (id: string) => api.get<ClientComplianceChecklist>(`/client-compliance/checklists/${id}`),
+  createChecklist: (data: CreateClientChecklistRequest) =>
+    api.post<ClientComplianceChecklist>('/client-compliance/checklists', data),
+  updateChecklist: (id: string, data: Partial<CreateClientChecklistRequest & { status: string }>) =>
+    api.put<ClientComplianceChecklist>(`/client-compliance/checklists/${id}`, data),
+  deleteChecklist: (id: string) => api.delete(`/client-compliance/checklists/${id}`),
+  populateFromFramework: (id: string, frameworkId: string) =>
+    api.post(`/client-compliance/checklists/${id}/populate`, { framework_id: frameworkId }),
+  getChecklistStats: (id: string) => api.get(`/client-compliance/checklists/${id}/stats`),
+  exportChecklist: (id: string, format: 'json' | 'csv' | 'pdf') =>
+    api.get(`/client-compliance/checklists/${id}/export`, { params: { format }, responseType: 'blob' }),
+
+  // Items
+  listItems: (checklistId: string, params?: { category?: string; status?: string }) =>
+    api.get<{ items: ClientComplianceItem[]; total: number }>(`/client-compliance/checklists/${checklistId}/items`, { params }),
+  getItem: (checklistId: string, itemId: string) =>
+    api.get<ClientComplianceItem>(`/client-compliance/checklists/${checklistId}/items/${itemId}`),
+  addItem: (checklistId: string, data: { control_id: string; control_title: string; control_description?: string; category?: string; is_automated?: boolean }) =>
+    api.post<ClientComplianceItem>(`/client-compliance/checklists/${checklistId}/items`, data),
+  updateItem: (checklistId: string, itemId: string, data: UpdateItemRequest) =>
+    api.put<ClientComplianceItem>(`/client-compliance/checklists/${checklistId}/items/${itemId}`, data),
+  deleteItem: (checklistId: string, itemId: string) =>
+    api.delete(`/client-compliance/checklists/${checklistId}/items/${itemId}`),
+  bulkUpdateCheckbox: (checklistId: string, data: { item_ids: string[]; is_checked: boolean }) =>
+    api.post(`/client-compliance/checklists/${checklistId}/items/bulk-checkbox`, data),
+
+  // Evidence
+  listEvidence: (checklistId: string, itemId: string) =>
+    api.get<{ evidence: ClientComplianceEvidence[]; total: number }>(`/client-compliance/checklists/${checklistId}/items/${itemId}/evidence`),
+  listItemEvidence: (checklistId: string, itemId: string) =>
+    api.get<{ evidence: ClientComplianceEvidence[]; total: number }>(`/client-compliance/checklists/${checklistId}/items/${itemId}/evidence`),
+  uploadEvidence: (checklistId: string, itemId: string, formData: FormData) =>
+    api.post<ClientComplianceEvidence>(`/client-compliance/checklists/${checklistId}/items/${itemId}/evidence`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  downloadEvidence: (checklistId: string, itemId: string, evidenceId: string) =>
+    api.get(`/client-compliance/checklists/${checklistId}/items/${itemId}/evidence/${evidenceId}/download`, { responseType: 'blob' }),
+  deleteEvidence: (checklistId: string, itemId: string, evidenceId: string) =>
+    api.delete(`/client-compliance/checklists/${checklistId}/items/${itemId}/evidence/${evidenceId}`),
+
+  // Aliases and additional methods
+  populateChecklist: (checklistId: string, frameworkId: string, scanId?: string) =>
+    api.post(`/client-compliance/checklists/${checklistId}/populate`, { framework_id: frameworkId, scan_id: scanId }),
+  bulkUpdateCheckboxes: (checklistId: string, data: { item_ids: string[]; is_checked: boolean }) =>
+    api.post(`/client-compliance/checklists/${checklistId}/items/bulk-checkbox`, data),
+  syncScans: (checklistId: string) =>
+    api.post<{ synced_count: number; updated_items: number; findings_count: number }>(`/client-compliance/checklists/${checklistId}/sync-scans`),
+
+  // History
+  getHistory: (checklistId: string, params?: { item_id?: string; limit?: number; offset?: number }) =>
+    api.get(`/client-compliance/checklists/${checklistId}/history`, { params }),
 };

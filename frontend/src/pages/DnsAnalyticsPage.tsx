@@ -236,8 +236,8 @@ const DnsAnalyticsPage: React.FC = () => {
     setLoading(true);
     try {
       const [statsRes, dashboardRes] = await Promise.all([
-        api.get('/api/dns-analytics/stats'),
-        api.get('/api/dns-analytics/dashboard'),
+        api.get('/dns-analytics/stats'),
+        api.get('/dns-analytics/dashboard'),
       ]);
       setDnsStats(statsRes.data.dns_stats);
       setNodStats(statsRes.data.nod_stats);
@@ -254,7 +254,7 @@ const DnsAnalyticsPage: React.FC = () => {
   // Fetch passive DNS records
   const fetchPassiveRecords = async () => {
     try {
-      const res = await api.get('/api/dns-analytics/passive-dns', {
+      const res = await api.get('/dns-analytics/passive-dns', {
         params: { domain: domainFilter || undefined, limit: 100 }
       });
       setPassiveRecords(res.data.records);
@@ -266,7 +266,7 @@ const DnsAnalyticsPage: React.FC = () => {
   // Fetch anomalies
   const fetchAnomalies = async () => {
     try {
-      const res = await api.get('/api/dns-analytics/anomalies', { params: { limit: 100 } });
+      const res = await api.get('/dns-analytics/anomalies', { params: { limit: 100 } });
       setAnomalies(res.data.anomalies);
     } catch (err) {
       console.error('Failed to fetch anomalies:', err);
@@ -276,7 +276,7 @@ const DnsAnalyticsPage: React.FC = () => {
   // Fetch NODs
   const fetchNods = async () => {
     try {
-      const res = await api.get('/api/dns-analytics/nods', { params: { limit: 100 } });
+      const res = await api.get('/dns-analytics/nods', { params: { limit: 100 } });
       setNods(res.data.nods);
     } catch (err) {
       console.error('Failed to fetch NODs:', err);
@@ -286,7 +286,7 @@ const DnsAnalyticsPage: React.FC = () => {
   // Fetch alerts
   const fetchAlerts = async () => {
     try {
-      const res = await api.get('/api/dns-analytics/alerts', {
+      const res = await api.get('/dns-analytics/alerts', {
         params: { acknowledged: showOnlyUnacked ? false : undefined, limit: 100 }
       });
       setAlerts(res.data.alerts);
@@ -298,7 +298,7 @@ const DnsAnalyticsPage: React.FC = () => {
   // Fetch whitelist
   const fetchWhitelist = async () => {
     try {
-      const res = await api.get('/api/dns-analytics/whitelist');
+      const res = await api.get('/dns-analytics/whitelist');
       setWhitelist(res.data.whitelist);
     } catch (err) {
       console.error('Failed to fetch whitelist:', err);
@@ -308,7 +308,7 @@ const DnsAnalyticsPage: React.FC = () => {
   // Fetch DGA families
   const fetchDgaFamilies = async () => {
     try {
-      const res = await api.get('/api/dns-analytics/dga-families');
+      const res = await api.get('/dns-analytics/dga-families');
       setDgaFamilies(res.data.families);
     } catch (err) {
       console.error('Failed to fetch DGA families:', err);
@@ -320,7 +320,7 @@ const DnsAnalyticsPage: React.FC = () => {
     if (!analyzeDomain.trim()) return;
     setAnalyzing(true);
     try {
-      const res = await api.post('/api/dns-analytics/analyze', { domain: analyzeDomain.trim() });
+      const res = await api.post('/dns-analytics/analyze', { domain: analyzeDomain.trim() });
       setAnalyzeResult(res.data);
     } catch (err) {
       console.error('Failed to analyze domain:', err);
@@ -335,7 +335,7 @@ const DnsAnalyticsPage: React.FC = () => {
     if (domains.length === 0) return;
     setAnalyzing(true);
     try {
-      const res = await api.post('/api/dns-analytics/analyze/batch', { domains });
+      const res = await api.post('/dns-analytics/analyze/batch', { domains });
       setBatchResults(res.data.results);
     } catch (err) {
       console.error('Failed to batch analyze:', err);
@@ -358,7 +358,7 @@ const DnsAnalyticsPage: React.FC = () => {
   const handleAddToWhitelist = async () => {
     if (!newWhitelistDomain.trim()) return;
     try {
-      await api.post('/api/dns-analytics/whitelist', {
+      await api.post('/dns-analytics/whitelist', {
         domain: newWhitelistDomain.trim(),
         reason: newWhitelistReason || undefined,
       });

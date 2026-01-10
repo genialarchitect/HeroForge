@@ -5,7 +5,7 @@ import type {
   PortalUserInfo,
   PortalChangePasswordRequest,
   PortalProfile,
-  UpdateProfileRequest,
+  PortalUpdateProfileRequest,
   PortalDashboardStats,
   PortalEngagement,
   PortalEngagementDetail,
@@ -97,7 +97,7 @@ export const portalAuthAPI = {
 // Profile API
 export const portalProfileAPI = {
   getProfile: () => portalApi.get<PortalProfile>('/profile'),
-  updateProfile: (data: UpdateProfileRequest) =>
+  updateProfile: (data: PortalUpdateProfileRequest) =>
     portalApi.put<PortalProfile>('/profile', data),
 };
 

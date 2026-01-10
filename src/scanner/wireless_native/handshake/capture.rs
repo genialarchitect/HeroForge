@@ -184,7 +184,7 @@ pub struct HandshakeValidation {
 
 /// Calculate Pairwise Master Key (PMK) from passphrase
 pub fn calculate_pmk(passphrase: &str, ssid: &str) -> [u8; 32] {
-    use hmac::{Hmac, Mac};
+    use hmac::Hmac;
     use sha1::Sha1;
 
     type HmacSha1 = Hmac<Sha1>;
@@ -240,7 +240,7 @@ fn pbkdf2_sha1(password: &[u8], salt: &[u8], iterations: u32, output: &mut [u8])
 /// Calculate Pairwise Transient Key (PTK) from PMK
 pub fn calculate_ptk(pmk: &[u8; 32], anonce: &[u8], snonce: &[u8],
                      ap_mac: &[u8; 6], client_mac: &[u8; 6]) -> Vec<u8> {
-    use hmac::{Hmac, Mac};
+    use hmac::Hmac;
     use sha1::Sha1;
 
     type HmacSha1 = Hmac<Sha1>;

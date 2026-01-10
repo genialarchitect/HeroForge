@@ -13,8 +13,8 @@
 //! - IOC correlation with scan data
 
 use actix_web::{web, HttpResponse, Result};
-use chrono::{DateTime, Utc};
-use log::{debug, error, info, warn};
+use chrono::Utc;
+use log::{debug, error, info};
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use std::sync::Arc;
@@ -24,7 +24,7 @@ use crate::db::models;
 use crate::threat_intel::{ThreatIntelConfig, ThreatIntelManager};
 use crate::threat_intel::misp::{MispClient, MispConfig, MispSearchQuery};
 use crate::threat_intel::stix::TaxiiClient;
-use crate::threat_intel::threat_actors::{ThreatActorDatabase, ThreatActorType, ThreatMotivation, TrackingStatus};
+use crate::threat_intel::threat_actors::ThreatActorDatabase;
 use crate::web::auth::Claims;
 
 /// Response for API status

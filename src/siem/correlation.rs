@@ -26,14 +26,14 @@
 
 #![allow(dead_code)]
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use super::types::{LogEntry, SiemAlert, SiemRule, SiemSeverity};
+use super::types::{LogEntry, SiemSeverity};
 
 // ============================================================================
 // Correlation Rule Types

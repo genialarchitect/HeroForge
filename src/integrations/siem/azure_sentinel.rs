@@ -12,7 +12,7 @@ use async_trait::async_trait;
 use base64::Engine;
 use chrono::{DateTime, Duration, Utc};
 use hmac::{Hmac, Mac};
-use log::{debug, error, info};
+use log::info;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;

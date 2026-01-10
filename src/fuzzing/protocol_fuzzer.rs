@@ -2,12 +2,10 @@
 //!
 //! Template-based fuzzing for network protocols.
 
-use std::collections::HashMap;
 use tokio::net::{TcpStream, UdpSocket};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::time::{Duration, timeout};
 use chrono::Utc;
-use rand::prelude::*;
 
 use crate::fuzzing::types::*;
 use crate::fuzzing::mutators::Mutator;

@@ -161,6 +161,9 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
             )
             // Public privacy policy endpoint (no authentication required)
             .route("/api/privacy-policy", web::get().to(api::privacy::get_privacy_policy))
+            // Public whitepapers endpoints (no authentication required - marketing content)
+            .route("/api/whitepapers", web::get().to(api::whitepapers::list_whitepapers))
+            .route("/api/whitepapers/{id}", web::get().to(api::whitepapers::get_whitepaper))
             // SSO public endpoints (callbacks, provider list for login)
             .service(
                 web::scope("/api/sso")
@@ -172,11 +175,32 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .route("/callback/oidc", web::get().to(api::sso::oidc_callback))
             )
             // Subscription and registration routes (public, rate limited)
+            // These are specific sub-scopes to avoid conflicts with the main /api scope
             .service(
-                web::scope("/api")
+                web::scope("/api/subscriptions")
                     .wrap(rate_limit::RateLimitStatsMiddleware::auth())
                     .wrap(rate_limit::auth_rate_limiter())
-                    .configure(api::subscriptions::configure)
+                    .route("/tiers", web::get().to(api::subscriptions::get_tiers))
+                    .route("/checkout", web::post().to(api::subscriptions::create_checkout))
+            )
+            .service(
+                web::scope("/api/registration")
+                    .wrap(rate_limit::RateLimitStatsMiddleware::auth())
+                    .wrap(rate_limit::auth_rate_limiter())
+                    .route("/init", web::post().to(api::subscriptions::init_registration))
+                    .route("/verify", web::post().to(api::subscriptions::verify_email))
+                    .route("/complete", web::post().to(api::subscriptions::complete_registration))
+                    .route("/check-email", web::post().to(api::subscriptions::check_email))
+            )
+            .service(
+                web::scope("/api/enterprise")
+                    .wrap(rate_limit::RateLimitStatsMiddleware::auth())
+                    .wrap(rate_limit::auth_rate_limiter())
+                    .route("/inquiry", web::post().to(api::subscriptions::submit_enterprise_inquiry))
+            )
+            .service(
+                web::scope("/api/webhooks")
+                    .route("/stripe", web::post().to(api::subscriptions::handle_stripe_webhook))
             )
             // Phishing tracking routes (public, no auth required)
             .configure(api::phishing::configure_tracking)
@@ -412,6 +436,10 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .configure(api::manual_compliance::configure)
                     // CRM endpoints
                     .configure(api::crm::configure)
+                    // Client compliance checklists
+                    .configure(api::client_compliance::configure)
+                    // ATO (Authority to Operate) Map endpoints
+                    .configure(api::ato_map::configure)
                     // DNS reconnaissance endpoints
                     .route("/dns/recon", web::post().to(api::dns::perform_dns_recon))
                     .route("/dns/recon", web::get().to(api::dns::list_dns_recon_results))
@@ -599,6 +627,8 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .configure(api::report_templates::configure)
                     // Scanner import endpoints (Nessus/Qualys)
                     .configure(api::scanner_import::configure)
+                    // Screenshot capture endpoints (Playwright-based)
+                    .configure(api::screenshots::configure)
                     // Bot integrations endpoints (Slack/Teams)
                     .configure(api::integrations_bots::configure)
                     // Shodan recon integration endpoints

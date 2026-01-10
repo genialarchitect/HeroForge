@@ -2,7 +2,7 @@
 //!
 //! REST API for managing fuzzing campaigns, viewing crashes, and controlling fuzzing operations.
 
-use actix_web::{web, HttpResponse, Scope};
+use actix_web::{web, HttpResponse};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sqlx::{Row, SqlitePool};
@@ -10,6 +10,7 @@ use sqlx::{Row, SqlitePool};
 use crate::web::auth::Claims;
 use crate::web::error::ApiError;
 use crate::fuzzing::types::*;
+use base64::{Engine, engine::general_purpose::STANDARD};
 
 /// Configure fuzzing API routes
 pub fn configure(cfg: &mut web::ServiceConfig) {
@@ -533,7 +534,7 @@ async fn get_crash(
         crash_type: row.get("crash_type"),
         crash_hash: row.get("crash_hash"),
         exploitability: row.get("exploitability"),
-        input_data_base64: base64::encode(&input_data),
+        input_data_base64: STANDARD.encode(&input_data),
         input_size: row.get("input_size"),
         stack_trace: row.get("stack_trace"),
         registers: registers_str.and_then(|s| serde_json::from_str(&s).ok()),
@@ -542,7 +543,7 @@ async fn get_crash(
         stderr_output: row.get("stderr_output"),
         reproduced: row.get::<i32, _>("reproduced") != 0,
         reproduction_count: row.get("reproduction_count"),
-        minimized_input_base64: minimized_input.map(|d| base64::encode(&d)),
+        minimized_input_base64: minimized_input.map(|d| STANDARD.encode(&d)),
         notes: row.get("notes"),
         created_at: row.get("created_at"),
     };
@@ -806,7 +807,7 @@ async fn add_seed(
         return Err(ApiError::not_found("Campaign not found"));
     }
 
-    let data = base64::decode(&body.data_base64)
+    let data = STANDARD.decode(&body.data_base64)
         .map_err(|e| ApiError::bad_request(format!("Invalid base64: {}", e)))?;
 
     let id = uuid::Uuid::new_v4().to_string();

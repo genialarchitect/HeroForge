@@ -35,6 +35,8 @@ pub mod evidence;
 pub use types::{
     ComplianceFramework,
     ComplianceSummary,
+    ComplianceFinding,
+    ControlStatus,
 };
 
 pub use analyzer::ComplianceAnalyzer;

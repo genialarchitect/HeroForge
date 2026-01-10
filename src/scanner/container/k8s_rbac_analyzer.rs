@@ -943,7 +943,7 @@ subjects:
 - kind: User
   name: test-user
   apiGroup: rbac.authorization.k8s.io
-"#).unwrap()
+"#).expect("test YAML fixture should be valid")
     }
 
     fn create_wildcard_role() -> serde_yaml::Value {
@@ -956,7 +956,7 @@ rules:
 - apiGroups: ["*"]
   resources: ["*"]
   verbs: ["*"]
-"#).unwrap()
+"#).expect("test YAML fixture should be valid")
     }
 
     fn create_secret_access_role() -> serde_yaml::Value {
@@ -970,7 +970,7 @@ rules:
 - apiGroups: [""]
   resources: ["secrets"]
   verbs: ["get", "list", "watch"]
-"#).unwrap()
+"#).expect("test YAML fixture should be valid")
     }
 
     fn create_pod_with_default_sa() -> serde_yaml::Value {
@@ -984,7 +984,7 @@ spec:
   containers:
   - name: nginx
     image: nginx
-"#).unwrap()
+"#).expect("test YAML fixture should be valid")
     }
 
     #[test]

@@ -9,11 +9,10 @@
 //! - Common misconfiguration detection
 //! - Compliance-based testing
 
-use anyhow::{Result, Context};
-use log::{info, warn, debug, error};
+use anyhow::Result;
+use log::{info, debug};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::net::{IpAddr, SocketAddr};
+use std::net::SocketAddr;
 use std::time::{Duration, Instant};
 use tokio::net::TcpStream;
 use tokio::time::timeout;

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { portalAuthAPI } from '../../services/portalApi';
+import { Shield, ArrowLeft, CheckCircle } from 'lucide-react';
 
 export default function PortalResetPassword() {
   const [searchParams] = useSearchParams();
@@ -54,22 +55,23 @@ export default function PortalResetPassword() {
 
   if (success) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 px-4 py-12 sm:px-6 lg:px-8">
-        <div className="w-full max-w-md space-y-8">
-          <div className="rounded-xl bg-gray-800 p-8 shadow-2xl text-center">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-green-900/50 mb-4">
-              <svg className="h-6 w-6 text-green-400" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
+      <div className="min-h-screen bg-light-bg dark:bg-dark-bg flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+        <div className="sm:mx-auto sm:w-full sm:max-w-md">
+          <div className="bg-light-surface dark:bg-dark-surface py-8 px-4 shadow-lg rounded-lg sm:px-10 border border-light-border dark:border-dark-border text-center">
+            <div className="flex justify-center mb-4">
+              <div className="w-12 h-12 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center">
+                <CheckCircle className="w-6 h-6 text-green-600 dark:text-green-400" />
+              </div>
             </div>
-            <h2 className="text-xl font-semibold text-white mb-2">Password Reset Successful</h2>
-            <p className="text-gray-400 mb-4">
+            <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-2">Password Reset Successful</h2>
+            <p className="text-slate-500 dark:text-slate-400 mb-4">
               Your password has been updated. Redirecting to login...
             </p>
             <Link
               to="/portal/login"
-              className="text-blue-400 hover:text-blue-300 font-medium"
+              className="inline-flex items-center gap-2 text-primary hover:text-primary-dark transition-colors"
             >
+              <ArrowLeft className="w-4 h-4" />
               Go to login now
             </Link>
           </div>
@@ -79,76 +81,95 @@ export default function PortalResetPassword() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 px-4 py-12 sm:px-6 lg:px-8">
-      <div className="w-full max-w-md space-y-8">
-        <div>
-          <h1 className="text-center text-3xl font-bold tracking-tight text-white">
-            Set New Password
-          </h1>
-          <h2 className="mt-2 text-center text-lg text-gray-400">
-            Enter your new password below
-          </h2>
+    <div className="min-h-screen bg-light-bg dark:bg-dark-bg flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+      <div className="sm:mx-auto sm:w-full sm:max-w-md">
+        <div className="flex justify-center">
+          <div className="w-12 h-12 bg-primary rounded-xl flex items-center justify-center">
+            <Shield className="w-7 h-7 text-white" />
+          </div>
         </div>
+        <h2 className="mt-6 text-center text-3xl font-bold text-slate-900 dark:text-white">
+          Set New Password
+        </h2>
+        <p className="mt-2 text-center text-sm text-slate-500 dark:text-slate-400">
+          Enter your new password below
+        </p>
+      </div>
 
-        <div className="rounded-xl bg-gray-800 p-8 shadow-2xl">
+      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
+        <div className="bg-light-surface dark:bg-dark-surface py-8 px-4 shadow-lg rounded-lg sm:px-10 border border-light-border dark:border-dark-border">
           <form className="space-y-6" onSubmit={handleSubmit}>
             {error && (
-              <div className="rounded-lg bg-red-900/50 p-4 text-sm text-red-200">
+              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 p-4 rounded-lg text-sm">
                 {error}
               </div>
             )}
 
             <div>
-              <label htmlFor="newPassword" className="block text-sm font-medium text-gray-300">
+              <label htmlFor="newPassword" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
                 New Password
               </label>
-              <input
-                id="newPassword"
-                name="newPassword"
-                type="password"
-                required
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                className="mt-1 block w-full rounded-lg border-0 bg-gray-700 px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Enter new password"
-                minLength={8}
-              />
-              <p className="mt-1 text-xs text-gray-500">Minimum 8 characters</p>
+              <div className="mt-1">
+                <input
+                  id="newPassword"
+                  name="newPassword"
+                  type="password"
+                  required
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="appearance-none block w-full px-4 py-3 bg-light-bg dark:bg-dark-bg border border-light-border dark:border-dark-border rounded-lg text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary transition-colors"
+                  placeholder="Enter new password"
+                  minLength={8}
+                />
+              </div>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Minimum 8 characters</p>
             </div>
 
             <div>
-              <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-300">
+              <label htmlFor="confirmPassword" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
                 Confirm Password
               </label>
-              <input
-                id="confirmPassword"
-                name="confirmPassword"
-                type="password"
-                required
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                className="mt-1 block w-full rounded-lg border-0 bg-gray-700 px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Confirm new password"
-              />
+              <div className="mt-1">
+                <input
+                  id="confirmPassword"
+                  name="confirmPassword"
+                  type="password"
+                  required
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="appearance-none block w-full px-4 py-3 bg-light-bg dark:bg-dark-bg border border-light-border dark:border-dark-border rounded-lg text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary transition-colors"
+                  placeholder="Confirm new password"
+                />
+              </div>
             </div>
 
-            <button
-              type="submit"
-              disabled={loading || !token}
-              className="flex w-full justify-center rounded-lg bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {loading ? 'Updating...' : 'Reset Password'}
-            </button>
+            <div>
+              <button
+                type="submit"
+                disabled={loading || !token}
+                className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-primary hover:bg-primary-dark focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {loading ? (
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  'Reset Password'
+                )}
+              </button>
+            </div>
           </form>
 
           <div className="mt-6 text-center">
-            <Link to="/portal/login" className="text-sm text-blue-400 hover:text-blue-300">
+            <Link
+              to="/portal/login"
+              className="inline-flex items-center gap-2 text-sm text-primary hover:text-primary-dark transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
               Back to login
             </Link>
           </div>
         </div>
 
-        <p className="text-center text-xs text-gray-500">
+        <p className="mt-8 text-center text-xs text-slate-500 dark:text-slate-400">
           &copy; 2025 Genial Architect Cybersecurity Research Associates. All rights reserved.
         </p>
       </div>

@@ -17,7 +17,6 @@ use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use std::collections::HashMap;
-use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use crate::db::yara as db;
@@ -438,7 +437,7 @@ pub struct BulkScanResponse {
 /// Start a YARA scan on a path
 pub async fn scan_path(
     pool: web::Data<SqlitePool>,
-    state: web::Data<Arc<YaraState>>,
+    state: web::Data<YaraState>,
     claims: auth::Claims,
     req: web::Json<ScanPathRequest>,
 ) -> Result<HttpResponse> {
@@ -480,7 +479,7 @@ pub async fn scan_path(
 
     // Start scan in background
     let pool_clone = pool.get_ref().clone();
-    let state_clone = state.get_ref().clone();
+    let state_clone = state.into_inner();
     let scan_id_clone = scan_id.clone();
     let path_clone = req.path.clone();
     let user_id = claims.sub.clone();
@@ -1415,7 +1414,7 @@ pub async fn import_rules(
 /// Start a bulk scan on multiple paths
 pub async fn bulk_scan(
     pool: web::Data<SqlitePool>,
-    state: web::Data<Arc<YaraState>>,
+    state: web::Data<YaraState>,
     claims: auth::Claims,
     req: web::Json<BulkScanRequest>,
 ) -> Result<HttpResponse> {

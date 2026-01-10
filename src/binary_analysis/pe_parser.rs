@@ -6,7 +6,7 @@
 use super::entropy::calculate_entropy;
 use super::types::*;
 use anyhow::{Context, Result};
-use chrono::{DateTime, TimeZone, Utc};
+use chrono::{TimeZone, Utc};
 use goblin::pe::PE;
 
 /// Parse a PE file and extract analysis information

@@ -9,7 +9,7 @@
 use super::types::*;
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 
 /// On-chain analytics engine
 pub struct OnChainAnalyzer {

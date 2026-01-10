@@ -12,7 +12,6 @@ pub mod kernel;
 pub use processes::*;
 pub use dlls::*;
 pub use credentials::*;
-pub use registry::*;
 pub use networking::*;
 pub use kernel::*;
 

@@ -25,6 +25,4 @@ pub mod types;
 
 // Re-export commonly used types
 pub use loader::PluginLoader;
-pub use marketplace::PluginMarketplace;
 pub use registry::PluginRegistry;
-pub use sdk::PluginSdk;

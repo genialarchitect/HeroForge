@@ -69,6 +69,7 @@ pub mod push;
 pub mod reports;
 pub mod scan_presets;
 pub mod scans;
+pub mod screenshots;
 pub mod scheduled_scans;
 pub mod scheduled_reports;
 pub mod secret_findings;
@@ -128,6 +129,9 @@ pub mod performance;
 pub mod analytics_engine;
 pub mod intelligence_platform;
 pub mod subscriptions;
+pub mod whitepapers;
+pub mod client_compliance;
+pub mod ato_map;
 
 #[cfg(test)]
 mod tests;

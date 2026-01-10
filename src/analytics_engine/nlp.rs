@@ -8,7 +8,6 @@
 
 use super::types::*;
 use anyhow::{Result, Context};
-use std::collections::HashMap;
 use chrono::{Utc, Duration as ChronoDuration};
 
 /// NLP query processor

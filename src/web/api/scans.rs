@@ -794,6 +794,30 @@ pub async fn create_scan(
                     {
                         log::error!("Failed to dispatch scan.completed webhooks: {}", e);
                     }
+
+                    // Run automatic scan processing pipeline
+                    let pool_for_processing = pool_for_notifications.clone();
+                    let scan_id_for_processing = scan_id_for_notifications.clone();
+                    tokio::spawn(async move {
+                        log::info!("Starting automatic scan processing for {}", scan_id_for_processing);
+                        let processor = crate::scan_processor::ScanProcessor::minimal(
+                            std::sync::Arc::new(pool_for_processing)
+                        );
+                        match processor.process_completed_scan(&scan_id_for_processing).await {
+                            Ok(result) => {
+                                log::info!(
+                                    "Scan processing complete for {}: {} vulns extracted, {} enriched, {} AI scores",
+                                    scan_id_for_processing,
+                                    result.vulns_extracted,
+                                    result.vulns_enriched,
+                                    result.ai_scores_calculated
+                                );
+                            }
+                            Err(e) => {
+                                log::error!("Scan processing failed for {}: {}", scan_id_for_processing, e);
+                            }
+                        }
+                    });
                 });
             }
             Err(e) => {
@@ -1444,6 +1468,7 @@ pub async fn bulk_export_scans(
                         findings,
                         secrets,
                         remediation,
+                        screenshots: Vec::new(),
                     };
 
                     // Generate HTML content first (same as single PDF generation)

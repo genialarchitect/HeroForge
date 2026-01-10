@@ -7,4 +7,3 @@ pub mod deployment;
 pub mod virtual_patching;
 pub mod analytics;
 
-pub use types::*;

@@ -8,7 +8,7 @@
 
 use super::types::{IocEnrichment, Geolocation};
 use anyhow::Result;
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 
 /// Enrich an IOC with data from multiple sources
 pub async fn enrich_ioc(ioc: &str, ioc_type: &str) -> Result<IocEnrichment> {
@@ -612,8 +612,8 @@ mod tests {
     #[tokio::test]
     async fn test_geolocate_ip() {
         let geo = geolocate_ip("8.8.8.8").await.unwrap();
-        assert!(geo.get("country_code").is_some());
-        assert!(geo.get("city").is_some());
+        assert!(!geo.country.is_empty());
+        assert!(geo.city.is_some());
     }
 
     #[test]

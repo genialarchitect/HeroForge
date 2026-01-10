@@ -3,7 +3,7 @@
 use super::*;
 use anyhow::{anyhow, Result};
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 /// MISP configuration
 #[derive(Debug, Clone)]

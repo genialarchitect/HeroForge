@@ -11,7 +11,7 @@ use anyhow::{Result, anyhow};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use log::{info, warn};
+use log::info;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Region {

@@ -14,8 +14,3 @@ pub mod slack;
 pub mod teams;
 
 // Re-export EDR types for convenience
-pub use edr::{
-    CrowdStrikeClient, DefenderClient, SentinelOneClient,
-    EdrManager, EdrConnector, EdrAlert, EdrEndpoint, EdrIoc,
-    EdrPlatform, AlertSeverity, AlertStatus, ResponseAction,
-};

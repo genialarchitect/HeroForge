@@ -11,8 +11,7 @@
 //! - Historical data access
 
 use anyhow::{anyhow, Result};
-use chrono::{DateTime, Utc};
-use log::{debug, info, warn};
+use log::info;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;

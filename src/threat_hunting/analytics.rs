@@ -469,17 +469,88 @@ pub async fn get_hunt_trends(pool: &SqlitePool, days: i64) -> Result<HuntTrends>
     // Determine trend direction
     let trend_direction = calculate_trend_direction(&daily_hunts);
 
-    // Top hypothesis categories (placeholder - would need category field in hypothesis)
-    let top_hypothesis_categories = vec![
-        CategoryMetric {
-            category: "Authentication".to_string(),
-            hunt_count: 0,
-            findings_count: 0,
-        },
-    ];
+    // Top categories from hunt_queries table (which has a category column)
+    let category_rows = sqlx::query_as::<_, (String, i64)>(
+        "SELECT COALESCE(hq.category, 'Uncategorized') as category, COUNT(*) as hunt_count
+         FROM hunt_queries hq
+         WHERE hq.category IS NOT NULL
+         GROUP BY hq.category
+         ORDER BY hunt_count DESC
+         LIMIT 10"
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
 
-    // Findings by severity (would need to parse results JSON)
-    let findings_by_severity = HashMap::new();
+    let top_hypothesis_categories: Vec<CategoryMetric> = if category_rows.is_empty() {
+        // Fallback: derive categories from hypothesis names using common patterns
+        let hypothesis_names = sqlx::query_scalar::<_, String>(
+            "SELECT name FROM hunt_hypotheses ORDER BY created_at DESC LIMIT 100"
+        )
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default();
+
+        // Group by common security categories
+        let mut category_counts: HashMap<String, i64> = HashMap::new();
+        for name in hypothesis_names {
+            let name_lower = name.to_lowercase();
+            let category = if name_lower.contains("auth") || name_lower.contains("login") || name_lower.contains("credential") {
+                "Authentication"
+            } else if name_lower.contains("lateral") || name_lower.contains("pivot") {
+                "Lateral Movement"
+            } else if name_lower.contains("exfil") || name_lower.contains("data") {
+                "Data Exfiltration"
+            } else if name_lower.contains("persist") || name_lower.contains("backdoor") {
+                "Persistence"
+            } else if name_lower.contains("priv") || name_lower.contains("escalat") {
+                "Privilege Escalation"
+            } else if name_lower.contains("c2") || name_lower.contains("command") || name_lower.contains("beacon") {
+                "Command & Control"
+            } else if name_lower.contains("recon") || name_lower.contains("scan") || name_lower.contains("discovery") {
+                "Reconnaissance"
+            } else {
+                "Other"
+            };
+            *category_counts.entry(category.to_string()).or_insert(0) += 1;
+        }
+
+        category_counts.into_iter()
+            .map(|(category, hunt_count)| CategoryMetric { category, hunt_count, findings_count: 0 })
+            .collect()
+    } else {
+        category_rows.into_iter()
+            .map(|(category, hunt_count)| CategoryMetric { category, hunt_count, findings_count: 0 })
+            .collect()
+    };
+
+    // Findings by severity - parse from executions results JSON
+    let results_json: Vec<String> = sqlx::query_scalar(
+        "SELECT results FROM hunt_executions WHERE executed_at >= ? AND results IS NOT NULL"
+    )
+    .bind(start_date.to_rfc3339())
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+
+    let mut findings_by_severity: HashMap<String, i64> = HashMap::new();
+    for result in results_json {
+        // Try to parse the results JSON and extract severity counts
+        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&result) {
+            // Check for severity field in different locations
+            if let Some(findings) = parsed.get("findings").and_then(|f| f.as_array()) {
+                for finding in findings {
+                    let severity = finding.get("severity")
+                        .and_then(|s| s.as_str())
+                        .unwrap_or("unknown")
+                        .to_string();
+                    *findings_by_severity.entry(severity).or_insert(0) += 1;
+                }
+            } else if let Some(severity) = parsed.get("severity").and_then(|s| s.as_str()) {
+                *findings_by_severity.entry(severity.to_string()).or_insert(0) += 1;
+            }
+        }
+    }
 
     Ok(HuntTrends {
         daily_hunts,

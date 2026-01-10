@@ -2,7 +2,7 @@
 //!
 //! bcrypt password hashing using the bcrypt crate.
 
-use bcrypt::{hash_with_salt, Version, verify};
+use bcrypt::{hash_with_salt, verify};
 use crate::cracking::native::types::HashAlgorithm;
 
 /// bcrypt hash algorithm

@@ -699,7 +699,7 @@ pub async fn monitor_dark_web() -> Result<Vec<serde_json::Value>> {
 
 /// Monitor dark web forums
 async fn monitor_dark_web_forums() -> Result<Vec<DarkWebFinding>> {
-    let mut findings = Vec::new();
+    let findings = Vec::new();
 
     // In production, this would connect via Tor and scrape known forums
     // For now, we simulate with common forum patterns
@@ -722,7 +722,7 @@ async fn monitor_dark_web_forums() -> Result<Vec<DarkWebFinding>> {
 
 /// Monitor dark web marketplaces
 async fn monitor_dark_web_markets() -> Result<Vec<DarkWebFinding>> {
-    let mut findings = Vec::new();
+    let findings = Vec::new();
 
     // In production, would monitor for:
     // - Stolen credentials for sale
@@ -743,7 +743,7 @@ async fn monitor_dark_web_markets() -> Result<Vec<DarkWebFinding>> {
 
 /// Monitor .onion paste sites
 async fn monitor_onion_paste_sites() -> Result<Vec<DarkWebFinding>> {
-    let mut findings = Vec::new();
+    let findings = Vec::new();
 
     // Known .onion paste sites to monitor:
     // - stronghold paste variants
@@ -761,7 +761,7 @@ async fn monitor_onion_paste_sites() -> Result<Vec<DarkWebFinding>> {
 
 /// Monitor breach databases
 async fn monitor_breach_databases() -> Result<Vec<DarkWebFinding>> {
-    let mut findings = Vec::new();
+    let findings = Vec::new();
 
     // Sources to check:
     // - Known breach compilation sites
@@ -810,7 +810,7 @@ pub async fn monitor_paste_sites() -> Result<Vec<serde_json::Value>> {
 
 /// Monitor Pastebin
 async fn monitor_pastebin() -> Result<Vec<PasteFinding>> {
-    let mut findings = Vec::new();
+    let findings = Vec::new();
 
     let keywords = get_monitoring_keywords();
 

@@ -12,4 +12,3 @@ pub mod memory_forensics;
 pub mod pcap_analysis;
 pub mod types;
 
-pub use types::*;

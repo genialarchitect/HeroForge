@@ -201,8 +201,10 @@ impl SsoManager {
 
         let user_info = sp.process_response(saml_response, &saml_config, None)?;
 
-        // Clean up state
-        remove_sso_state(relay_state.unwrap()).await;
+        // Clean up state - relay_state is guaranteed Some due to earlier check
+        if let Some(rs) = relay_state {
+            remove_sso_state(rs).await;
+        }
 
         // Update last used timestamp
         update_provider_last_used(&self.pool, &state.provider_id).await?;
@@ -812,9 +814,10 @@ pub async fn update_sso_provider(pool: &SqlitePool, id: &str, updates: &UpdateSs
     let display_name = updates.display_name.as_ref().unwrap_or(&existing.display_name);
     let icon = updates.icon.as_ref().or(existing.icon.as_ref());
     let status = updates.status.map(|s| s.to_string()).unwrap_or(existing.status);
-    let config = updates.config.as_ref()
-        .map(|c| serde_json::to_string(c).unwrap())
-        .unwrap_or(existing.config);
+    let config = match updates.config.as_ref() {
+        Some(c) => serde_json::to_string(c)?,
+        None => existing.config,
+    };
     let attribute_mappings = updates.attribute_mappings.as_ref()
         .map(|m| serde_json::to_string(m).ok())
         .unwrap_or(existing.attribute_mappings);

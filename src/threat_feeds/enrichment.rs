@@ -1,6 +1,5 @@
 //! IOC enrichment and contextualization
 
-use super::*;
 use anyhow::Result;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};

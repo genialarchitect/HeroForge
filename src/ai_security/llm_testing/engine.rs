@@ -3,7 +3,6 @@
 //! Orchestrates security testing of LLM-based applications.
 
 use anyhow::Result;
-use chrono::Utc;
 use log::{error, info, warn};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -15,7 +14,7 @@ use tokio::sync::{mpsc, RwLock};
 use super::analysis::ResponseAnalyzer;
 use super::payloads::{get_builtin_test_cases, get_test_cases_by_category, BuiltinTestCase};
 use super::super::types::{
-    LLMSecurityTest, LLMTargetConfig, LLMTargetType, LLMTestCategory, LLMTestResult,
+    LLMSecurityTest, LLMTargetConfig, LLMTestCategory, LLMTestResult,
     LLMTestStatus, LLMTestSummary, LLMTestType, TestCaseSeverity,
 };
 

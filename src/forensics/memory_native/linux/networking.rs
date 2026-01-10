@@ -3,7 +3,7 @@
 //! Extract active network connections from Linux memory dumps.
 
 use anyhow::Result;
-use std::net::{Ipv4Addr, Ipv6Addr};
+use std::net::Ipv4Addr;
 
 use super::LinuxAnalyzer;
 use crate::forensics::memory_native::dump_parser::ParsedDump;
@@ -107,7 +107,7 @@ impl<'a> NetworkExtractor<'a> {
 
     /// Parse tcp_hashinfo structure
     fn parse_tcp_hashinfo(&self, dump: &ParsedDump, hashinfo_addr: u64) -> Result<Vec<NetworkConnection>> {
-        let mut connections = Vec::new();
+        let connections = Vec::new();
 
         // inet_hashinfo structure contains hash tables for connections
         // ehash (established), bhash (bind), lhash (listen)

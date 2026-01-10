@@ -9,7 +9,6 @@
 use actix_web::{web, HttpResponse};
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
-use std::sync::Arc;
 use utoipa::ToSchema;
 
 use crate::ai::llm_orchestrator::{LLMOrchestrator, PolicyType};

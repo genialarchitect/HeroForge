@@ -13,6 +13,7 @@ use rand::RngCore;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use uuid::Uuid;
+use base64::{Engine, engine::general_purpose::STANDARD};
 
 use super::types::*;
 
@@ -550,7 +551,7 @@ impl CredentialStore {
         // Return as a generic secret (storing the encrypted data)
         Ok(CredentialSecret::Generic({
             let mut map = HashMap::new();
-            map.insert("_encrypted".to_string(), base64::encode(&result));
+            map.insert("_encrypted".to_string(), STANDARD.encode(&result));
             map
         }))
     }
@@ -560,7 +561,7 @@ impl CredentialStore {
         let encrypted_data = match secret {
             CredentialSecret::Generic(map) => {
                 match map.get("_encrypted") {
-                    Some(data) => base64::decode(data)?,
+                    Some(data) => STANDARD.decode(data)?,
                     None => return Ok(secret.clone()), // Not encrypted
                 }
             }

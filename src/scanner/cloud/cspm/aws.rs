@@ -9,7 +9,6 @@
 
 use super::*;
 use anyhow::Result;
-use std::collections::HashMap;
 
 pub struct AwsCspm {
     region: String,

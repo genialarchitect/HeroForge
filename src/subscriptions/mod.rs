@@ -10,6 +10,3 @@ pub mod stripe;
 pub mod tiers;
 pub mod verification;
 
-pub use stripe::StripeClient;
-pub use tiers::{SubscriptionTier, TierFeatures};
-pub use verification::{EmailVerification, VerificationService};

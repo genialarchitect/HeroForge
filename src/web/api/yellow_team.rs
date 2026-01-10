@@ -29,17 +29,14 @@ use crate::db::yellow_team as yt_db;
 use crate::web::auth;
 use crate::yellow_team::devsecops::{
     CreatePipelineGateRequest, UpdatePipelineGateRequest, EvaluateGateRequest,
-    MetricsQuery, ProjectHealthQuery,
 };
 use crate::yellow_team::sbom::SbomGenerator;
 use crate::yellow_team::api_security::ApiSecurityScanner;
 use crate::yellow_team::types::{
-    ApiSpecFormat, ApiSpecType, SbomFormat, ApiSecurityFinding, ApiEndpoint, Severity,
-    ApiSecurityCategory, ApiSecurityFindingType, HttpMethod, RemediationEffort,
+    ApiSpecFormat, ApiSpecType, SbomFormat, ApiSecurityFinding, ApiEndpoint, Severity, HttpMethod,
     CreateThreatModelRequest, UpdateThreatModelRequest,
     AddComponentRequest, AddDataFlowRequest, AddTrustBoundaryRequest, AddMitigationRequest,
-    UpdateThreatStatusRequest, ThreatModelAnalyzer, get_architecture_templates,
-    Sbom, FullSbom, SbomComponent, SbomStats, SourceFile, ComponentVuln,
+    UpdateThreatStatusRequest, ThreatModelAnalyzer, get_architecture_templates, ComponentVuln,
     SastFinding, SastLanguage, SastSourceType, StartSastScanRequest as SastScanRequest,
 };
 

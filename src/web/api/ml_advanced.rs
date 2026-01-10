@@ -1,7 +1,7 @@
 //! Advanced ML API endpoints (XAI, MLOps, Federated Learning)
 
 use actix_web::{web, HttpResponse};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use sqlx::SqlitePool;
 use anyhow::Result;
 

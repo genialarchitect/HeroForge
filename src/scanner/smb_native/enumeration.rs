@@ -2,11 +2,11 @@
 //!
 //! Provides user-friendly interfaces for SMB enumeration operations.
 
-use super::protocol::{SmbClient, SmbConnection};
+use super::protocol::SmbClient;
 use super::rpc::{samr::*, srvsvc::*, types::*};
 use super::smb2::ioctl_codes;
 use super::types::*;
-use log::{debug, info, warn};
+use log::{debug, info};
 use std::cell::Cell;
 
 /// SMB enumeration client
@@ -526,13 +526,13 @@ mod tests {
     #[test]
     fn test_enumerator_creation() {
         let enumerator = SmbEnumerator::new("192.168.1.1");
-        assert_eq!(enumerator.call_id, 1);
+        assert_eq!(enumerator.call_id.get(), 1);
     }
 
     #[test]
     fn test_enumerator_with_credentials() {
         let enumerator =
             SmbEnumerator::with_credentials("192.168.1.1", "DOMAIN", "user", "password");
-        assert_eq!(enumerator.call_id, 1);
+        assert_eq!(enumerator.call_id.get(), 1);
     }
 }

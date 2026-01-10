@@ -16,6 +16,3 @@ pub mod vulnerability;
 pub mod threat_detection;
 pub mod lifecycle;
 
-pub use types::*;
-pub use discovery::*;
-pub use credentials::*;

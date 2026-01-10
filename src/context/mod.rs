@@ -8,4 +8,3 @@ pub mod threat;
 
 pub use user::*;
 pub use asset::*;
-pub use threat::*;

@@ -299,6 +299,7 @@ pub struct Report {
     pub description: Option<String>,
     pub format: String,
     pub template_id: String,
+    pub report_type: Option<String>, // "executive", "technical", "compliance" - for portal display
     pub sections: String, // JSON array of section names
     pub file_path: Option<String>,
     pub file_size: Option<i64>,
@@ -310,6 +311,8 @@ pub struct Report {
     pub expires_at: Option<DateTime<Utc>>,
     // Multi-tenant organization field
     pub organization_id: Option<String>,
+    // Portal engagement link - reports with engagement_id are visible to portal customers
+    pub engagement_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

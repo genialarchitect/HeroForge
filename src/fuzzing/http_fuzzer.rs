@@ -4,7 +4,6 @@
 
 use std::collections::HashMap;
 use tokio::time::Duration;
-use chrono::Utc;
 use rand::prelude::*;
 use reqwest::{Client, Method, header};
 

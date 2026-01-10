@@ -15,7 +15,7 @@ use anyhow::Result;
 use chrono::{DateTime, Datelike, Duration, NaiveTime, Timelike, Utc, Weekday};
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, SqlitePool};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use uuid::Uuid;
 
 use super::types::*;

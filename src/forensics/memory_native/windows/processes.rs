@@ -6,7 +6,7 @@ use anyhow::Result;
 use chrono::{DateTime, TimeZone, Utc};
 
 use super::{EprocessOffsets, WindowsAnalyzer};
-use crate::forensics::memory_native::dump_parser::{ParsedDump, WindowsAddressTranslator};
+use crate::forensics::memory_native::dump_parser::WindowsAddressTranslator;
 use crate::forensics::memory_native::types::ProcessInfo;
 
 /// Process enumerator for Windows memory dumps
@@ -435,4 +435,3 @@ mod tests {
     }
 }
 
-use chrono::Datelike;

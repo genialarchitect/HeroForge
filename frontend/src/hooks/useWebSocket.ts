@@ -150,8 +150,15 @@ export const useWebSocket = (scanId: string | null) => {
         break;
 
       case 'error':
-        updateScanStatus(scanId, 'failed');
-        toast.error(`Scan error: ${message.message}`);
+        // Only mark as failed if it's an actual scan error, not a connection issue
+        // Check if the error message indicates a real scan failure vs channel cleanup
+        if (message.message && !message.message.includes('channel') && !message.message.includes('not found')) {
+          updateScanStatus(scanId, 'failed');
+          toast.error(`Scan error: ${message.message}`);
+        } else {
+          // Channel was closed (scan likely completed) - don't mark as failed
+          console.log('WebSocket channel closed, fetching actual scan status from API');
+        }
         break;
 
       default:

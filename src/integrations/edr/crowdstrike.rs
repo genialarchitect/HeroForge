@@ -10,12 +10,12 @@
 
 use super::{
     ActionResult, AlertSeverity, AlertStatus, EdrAlert, EdrConnector, EdrEndpoint, EdrIoc,
-    EdrPlatform, EndpointStatus, HuntingQuery, HuntingResult, IocType, ResponseAction, TimeRange,
+    EdrPlatform, EndpointStatus, HuntingQuery, HuntingResult, IocType, ResponseAction,
 };
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
-use log::{debug, error, info, warn};
+use log::info;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;

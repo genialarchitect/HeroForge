@@ -238,7 +238,7 @@ pub struct DorkScanListItem {
 /// POST /api/recon/dorks
 pub async fn run_dorks(
     pool: web::Data<SqlitePool>,
-    state: web::Data<Arc<DorkingState>>,
+    state: web::Data<DorkingState>,
     claims: Claims,
     req: web::Json<RunDorksRequest>,
 ) -> Result<HttpResponse, ApiError> {

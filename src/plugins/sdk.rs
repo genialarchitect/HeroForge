@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use super::manifest::{parse_manifest, parse_manifest_file, validate_manifest};
-use super::types::{PluginManifest, PluginType, PluginValidationResult};
+use super::types::{PluginType, PluginValidationResult};
 
 /// Plugin SDK for creating custom plugins
 pub struct PluginSdk {

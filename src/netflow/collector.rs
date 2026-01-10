@@ -11,7 +11,7 @@ use chrono::{DateTime, Utc};
 use log::{debug, error, info, warn};
 use uuid::Uuid;
 
-use super::types::{CollectorType, CollectorStatus, FlowCollector, FlowRecord};
+use super::types::{CollectorType, FlowCollector, FlowRecord};
 use super::parser::{ParsedFlow, TemplateCache, parse_netflow_v5, parse_netflow_v9, parse_ipfix, parse_sflow};
 
 /// Maximum UDP packet size for flow protocols

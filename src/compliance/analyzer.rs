@@ -70,6 +70,42 @@ impl ComplianceAnalyzer {
         Ok(summary)
     }
 
+    /// Analyze scan results for compliance, returning both summary and findings
+    pub async fn analyze_with_findings(&self, hosts: &[HostInfo], scan_id: &str) -> Result<(ComplianceSummary, Vec<ComplianceFinding>)> {
+        info!(
+            "Starting compliance analysis with findings for scan {} against {} frameworks",
+            scan_id,
+            self.frameworks.len()
+        );
+
+        let mut all_findings = Vec::new();
+
+        // Phase 1: Map vulnerabilities to compliance controls
+        let vuln_findings = self.mapper.map_vulnerabilities(hosts, scan_id);
+        all_findings.extend(vuln_findings);
+
+        // Phase 2: Run direct compliance checks on each host
+        for host in hosts {
+            let check_results = run_compliance_checks(host, &self.frameworks);
+            let check_findings = check_results_to_findings(check_results, scan_id, &host.target.ip.to_string());
+            all_findings.extend(check_findings);
+        }
+
+        // Deduplicate findings by control
+        let deduplicated = self.deduplicate_findings(all_findings);
+
+        // Generate summary
+        let summary = self.generate_summary(scan_id, &deduplicated);
+
+        info!(
+            "Compliance analysis complete: {} findings, overall score: {:.1}%",
+            summary.total_findings,
+            summary.overall_score
+        );
+
+        Ok((summary, deduplicated))
+    }
+
     /// Deduplicate findings, keeping the worst status for each control
     fn deduplicate_findings(&self, findings: Vec<ComplianceFinding>) -> Vec<ComplianceFinding> {
         let mut by_control: HashMap<(ComplianceFramework, String), ComplianceFinding> = HashMap::new();

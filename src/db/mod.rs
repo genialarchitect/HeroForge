@@ -110,6 +110,7 @@ pub mod ml_advanced;
 pub mod performance;
 pub mod analytics_engine;
 pub mod intelligence_platform;
+pub mod client_compliance;
 
 // Core imports used by this module
 use sqlx::sqlite::SqlitePool;
@@ -887,3 +888,55 @@ pub async fn update_playbook_next_run(
 
     Ok(())
 }
+
+// ============================================================================
+// Re-exports from client_compliance module
+// ============================================================================
+
+pub use client_compliance::{
+    // Types
+    ClientComplianceChecklist,
+    ClientComplianceItem,
+    ClientComplianceEvidence,
+    ClientComplianceHistory,
+    ChecklistStatus,
+    ControlStatus,
+    EvidenceType,
+    CustomerComplianceSummary,
+    FrameworkSummary,
+    // Request types
+    CreateChecklistRequest,
+    UpdateChecklistRequest,
+    UpdateItemRequest,
+    AddEvidenceRequest,
+    // Checklist functions
+    create_checklist as create_client_checklist,
+    get_checklist as get_client_checklist,
+    list_checklists_for_customer,
+    list_checklists_for_engagement,
+    list_all_checklists as list_all_client_checklists,
+    update_checklist as update_client_checklist,
+    delete_checklist as delete_client_checklist,
+    // Item functions
+    add_checklist_item as add_client_checklist_item,
+    get_checklist_item as get_client_checklist_item,
+    list_checklist_items as list_client_checklist_items,
+    update_checklist_item as update_client_checklist_item,
+    bulk_update_checkboxes,
+    // Evidence functions
+    add_evidence as add_client_evidence,
+    get_evidence as get_client_evidence,
+    list_evidence_for_item,
+    list_evidence_for_checklist,
+    list_evidence_for_customer,
+    delete_evidence as delete_client_evidence,
+    // History functions
+    add_history as add_client_compliance_history,
+    get_checklist_history as get_client_checklist_history,
+    get_item_history as get_client_item_history,
+    // Statistics
+    recalculate_checklist_stats,
+    get_customer_compliance_summary,
+    // Framework population
+    populate_checklist_from_framework,
+};

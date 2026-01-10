@@ -3,7 +3,7 @@
 //! Common types and structures for DCE/RPC over SMB.
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use std::io::{Cursor, Read, Write};
+use std::io::{Cursor, Read};
 
 /// DCE/RPC version
 pub const RPC_MAJOR_VERSION: u8 = 5;

@@ -17,16 +17,22 @@ const queryClient = new QueryClient({
   },
 });
 import LoginPage from './pages/LoginPage';
-import DashboardPage from './pages/DashboardPage';
 import RegisterPage from './pages/RegisterPage';
 import VerifyEmailPage from './pages/VerifyEmailPage';
 import ContactSalesPage from './pages/ContactSalesPage';
+
+// Lazy load the dashboard for better initial bundle size
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 
 // Lazy load less frequently used pages
 const AdminPage = lazy(() => import('./pages/AdminPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const SalesPage = lazy(() => import('./pages/SalesPage'));
+const FeaturesPage = lazy(() => import('./pages/FeaturesPage'));
+const UseCasesPage = lazy(() => import('./pages/UseCasesPage'));
+const AboutPage = lazy(() => import('./pages/AboutPage'));
 const InvestorPage = lazy(() => import('./pages/InvestorPage'));
+const WhitepapersPage = lazy(() => import('./pages/WhitepapersPage'));
 const PitchDeckPage = lazy(() => import('./pages/PitchDeckPage'));
 const FinancialModelPage = lazy(() => import('./pages/FinancialModelPage'));
 const OnePagerPage = lazy(() => import('./pages/OnePagerPage'));
@@ -34,6 +40,8 @@ const AssetsPage = lazy(() => import('./pages/AssetsPage'));
 const WebAppScanPage = lazy(() => import('./pages/WebAppScanPage'));
 const DnsToolsPage = lazy(() => import('./pages/DnsToolsPage'));
 const CompliancePage = lazy(() => import('./pages/CompliancePage'));
+const ClientCompliancePage = lazy(() => import('./pages/ClientCompliancePage'));
+const AtoMapPage = lazy(() => import('./pages/AtoMapPage'));
 const RemediationPage = lazy(() => import('./pages/RemediationPage'));
 const ManualAssessmentPage = lazy(() => import('./pages/ManualAssessmentPage'));
 const AssessmentDetailPage = lazy(() => import('./pages/AssessmentDetailPage'));
@@ -226,11 +234,16 @@ function App() {
           <Suspense fallback={<PageLoader />}>
             <Routes>
           <Route path="/" element={<SalesPage />} />
+          <Route path="/features" element={<FeaturesPage />} />
+          <Route path="/use-cases" element={<UseCasesPage />} />
+          <Route path="/about" element={<AboutPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/register/verify" element={<VerifyEmailPage />} />
           <Route path="/contact-sales" element={<ContactSalesPage />} />
           <Route path="/investors" element={<InvestorPage />} />
+          <Route path="/whitepapers" element={<WhitepapersPage />} />
+          <Route path="/whitepapers/:id" element={<WhitepapersPage />} />
           <Route path="/pitch" element={<PitchDeckPage />} />
           <Route path="/financials" element={<FinancialModelPage />} />
           <Route path="/one-pager" element={<OnePagerPage />} />
@@ -295,6 +308,22 @@ function App() {
             element={
               <ProtectedRoute>
                 <CompliancePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/client-compliance"
+            element={
+              <ProtectedRoute>
+                <ClientCompliancePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/ato-map"
+            element={
+              <ProtectedRoute>
+                <AtoMapPage />
               </ProtectedRoute>
             }
           />

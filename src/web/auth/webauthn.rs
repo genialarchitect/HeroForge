@@ -818,7 +818,11 @@ fn get_challenge_store() -> &'static mut HashMap<String, ChallengeData> {
         if CHALLENGE_STORE.is_none() {
             CHALLENGE_STORE = Some(HashMap::new());
         }
-        CHALLENGE_STORE.as_mut().unwrap()
+        // Safety: We just initialized CHALLENGE_STORE if it was None,
+        // so it's guaranteed to be Some at this point
+        CHALLENGE_STORE
+            .as_mut()
+            .expect("CHALLENGE_STORE was just initialized and should be Some")
     }
 }
 

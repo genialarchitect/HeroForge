@@ -10,16 +10,13 @@
 use actix_multipart::Multipart;
 use actix_web::{web, HttpResponse};
 use anyhow::Result;
-use chrono::Utc;
 use futures::{StreamExt, TryStreamExt};
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
 use crate::binary_analysis::{
-    BinaryAnalyzer, BinarySample, BinarySampleSummary, AnalysisConfig,
-    BinaryType, Architecture, AnalysisStatus, ExtractedString, StringType,
-    HexViewResponse, HexViewRequest,
+    BinaryAnalyzer, BinarySample, HexViewRequest,
 };
 use crate::web::auth;
 use crate::web::error::ApiError;

@@ -9,15 +9,11 @@
 use actix_web::{web, HttpResponse};
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
-use std::sync::Arc;
-use tokio::sync::Mutex;
-use uuid::Uuid;
 
 use crate::db::sca as sca_db;
 use crate::web::auth;
 use crate::yellow_team::sca::{
     ScaAnalyzer, Ecosystem, assess_license_risk, generate_purl,
-    CreateScaProjectRequest as ScaCreateReq,
 };
 use crate::yellow_team::sbom::SbomGenerator;
 

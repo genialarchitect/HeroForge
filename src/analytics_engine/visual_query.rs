@@ -8,7 +8,6 @@
 
 use super::types::*;
 use anyhow::Result;
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 /// Visual query builder component types

@@ -34,11 +34,9 @@ pub mod usage_tracking;
 pub mod types;
 
 // Re-export commonly used types
-pub use rate_limiting::{RateLimiter, RateLimitAlgorithm};
+pub use rate_limiting::RateLimiter;
 pub use quotas::{QuotaManager, QuotaType};
-pub use versioning::{ApiVersion, VersionManager};
-pub use usage_tracking::{UsageTracker, UsageMetrics};
-pub use types::*;
+pub use usage_tracking::UsageTracker;
 
 use anyhow::Result;
 use std::sync::Arc;

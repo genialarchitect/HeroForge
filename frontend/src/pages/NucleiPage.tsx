@@ -117,16 +117,16 @@ const getSeverityColor = (severity: string) => {
 
 // API functions
 const nucleiAPI = {
-  getStatus: () => api.get<NucleiStatus>('/api/nuclei/status'),
-  listScans: () => api.get<{ scans: NucleiScan[]; total: number }>('/api/nuclei/scans'),
-  getScan: (id: string) => api.get(`/api/nuclei/scans/${id}`),
-  createScan: (data: any) => api.post<{ id: string; message: string }>('/api/nuclei/scans', data),
-  deleteScan: (id: string) => api.delete(`/api/nuclei/scans/${id}`),
-  cancelScan: (id: string) => api.post(`/api/nuclei/scans/${id}/cancel`),
-  listTemplates: (params?: any) => api.get<{ templates: TemplateInfo[]; total: number }>('/api/nuclei/templates', { params }),
-  getTemplateStats: () => api.get<TemplateStats>('/api/nuclei/templates/stats'),
-  updateTemplates: () => api.post('/api/nuclei/templates/update'),
-  listTags: () => api.get<{ tags: [string, number][] }>('/api/nuclei/templates/tags'),
+  getStatus: () => api.get<NucleiStatus>('/nuclei/status'),
+  listScans: () => api.get<{ scans: NucleiScan[]; total: number }>('/nuclei/scans'),
+  getScan: (id: string) => api.get(`/nuclei/scans/${id}`),
+  createScan: (data: any) => api.post<{ id: string; message: string }>('/nuclei/scans', data),
+  deleteScan: (id: string) => api.delete(`/nuclei/scans/${id}`),
+  cancelScan: (id: string) => api.post(`/nuclei/scans/${id}/cancel`),
+  listTemplates: (params?: any) => api.get<{ templates: TemplateInfo[]; total: number }>('/nuclei/templates', { params }),
+  getTemplateStats: () => api.get<TemplateStats>('/nuclei/templates/stats'),
+  updateTemplates: () => api.post('/nuclei/templates/update'),
+  listTags: () => api.get<{ tags: [string, number][] }>('/nuclei/templates/tags'),
 };
 
 // Scan Form Component

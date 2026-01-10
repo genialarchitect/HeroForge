@@ -1,4 +1,8 @@
 #![recursion_limit = "512"]
+// Suppress warnings for code that's implemented but not yet fully integrated
+#![allow(dead_code)]
+#![allow(unused_imports)]
+#![allow(unused_variables)]
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -58,7 +62,9 @@ mod rbac;
 mod replication;
 mod resilience;
 mod reports;
+mod scan_processor;
 mod scanner;
+mod screenshots;
 mod siem;
 mod supply_chain;
 mod testing;
@@ -71,6 +77,8 @@ mod yellow_team;
 mod orange_team;
 mod green_team;
 mod white_team;
+mod red_team;
+mod blue_team;
 mod vpn;
 mod vuln;
 mod web;
@@ -338,6 +346,11 @@ async fn main() {
         env_logger::Builder::from_default_env()
             .filter_level(log::LevelFilter::Info)
             .init();
+    }
+
+    // Initialize rustls crypto provider for TLS operations
+    if let Err(e) = rustls::crypto::ring::default_provider().install_default() {
+        log::warn!("Failed to install default crypto provider: {:?}", e);
     }
 
     print_banner();

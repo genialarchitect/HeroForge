@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use anyhow::{Result, anyhow};
 
-use super::sigma::{CompiledSigmaRule, ConditionNode, FieldMatcher, MatchType, SigmaRule, SigmaParser};
+use super::sigma::{CompiledSigmaRule, ConditionNode, FieldMatcher, MatchType, SigmaRule};
 
 /// Supported backend conversion targets
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

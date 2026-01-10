@@ -71,6 +71,7 @@ import {
   GitPullRequest,
   Box,
   FileSearch,
+  Map,
 } from 'lucide-react';
 
 // Types
@@ -403,8 +404,10 @@ const Sidebar: React.FC = () => {
   const whiteTeamItems: NavItem[] = [
     { to: '/white-team', icon: ShieldCheck, label: 'GRC Dashboard' },
     { to: '/compliance', icon: ShieldCheck, label: 'Compliance' },
+    { to: '/client-compliance', icon: ClipboardCheck, label: 'Client Checklists' },
     { to: '/evidence', icon: FileText, label: 'Evidence' },
     { to: '/manual-assessments', icon: ClipboardCheck, label: 'Assessments' },
+    { to: '/ato-map', icon: Map, label: 'ATO Map' },
     { to: '/methodology', icon: BookOpenCheck, label: 'Methodology' },
     { to: '/finding-templates', icon: FileWarning, label: 'Finding Templates' },
     { to: '/executive-dashboard', icon: BarChart3, label: 'Executive Dashboard' },

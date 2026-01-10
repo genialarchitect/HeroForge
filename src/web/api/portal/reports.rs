@@ -36,9 +36,10 @@ pub async fn list_reports(
     };
 
     // Get reports linked to customer's engagements
+    // Use COALESCE to fall back to template_id if report_type is NULL (for legacy reports)
     let reports: Vec<PortalReport> = sqlx::query_as::<_, (String, String, String, String, String, String, Option<String>)>(
         r#"
-        SELECT r.id, r.name, r.report_type, r.format, r.status, r.created_at, r.engagement_id
+        SELECT r.id, r.name, COALESCE(r.report_type, r.template_id) as report_type, r.format, r.status, r.created_at, r.engagement_id
         FROM reports r
         JOIN engagements e ON r.engagement_id = e.id
         WHERE e.customer_id = ? AND r.status = 'completed'
@@ -87,7 +88,7 @@ pub async fn get_report(
     // Get report (ensuring it belongs to customer's engagement)
     let report: Option<(String, String, String, String, String, String, Option<String>, Option<String>)> = sqlx::query_as(
         r#"
-        SELECT r.id, r.name, r.report_type, r.format, r.status, r.created_at, r.engagement_id, e.name
+        SELECT r.id, r.name, COALESCE(r.report_type, r.template_id) as report_type, r.format, r.status, r.created_at, r.engagement_id, e.name
         FROM reports r
         JOIN engagements e ON r.engagement_id = e.id
         WHERE r.id = ? AND e.customer_id = ? AND r.status = 'completed'

@@ -140,7 +140,7 @@ pub fn find_orphaned_threads(dump: &ParsedDump) -> Result<Vec<HiddenObject>> {
 
 /// Detect handle table manipulation
 pub fn detect_handle_hiding(dump: &ParsedDump, processes: &[ProcessInfo]) -> Result<Vec<HiddenObject>> {
-    let mut hidden = Vec::new();
+    let hidden = Vec::new();
 
     // For each process, verify handle table integrity
     for process in processes {

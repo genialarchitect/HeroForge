@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use crate::devsecops::cicd::{
     CiCdPipeline, CiCdPipelineRun, CiCdPolicy, CiCdWorkflowTemplate, CreatePipelineRequest,
-    CreatePolicyRequest, GenerateTemplateRequest, PolicyActions, PolicyConditions,
+    CreatePolicyRequest, GenerateTemplateRequest, PolicyConditions,
     PolicyEvaluator, QualityGateDetails, TemplateGenerator, UpdatePipelineRequest,
     UpdatePolicyRequest,
 };

@@ -64,7 +64,7 @@ impl Mutator {
 
     /// Apply a specific mutation strategy
     fn apply_mutation(&self, input: &[u8], strategy: &MutationStrategy, config: &FuzzerConfig) -> Vec<u8> {
-        let mut rng = rand::thread_rng();
+        let rng = rand::thread_rng();
 
         match strategy {
             MutationStrategy::BitFlip => self.bit_flip(input),

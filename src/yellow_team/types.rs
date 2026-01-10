@@ -2068,8 +2068,8 @@ impl ThreatModelAnalyzer {
         use std::collections::HashMap;
 
         // Create a dummy ArchitectureReviewEngine to generate the result
-        let mut threats_by_category: HashMap<String, u32> = HashMap::new();
-        let mut threats_by_risk: HashMap<String, u32> = HashMap::new();
+        let threats_by_category: HashMap<String, u32> = HashMap::new();
+        let threats_by_risk: HashMap<String, u32> = HashMap::new();
 
         // For now, return an empty analysis result
         // Full implementation would analyze the model's components, data flows, etc.

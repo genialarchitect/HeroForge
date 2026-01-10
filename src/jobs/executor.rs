@@ -1005,6 +1005,7 @@ impl JobExecutor {
             vec!["compliance_summary".to_string(), "control_assessment".to_string(), "recommendations".to_string()],
             crate::reports::types::ReportOptions {
                 include_charts: true,
+                include_screenshots: false,
                 company_name: None,
                 assessor_name: None,
                 classification: Some("Compliance Assessment".to_string()),

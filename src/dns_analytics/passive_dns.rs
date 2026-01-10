@@ -9,7 +9,7 @@ use chrono::{DateTime, Utc};
 use tokio::sync::RwLock;
 use super::types::{
     PassiveDnsRecord, DnsRecordType, DnsThreatType, DnsQuery,
-    DnsStats, DomainCount, QueryTypeCount, ClientQueryCount, TimeSeriesPoint,
+    DnsStats, DomainCount, QueryTypeCount, ClientQueryCount,
 };
 
 /// Passive DNS store configuration

@@ -213,10 +213,22 @@ pub async fn create_report(
     let now = Utc::now();
     let sections_json = serde_json::to_string(sections)?;
 
+    // Get engagement_id from the scan if it exists (for portal visibility)
+    let engagement_id: Option<String> = sqlx::query_scalar(
+        "SELECT engagement_id FROM scan_results WHERE id = ?1"
+    )
+    .bind(scan_id)
+    .fetch_optional(pool)
+    .await?
+    .flatten();
+
+    // Use template_id as the report_type for portal display
+    let report_type = Some(template_id.to_string());
+
     let report = sqlx::query_as::<_, models::Report>(
         r#"
-        INSERT INTO reports (id, user_id, scan_id, name, description, format, template_id, sections, status, metadata, created_at)
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+        INSERT INTO reports (id, user_id, scan_id, name, description, format, template_id, report_type, sections, status, metadata, created_at, engagement_id)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
         RETURNING *
         "#,
     )
@@ -227,10 +239,12 @@ pub async fn create_report(
     .bind(description)
     .bind(format)
     .bind(template_id)
+    .bind(&report_type)
     .bind(&sections_json)
     .bind("pending")
     .bind(metadata)
     .bind(now)
+    .bind(&engagement_id)
     .fetch_one(pool)
     .await?;
 

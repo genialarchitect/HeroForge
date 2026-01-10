@@ -3,7 +3,6 @@ use log::{error, info};
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use std::collections::HashSet;
-use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use crate::db::privesc;
@@ -99,7 +98,7 @@ pub struct ScanSummary {
 /// Start a new privilege escalation scan
 pub async fn start_scan(
     pool: web::Data<SqlitePool>,
-    state: web::Data<Arc<PrivescState>>,
+    state: web::Data<PrivescState>,
     claims: Claims,
     req: web::Json<StartPrivescRequest>,
 ) -> Result<HttpResponse, ApiError> {
@@ -300,7 +299,7 @@ pub async fn get_scan_findings(
 /// Cancel a running privesc scan
 pub async fn cancel_scan(
     pool: web::Data<SqlitePool>,
-    state: web::Data<Arc<PrivescState>>,
+    state: web::Data<PrivescState>,
     claims: Claims,
     path: web::Path<String>,
 ) -> Result<HttpResponse, ApiError> {

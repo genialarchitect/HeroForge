@@ -584,8 +584,8 @@ impl WarehouseClient {
 
     /// HTTP POST with JSON body
     async fn http_post_json(&self, url: &str, auth_token: &str, body: &serde_json::Value) -> Result<String> {
-        use std::io::{Read, Write};
-        use std::net::TcpStream;
+        
+        
 
         let url_parsed = url::Url::parse(url)?;
         let host = url_parsed.host_str().unwrap_or("localhost");

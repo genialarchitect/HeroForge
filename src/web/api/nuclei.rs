@@ -17,7 +17,6 @@ use actix_web::{web, HttpResponse, Result};
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use std::collections::HashMap;
-use std::sync::Arc;
 use tokio::sync::{broadcast, RwLock};
 
 use crate::db::nuclei as db;
@@ -265,16 +264,34 @@ pub async fn get_status() -> Result<HttpResponse> {
 /// Start a new Nuclei scan
 pub async fn create_scan(
     pool: web::Data<SqlitePool>,
-    state: web::Data<Arc<NucleiState>>,
+    state: web::Data<NucleiState>,
     claims: auth::Claims,
-    req: web::Json<CreateScanRequest>,
+    body: web::Bytes,
 ) -> Result<HttpResponse> {
+    log::info!("Nuclei scan request received from user {}, body size: {} bytes", claims.sub, body.len());
+
+    // Parse JSON manually to capture any deserialization errors
+    let req: CreateScanRequest = match serde_json::from_slice(&body) {
+        Ok(r) => r,
+        Err(e) => {
+            log::error!("JSON deserialization error: {}", e);
+            log::error!("Raw body: {}", String::from_utf8_lossy(&body));
+            return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+                "error": format!("Invalid JSON: {}", e)
+            })));
+        }
+    };
+
+    log::debug!("Request: targets={:?}, name={:?}, tags={:?}", req.targets, req.name, req.template_tags);
+
     // Check if Nuclei is installed
     if !check_nuclei_available() {
+        log::warn!("Nuclei scan rejected: Nuclei not installed");
         return Ok(HttpResponse::ServiceUnavailable().json(serde_json::json!({
             "error": "Nuclei is not installed. Install with: go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest"
         })));
     }
+    log::debug!("Nuclei installation check passed");
 
     // Validate request
     if req.targets.is_empty() {
@@ -312,9 +329,11 @@ pub async fn create_scan(
         auto_update_templates: false,
         silent: true,
     };
+    log::debug!("Config built successfully for {} targets", config.targets.len());
 
     // Create scan in database
-    let scan_id = db::create_nuclei_scan(
+    log::debug!("Creating scan in database for user {}", claims.sub);
+    let scan_id = match db::create_nuclei_scan(
         pool.get_ref(),
         &claims.sub,
         req.name.as_deref(),
@@ -323,8 +342,16 @@ pub async fn create_scan(
         req.customer_id.as_deref(),
         req.engagement_id.as_deref(),
     )
-    .await
-    .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+    .await {
+        Ok(id) => {
+            log::info!("Nuclei scan created successfully: {}", id);
+            id
+        },
+        Err(e) => {
+            log::error!("Failed to create nuclei scan in database: {:?}", e);
+            return Err(actix_web::error::ErrorInternalServerError(format!("Failed to create scan: {}", e)));
+        }
+    };
 
     // Register scan for cancellation
     let (cancel_token, _rx) = state.register_scan(&scan_id).await;
@@ -333,7 +360,7 @@ pub async fn create_scan(
     // Spawn background task to run the scan
     let pool_clone = pool.get_ref().clone();
     let scan_id_clone = scan_id.clone();
-    let state_clone = state.get_ref().clone();
+    let state_clone = state.into_inner();
 
     tokio::spawn(async move {
         // Update status to running
@@ -524,7 +551,7 @@ pub async fn delete_scan(
 /// Cancel a running scan
 pub async fn cancel_scan(
     pool: web::Data<SqlitePool>,
-    state: web::Data<Arc<NucleiState>>,
+    state: web::Data<NucleiState>,
     claims: auth::Claims,
     path: web::Path<String>,
 ) -> Result<HttpResponse> {

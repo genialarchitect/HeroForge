@@ -41,11 +41,10 @@ use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
-use crate::db::detection_engineering::{self as db, DashboardStatsRow};
+use crate::db::detection_engineering::{self as db};
 use crate::detection_engineering::{
     detections::{Detection, DetectionSeverity, DetectionStatus, DataSource, DetectionLogic, DetectionMetadata},
-    coverage::{CoverageAnalyzer, CoverageScore},
-    false_positives::{FalsePositiveStatus, FalsePositivePriority},
+    coverage::CoverageAnalyzer,
     testing::{DetectionTest, ExpectedResult, TestType, TestPriority, TestExecutor, SampleLogGenerator},
 };
 use crate::web::auth::Claims;

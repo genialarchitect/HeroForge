@@ -8,18 +8,14 @@
 //! - Newly Observed Domain (NOD) tracking
 //! - DNS threat intelligence
 
-use actix_web::{web, HttpResponse, Scope};
-use chrono::{DateTime, Utc};
+use actix_web::{web, HttpResponse};
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use std::sync::Arc;
-use tokio::sync::RwLock;
 
 use crate::dns_analytics::{
-    DnsAnalyticsEngine, DgaAnalysis, DnsAnomaly, DnsAnomalySeverity, DnsAnomalyStatus,
-    DnsAnomalyType, DnsDashboard, DnsQuery, DnsRecordType, DnsResponseCode, DnsStats,
-    FastFluxIndicators, NewlyObservedDomain, NodAlert, NodAlertSeverity, NodStats, NodStatus,
-    PassiveDnsRecord, TunnelIndicators,
+    DnsAnalyticsEngine, DgaAnalysis, DnsQuery, DnsRecordType, DnsResponseCode,
 };
 use crate::web::auth;
 

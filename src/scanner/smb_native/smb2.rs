@@ -4,7 +4,7 @@
 
 use super::types::*;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use std::io::{Cursor, Read, Write};
+use std::io::{Cursor, Read};
 
 /// SMB2 protocol magic
 pub const SMB2_MAGIC: &[u8; 4] = b"\xfeSMB";

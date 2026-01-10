@@ -6,10 +6,8 @@
 //! - Dependency analysis
 //! - Rollback risk calculation
 
-use super::types::*;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use chrono::{DateTime, Utc};
 
 /// Patch priority calculation result
@@ -459,7 +457,7 @@ pub fn calculate_rollback_risk(patch_id: &str) -> Result<f64> {
     }
 
     // Historical success rate adjusts risk
-    risk *= (2.0 - rollback_assessment.historical_success_rate);
+    risk *= 2.0 - rollback_assessment.historical_success_rate;
 
     let final_risk = risk.min(1.0);
 

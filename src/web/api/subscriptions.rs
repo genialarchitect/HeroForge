@@ -12,7 +12,7 @@ use sqlx::SqlitePool;
 use std::collections::HashMap;
 
 use crate::db;
-use crate::email::{EmailConfig, EmailService};
+use crate::email::{EmailConfig, EmailService, EnterpriseInquiry};
 use crate::subscriptions::{
     stripe::StripeClient,
     tiers::{self, get_role_for_tier},
@@ -29,7 +29,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/checkout", web::post().to(create_checkout)),
     )
     .service(
-        web::scope("/auth/register")
+        web::scope("/registration")
             .route("/init", web::post().to(init_registration))
             .route("/verify", web::post().to(verify_email))
             .route("/complete", web::post().to(complete_registration))
@@ -156,7 +156,7 @@ pub struct TierResponse {
 // ============================================================================
 
 /// Get all available subscription tiers
-async fn get_tiers(pool: web::Data<SqlitePool>) -> ActixResult<HttpResponse, ApiError> {
+pub async fn get_tiers(pool: web::Data<SqlitePool>) -> ActixResult<HttpResponse, ApiError> {
     let tiers = tiers::get_all_tiers(pool.get_ref()).await?;
 
     let response: Vec<TierResponse> = tiers
@@ -179,7 +179,7 @@ async fn get_tiers(pool: web::Data<SqlitePool>) -> ActixResult<HttpResponse, Api
 }
 
 /// Initialize registration - checks email, creates verification, redirects to Stripe
-async fn init_registration(
+pub async fn init_registration(
     pool: web::Data<SqlitePool>,
     req: web::Json<InitRegistrationRequest>,
 ) -> ActixResult<HttpResponse, ApiError> {
@@ -289,7 +289,7 @@ async fn init_registration(
 }
 
 /// Verify email token and check payment status
-async fn verify_email(
+pub async fn verify_email(
     pool: web::Data<SqlitePool>,
     req: web::Json<VerifyEmailRequest>,
 ) -> ActixResult<HttpResponse, ApiError> {
@@ -326,7 +326,7 @@ async fn verify_email(
 }
 
 /// Complete registration after verification and payment
-async fn complete_registration(
+pub async fn complete_registration(
     pool: web::Data<SqlitePool>,
     req: web::Json<CompleteRegistrationRequest>,
 ) -> ActixResult<HttpResponse, ApiError> {
@@ -450,7 +450,7 @@ async fn complete_registration(
 }
 
 /// Check if an email is available
-async fn check_email(
+pub async fn check_email(
     pool: web::Data<SqlitePool>,
     req: web::Json<CheckEmailRequest>,
 ) -> ActixResult<HttpResponse, ApiError> {
@@ -467,7 +467,7 @@ async fn check_email(
 }
 
 /// Create a Stripe checkout session directly
-async fn create_checkout(
+pub async fn create_checkout(
     pool: web::Data<SqlitePool>,
     req: web::Json<CreateCheckoutRequest>,
 ) -> ActixResult<HttpResponse, ApiError> {
@@ -508,7 +508,7 @@ async fn create_checkout(
 }
 
 /// Submit enterprise inquiry
-async fn submit_enterprise_inquiry(
+pub async fn submit_enterprise_inquiry(
     pool: web::Data<SqlitePool>,
     req: web::Json<EnterpriseInquiryRequest>,
 ) -> ActixResult<HttpResponse, ApiError> {
@@ -531,7 +531,39 @@ async fn submit_enterprise_inquiry(
     )
     .await?;
 
-    // TODO: Send notification email to sales team
+    // Send notification email to sales team (non-blocking, log errors but don't fail request)
+    if EmailService::is_configured() {
+        if let Ok(config) = EmailConfig::from_env() {
+            let email_service = EmailService::new(config);
+            let email_inquiry = EnterpriseInquiry {
+                inquiry_id: inquiry.id.clone(),
+                email: req.email.clone(),
+                company_name: req.company_name.clone(),
+                contact_name: req.contact_name.clone(),
+                phone: req.phone.clone(),
+                job_title: req.job_title.clone(),
+                company_size: req.company_size.clone(),
+                message: req.message.clone(),
+            };
+
+            // Spawn async task to send email without blocking the response
+            tokio::spawn(async move {
+                if let Err(e) = email_service
+                    .send_enterprise_inquiry_notification(&email_inquiry)
+                    .await
+                {
+                    log::error!("Failed to send sales team notification email: {}", e);
+                } else {
+                    log::info!(
+                        "Sales team notification sent for inquiry {}",
+                        email_inquiry.inquiry_id
+                    );
+                }
+            });
+        }
+    } else {
+        log::warn!("Email not configured - sales team notification not sent for inquiry {}", inquiry.id);
+    }
 
     Ok(HttpResponse::Ok().json(EnterpriseInquiryResponse {
         success: true,
@@ -542,7 +574,7 @@ async fn submit_enterprise_inquiry(
 }
 
 /// Handle Stripe webhook events
-async fn handle_stripe_webhook(
+pub async fn handle_stripe_webhook(
     pool: web::Data<SqlitePool>,
     body: web::Bytes,
     req: actix_web::HttpRequest,

@@ -92,7 +92,6 @@ pub use types::{
 
     // Dashboard
     UebaDashboardStats, AnomalyTypeCount, RiskDistribution, EntityRiskSummary,
-    ActivityTrendPoint,
 
     // Geo
     GeoLocation,
@@ -102,25 +101,6 @@ pub use types::{
 };
 
 // Advanced detection exports
-pub use advanced_detection::{
-    // Engine
-    AdvancedDetectionEngine, AdvancedDetectionConfig,
-
-    // Config types
-    BusinessHoursConfig, CreateBusinessHoursRequest,
-    DataSensitivity, SensitiveResource,
-
-    // Record types
-    DataAccessRecord, HostAccessRecord, DataTransferRecord,
-
-    // Result types
-    ImpossibleTravelResult, OffHoursResult,
-    UnusualDataAccessResult, DataAccessAnomaly,
-    ServiceAccountAbuseResult, ServiceAccountAbuseIndicator,
-    LateralMovementResult, LateralMovementPattern, HostAccess,
-    DataExfiltrationResult, ExfiltrationIndicator,
-    PeerComparison,
-};
 
 #[cfg(test)]
 mod tests {

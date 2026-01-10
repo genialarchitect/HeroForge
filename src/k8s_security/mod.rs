@@ -11,7 +11,6 @@ pub mod runtime;
 pub mod types;
 pub mod workloads;
 
-pub use types::*;
 use anyhow::Result;
 use cluster::ClusterScanner;
 use compliance::K8sComplianceScanner;

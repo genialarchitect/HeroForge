@@ -3,7 +3,7 @@
 //! Hashcat-style mask-based password generation.
 
 use super::Attack;
-use crate::cracking::native::types::{Charset, BuiltinCharsets, MaskPlaceholder};
+use crate::cracking::native::types::{Charset, MaskPlaceholder};
 
 /// Mask attack configuration
 ///

@@ -233,9 +233,10 @@ const SalesPage: React.FC = () => {
               <span className="text-xl font-bold text-white">HeroForge</span>
             </div>
             <div className="flex items-center gap-4">
-              <a href="#features" className="text-gray-300 hover:text-white transition-colors">Features</a>
+              <Link to="/features" className="text-gray-300 hover:text-white transition-colors">Features</Link>
+              <Link to="/use-cases" className="text-gray-300 hover:text-white transition-colors">Use Cases</Link>
               <a href="#pricing" className="text-gray-300 hover:text-white transition-colors">Pricing</a>
-              <a href="#faq" className="text-gray-300 hover:text-white transition-colors">FAQ</a>
+              <Link to="/about" className="text-gray-300 hover:text-white transition-colors">About</Link>
               <Link
                 to="/login"
                 className="bg-cyan-600 hover:bg-cyan-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
@@ -896,10 +897,12 @@ const SalesPage: React.FC = () => {
             <div>
               <h4 className="text-white font-semibold mb-4">Product</h4>
               <ul className="space-y-2">
-                <li><a href="#features" className="text-gray-400 hover:text-white text-sm">Features</a></li>
+                <li><Link to="/features" className="text-gray-400 hover:text-white text-sm">Features</Link></li>
+                <li><Link to="/use-cases" className="text-gray-400 hover:text-white text-sm">Use Cases</Link></li>
                 <li><a href="#pricing" className="text-gray-400 hover:text-white text-sm">Pricing</a></li>
                 <li><a href="#faq" className="text-gray-400 hover:text-white text-sm">FAQ</a></li>
-                <li><Link to="/" className="text-gray-400 hover:text-white text-sm">Login</Link></li>
+                <li><Link to="/about" className="text-gray-400 hover:text-white text-sm">About</Link></li>
+                <li><Link to="/login" className="text-gray-400 hover:text-white text-sm">Login</Link></li>
               </ul>
             </div>
             <div>

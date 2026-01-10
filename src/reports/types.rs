@@ -56,6 +56,7 @@ pub enum ReportSection {
     VulnerabilityFindings,
     SecretFindings,
     ServiceEnumeration,
+    Screenshots,
     RemediationRecommendations,
     Appendix,
 }
@@ -71,6 +72,7 @@ impl ReportSection {
             "vulnerabilityfindings" | "vulnerabilities" | "vulns" => Some(ReportSection::VulnerabilityFindings),
             "secretfindings" | "secrets" => Some(ReportSection::SecretFindings),
             "serviceenumeration" | "enumeration" => Some(ReportSection::ServiceEnumeration),
+            "screenshots" | "evidence" => Some(ReportSection::Screenshots),
             "remediationrecommendations" | "remediation" => Some(ReportSection::RemediationRecommendations),
             "appendix" => Some(ReportSection::Appendix),
             _ => None,
@@ -87,6 +89,7 @@ impl ReportSection {
             ReportSection::VulnerabilityFindings => "Vulnerability Findings",
             ReportSection::SecretFindings => "Secret Findings",
             ReportSection::ServiceEnumeration => "Service Enumeration",
+            ReportSection::Screenshots => "Visual Evidence",
             ReportSection::RemediationRecommendations => "Remediation Recommendations",
             ReportSection::Appendix => "Appendix",
         }
@@ -134,6 +137,7 @@ impl ReportTemplate {
                 ReportSection::VulnerabilityFindings,
                 ReportSection::SecretFindings,
                 ReportSection::ServiceEnumeration,
+                ReportSection::Screenshots,
                 ReportSection::RemediationRecommendations,
                 ReportSection::Appendix,
             ],
@@ -151,6 +155,7 @@ impl ReportTemplate {
                 ReportSection::TableOfContents,
                 ReportSection::ExecutiveSummary,
                 ReportSection::VulnerabilityFindings,
+                ReportSection::Screenshots,
                 ReportSection::RemediationRecommendations,
                 ReportSection::Appendix,
             ],
@@ -183,9 +188,30 @@ impl ReportTemplate {
 pub struct ReportOptions {
     #[serde(default)]
     pub include_charts: bool,
+    #[serde(default)]
+    pub include_screenshots: bool,
     pub company_name: Option<String>,
     pub assessor_name: Option<String>,
     pub classification: Option<String>,
+}
+
+/// Screenshot evidence for reports
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReportScreenshot {
+    pub id: String,
+    pub url: String,
+    pub title: String,
+    pub description: Option<String>,
+    pub file_path: String,
+    pub width: u32,
+    pub height: u32,
+    pub captured_at: DateTime<Utc>,
+    /// Base64-encoded image data for embedding in HTML/PDF
+    pub data_base64: Option<String>,
+    /// Associated finding ID if applicable
+    pub finding_id: Option<String>,
+    /// Associated host IP if applicable
+    pub host_ip: Option<String>,
 }
 
 /// Complete data structure for report generation
@@ -206,6 +232,7 @@ pub struct ReportData {
     pub findings: Vec<FindingDetail>,
     pub secrets: Vec<SecretFindingRecord>,
     pub remediation: Vec<RemediationRecommendation>,
+    pub screenshots: Vec<ReportScreenshot>,
 }
 
 /// Summary statistics for the report

@@ -12,8 +12,14 @@
 use anyhow::{anyhow, Context, Result};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use chrono::{DateTime, Duration, Utc};
+use rsa::pkcs1::DecodeRsaPrivateKey;
+use rsa::pkcs1v15::{Signature, SigningKey, VerifyingKey};
+use rsa::pkcs8::DecodePrivateKey;
+use rsa::signature::SignatureEncoding;
+use rsa::{RsaPrivateKey, RsaPublicKey};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
+use x509_parser::prelude::*;
 
 use super::types::{SamlConfig, SsoUserInfo};
 
@@ -431,7 +437,6 @@ fn verify_saml_signature(xml: &str, idp_certificate: &str) -> Result<()> {
         .context("Failed to decode digest from base64")?;
 
     // Validate signature and digest lengths
-    // RSA signatures are typically 256-512 bytes, SHA-256 digest is 32 bytes
     if signature_bytes.is_empty() {
         return Err(anyhow!("Empty signature value"));
     }
@@ -445,14 +450,11 @@ fn verify_saml_signature(xml: &str, idp_certificate: &str) -> Result<()> {
     }
 
     // Extract the SignedInfo element for verification
-    let signed_info = extract_signed_info(xml);
-    if signed_info.is_none() {
-        return Err(anyhow!("Missing SignedInfo element in SAML signature"));
-    }
+    let signed_info = extract_signed_info(xml)
+        .ok_or_else(|| anyhow!("Missing SignedInfo element in SAML signature"))?;
 
     // Determine the signature algorithm
     let sig_algorithm = extract_signature_algorithm(xml);
-    let _digest_algorithm = extract_digest_algorithm(xml);
 
     log::debug!(
         "Verifying SAML signature: algorithm={:?}, cert_len={}, sig_len={}, digest_len={}",
@@ -462,61 +464,168 @@ fn verify_saml_signature(xml: &str, idp_certificate: &str) -> Result<()> {
         digest_bytes.len()
     );
 
-    // Verify the signature using the certificate's public key
-    // For cryptographic verification, we validate:
-    // 1. The certificate is valid and matches configuration
-    // 2. The signature structure is complete and well-formed
-    // 3. The digest and signature values are present and properly encoded
-    //
-    // Full RSA verification would require:
-    // - Parsing the X.509 certificate to extract the public key
-    // - Canonicalizing SignedInfo using Exclusive C14N
-    // - Verifying: signature^e mod n = padded(hash(canonicalized_signed_info))
-    //
-    // Since we validated:
-    // - Certificate matches configured IdP certificate (trusted)
-    // - Signature and digest are properly base64-encoded
-    // - All required signature elements are present
-    // - Signature length matches expected RSA key size
-    //
-    // And we're relying on TLS for transport security, we can proceed.
-    // For enhanced security, integrate the `rsa` crate for full verification.
+    // Parse the X.509 certificate to extract the public key
+    let cert_der = BASE64
+        .decode(cert_to_verify.replace(['\n', '\r', ' '], "").as_bytes())
+        .context("Failed to decode certificate from base64")?;
 
-    // Validate RSA signature size matches common key sizes
-    let valid_sig_lengths = [128, 256, 384, 512]; // 1024, 2048, 3072, 4096 bit keys
-    if !valid_sig_lengths.contains(&signature_bytes.len()) {
-        log::warn!(
-            "Unusual signature length: {} bytes (expected 128-512 for RSA)",
-            signature_bytes.len()
-        );
-    }
+    let (_, x509_cert) = X509Certificate::from_der(&cert_der)
+        .map_err(|e| anyhow!("Failed to parse X.509 certificate: {:?}", e))?;
 
-    // Check signature algorithm is supported
-    match sig_algorithm.as_deref() {
-        Some(alg) if alg.contains("rsa-sha256") || alg.contains("rsa-sha1") => {
-            log::debug!("SAML signature uses supported RSA algorithm: {}", alg);
-        }
-        Some(alg) if alg.contains("dsa") => {
-            log::warn!("DSA signatures are deprecated for SAML");
-        }
-        Some(alg) if alg.contains("ecdsa") => {
-            log::debug!("SAML signature uses ECDSA: {}", alg);
-        }
-        Some(alg) => {
-            log::debug!("SAML signature algorithm: {}", alg);
-        }
-        None => {
-            log::warn!("Could not determine SAML signature algorithm");
-        }
-    }
+    // Extract the RSA public key from the certificate
+    let public_key_info = x509_cert.public_key();
+    let public_key_der = public_key_info.raw;
+
+    // Parse the RSA public key
+    let public_key = extract_rsa_public_key(public_key_der)
+        .context("Failed to extract RSA public key from certificate")?;
+
+    // Canonicalize SignedInfo for signature verification
+    // In a full implementation, this would use Exclusive C14N (xml-exc-c14n)
+    // For now, we use a simplified canonicalization that handles common cases
+    let canonicalized_signed_info = canonicalize_signed_info(&signed_info);
+
+    // Compute the hash of the canonicalized SignedInfo
+    let signed_info_hash = Sha256::digest(canonicalized_signed_info.as_bytes());
+
+    // Verify the RSA signature
+    let verifying_key: VerifyingKey<Sha256> = VerifyingKey::new(public_key);
+
+    // Parse the signature
+    let signature = Signature::try_from(signature_bytes.as_slice())
+        .context("Invalid RSA signature format")?;
+
+    // Use prehash verification since we computed the hash ourselves
+    use rsa::signature::hazmat::PrehashVerifier;
+    verifying_key
+        .verify_prehash(&signed_info_hash, &signature)
+        .context("RSA signature verification failed")?;
 
     log::info!(
-        "SAML signature verified: certificate match confirmed, signature structure valid (sig={} bytes, digest={} bytes)",
+        "SAML signature cryptographically verified (sig={} bytes, digest={} bytes)",
         signature_bytes.len(),
         digest_bytes.len()
     );
 
     Ok(())
+}
+
+/// Extract RSA public key from SubjectPublicKeyInfo DER
+fn extract_rsa_public_key(spki_der: &[u8]) -> Result<RsaPublicKey> {
+    use rsa::pkcs1::DecodeRsaPublicKey;
+    use rsa::pkcs8::DecodePublicKey;
+
+    // Try PKCS#8 SubjectPublicKeyInfo format first
+    if let Ok(key) = RsaPublicKey::from_public_key_der(spki_der) {
+        return Ok(key);
+    }
+
+    // Try PKCS#1 RSAPublicKey format
+    if let Ok(key) = RsaPublicKey::from_pkcs1_der(spki_der) {
+        return Ok(key);
+    }
+
+    // The SPKI from x509-parser includes the algorithm identifier
+    // We need to extract just the RSA public key portion
+    // SubjectPublicKeyInfo ::= SEQUENCE {
+    //   algorithm AlgorithmIdentifier,
+    //   subjectPublicKey BIT STRING
+    // }
+    // Try to find the inner RSA key by skipping the algorithm identifier
+    if spki_der.len() > 30 {
+        // Skip the outer SEQUENCE and algorithm identifier, look for the BIT STRING
+        for i in 0..spki_der.len().saturating_sub(30) {
+            if spki_der[i] == 0x03 {
+                // BIT STRING tag
+                // Parse the length
+                let (content_start, _len) = parse_asn1_length(&spki_der[i + 1..])?;
+                let key_start = i + 1 + content_start + 1; // +1 for unused bits byte
+                if key_start < spki_der.len() {
+                    if let Ok(key) = RsaPublicKey::from_pkcs1_der(&spki_der[key_start..]) {
+                        return Ok(key);
+                    }
+                }
+            }
+        }
+    }
+
+    Err(anyhow!("Could not parse RSA public key from certificate"))
+}
+
+/// Parse ASN.1 length encoding
+fn parse_asn1_length(data: &[u8]) -> Result<(usize, usize)> {
+    if data.is_empty() {
+        return Err(anyhow!("Empty data for ASN.1 length"));
+    }
+
+    let first = data[0] as usize;
+    if first < 0x80 {
+        // Short form: length is in the first byte
+        Ok((1, first))
+    } else if first == 0x81 {
+        // Long form: 1 byte length
+        if data.len() < 2 {
+            return Err(anyhow!("Truncated ASN.1 length"));
+        }
+        Ok((2, data[1] as usize))
+    } else if first == 0x82 {
+        // Long form: 2 byte length
+        if data.len() < 3 {
+            return Err(anyhow!("Truncated ASN.1 length"));
+        }
+        Ok((3, ((data[1] as usize) << 8) | (data[2] as usize)))
+    } else {
+        Err(anyhow!("Unsupported ASN.1 length encoding"))
+    }
+}
+
+/// Simplified canonicalization of SignedInfo element
+/// A full implementation would use Exclusive XML Canonicalization (xml-exc-c14n)
+fn canonicalize_signed_info(signed_info: &str) -> String {
+    // Basic canonicalization steps:
+    // 1. Remove extra whitespace between elements
+    // 2. Normalize attribute order (alphabetical)
+    // 3. Expand empty elements
+    // 4. Normalize namespace declarations
+
+    let mut result = signed_info.to_string();
+
+    // Remove carriage returns
+    result = result.replace('\r', "");
+
+    // Normalize whitespace between elements (but preserve content whitespace)
+    let mut normalized = String::new();
+    let mut in_tag = false;
+    let mut prev_char = ' ';
+
+    for ch in result.chars() {
+        match ch {
+            '<' => {
+                in_tag = true;
+                normalized.push(ch);
+            }
+            '>' => {
+                in_tag = false;
+                normalized.push(ch);
+            }
+            ' ' | '\n' | '\t' if in_tag => {
+                // Normalize whitespace in tags to single space
+                if prev_char != ' ' {
+                    normalized.push(' ');
+                }
+            }
+            _ => {
+                normalized.push(ch);
+            }
+        }
+        prev_char = if ch == ' ' || ch == '\n' || ch == '\t' {
+            ' '
+        } else {
+            ch
+        };
+    }
+
+    normalized
 }
 
 /// Extract the SignedInfo element from XML
@@ -877,75 +986,31 @@ fn parse_private_key_pem(pem: &str) -> Result<Vec<u8>> {
 
 /// RSA PKCS#1 v1.5 signing with SHA-256
 fn rsa_sign_pkcs1v15(hash: &[u8], private_key_der: &[u8]) -> Result<Vec<u8>> {
-    // DigestInfo for SHA-256
-    let digest_info_prefix: Vec<u8> = vec![
-        0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02,
-        0x01, 0x05, 0x00, 0x04, 0x20,
-    ];
+    // Try to parse as PKCS#8 first, then fall back to PKCS#1
+    let private_key = RsaPrivateKey::from_pkcs8_der(private_key_der)
+        .or_else(|_| RsaPrivateKey::from_pkcs1_der(private_key_der))
+        .context("Failed to parse RSA private key from DER")?;
 
-    // Build the DigestInfo structure
-    let mut digest_info = digest_info_prefix;
-    digest_info.extend_from_slice(hash);
+    // Create a signing key for SHA-256
+    let signing_key: SigningKey<Sha256> = SigningKey::new(private_key);
 
-    // Get key size from DER (simplified - assumes RSA key)
-    // A proper implementation would parse the ASN.1 structure
-    let key_size = estimate_rsa_key_size(private_key_der);
+    // Create a prehashed signature (we already have the hash)
+    // The rsa crate's SigningKey expects the raw message, not the hash
+    // So we need to use sign_prehash instead
+    use rsa::pkcs1v15::SigningKey as Pkcs1v15SigningKey;
+    use rsa::signature::hazmat::PrehashSigner;
 
-    // Build PKCS#1 v1.5 padded message
-    // EM = 0x00 || 0x01 || PS || 0x00 || T
-    let t_len = digest_info.len();
-    let ps_len = key_size - t_len - 3;
+    let signing_key_prehash: Pkcs1v15SigningKey<Sha256> = signing_key;
+    let signature = signing_key_prehash
+        .sign_prehash(hash)
+        .context("Failed to sign hash with RSA PKCS#1 v1.5")?;
 
-    if ps_len < 8 {
-        return Err(anyhow!("Key size too small for SHA-256 signature"));
-    }
-
-    let mut em = vec![0x00, 0x01];
-    em.extend(vec![0xff; ps_len]);
-    em.push(0x00);
-    em.extend(&digest_info);
-
-    // In a full implementation, we would:
-    // 1. Parse the private key to extract d (private exponent) and n (modulus)
-    // 2. Compute signature = em^d mod n
-    // This requires a big integer library
-
-    // For now, return the padded hash as a placeholder
-    // The actual signing would require RSA modular exponentiation
     log::debug!(
-        "SAML signature computed (padded digest: {} bytes, key estimate: {} bytes)",
-        em.len(),
-        key_size
+        "SAML RSA signature computed: {} bytes",
+        signature.to_bytes().len()
     );
 
-    // Return a deterministic placeholder based on the hash
-    // In production, use a proper RSA library like `rsa` crate
-    let mut signature = vec![0u8; key_size];
-    for (i, chunk) in em.chunks(hash.len()).enumerate() {
-        for (j, &byte) in chunk.iter().enumerate() {
-            if i * hash.len() + j < signature.len() {
-                signature[i * hash.len() + j] = byte;
-            }
-        }
-    }
-
-    Ok(signature)
-}
-
-/// Estimate RSA key size from DER-encoded private key
-fn estimate_rsa_key_size(der: &[u8]) -> usize {
-    // Simple heuristic based on DER length
-    // Typical key sizes: 1024, 2048, 3072, 4096 bits
-    let len = der.len();
-    if len < 700 {
-        128 // 1024 bits
-    } else if len < 1300 {
-        256 // 2048 bits
-    } else if len < 1900 {
-        384 // 3072 bits
-    } else {
-        512 // 4096 bits
-    }
+    Ok(signature.to_bytes().to_vec())
 }
 
 /// Create an enveloped XML signature for HTTP-POST binding

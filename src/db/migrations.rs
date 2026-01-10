@@ -289,6 +289,53 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     // Tiered subscription system
     create_subscription_tables(pool).await?;
     seed_subscription_tiers(pool).await?;
+    // Scan processing pipeline tables
+    create_scan_processing_tables(pool).await?;
+    // Client compliance checklist tables
+    create_client_compliance_tables(pool).await?;
+    // Compliance controls master table (synced from code)
+    create_compliance_controls_table(pool).await?;
+    sync_compliance_controls(pool).await?;
+    // Screenshots table for evidence capture
+    create_screenshots_table(pool).await?;
+    Ok(())
+}
+
+/// Create screenshots table for Playwright-based web page capture
+async fn create_screenshots_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS screenshots (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            url TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            file_size INTEGER,
+            width INTEGER,
+            height INTEGER,
+            format TEXT NOT NULL DEFAULT 'png',
+            full_page INTEGER NOT NULL DEFAULT 0,
+            scan_id TEXT,
+            description TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_screenshots_user ON screenshots(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_screenshots_scan ON screenshots(scan_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_screenshots_created ON screenshots(created_at)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created screenshots table");
     Ok(())
 }
 
@@ -2389,6 +2436,14 @@ async fn add_crm_columns_to_existing_tables(pool: &SqlitePool) -> Result<()> {
             .execute(pool)
             .await?;
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_reports_engagement_id ON reports(engagement_id)")
+            .execute(pool)
+            .await?;
+    }
+
+    // Add report_type to reports for portal display
+    let reports_has_report_type = reports_info.iter().any(|(_, name, _, _, _, _)| name == "report_type");
+    if !reports_has_report_type {
+        sqlx::query("ALTER TABLE reports ADD COLUMN report_type TEXT")
             .execute(pool)
             .await?;
     }
@@ -21686,6 +21741,32 @@ async fn create_soar_foundation_tables(pool: &SqlitePool) -> Result<()> {
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_soar_metrics_date ON soar_metrics_daily(metric_date)").execute(pool).await?;
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_soar_metrics_playbook ON soar_metrics_daily(playbook_id)").execute(pool).await?;
 
+    // Create soar_scheduled_playbooks table for scheduled playbook runs
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS soar_scheduled_playbooks (
+            id TEXT PRIMARY KEY,
+            playbook_id TEXT NOT NULL REFERENCES soar_playbooks(id) ON DELETE CASCADE,
+            user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            cron_expression TEXT NOT NULL,
+            timezone TEXT NOT NULL DEFAULT 'UTC',
+            next_run_at TEXT NOT NULL,
+            last_run_at TEXT,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            auto_approve_low_risk INTEGER NOT NULL DEFAULT 0,
+            input_data TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_soar_scheduled_playbooks_next_run ON soar_scheduled_playbooks(next_run_at)").execute(pool).await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_soar_scheduled_playbooks_active ON soar_scheduled_playbooks(is_active)").execute(pool).await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_soar_scheduled_playbooks_playbook ON soar_scheduled_playbooks(playbook_id)").execute(pool).await?;
+
     // Seed built-in SOAR actions
     seed_soar_actions(pool).await?;
 
@@ -23399,5 +23480,398 @@ async fn seed_subscription_tiers(pool: &SqlitePool) -> Result<()> {
     }
 
     log::info!("Seeded subscription tiers and tier roles");
+    Ok(())
+}
+
+/// Create scan processing pipeline tables
+async fn create_scan_processing_tables(pool: &SqlitePool) -> Result<()> {
+    // Create scan_processing_status table to track pipeline progress
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS scan_processing_status (
+            scan_id TEXT PRIMARY KEY,
+            extraction_completed INTEGER DEFAULT 0,
+            cve_enrichment_completed INTEGER DEFAULT 0,
+            threat_intel_completed INTEGER DEFAULT 0,
+            compliance_completed INTEGER DEFAULT 0,
+            ai_prioritization_completed INTEGER DEFAULT 0,
+            events_published INTEGER DEFAULT 0,
+            processing_started TEXT,
+            processing_completed TEXT,
+            error_message TEXT,
+            FOREIGN KEY (scan_id) REFERENCES scan_results(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create enhanced cve_cache table for full NVD data
+    // This extends the existing cve_cache with more detailed CVE information
+    let _ = sqlx::query("ALTER TABLE cve_cache ADD COLUMN cvss_v3_score REAL")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE cve_cache ADD COLUMN cvss_v2_score REAL")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE cve_cache ADD COLUMN cvss_vector TEXT")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE cve_cache ADD COLUMN exploit_count INTEGER DEFAULT 0")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE cve_cache ADD COLUMN cwe_ids TEXT")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE cve_cache ADD COLUMN references TEXT")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE cve_cache ADD COLUMN affected_products TEXT")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE cve_cache ADD COLUMN cached_at TEXT")
+        .execute(pool)
+        .await;
+
+    // Create service_vulnerability_cache for version-to-CVE correlation
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS service_vulnerability_cache (
+            id TEXT PRIMARY KEY,
+            service_name TEXT NOT NULL,
+            version_pattern TEXT NOT NULL,
+            cve_ids TEXT NOT NULL,
+            last_updated TEXT NOT NULL,
+            UNIQUE(service_name, version_pattern)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_svc_vuln_cache_service ON service_vulnerability_cache(service_name)"
+    )
+    .execute(pool)
+    .await?;
+
+    // Add scan processing columns to vulnerability_tracking
+    let _ = sqlx::query("ALTER TABLE vulnerability_tracking ADD COLUMN cvss_v3 REAL")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE vulnerability_tracking ADD COLUMN exploit_maturity TEXT")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE vulnerability_tracking ADD COLUMN threat_actor_targeting REAL")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE vulnerability_tracking ADD COLUMN processing_timestamp TEXT")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE vulnerability_tracking ADD COLUMN title TEXT")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE vulnerability_tracking ADD COLUMN description TEXT")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE vulnerability_tracking ADD COLUMN cve_id TEXT")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE vulnerability_tracking ADD COLUMN service_name TEXT")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE vulnerability_tracking ADD COLUMN service_version TEXT")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE vulnerability_tracking ADD COLUMN protocol TEXT")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE vulnerability_tracking ADD COLUMN affected_service TEXT")
+        .execute(pool)
+        .await;
+
+    log::info!("Created scan processing pipeline tables");
+    Ok(())
+}
+
+/// Create client compliance checklist tables for per-customer compliance tracking
+async fn create_client_compliance_tables(pool: &SqlitePool) -> Result<()> {
+    // Main checklist table - one per customer per framework
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS client_compliance_checklists (
+            id TEXT PRIMARY KEY,
+            customer_id TEXT NOT NULL,
+            engagement_id TEXT,
+            framework_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            status TEXT NOT NULL DEFAULT 'not_started',
+            due_date TEXT,
+            assigned_to TEXT,
+            reviewed_by TEXT,
+            reviewed_at TEXT,
+            overall_score REAL DEFAULT 0.0,
+            total_controls INTEGER DEFAULT 0,
+            completed_controls INTEGER DEFAULT 0,
+            compliant_controls INTEGER DEFAULT 0,
+            non_compliant_controls INTEGER DEFAULT 0,
+            not_applicable_controls INTEGER DEFAULT 0,
+            created_by TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,
+            FOREIGN KEY (engagement_id) REFERENCES engagements(id) ON DELETE SET NULL,
+            FOREIGN KEY (assigned_to) REFERENCES users(id) ON DELETE SET NULL,
+            FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL,
+            FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Individual control checklist items
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS client_compliance_items (
+            id TEXT PRIMARY KEY,
+            checklist_id TEXT NOT NULL,
+            control_id TEXT NOT NULL,
+            control_title TEXT NOT NULL,
+            control_description TEXT,
+            category TEXT,
+            is_automated INTEGER DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'not_assessed',
+            is_checked INTEGER DEFAULT 0,
+            is_applicable INTEGER DEFAULT 1,
+            rating_score REAL,
+            notes TEXT,
+            findings TEXT,
+            remediation_steps TEXT,
+            compensating_controls TEXT,
+            assigned_to TEXT,
+            due_date TEXT,
+            completed_at TEXT,
+            completed_by TEXT,
+            verified_at TEXT,
+            verified_by TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (checklist_id) REFERENCES client_compliance_checklists(id) ON DELETE CASCADE,
+            FOREIGN KEY (assigned_to) REFERENCES users(id) ON DELETE SET NULL,
+            FOREIGN KEY (completed_by) REFERENCES users(id) ON DELETE SET NULL,
+            FOREIGN KEY (verified_by) REFERENCES users(id) ON DELETE SET NULL,
+            UNIQUE(checklist_id, control_id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Evidence attachments for checklist items (files, images, documents)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS client_compliance_evidence (
+            id TEXT PRIMARY KEY,
+            item_id TEXT NOT NULL,
+            checklist_id TEXT NOT NULL,
+            customer_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT,
+            evidence_type TEXT NOT NULL,
+            file_path TEXT,
+            file_name TEXT,
+            file_size INTEGER,
+            mime_type TEXT,
+            external_url TEXT,
+            content_hash TEXT,
+            uploaded_by TEXT NOT NULL,
+            uploaded_at TEXT NOT NULL,
+            expires_at TEXT,
+            status TEXT DEFAULT 'active',
+            metadata TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (item_id) REFERENCES client_compliance_items(id) ON DELETE CASCADE,
+            FOREIGN KEY (checklist_id) REFERENCES client_compliance_checklists(id) ON DELETE CASCADE,
+            FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,
+            FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Checklist history/audit trail
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS client_compliance_history (
+            id TEXT PRIMARY KEY,
+            checklist_id TEXT NOT NULL,
+            item_id TEXT,
+            user_id TEXT NOT NULL,
+            action TEXT NOT NULL,
+            field_name TEXT,
+            old_value TEXT,
+            new_value TEXT,
+            comment TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (checklist_id) REFERENCES client_compliance_checklists(id) ON DELETE CASCADE,
+            FOREIGN KEY (item_id) REFERENCES client_compliance_items(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_client_checklists_customer ON client_compliance_checklists(customer_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_client_checklists_engagement ON client_compliance_checklists(engagement_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_client_checklists_framework ON client_compliance_checklists(framework_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_client_checklists_status ON client_compliance_checklists(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_client_items_checklist ON client_compliance_items(checklist_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_client_items_control ON client_compliance_items(control_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_client_items_status ON client_compliance_items(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_client_evidence_item ON client_compliance_evidence(item_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_client_evidence_customer ON client_compliance_evidence(customer_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_client_history_checklist ON client_compliance_history(checklist_id)")
+        .execute(pool)
+        .await?;
+
+    // Add customer_id to existing manual_assessments table
+    let _ = sqlx::query("ALTER TABLE manual_assessments ADD COLUMN customer_id TEXT REFERENCES customers(id)")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE manual_assessments ADD COLUMN engagement_id TEXT REFERENCES engagements(id)")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_manual_assessments_customer ON manual_assessments(customer_id)")
+        .execute(pool)
+        .await;
+
+    // Add customer_id to assessment_campaigns
+    let _ = sqlx::query("ALTER TABLE assessment_campaigns ADD COLUMN customer_id TEXT REFERENCES customers(id)")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE assessment_campaigns ADD COLUMN engagement_id TEXT REFERENCES engagements(id)")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_assessment_campaigns_customer ON assessment_campaigns(customer_id)")
+        .execute(pool)
+        .await;
+
+    log::info!("Created client compliance checklist tables");
+    Ok(())
+}
+
+/// Create the compliance_controls master table
+async fn create_compliance_controls_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS compliance_controls (
+            id TEXT PRIMARY KEY,
+            framework_id TEXT NOT NULL,
+            control_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT,
+            category TEXT,
+            is_automated INTEGER NOT NULL DEFAULT 0,
+            priority TEXT,
+            parent_id TEXT,
+            cross_references TEXT,
+            remediation_guidance TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(framework_id, control_id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_compliance_controls_framework ON compliance_controls(framework_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_compliance_controls_category ON compliance_controls(category)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created compliance_controls table");
+    Ok(())
+}
+
+/// Sync compliance controls from in-memory definitions to database
+async fn sync_compliance_controls(pool: &SqlitePool) -> Result<()> {
+    use crate::compliance::{ComplianceFramework, frameworks};
+
+    let all_frameworks = ComplianceFramework::all();
+    let mut total_synced = 0;
+
+    for framework in all_frameworks {
+        let framework_id = framework.id();
+        let controls = frameworks::get_controls(framework);
+
+        for control in controls {
+            let is_automated: i32 = if control.automated_check { 1 } else { 0 };
+            let priority = format!("{:?}", control.priority);
+            let cross_refs = serde_json::to_string(&control.cross_references).unwrap_or_default();
+
+            let result = sqlx::query(
+                r#"
+                INSERT INTO compliance_controls
+                    (id, framework_id, control_id, title, description, category, is_automated, priority, parent_id, cross_references, remediation_guidance)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+                ON CONFLICT(framework_id, control_id) DO UPDATE SET
+                    title = excluded.title,
+                    description = excluded.description,
+                    category = excluded.category,
+                    is_automated = excluded.is_automated,
+                    priority = excluded.priority,
+                    cross_references = excluded.cross_references,
+                    remediation_guidance = excluded.remediation_guidance,
+                    updated_at = datetime('now')
+                "#,
+            )
+            .bind(&control.id)
+            .bind(framework_id)
+            .bind(&control.control_id)
+            .bind(&control.title)
+            .bind(&control.description)
+            .bind(&control.category)
+            .bind(is_automated)
+            .bind(&priority)
+            .bind(&control.parent_id)
+            .bind(&cross_refs)
+            .bind(&control.remediation_guidance)
+            .execute(pool)
+            .await;
+
+            if result.is_ok() {
+                total_synced += 1;
+            }
+        }
+    }
+
+    log::info!("Synced {} compliance controls to database", total_synced);
     Ok(())
 }

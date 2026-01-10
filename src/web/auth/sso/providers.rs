@@ -44,7 +44,7 @@ fn okta_preset() -> ProviderPreset {
             require_signed_response: true,
             require_signed_assertion: true,
             ..Default::default()
-        }).unwrap(),
+        }).expect("preset config serialization should never fail"),
         default_attribute_mappings: vec![
             AttributeMapping {
                 source: "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress".to_string(),
@@ -118,7 +118,7 @@ fn azure_ad_preset() -> ProviderPreset {
             use_pkce: true,
             response_type: "code".to_string(),
             ..Default::default()
-        }).unwrap(),
+        }).expect("preset config serialization should never fail"),
         default_attribute_mappings: vec![
             AttributeMapping {
                 source: "email".to_string(),
@@ -195,7 +195,7 @@ fn google_workspace_preset() -> ProviderPreset {
             userinfo_endpoint: Some("https://openidconnect.googleapis.com/v1/userinfo".to_string()),
             jwks_uri: Some("https://www.googleapis.com/oauth2/v3/certs".to_string()),
             ..Default::default()
-        }).unwrap(),
+        }).expect("preset config serialization should never fail"),
         default_attribute_mappings: vec![
             AttributeMapping {
                 source: "email".to_string(),
@@ -258,7 +258,7 @@ fn onelogin_preset() -> ProviderPreset {
             require_signed_response: true,
             require_signed_assertion: true,
             ..Default::default()
-        }).unwrap(),
+        }).expect("preset config serialization should never fail"),
         default_attribute_mappings: vec![
             AttributeMapping {
                 source: "User.email".to_string(),
@@ -326,7 +326,7 @@ fn ping_identity_preset() -> ProviderPreset {
             require_signed_response: true,
             require_signed_assertion: true,
             ..Default::default()
-        }).unwrap(),
+        }).expect("preset config serialization should never fail"),
         default_attribute_mappings: vec![
             AttributeMapping {
                 source: "email".to_string(),
@@ -386,7 +386,7 @@ fn generic_saml_preset() -> ProviderPreset {
         description: "Configure any SAML 2.0 compliant identity provider".to_string(),
         provider_type: SsoProviderType::Saml,
         icon: "saml".to_string(),
-        default_config: serde_json::to_value(SamlConfig::default()).unwrap(),
+        default_config: serde_json::to_value(SamlConfig::default()).expect("default config serialization should never fail"),
         default_attribute_mappings: vec![
             AttributeMapping {
                 source: "email".to_string(),
@@ -435,7 +435,7 @@ fn generic_oidc_preset() -> ProviderPreset {
         description: "Configure any OpenID Connect compliant identity provider".to_string(),
         provider_type: SsoProviderType::Oidc,
         icon: "oidc".to_string(),
-        default_config: serde_json::to_value(OidcConfig::default()).unwrap(),
+        default_config: serde_json::to_value(OidcConfig::default()).expect("default config serialization should never fail"),
         default_attribute_mappings: vec![
             AttributeMapping {
                 source: "email".to_string(),
@@ -509,7 +509,7 @@ fn auth0_preset() -> ProviderPreset {
             use_pkce: true,
             response_type: "code".to_string(),
             ..Default::default()
-        }).unwrap(),
+        }).expect("preset config serialization should never fail"),
         default_attribute_mappings: vec![
             AttributeMapping {
                 source: "email".to_string(),
@@ -568,7 +568,7 @@ fn keycloak_preset() -> ProviderPreset {
             use_pkce: true,
             response_type: "code".to_string(),
             ..Default::default()
-        }).unwrap(),
+        }).expect("preset config serialization should never fail"),
         default_attribute_mappings: vec![
             AttributeMapping {
                 source: "email".to_string(),
@@ -644,7 +644,7 @@ fn jumpcloud_preset() -> ProviderPreset {
             require_signed_response: true,
             require_signed_assertion: true,
             ..Default::default()
-        }).unwrap(),
+        }).expect("preset config serialization should never fail"),
         default_attribute_mappings: vec![
             AttributeMapping {
                 source: "email".to_string(),

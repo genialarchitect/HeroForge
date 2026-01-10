@@ -59,6 +59,7 @@ pub fn generate_html(data: &ReportData) -> String {
             ReportSection::VulnerabilityFindings => html.push_str(&generate_vulnerability_findings(data)),
             ReportSection::SecretFindings => html.push_str(&generate_secret_findings(data)),
             ReportSection::ServiceEnumeration => html.push_str(&generate_service_enumeration(data)),
+            ReportSection::Screenshots => html.push_str(&generate_screenshots(data)),
             ReportSection::RemediationRecommendations => html.push_str(&generate_remediation(data)),
             ReportSection::Appendix => html.push_str(&generate_appendix(data)),
         }
@@ -685,6 +686,84 @@ fn truncate_value(s: &str, max_len: usize) -> String {
     }
 }
 
+fn generate_screenshots(data: &ReportData) -> String {
+    let mut html = String::from(
+        r#"<div class="section" id="visual-evidence"><h2>Visual Evidence</h2>"#
+    );
+
+    if data.screenshots.is_empty() {
+        html.push_str("<p>No screenshots were captured during this assessment.</p>");
+    } else {
+        html.push_str(&format!(
+            r#"<p>The following screenshots provide visual evidence of web services discovered during the assessment. {} screenshot(s) were captured.</p>"#,
+            data.screenshots.len()
+        ));
+
+        html.push_str(r#"<div class="screenshots-grid">"#);
+
+        for screenshot in &data.screenshots {
+            let host_info = screenshot.host_ip.as_ref()
+                .map(|ip| format!(" ({})", ip))
+                .unwrap_or_default();
+
+            // Use embedded base64 data if available, otherwise reference the file
+            let img_src = if let Some(ref base64_data) = screenshot.data_base64 {
+                format!("data:image/png;base64,{}", base64_data)
+            } else {
+                format!("file://{}", html_escape(&screenshot.file_path))
+            };
+
+            html.push_str(&format!(
+                r#"
+<div class="screenshot-card">
+    <div class="screenshot-header">
+        <h4>{}</h4>
+        <span class="screenshot-meta">{}</span>
+    </div>
+    <div class="screenshot-image">
+        <a href="{}" target="_blank">
+            <img src="{}" alt="Screenshot of {}" loading="lazy">
+        </a>
+    </div>
+    <div class="screenshot-details">
+        <table class="screenshot-info">
+            <tr><th>URL</th><td><a href="{}" target="_blank">{}</a></td></tr>
+            <tr><th>Resolution</th><td>{}x{}</td></tr>
+            <tr><th>Captured</th><td>{}</td></tr>
+            {}
+        </table>
+        {}
+    </div>
+</div>
+"#,
+                html_escape(&screenshot.title),
+                host_info,
+                img_src,
+                img_src,
+                html_escape(&screenshot.url),
+                html_escape(&screenshot.url),
+                html_escape(&screenshot.url),
+                screenshot.width,
+                screenshot.height,
+                screenshot.captured_at.format("%Y-%m-%d %H:%M UTC"),
+                screenshot.finding_id.as_ref().map(|id| format!(
+                    "<tr><th>Related Finding</th><td><a href=\"#finding-{}\">{}</a></td></tr>",
+                    id, id
+                )).unwrap_or_default(),
+                screenshot.description.as_ref().map(|d| format!(
+                    r#"<p class="screenshot-description">{}</p>"#,
+                    html_escape(d)
+                )).unwrap_or_default()
+            ));
+        }
+
+        html.push_str("</div>"); // Close screenshots-grid
+    }
+
+    html.push_str("</div>");
+    html
+}
+
 fn generate_remediation(data: &ReportData) -> String {
     let mut html = String::from(
         r#"<div class="section" id="remediation-recommendations"><h2>Remediation Recommendations</h2>"#
@@ -793,6 +872,7 @@ fn section_id(section: &ReportSection) -> &'static str {
         ReportSection::VulnerabilityFindings => "vulnerability-findings",
         ReportSection::SecretFindings => "secret-findings",
         ReportSection::ServiceEnumeration => "service-enumeration",
+        ReportSection::Screenshots => "visual-evidence",
         ReportSection::RemediationRecommendations => "remediation-recommendations",
         ReportSection::Appendix => "appendix",
     }
@@ -1299,13 +1379,100 @@ body {
     font-size: 0.9rem;
 }
 
+/* Screenshots section */
+.screenshots-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+    gap: 25px;
+    margin: 20px 0;
+}
+.screenshot-card {
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #fff;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+.screenshot-header {
+    background: #f8fafc;
+    padding: 12px 16px;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.screenshot-header h4 {
+    margin: 0;
+    font-size: 1rem;
+    color: #1e3a5f;
+}
+.screenshot-meta {
+    color: #64748b;
+    font-size: 0.85rem;
+}
+.screenshot-image {
+    background: #1a1a2e;
+    padding: 10px;
+    text-align: center;
+}
+.screenshot-image img {
+    max-width: 100%;
+    height: auto;
+    max-height: 400px;
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    cursor: pointer;
+    transition: transform 0.2s ease;
+}
+.screenshot-image img:hover {
+    transform: scale(1.02);
+}
+.screenshot-details {
+    padding: 15px;
+}
+.screenshot-info {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+.screenshot-info th {
+    text-align: left;
+    padding: 6px 10px;
+    background: #f1f5f9;
+    width: 100px;
+    font-weight: 600;
+    border-bottom: 1px solid #e2e8f0;
+}
+.screenshot-info td {
+    padding: 6px 10px;
+    border-bottom: 1px solid #e2e8f0;
+    word-break: break-all;
+}
+.screenshot-info a {
+    color: #3b82f6;
+    text-decoration: none;
+}
+.screenshot-info a:hover {
+    text-decoration: underline;
+}
+.screenshot-description {
+    margin-top: 12px;
+    padding: 10px;
+    background: #f8fafc;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    color: #475569;
+}
+
 /* Print styles */
 @media print {
     body { padding: 0; }
     .cover-page { min-height: auto; page-break-after: always; }
     .section { page-break-inside: avoid; }
-    .finding-card, .secret-card { break-inside: avoid; }
+    .finding-card, .secret-card, .screenshot-card { break-inside: avoid; }
     .data-table { font-size: 0.85rem; }
+    .screenshot-image img { max-height: 300px; }
+    .screenshots-grid { grid-template-columns: 1fr; }
 }
 "#
 }

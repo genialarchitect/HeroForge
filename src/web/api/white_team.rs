@@ -7,7 +7,7 @@
 // - Audit Management
 // - Vendor Risk Management
 
-use actix_web::{web, HttpResponse, Scope};
+use actix_web::{web, HttpResponse};
 use chrono::{NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::{Row, SqlitePool};

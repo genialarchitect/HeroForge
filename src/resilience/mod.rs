@@ -14,11 +14,10 @@ pub mod pool;
 pub mod metrics;
 pub mod memory;
 
-pub use circuit_breaker::{CircuitBreaker, CircuitBreakerConfig, CircuitState};
-pub use retry::{RetryPolicy, RetryWithBackoff, BackoffStrategy};
-pub use pool::{ConnectionPool, PoolConfig, PooledConnection};
-pub use metrics::{OperationMetrics, MetricsCollector, TimingBreakdown};
-pub use memory::{SecureBuffer, SecureString, zeroize_memory};
+pub use circuit_breaker::{CircuitBreaker, CircuitBreakerConfig};
+pub use retry::{RetryPolicy, RetryWithBackoff};
+pub use pool::{ConnectionPool, PoolConfig};
+pub use metrics::MetricsCollector;
 
 use std::sync::Arc;
 use tokio::sync::RwLock;

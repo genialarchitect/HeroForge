@@ -2,7 +2,6 @@
 
 use super::types::*;
 use anyhow::Result;
-use std::path::Path;
 
 /// Frontend optimization recommendation
 #[derive(Debug, Clone)]

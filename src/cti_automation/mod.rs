@@ -7,4 +7,3 @@ pub mod automated_response;
 pub mod sharing;
 pub mod types;
 
-pub use types::*;

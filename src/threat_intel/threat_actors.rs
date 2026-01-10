@@ -10,7 +10,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use anyhow::Result;
 
 /// Threat actor profile representing an APT group or cybercriminal organization
 #[derive(Debug, Clone, Serialize, Deserialize)]

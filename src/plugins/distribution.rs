@@ -626,7 +626,7 @@ pub fn verify_package_with_keyserver(
     trusted_keys: &[TrustedKey],
 ) -> Result<PackageVerification> {
     let distributor = PluginDistributor::new();
-    let mut verification = distributor.verify_package(package)?;
+    let verification = distributor.verify_package(package)?;
 
     // If signature is valid and we have a key ID, check against trusted keys
     if verification.has_signature && verification.signer_key_id.is_some() {

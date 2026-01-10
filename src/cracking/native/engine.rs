@@ -6,9 +6,9 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{broadcast, mpsc, RwLock};
 use rayon::prelude::*;
-use log::{info, warn, debug};
+use log::info;
 
-use super::hashes::{HashType, self};
+use super::hashes::HashType;
 use super::attacks::{Attack, AttackExecutor, DictionaryAttack, BruteForceAttack, RuleBasedAttack, MaskAttack};
 use super::wordlists::{EmbeddedWordlists, WordlistManager};
 use super::types::{CrackResult, CrackProgress, NativeCrackConfig, HashAlgorithm};

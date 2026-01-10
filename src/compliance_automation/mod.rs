@@ -33,8 +33,6 @@ pub mod types;
 pub use soc2::Soc2Analyzer;
 pub use iso27001::Iso27001Analyzer;
 pub use fedramp::FedRampAnalyzer;
-pub use evidence::{EvidenceCollector, Evidence};
-pub use types::*;
 
 use anyhow::Result;
 

@@ -4,7 +4,6 @@
 
 use super::*;
 use anyhow::{anyhow, Result};
-use std::collections::HashMap;
 
 /// Cloud provider configuration for SDK execution
 #[derive(Debug, Clone)]

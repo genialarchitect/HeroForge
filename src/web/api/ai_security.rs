@@ -9,19 +9,17 @@
 use actix_web::{web, HttpResponse};
 use chrono::Utc;
 use sqlx::SqlitePool;
-use std::sync::Arc;
 
 use crate::ai_security::{
     AlertFeatures, AlertPriorityScorer, AnomalyDetector, FPFeatures, FPPredictor,
     QueryParser,
     types::{
         AIQueryRequest, AIDashboard, BatchPredictionRequest, CreatePredictionRequest,
-        CreateTestCaseRequest, LLMSecurityTest, LLMTestStatus, LLMTestType, LLMTargetType,
-        MLModel, MLModelPurpose, MLModelStatus, MLModelType, MLPrediction, PredictionFeedbackRequest,
-        SecurityRecommendation, StartLLMTestRequest,
+        CreateTestCaseRequest, LLMSecurityTest, LLMTestStatus,
+        MLModel, MLModelStatus, MLPrediction, PredictionFeedbackRequest, StartLLMTestRequest,
     },
 };
-use crate::ai_security::llm_testing::{LLMTestManager, LLMTestingEngine};
+use crate::ai_security::llm_testing::LLMTestingEngine;
 use crate::web::auth;
 use crate::web::error::{ApiError, ApiErrorKind};
 

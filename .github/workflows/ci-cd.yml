@@ -1,0 +1,537 @@
+# HeroForge CI/CD Pipeline
+# Complete GitHub Actions workflow for testing, security scanning, and deployment
+
+name: HeroForge CI/CD
+
+on:
+  push:
+    branches: [master, main, develop]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [master, main, develop]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+# ============================================================================
+# JOB 1: Code Quality & Linting
+# ============================================================================
+jobs:
+  lint:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-lint-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Check formatting
+        run: cargo fmt -- --check
+
+      - name: Run clippy (warnings as errors)
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Check for TODO/FIXME comments
+        run: |
+          echo "Checking for TODO/FIXME in production code..."
+          TODOS=$(grep -rn "TODO\|FIXME\|XXX\|HACK" src/ --include="*.rs" || true)
+          if [ -n "$TODOS" ]; then
+            echo "::warning::Found TODO/FIXME comments:"
+            echo "$TODOS"
+          fi
+
+# ============================================================================
+# JOB 2: Security Scanning
+# ============================================================================
+  security:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install security tools
+        run: |
+          cargo install cargo-audit
+          cargo install cargo-deny
+
+      - name: Run cargo audit (CVE check)
+        run: cargo audit --deny warnings
+
+      - name: Run cargo deny (license & security)
+        run: cargo deny check
+        continue-on-error: true  # Don't fail on license issues initially
+
+      - name: Check for hardcoded secrets
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --only-verified
+
+      - name: SAST scan with Semgrep
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: >-
+            p/rust
+            p/security-audit
+            p/secrets
+
+# ============================================================================
+# JOB 3: Unit Tests
+# ============================================================================
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    needs: [lint]
+
+    services:
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Run unit tests
+        run: cargo test --lib --verbose -- --test-threads=4
+        env:
+          DATABASE_URL: sqlite::memory:
+          JWT_SECRET: ${{ secrets.JWT_SECRET_TEST }}
+          REDIS_URL: redis://localhost:6379
+          RUST_LOG: info
+
+      - name: Run doc tests
+        run: cargo test --doc --verbose
+
+# ============================================================================
+# JOB 4: Integration Tests
+# ============================================================================
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [unit-tests]
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-integration-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build test binary
+        run: cargo build --tests
+
+      - name: Run integration tests
+        run: cargo test --test '*' --verbose -- --test-threads=1
+        env:
+          DATABASE_URL: sqlite:./test_heroforge.db
+          JWT_SECRET: ${{ secrets.JWT_SECRET_TEST }}
+          REDIS_URL: redis://localhost:6379
+          RUST_LOG: debug
+          TEST_MODE: "true"
+
+      - name: Upload test database for debugging
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: test-database
+          path: test_heroforge.db
+
+# ============================================================================
+# JOB 5: Frontend Tests & Build
+# ============================================================================
+  frontend:
+    name: Frontend Build & Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: npm run lint
+
+      - name: Run TypeScript check
+        run: npx tsc --noEmit
+
+      - name: Run unit tests
+        run: npm test -- --coverage --watchAll=false
+        continue-on-error: true  # Tests may not exist yet
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Check bundle size
+        run: |
+          MAIN_SIZE=$(ls -la dist/assets/index-*.js | awk '{print $5}')
+          echo "Main bundle size: $MAIN_SIZE bytes"
+          if [ "$MAIN_SIZE" -gt 1000000 ]; then
+            echo "::warning::Main bundle exceeds 1MB ($MAIN_SIZE bytes)"
+          fi
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+
+# ============================================================================
+# JOB 6: Code Coverage
+# ============================================================================
+  coverage:
+    name: Code Coverage
+    runs-on: ubuntu-latest
+    needs: [integration-tests]
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install tarpaulin
+        run: cargo install cargo-tarpaulin
+
+      - name: Generate coverage report
+        run: |
+          cargo tarpaulin \
+            --verbose \
+            --all-features \
+            --workspace \
+            --timeout 600 \
+            --out xml \
+            --out html \
+            --output-dir coverage
+        env:
+          DATABASE_URL: sqlite::memory:
+          JWT_SECRET: test_secret_for_coverage
+          REDIS_URL: redis://localhost:6379
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: coverage/cobertura.xml
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload coverage HTML report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+
+      - name: Check coverage threshold
+        run: |
+          COVERAGE=$(grep -oP 'line-rate="\K[0-9.]+' coverage/cobertura.xml | head -1)
+          COVERAGE_PCT=$(echo "$COVERAGE * 100" | bc)
+          echo "Coverage: $COVERAGE_PCT%"
+          if (( $(echo "$COVERAGE < 0.50" | bc -l) )); then
+            echo "::warning::Code coverage is below 50% ($COVERAGE_PCT%)"
+          fi
+
+# ============================================================================
+# JOB 7: Build Docker Image
+# ============================================================================
+  build-image:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    needs: [integration-tests, frontend, security]
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download frontend artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+            VCS_REF=${{ github.sha }}
+            VERSION=${{ github.ref_name }}
+
+# ============================================================================
+# JOB 8: Deploy to Staging
+# ============================================================================
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [build-image]
+    if: github.ref == 'refs/heads/develop' || github.event.inputs.environment == 'staging'
+    environment:
+      name: staging
+      url: https://staging.heroforge.io
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to staging server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USER }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          script: |
+            cd /opt/heroforge
+            docker compose pull
+            docker compose up -d --force-recreate
+            docker compose exec -T heroforge /app/heroforge health check
+            echo "Deployment complete!"
+
+      - name: Run smoke tests
+        run: |
+          sleep 30  # Wait for service to start
+          curl -sf https://staging.heroforge.io/health/live || exit 1
+          curl -sf https://staging.heroforge.io/health/ready || exit 1
+          echo "Smoke tests passed!"
+
+      - name: Notify deployment
+        uses: slackapi/slack-github-action@v1.26.0
+        if: always()
+        with:
+          payload: |
+            {
+              "text": "HeroForge Staging Deployment: ${{ job.status }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*HeroForge Staging Deployment*\nStatus: ${{ job.status }}\nCommit: ${{ github.sha }}\nBranch: ${{ github.ref_name }}"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+# ============================================================================
+# JOB 9: Deploy to Production
+# ============================================================================
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [build-image]
+    if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.environment == 'production'
+    environment:
+      name: production
+      url: https://heroforge.genialarchitect.io
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create database backup
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.PRODUCTION_HOST }}
+          username: ${{ secrets.PRODUCTION_USER }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          script: |
+            cd /root/Development/HeroForge
+            cp heroforge.db heroforge.db.backup.$(date +%Y%m%d_%H%M%S)
+            echo "Database backed up"
+
+      - name: Deploy to production server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.PRODUCTION_HOST }}
+          username: ${{ secrets.PRODUCTION_USER }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          script: |
+            cd /root/Development/HeroForge
+            git pull origin master
+            cd frontend && npm ci && npm run build
+            cd ..
+            cargo build --release
+            cd /root
+            docker compose build heroforge
+            docker compose up -d heroforge
+            sleep 10
+            docker exec heroforge curl -sf http://localhost:8080/health/live
+            echo "Production deployment complete!"
+
+      - name: Run production health checks
+        run: |
+          sleep 30
+          curl -sf https://heroforge.genialarchitect.io/health/live || exit 1
+          curl -sf https://heroforge.genialarchitect.io/health/ready || exit 1
+          echo "Production health checks passed!"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          generate_release_notes: true
+          files: |
+            CHANGELOG.md
+
+      - name: Notify production deployment
+        uses: slackapi/slack-github-action@v1.26.0
+        if: always()
+        with:
+          payload: |
+            {
+              "text": "🚀 HeroForge Production Deployment: ${{ job.status }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*🚀 HeroForge Production Deployment*\nStatus: ${{ job.status }}\nVersion: ${{ github.ref_name }}\nCommit: ${{ github.sha }}"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+# ============================================================================
+# JOB 10: Performance Benchmarks (PR only)
+# ============================================================================
+  benchmarks:
+    name: Performance Benchmarks
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    needs: [unit-tests]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run benchmarks
+        run: cargo bench -- --save-baseline pr-${{ github.event.pull_request.number }}
+        env:
+          DATABASE_URL: sqlite::memory:
+          JWT_SECRET: benchmark_secret
+
+      - name: Compare with baseline
+        run: |
+          echo "Benchmark comparison would go here"
+          echo "Use criterion for detailed reports"

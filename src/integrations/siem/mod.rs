@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
 
 pub use azure_sentinel::{AzureSentinelExporter, SentinelConfig};
-pub use chronicle::{ChronicleExporter, ChronicleConfig};
+pub use chronicle::ChronicleExporter;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]

@@ -1,7 +1,6 @@
 //! Web3 security types
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Web3AssessmentConfig {
@@ -114,7 +113,7 @@ pub struct NFTFinding {
     pub recommendation: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum NFTRiskType {
     MetadataVulnerability,
     UnverifiedContract,
@@ -189,7 +188,7 @@ pub struct CrossChainFinding {
     pub recommendation: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum CrossChainRiskType {
     BridgeSecurity,
     WrappedAssetRisk,
@@ -208,7 +207,7 @@ pub struct DAppFinding {
     pub recommendation: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum DAppRiskType {
     PhishingIndicator,
     FrontendVulnerability,
@@ -280,7 +279,7 @@ pub struct StakingFinding {
     pub recommendation: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum StakingRiskType {
     ValidatorRisk,
     SlashingRisk,

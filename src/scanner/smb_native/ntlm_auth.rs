@@ -7,7 +7,7 @@ use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use hmac::{Hmac, Mac};
 use md5::Md5;
 use rand::Rng;
-use std::io::{Cursor, Read, Write};
+use std::io::{Cursor, Read};
 
 type HmacMd5 = Hmac<Md5>;
 

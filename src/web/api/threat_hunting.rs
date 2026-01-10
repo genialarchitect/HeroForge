@@ -8,27 +8,25 @@
 //! - Retrospective search
 
 use actix_web::{web, HttpResponse, Result};
-use chrono::Utc;
-use log::{debug, error, info};
-use serde::{Deserialize, Serialize};
+use log::{error, info};
+use serde::Deserialize;
 use sqlx::SqlitePool;
-use uuid::Uuid;
 
 use crate::db;
 use crate::threat_hunting::{
     ioc::{
-        Ioc, IocType, IocStatus, IocSeverity, IocFilter, CreateIocRequest, UpdateIocRequest,
-        IocValidator, CsvIocParser, StixIocParser, BulkImportResult, ExportFormat,
+        IocType, IocStatus, IocSeverity, IocFilter, CreateIocRequest, UpdateIocRequest,
+        IocValidator, CsvIocParser, StixIocParser, BulkImportResult,
         export_to_csv, export_to_stix, export_to_openioc,
     },
-    mitre::{MitreDatabase, MitreTactic, CoverageLevel, CreateDetectionMappingRequest},
+    mitre::{MitreDatabase, CreateDetectionMappingRequest},
     playbooks::{
-        HuntingPlaybook, HuntingSession, PlaybookCategory, SessionStatus,
-        CreatePlaybookRequest, StartSessionRequest, AddFindingRequest, BuiltinPlaybooks,
+        PlaybookCategory, SessionStatus,
+        CreatePlaybookRequest, StartSessionRequest, AddFindingRequest,
     },
     retrospective::{
-        RetrospectiveSearch, SearchStatus, CreateSearchRequest, SearchSummary,
-        RetrospectiveSearchEngine, ExportFormat as RetroExportFormat,
+        CreateSearchRequest,
+        RetrospectiveSearchEngine,
     },
 };
 use crate::web::auth::Claims;

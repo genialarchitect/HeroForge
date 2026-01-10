@@ -7,7 +7,6 @@
 //! - Priority queues
 //! - Distributed job processing
 
-use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;

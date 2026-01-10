@@ -3,9 +3,9 @@
 use super::queue::JobQueue;
 use super::types::{Job, JobPriority, JobType};
 use anyhow::{Result, Context};
-use chrono::{DateTime, Utc, Timelike};
+use chrono::{DateTime, Utc};
 use cron::Schedule;
-use log::{debug, error, info, warn};
+use log::{debug, error, info};
 use std::str::FromStr;
 use std::sync::Arc;
 use tokio::time::{interval, Duration};

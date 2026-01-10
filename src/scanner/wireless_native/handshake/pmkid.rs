@@ -2,7 +2,6 @@
 //!
 //! Extract PMKID from association/EAPOL for clientless attacks.
 
-use anyhow::{anyhow, Result};
 
 use crate::scanner::wireless_native::types::PmkidData;
 

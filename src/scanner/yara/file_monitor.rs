@@ -13,7 +13,7 @@ use chrono::{DateTime, Utc};
 use md5::{Md5, Digest};
 use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -300,7 +300,7 @@ impl FileMonitor {
         *self.status.write().await = MonitorStatus::Running;
 
         // Create stop channel
-        let (stop_tx, mut stop_rx) = mpsc::channel::<()>(1);
+        let (stop_tx, stop_rx) = mpsc::channel::<()>(1);
         self.stop_tx = Some(stop_tx);
 
         // Clone Arcs for the monitoring task

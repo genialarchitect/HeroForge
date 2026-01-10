@@ -1089,23 +1089,12 @@ pub async fn scan_memory_bytes(data: &[u8], rules: Vec<YaraRule>) -> Result<memo
 
 // Re-export memory scanner types
 pub use memory_scanner::{
-    MemoryScanner, MemoryScanResult, MemoryScanOptions,
-    MemoryRegion, MemoryProtection, MemoryState, MemoryType,
-    MemoryDumpFormat, MemoryYaraMatch, MemoryMatchedString,
+    MemoryScanner, MemoryScanOptions,
 };
 
 // Re-export file monitor types
-pub use file_monitor::{
-    FileMonitor, FileMonitorConfig, FileMonitorStats, FileMonitorAlert,
-    MonitorManager, MonitorStatus, FileEventType, AlertSeverity,
-};
 
 // Re-export effectiveness types
-pub use effectiveness::{
-    EffectivenessCalculator, EffectivenessTracker, EffectivenessConfig,
-    RuleEffectivenessScore, RuleMatchStats, EffectivenessGrade,
-    MatchEvent, VerificationStatus, EffectivenessDataPoint, EffectivenessSummary,
-};
 
 // ============================================================================
 // Tests

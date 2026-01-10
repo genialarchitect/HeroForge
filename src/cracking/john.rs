@@ -9,8 +9,7 @@
 //! - Pot file management for recovered passwords
 
 use anyhow::{Result, Context};
-use log::{info, warn, debug, error};
-use std::collections::HashMap;
+use log::{info, debug};
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
@@ -18,7 +17,7 @@ use std::process::{Command, Stdio};
 use tempfile::NamedTempFile;
 
 use crate::cracking::types::{
-    HashEntry, CrackingJobConfig, CrackingProgress, HashType,
+    HashEntry, CrackingJobConfig, CrackingProgress,
 };
 
 /// John the Ripper format names mapping from hashcat modes

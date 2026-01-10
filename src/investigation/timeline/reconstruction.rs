@@ -1,6 +1,6 @@
-use crate::investigation::types::{TimelineEvent, TemporalPattern};
+use crate::investigation::types::TimelineEvent;
 use anyhow::Result;
-use chrono::{DateTime, Utc, Duration};
+use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 
 /// Reconstruct attack timeline from events

@@ -7,6 +7,7 @@ use chrono::Utc;
 use log::{debug, info, warn};
 use std::collections::HashMap;
 use std::net::UdpSocket;
+use base64::{Engine, engine::general_purpose::STANDARD};
 
 use crate::credentials::types::*;
 
@@ -150,7 +151,7 @@ impl Kerberoaster {
         // Get TGT first
         let tgt = match self.config.tgt.as_ref() {
             Some(tgt_b64) => {
-                match base64::decode(tgt_b64) {
+                match STANDARD.decode(tgt_b64) {
                     Ok(data) => data,
                     Err(e) => {
                         warn!("Failed to decode TGT: {}", e);

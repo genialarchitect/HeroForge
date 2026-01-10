@@ -899,7 +899,7 @@ async fn test_mongodb(host: &str, port: u16, credential: &Credential, timeout: D
         stream.set_write_timeout(Some(timeout))?;
 
         // Build MongoDB isMaster command (wire protocol)
-        let mut doc = bson_doc(vec![("isMaster", "1")]);
+        let doc = bson_doc(vec![("isMaster", "1")]);
 
         // Build message
         let mut msg: Vec<u8> = Vec::new();

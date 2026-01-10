@@ -7,7 +7,17 @@ RUN apt-get update && apt-get install -y \
     wireguard-tools \
     iproute2 \
     iptables \
+    curl \
+    unzip \
+    whois \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Nuclei (vulnerability scanner)
+RUN curl -sL https://github.com/projectdiscovery/nuclei/releases/download/v3.3.7/nuclei_3.3.7_linux_amd64.zip -o /tmp/nuclei.zip \
+    && unzip /tmp/nuclei.zip -d /tmp \
+    && mv /tmp/nuclei /usr/local/bin/nuclei \
+    && chmod +x /usr/local/bin/nuclei \
+    && rm -rf /tmp/nuclei.zip /tmp/README.md /tmp/LICENSE.md
 
 # Create app directory
 WORKDIR /app
@@ -16,13 +26,13 @@ WORKDIR /app
 COPY target/release/heroforge /app/heroforge
 COPY frontend/dist /app/frontend/dist
 
-# Create non-root user and group
+# Create non-root user and group with home directory
 RUN groupadd -r -g 1000 heroforge && \
-    useradd -r -u 1000 -g heroforge heroforge
+    useradd -r -u 1000 -g heroforge -m -d /home/heroforge heroforge
 
-# Create data directory for database and VPN configs, set ownership
-RUN mkdir -p /data /app/vpn_configs /etc/wireguard && \
-    chown -R heroforge:heroforge /app /data /app/vpn_configs
+# Create data directory for database, VPN configs, and nuclei config, set ownership
+RUN mkdir -p /data /app/vpn_configs /etc/wireguard /home/heroforge/.config/nuclei /home/heroforge/.cache/nuclei && \
+    chown -R heroforge:heroforge /app /data /app/vpn_configs /home/heroforge
 
 # Note: VPN operations require CAP_NET_ADMIN and access to /dev/net/tun
 # The container will run the web server as heroforge user, but VPN operations

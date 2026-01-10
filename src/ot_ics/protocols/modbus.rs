@@ -27,7 +27,7 @@ impl ModbusScanner {
     fn build_device_id_request(&self, unit_id: u8) -> Vec<u8> {
         // Modbus TCP ADU structure:
         // Transaction ID (2 bytes) + Protocol ID (2 bytes) + Length (2 bytes) + Unit ID (1 byte) + PDU
-        let mut request = vec![
+        let request = vec![
             0x00, 0x01, // Transaction ID
             0x00, 0x00, // Protocol ID (Modbus)
             0x00, 0x05, // Length (5 bytes follow)

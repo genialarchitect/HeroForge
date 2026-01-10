@@ -96,9 +96,9 @@ fn is_smart_contract_wallet(address: &str) -> bool {
 
 /// Get contract bytecode from Ethereum RPC
 fn get_contract_bytecode(address: &str) -> Result<String> {
-    use std::io::{Read, Write};
-    use std::net::TcpStream;
-    use std::time::Duration;
+    
+    
+    
 
     // Use public RPC endpoints
     let rpc_endpoints = [

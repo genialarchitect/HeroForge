@@ -5,7 +5,7 @@
 //! - Email duplicate detection
 //! - Registration state management
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use chrono::{DateTime, Duration, Utc};
 use rand::Rng;
 use serde::{Deserialize, Serialize};

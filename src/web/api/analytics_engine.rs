@@ -1,7 +1,7 @@
 //! Analytics engine API endpoints
 
 use actix_web::{web, HttpResponse};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use sqlx::SqlitePool;
 use anyhow::Result;
 

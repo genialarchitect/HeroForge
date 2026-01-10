@@ -15,7 +15,6 @@ use crate::db::ot_ics::{
     UpdateOtAssetRequest,
 };
 use crate::ot_ics::purdue::{analyze_purdue_compliance, build_purdue_view, classify_asset, PurdueLevel};
-use crate::ot_ics::types::OtAsset;
 use crate::web::auth;
 
 // ============================================================================

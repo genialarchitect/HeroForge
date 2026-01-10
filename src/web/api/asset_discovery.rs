@@ -3,7 +3,6 @@ use log::{error, info};
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use std::collections::HashSet;
-use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use crate::db::asset_discovery;
@@ -98,7 +97,7 @@ pub struct ScanSummary {
 /// Start a new asset discovery scan
 pub async fn start_discovery(
     pool: web::Data<SqlitePool>,
-    state: web::Data<Arc<DiscoveryState>>,
+    state: web::Data<DiscoveryState>,
     claims: Claims,
     req: web::Json<StartDiscoveryRequest>,
 ) -> Result<HttpResponse, ApiError> {
@@ -328,7 +327,7 @@ pub async fn get_scan_assets(
 /// Cancel a running discovery scan
 pub async fn cancel_scan(
     pool: web::Data<SqlitePool>,
-    state: web::Data<Arc<DiscoveryState>>,
+    state: web::Data<DiscoveryState>,
     claims: Claims,
     path: web::Path<String>,
 ) -> Result<HttpResponse, ApiError> {

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { portalAuthAPI } from '../../services/portalApi';
+import { Shield } from 'lucide-react';
 
 export function PortalLogin() {
   const [email, setEmail] = useState('');
@@ -10,7 +11,6 @@ export function PortalLogin() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Redirect if already authenticated
     if (portalAuthAPI.isAuthenticated()) {
       navigate('/portal/dashboard');
     }
@@ -33,122 +33,124 @@ export function PortalLogin() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 px-4 py-12 sm:px-6 lg:px-8">
-      <div className="w-full max-w-md space-y-8">
-        <div>
-          <h1 className="text-center text-3xl font-bold tracking-tight text-white">
-            Customer Portal
-          </h1>
-          <h2 className="mt-2 text-center text-lg text-gray-400">
-            Sign in to access your security data
-          </h2>
+    <div className="min-h-screen bg-light-bg dark:bg-dark-bg flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+      <div className="sm:mx-auto sm:w-full sm:max-w-md">
+        <div className="flex justify-center">
+          <div className="w-12 h-12 bg-primary rounded-xl flex items-center justify-center">
+            <Shield className="w-7 h-7 text-white" />
+          </div>
         </div>
+        <h2 className="mt-6 text-center text-3xl font-bold text-slate-900 dark:text-white">
+          Customer Portal
+        </h2>
+        <p className="mt-2 text-center text-sm text-slate-500 dark:text-slate-400">
+          Sign in to access your security dashboard
+        </p>
+      </div>
 
-        <div className="rounded-xl bg-gray-800 p-8 shadow-2xl">
+      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
+        <div className="bg-light-surface dark:bg-dark-surface py-8 px-4 shadow-lg rounded-lg sm:px-10 border border-light-border dark:border-dark-border">
           <form className="space-y-6" onSubmit={handleSubmit}>
             {error && (
-              <div className="rounded-lg bg-red-900/50 p-4 text-sm text-red-200">
+              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 p-4 rounded-lg text-sm">
                 {error}
               </div>
             )}
 
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-300">
+              <label htmlFor="email" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
                 Email address
               </label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                autoComplete="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="mt-1 block w-full rounded-lg border-0 bg-gray-700 px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Enter your email"
-              />
+              <div className="mt-1">
+                <input
+                  id="email"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="appearance-none block w-full px-4 py-3 bg-light-bg dark:bg-dark-bg border border-light-border dark:border-dark-border rounded-lg text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary transition-colors"
+                  placeholder="you@company.com"
+                />
+              </div>
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-300">
+              <label htmlFor="password" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
                 Password
               </label>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="mt-1 block w-full rounded-lg border-0 bg-gray-700 px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Enter your password"
-              />
+              <div className="mt-1">
+                <input
+                  id="password"
+                  name="password"
+                  type="password"
+                  autoComplete="current-password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="appearance-none block w-full px-4 py-3 bg-light-bg dark:bg-dark-bg border border-light-border dark:border-dark-border rounded-lg text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary transition-colors"
+                  placeholder="Enter your password"
+                />
+              </div>
             </div>
 
             <div className="flex items-center justify-between">
               <div className="text-sm">
-                <Link to="/portal/forgot-password" className="font-medium text-blue-400 hover:text-blue-300">
+                <Link
+                  to="/portal/forgot-password"
+                  className="font-medium text-primary hover:text-primary-dark transition-colors"
+                >
                   Forgot your password?
                 </Link>
               </div>
             </div>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="flex w-full justify-center rounded-lg bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {loading ? (
-                <span className="flex items-center">
-                  <svg
-                    className="mr-2 h-4 w-4 animate-spin"
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    ></circle>
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    ></path>
-                  </svg>
-                  Signing in...
-                </span>
-              ) : (
-                'Sign in'
-              )}
-            </button>
+            <div>
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-primary hover:bg-primary-dark focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {loading ? (
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  'Sign in'
+                )}
+              </button>
+            </div>
           </form>
 
-          <div className="mt-6 text-center text-sm text-gray-400">
-            <p>
-              Need an account?{' '}
-              <span className="text-gray-300">
-                Contact your security provider for portal access.
-              </span>
-            </p>
+          <div className="mt-6">
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-light-border dark:border-dark-border" />
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="px-2 bg-light-surface dark:bg-dark-surface text-slate-500 dark:text-slate-400">
+                  Need help?
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-4 text-center">
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                Contact your HeroForge account manager for portal access.
+              </p>
+            </div>
           </div>
         </div>
 
-        <div className="text-center space-y-2">
-          <p className="text-xs text-gray-500">
+        <div className="mt-8 text-center space-y-2">
+          <p className="text-xs text-slate-500 dark:text-slate-400">
             &copy; 2025 Genial Architect Cybersecurity Research Associates. All rights reserved.
           </p>
           <div className="flex items-center justify-center gap-4 text-xs">
-            <Link to="/legal/terms" className="text-gray-500 hover:text-gray-300">Terms</Link>
-            <span className="text-gray-600">|</span>
-            <Link to="/legal/privacy" className="text-gray-500 hover:text-gray-300">Privacy</Link>
-            <span className="text-gray-600">|</span>
-            <Link to="/legal/acceptable-use" className="text-gray-500 hover:text-gray-300">Acceptable Use</Link>
+            <Link to="/legal/terms" className="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300">Terms</Link>
+            <span className="text-slate-400 dark:text-slate-500">|</span>
+            <Link to="/legal/privacy" className="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300">Privacy</Link>
+            <span className="text-slate-400 dark:text-slate-500">|</span>
+            <Link to="/legal/acceptable-use" className="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300">Acceptable Use</Link>
           </div>
         </div>
       </div>

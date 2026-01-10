@@ -1,10 +1,10 @@
 //! Redis-backed job queue implementation
 
-use super::types::{Job, JobPriority, JobStatus, JobStats};
+use super::types::{Job, JobStatus, JobStats};
 use anyhow::{Result, Context};
 use redis::{aio::ConnectionManager, AsyncCommands};
 use serde_json;
-use log::{debug, error, info};
+use log::{debug, info};
 
 /// Redis-backed job queue
 pub struct JobQueue {

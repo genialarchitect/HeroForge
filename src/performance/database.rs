@@ -2,7 +2,6 @@
 
 use super::types::*;
 use anyhow::Result;
-use std::collections::HashMap;
 
 /// Query optimization recommendation
 #[derive(Debug, Clone)]

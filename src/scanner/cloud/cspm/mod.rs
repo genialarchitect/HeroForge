@@ -10,7 +10,6 @@ pub mod gcp;
 pub mod remediation;
 pub mod types;
 
-pub use types::*;
 use anyhow::Result;
 
 /// CSPM scanner configuration

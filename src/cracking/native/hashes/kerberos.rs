@@ -5,7 +5,6 @@
 use hmac::{Hmac, Mac};
 use md4::{Md4, Digest as Md4Digest};
 use md5::Md5;
-use aes::Aes256;
 use crate::cracking::native::types::HashAlgorithm;
 
 type HmacMd5 = Hmac<Md5>;

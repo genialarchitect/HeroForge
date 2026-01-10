@@ -19,7 +19,6 @@ pub mod beacon;
 pub mod carving;
 pub mod cred_extraction;
 
-pub use types::*;
 pub use pcap::PcapParser;
 pub use protocols::ProtocolAnalyzer;
 pub use ids::{IdsEngine, load_emerging_threats_rules};

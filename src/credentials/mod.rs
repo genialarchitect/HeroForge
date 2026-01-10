@@ -94,42 +94,10 @@ pub use store::{
 pub use discovery::{
     CredentialDiscovery,
     DiscoveryConfig,
-    ScanHost,
-    ScanService,
 };
 
-pub use attacks::{
-    PasswordSprayer,
-    SprayConfig,
-    SprayProtocol,
-    SprayCampaign,
-    CampaignStatus,
-    SprayProgress,
-    Kerberoaster,
-    KerberoastConfig,
-    KerberoastResult,
-    ServicePrincipal,
-    AsrepRoaster,
-    AsrepConfig,
-    AsrepResult,
-    enumerate_asrep_users,
-    TicketForge,
-    TicketConfig,
-    GoldenTicketParams,
-    SilverTicketParams,
-    DiamondTicketParams,
-    ForgedTicket,
-    TicketType,
-    TicketInfo,
-};
 
 pub use hashes::{
-    HashIdentifier,
-    HashIdentification,
-    IdentifyConfidence,
-    AlternativeMatch,
-    identify_hash,
-    get_hashcat_mode,
     HashManager,
     HashManagerConfig,
     HashStats,

@@ -335,7 +335,7 @@ export default function RegisterPage() {
       if (response.data.success) {
         // Store the JWT token and log in
         localStorage.setItem('heroforge_token', response.data.token);
-        authLogin(response.data.token, { id: response.data.user_id, username });
+        authLogin({ id: response.data.user_id, username, email }, response.data.token);
         toast.success('Registration complete! Welcome to HeroForge.');
         reset();
         navigate('/dashboard');

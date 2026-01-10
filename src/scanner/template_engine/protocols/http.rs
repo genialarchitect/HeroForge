@@ -4,10 +4,10 @@
 
 use crate::scanner::template_engine::matcher::{execute_matchers, ResponseData};
 use crate::scanner::template_engine::types::*;
-use log::{debug, trace};
+use log::debug;
 use reqwest::{Client, Method, Proxy, Response};
 use std::collections::HashMap;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 /// HTTP protocol handler
 pub struct HttpHandler {

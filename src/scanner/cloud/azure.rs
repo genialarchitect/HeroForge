@@ -16,7 +16,7 @@
 use super::types::*;
 use anyhow::{Context, Result};
 use chrono::Utc;
-use log::{info, warn, error};
+use log::{info, warn};
 use reqwest::Client;
 use serde::Deserialize;
 use std::collections::HashMap;

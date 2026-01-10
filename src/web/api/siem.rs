@@ -17,10 +17,10 @@ use sqlx::SqlitePool;
 use crate::siem::{
     AlertStatus, LogFormat, LogSource, LogSourceStatus, RuleStatus, RuleType,
     SiemAlert, SiemRule, SiemSeverity, TransportProtocol,
-    sigma::{SigmaParser, CompiledSigmaRule, validate_sigma_rule, get_builtin_rules, SigmaSeverity},
-    sigma_converter::{SigmaBackend, SigmaConverter, ConversionResult, FieldMappings, convert_to_all_backends},
-    correlation::{CorrelationRule, CorrelationRuleType, CorrelationConditions, get_builtin_correlation_rules},
-    dashboard::{SavedSearch, SiemDashboard, DashboardWidget, WidgetType, WidgetPosition, WidgetConfig, AlertWorkflow, TimeRange, get_default_dashboard},
+    sigma::{SigmaParser, CompiledSigmaRule, validate_sigma_rule, get_builtin_rules},
+    sigma_converter::{SigmaBackend, SigmaConverter, FieldMappings, convert_to_all_backends},
+    correlation::get_builtin_correlation_rules,
+    dashboard::AlertWorkflow,
 };
 use crate::web::auth;
 
