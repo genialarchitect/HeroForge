@@ -1,1 +1,0 @@
-function t(e){switch(e.toLowerCase()){case"critical":return"critical";case"high":return"high";case"medium":return"medium";case"low":case"info":case"informational":return"low";default:return"low"}}export{t};

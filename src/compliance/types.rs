@@ -35,12 +35,87 @@ pub enum ComplianceFramework {
     Iso27001,
     /// GDPR - General Data Protection Regulation
     Gdpr,
+    /// DoD STIG - Security Technical Implementation Guides
+    DodStig,
+
+    // ============ US Federal Frameworks ============
+    /// FedRAMP - Federal Risk and Authorization Management Program
+    FedRamp,
+    /// CMMC 2.0 - Cybersecurity Maturity Model Certification
+    Cmmc,
+    /// FISMA - Federal Information Security Management Act
+    Fisma,
+    /// NIST 800-171 - Protecting Controlled Unclassified Information
+    Nist800171,
+    /// NIST 800-82 - Guide to ICS Security
+    Nist80082,
+    /// NIST 800-61 - Computer Security Incident Handling Guide
+    Nist80061,
+    /// StateRAMP - State Risk and Authorization Management Program
+    StateRamp,
+    /// ITAR - International Traffic in Arms Regulations
+    Itar,
+    /// EAR - Export Administration Regulations
+    Ear,
+    /// DFARS - Defense Federal Acquisition Regulation Supplement
+    Dfars,
+    /// ICD 503 - Intelligence Community Directive 503
+    Icd503,
+    /// CNSSI 1253 - Security Categorization for National Security Systems
+    Cnssi1253,
+    /// RMF - Risk Management Framework
+    Rmf,
+    /// DISA Cloud Computing SRG - Security Requirements Guide
+    DisaCloudSrg,
+    /// DoD Zero Trust Reference Architecture
+    DodZeroTrust,
+    /// NIST Privacy Framework
+    NistPrivacy,
+
+    // ============ Industry/Sector Frameworks ============
+    /// CSA CCM - Cloud Security Alliance Cloud Controls Matrix
+    CsaCcm,
+    /// NERC CIP - Critical Infrastructure Protection
+    NercCip,
+    /// IEC 62443 - Industrial Automation and Control Systems Security
+    Iec62443,
+    /// TSA Pipeline Security Directives
+    TsaPipeline,
+    /// CISA Cybersecurity Performance Goals
+    CisaCpgs,
+    /// Executive Order 14028 - Improving the Nation's Cybersecurity
+    Eo14028,
+    /// SOX - Sarbanes-Oxley Act IT Controls
+    Sox,
+    /// GLBA - Gramm-Leach-Bliley Act
+    Glba,
+
+    // ============ International Frameworks ============
+    /// Cyber Essentials - UK NCSC Certification Scheme
+    CyberEssentials,
+    /// ISM - Australian Information Security Manual
+    IsmAustralia,
+    /// IRAP - Australian InfoSec Registered Assessors Program
+    Irap,
+    /// NIS2 - EU Network and Information Security Directive
+    Nis2,
+    /// ENS - Spanish National Security Framework
+    EnsSpain,
+    /// BSI IT-Grundschutz - German Federal Office for Information Security
+    BsiGrundschutz,
+    /// C5 - German Cloud Computing Compliance Criteria Catalogue
+    C5,
+    /// SecNumCloud - French ANSSI Cloud Security Qualification
+    SecNumCloud,
+    /// NATO Cyber Defence
+    NatoCyber,
 }
 
 impl ComplianceFramework {
     /// Get all available frameworks
     pub fn all() -> Vec<Self> {
         vec![
+            // Original 12
             Self::CisBenchmarks,
             Self::Nist80053,
             Self::NistCsf,
@@ -52,6 +127,43 @@ impl ComplianceFramework {
             Self::HitrustCsf,
             Self::Iso27001,
             Self::Gdpr,
+            Self::DodStig,
+            // US Federal (16)
+            Self::FedRamp,
+            Self::Cmmc,
+            Self::Fisma,
+            Self::Nist800171,
+            Self::Nist80082,
+            Self::Nist80061,
+            Self::StateRamp,
+            Self::Itar,
+            Self::Ear,
+            Self::Dfars,
+            Self::Icd503,
+            Self::Cnssi1253,
+            Self::Rmf,
+            Self::DisaCloudSrg,
+            Self::DodZeroTrust,
+            Self::NistPrivacy,
+            // Industry/Sector (8)
+            Self::CsaCcm,
+            Self::NercCip,
+            Self::Iec62443,
+            Self::TsaPipeline,
+            Self::CisaCpgs,
+            Self::Eo14028,
+            Self::Sox,
+            Self::Glba,
+            // International (9)
+            Self::CyberEssentials,
+            Self::IsmAustralia,
+            Self::Irap,
+            Self::Nis2,
+            Self::EnsSpain,
+            Self::BsiGrundschutz,
+            Self::C5,
+            Self::SecNumCloud,
+            Self::NatoCyber,
         ]
     }
 
@@ -69,6 +181,43 @@ impl ComplianceFramework {
             Self::HitrustCsf => "hitrust_csf",
             Self::Iso27001 => "iso_27001",
             Self::Gdpr => "gdpr",
+            Self::DodStig => "dod_stig",
+            // US Federal
+            Self::FedRamp => "fedramp",
+            Self::Cmmc => "cmmc",
+            Self::Fisma => "fisma",
+            Self::Nist800171 => "nist_800_171",
+            Self::Nist80082 => "nist_800_82",
+            Self::Nist80061 => "nist_800_61",
+            Self::StateRamp => "stateramp",
+            Self::Itar => "itar",
+            Self::Ear => "ear",
+            Self::Dfars => "dfars",
+            Self::Icd503 => "icd_503",
+            Self::Cnssi1253 => "cnssi_1253",
+            Self::Rmf => "rmf",
+            Self::DisaCloudSrg => "disa_cloud_srg",
+            Self::DodZeroTrust => "dod_zero_trust",
+            Self::NistPrivacy => "nist_privacy",
+            // Industry/Sector
+            Self::CsaCcm => "csa_ccm",
+            Self::NercCip => "nerc_cip",
+            Self::Iec62443 => "iec_62443",
+            Self::TsaPipeline => "tsa_pipeline",
+            Self::CisaCpgs => "cisa_cpgs",
+            Self::Eo14028 => "eo_14028",
+            Self::Sox => "sox",
+            Self::Glba => "glba",
+            // International
+            Self::CyberEssentials => "cyber_essentials",
+            Self::IsmAustralia => "ism_australia",
+            Self::Irap => "irap",
+            Self::Nis2 => "nis2",
+            Self::EnsSpain => "ens_spain",
+            Self::BsiGrundschutz => "bsi_grundschutz",
+            Self::C5 => "c5",
+            Self::SecNumCloud => "secnumcloud",
+            Self::NatoCyber => "nato_cyber",
         }
     }
 
@@ -86,6 +235,43 @@ impl ComplianceFramework {
             Self::HitrustCsf => "HITRUST CSF",
             Self::Iso27001 => "ISO 27001:2022",
             Self::Gdpr => "GDPR",
+            Self::DodStig => "DoD STIG",
+            // US Federal
+            Self::FedRamp => "FedRAMP",
+            Self::Cmmc => "CMMC 2.0",
+            Self::Fisma => "FISMA",
+            Self::Nist800171 => "NIST 800-171",
+            Self::Nist80082 => "NIST 800-82",
+            Self::Nist80061 => "NIST 800-61",
+            Self::StateRamp => "StateRAMP",
+            Self::Itar => "ITAR",
+            Self::Ear => "EAR",
+            Self::Dfars => "DFARS 252.204-7012",
+            Self::Icd503 => "ICD 503",
+            Self::Cnssi1253 => "CNSSI 1253",
+            Self::Rmf => "Risk Management Framework",
+            Self::DisaCloudSrg => "DISA Cloud SRG",
+            Self::DodZeroTrust => "DoD Zero Trust",
+            Self::NistPrivacy => "NIST Privacy Framework",
+            // Industry/Sector
+            Self::CsaCcm => "CSA CCM",
+            Self::NercCip => "NERC CIP",
+            Self::Iec62443 => "IEC 62443",
+            Self::TsaPipeline => "TSA Pipeline Security",
+            Self::CisaCpgs => "CISA CPGs",
+            Self::Eo14028 => "EO 14028",
+            Self::Sox => "SOX IT Controls",
+            Self::Glba => "GLBA",
+            // International
+            Self::CyberEssentials => "Cyber Essentials",
+            Self::IsmAustralia => "Australian ISM",
+            Self::Irap => "IRAP",
+            Self::Nis2 => "NIS2 Directive",
+            Self::EnsSpain => "ENS (Spain)",
+            Self::BsiGrundschutz => "BSI IT-Grundschutz",
+            Self::C5 => "C5",
+            Self::SecNumCloud => "SecNumCloud",
+            Self::NatoCyber => "NATO Cyber Defence",
         }
     }
 
@@ -103,6 +289,43 @@ impl ComplianceFramework {
             Self::HitrustCsf => "v11.3",
             Self::Iso27001 => "2022",
             Self::Gdpr => "2018",
+            Self::DodStig => "v5",
+            // US Federal
+            Self::FedRamp => "Rev 5",
+            Self::Cmmc => "2.0",
+            Self::Fisma => "2014",
+            Self::Nist800171 => "Rev 3",
+            Self::Nist80082 => "Rev 3",
+            Self::Nist80061 => "Rev 2",
+            Self::StateRamp => "2024",
+            Self::Itar => "2024",
+            Self::Ear => "2024",
+            Self::Dfars => "2024",
+            Self::Icd503 => "2017",
+            Self::Cnssi1253 => "2022",
+            Self::Rmf => "2.0",
+            Self::DisaCloudSrg => "v1r5",
+            Self::DodZeroTrust => "v2.0",
+            Self::NistPrivacy => "v1.0",
+            // Industry/Sector
+            Self::CsaCcm => "v4.0",
+            Self::NercCip => "v7",
+            Self::Iec62443 => "2024",
+            Self::TsaPipeline => "2024",
+            Self::CisaCpgs => "v1.0",
+            Self::Eo14028 => "2021",
+            Self::Sox => "2002",
+            Self::Glba => "1999",
+            // International
+            Self::CyberEssentials => "2024",
+            Self::IsmAustralia => "2024",
+            Self::Irap => "2024",
+            Self::Nis2 => "2022",
+            Self::EnsSpain => "2022",
+            Self::BsiGrundschutz => "2023",
+            Self::C5 => "2020",
+            Self::SecNumCloud => "v3.2",
+            Self::NatoCyber => "2024",
         }
     }
 
@@ -120,6 +343,43 @@ impl ComplianceFramework {
             Self::HitrustCsf => "Comprehensive healthcare security framework integrating HIPAA, NIST, PCI-DSS, and ISO 27001 controls",
             Self::Iso27001 => "International standard for information security management systems (ISMS)",
             Self::Gdpr => "EU regulation on data protection and privacy for individuals",
+            Self::DodStig => "Department of Defense Security Technical Implementation Guides for hardening systems to DoD standards",
+            // US Federal
+            Self::FedRamp => "Federal Risk and Authorization Management Program for cloud service providers",
+            Self::Cmmc => "Cybersecurity Maturity Model Certification for defense industrial base contractors",
+            Self::Fisma => "Federal Information Security Management Act requirements for federal agencies",
+            Self::Nist800171 => "Protecting Controlled Unclassified Information in nonfederal systems",
+            Self::Nist80082 => "Guide to Industrial Control Systems (ICS) security",
+            Self::Nist80061 => "Computer security incident handling guide for federal agencies",
+            Self::StateRamp => "State Risk and Authorization Management Program for state government cloud services",
+            Self::Itar => "International Traffic in Arms Regulations for defense-related exports",
+            Self::Ear => "Export Administration Regulations for dual-use technology controls",
+            Self::Dfars => "Defense Federal Acquisition Regulation Supplement cybersecurity requirements",
+            Self::Icd503 => "Intelligence Community Directive for IT systems security risk management",
+            Self::Cnssi1253 => "Security categorization and control selection for National Security Systems",
+            Self::Rmf => "NIST Risk Management Framework for managing security and privacy risk",
+            Self::DisaCloudSrg => "DISA Security Requirements Guide for DoD cloud computing",
+            Self::DodZeroTrust => "DoD Zero Trust Reference Architecture for network security",
+            Self::NistPrivacy => "Framework for managing privacy risks through enterprise risk management",
+            // Industry/Sector
+            Self::CsaCcm => "Cloud Security Alliance Cloud Controls Matrix for cloud security assurance",
+            Self::NercCip => "Critical Infrastructure Protection standards for the bulk electric system",
+            Self::Iec62443 => "International standard for industrial automation and control systems security",
+            Self::TsaPipeline => "TSA security directives for pipeline cybersecurity",
+            Self::CisaCpgs => "CISA Cybersecurity Performance Goals for critical infrastructure",
+            Self::Eo14028 => "Executive Order on improving the nation's cybersecurity",
+            Self::Sox => "Sarbanes-Oxley IT controls for financial reporting integrity",
+            Self::Glba => "Gramm-Leach-Bliley Act requirements for financial institution data protection",
+            // International
+            Self::CyberEssentials => "UK NCSC certification scheme for basic cyber hygiene",
+            Self::IsmAustralia => "Australian Government Information Security Manual for protecting systems",
+            Self::Irap => "Australian InfoSec Registered Assessors Program for government systems",
+            Self::Nis2 => "EU Network and Information Security Directive for critical infrastructure",
+            Self::EnsSpain => "Spanish National Security Framework for public sector information systems",
+            Self::BsiGrundschutz => "German BSI IT-Grundschutz methodology for information security management",
+            Self::C5 => "German Cloud Computing Compliance Criteria Catalogue for cloud providers",
+            Self::SecNumCloud => "French ANSSI security qualification for cloud service providers",
+            Self::NatoCyber => "NATO Cyber Defence requirements for alliance information systems",
         }
     }
 
@@ -137,6 +397,43 @@ impl ComplianceFramework {
             "hitrust" | "hitrust_csf" | "hitrustcsf" => Some(Self::HitrustCsf),
             "iso27001" | "iso_27001" | "iso27k" => Some(Self::Iso27001),
             "gdpr" => Some(Self::Gdpr),
+            "dod_stig" | "dodstig" | "stig" | "dod-stig" => Some(Self::DodStig),
+            // US Federal
+            "fedramp" | "fed_ramp" => Some(Self::FedRamp),
+            "cmmc" | "cmmc_2" | "cmmc2" => Some(Self::Cmmc),
+            "fisma" => Some(Self::Fisma),
+            "nist_800_171" | "nist800171" => Some(Self::Nist800171),
+            "nist_800_82" | "nist80082" => Some(Self::Nist80082),
+            "nist_800_61" | "nist80061" => Some(Self::Nist80061),
+            "stateramp" | "state_ramp" => Some(Self::StateRamp),
+            "itar" => Some(Self::Itar),
+            "ear" => Some(Self::Ear),
+            "dfars" => Some(Self::Dfars),
+            "icd_503" | "icd503" => Some(Self::Icd503),
+            "cnssi_1253" | "cnssi1253" => Some(Self::Cnssi1253),
+            "rmf" => Some(Self::Rmf),
+            "disa_cloud_srg" | "disa_srg" | "cloud_srg" => Some(Self::DisaCloudSrg),
+            "dod_zero_trust" | "zero_trust" => Some(Self::DodZeroTrust),
+            "nist_privacy" | "privacy_framework" => Some(Self::NistPrivacy),
+            // Industry/Sector
+            "csa_ccm" | "ccm" => Some(Self::CsaCcm),
+            "nerc_cip" | "nerc" | "cip" => Some(Self::NercCip),
+            "iec_62443" | "iec62443" | "62443" => Some(Self::Iec62443),
+            "tsa_pipeline" | "tsa" | "pipeline" => Some(Self::TsaPipeline),
+            "cisa_cpgs" | "cpgs" => Some(Self::CisaCpgs),
+            "eo_14028" | "eo14028" | "executive_order" => Some(Self::Eo14028),
+            "sox" | "sarbanes_oxley" => Some(Self::Sox),
+            "glba" | "gramm_leach_bliley" => Some(Self::Glba),
+            // International
+            "cyber_essentials" | "cyberessentials" | "ce" => Some(Self::CyberEssentials),
+            "ism_australia" | "ism" | "australian_ism" => Some(Self::IsmAustralia),
+            "irap" => Some(Self::Irap),
+            "nis2" | "nis_2" | "nis2_directive" => Some(Self::Nis2),
+            "ens_spain" | "ens" => Some(Self::EnsSpain),
+            "bsi_grundschutz" | "grundschutz" | "it_grundschutz" => Some(Self::BsiGrundschutz),
+            "c5" => Some(Self::C5),
+            "secnumcloud" | "sec_num_cloud" => Some(Self::SecNumCloud),
+            "nato_cyber" | "nato" => Some(Self::NatoCyber),
             _ => None,
         }
     }
@@ -152,6 +449,7 @@ impl fmt::Display for ComplianceFramework {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ControlPriority {
+    Critical,
     High,
     Medium,
     Low,
@@ -160,6 +458,7 @@ pub enum ControlPriority {
 impl fmt::Display for ControlPriority {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::Critical => write!(f, "critical"),
             Self::High => write!(f, "high"),
             Self::Medium => write!(f, "medium"),
             Self::Low => write!(f, "low"),

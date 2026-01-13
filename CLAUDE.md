@@ -27,6 +27,10 @@ cargo check                           # Fast type check
 cargo test                            # Run all tests
 cargo build --release                 # Production build
 
+# Linting (matches CI pipeline)
+cargo fmt -- --check                  # Check formatting
+cargo clippy --all-targets -- -D warnings  # Lint with warnings as errors
+
 # Deploy to production
 sudo ./deploy.sh                      # Full deploy (frontend + backend + Docker)
 
@@ -102,6 +106,29 @@ cargo build --release
 cd /root && docker compose build heroforge && docker compose up -d heroforge
 ```
 
+## CI/CD Pipeline
+
+GitHub Actions workflow in `.github/workflows/ci-cd.yml`:
+
+| Job | Trigger | Purpose |
+|-----|---------|---------|
+| `lint` | All pushes/PRs | `cargo fmt --check`, `cargo clippy -D warnings` |
+| `security` | All pushes/PRs | `cargo audit`, `cargo deny`, Semgrep SAST, TruffleHog secrets |
+| `unit-tests` | After lint | `cargo test --lib` |
+| `integration-tests` | After unit | `cargo test --test '*' -- --test-threads=1` |
+| `frontend` | All pushes/PRs | `npm run lint`, `npx tsc --noEmit`, `npm run build` |
+| `coverage` | After integration | `cargo tarpaulin` with 50% threshold warning |
+| `build-image` | After all tests | Build and push Docker image to ghcr.io |
+| `deploy-staging` | develop branch | Auto-deploy to staging |
+| `deploy-production` | `v*` tags | Auto-deploy with DB backup |
+
+**Required CI Secrets:**
+- `JWT_SECRET_TEST` - Test JWT signing key
+- `STAGING_HOST`, `STAGING_USER`, `STAGING_SSH_KEY` - Staging server access
+- `PRODUCTION_HOST`, `PRODUCTION_USER`, `PRODUCTION_SSH_KEY` - Production server access
+- `SLACK_WEBHOOK_URL` - Deployment notifications
+- `CODECOV_TOKEN` - Coverage reporting
+
 ## Database
 
 ```bash
@@ -114,102 +141,84 @@ sqlite3 heroforge.db "SELECT id, name, status, created_at FROM scan_results;"
 
 **Encryption:** Optional AES-256 encryption via SQLCipher. Set `DATABASE_ENCRYPTION_KEY` env var to enable. See `DATABASE_ENCRYPTION_MIGRATION.md` for migration instructions.
 
+**Test Mode:** Set `TEST_MODE=true` and `DATABASE_URL=sqlite:./test_heroforge.db` for isolated test database.
+
 ## Architecture Overview
 
-### Backend Module Organization
+### Backend Module Organization (~86 modules)
 
 ```
 src/
-├── main.rs              # CLI argument parsing and entry point
-├── config.rs            # Configuration file handling (TOML)
-├── types.rs             # Core data structures (HostInfo, PortInfo, ScanConfig)
-├── scanner/             # Network scanning engine
-│   ├── mod.rs           # Scan orchestration
-│   ├── host_discovery.rs, port_scanner.rs, syn_scanner.rs
-│   ├── service_detection.rs, os_fingerprint.rs
-│   ├── udp_scanner.rs, udp_probes.rs, udp_service_detection.rs
-│   ├── ssl_scanner.rs, tls_analysis/  # SSL/TLS certificate + cipher analysis
-│   ├── dns_recon.rs, dns_analysis/    # DNS reconnaissance + analytics
-│   ├── comparison.rs    # Scan diff between results
-│   ├── webapp/          # Web application scanning (XSS, SQLi, headers, forms)
-│   ├── enumeration/     # Service-specific enumeration (http, dns, smb, ftp, ssh, snmp)
-│   ├── ad_assessment/   # Active Directory security assessment
-│   ├── api_security/    # API endpoint scanning and testing
-│   ├── asset_discovery/ # Asset discovery and inventory
-│   ├── attack_paths/    # Attack path analysis
-│   ├── bas/             # Breach and Attack Simulation
-│   ├── bloodhound/      # BloodHound integration for AD analysis
-│   ├── breach_detection/  # Data breach detection
-│   ├── cicd/            # CI/CD pipeline security scanning
-│   ├── cloud/           # AWS, Azure, GCP cloud security scanning
-│   ├── container/       # Container and Kubernetes security
-│   ├── credential_audit/  # Credential strength and policy auditing
-│   ├── dorks/           # Google dorking and search engine reconnaissance
-│   ├── exploitation/    # Exploitation modules (shells, Kerberos, password spray, post-exploit)
-│   ├── git_recon/       # Git repository reconnaissance
-│   ├── iac/             # Infrastructure as Code scanning (Terraform, CloudFormation)
-│   ├── ids/             # Intrusion detection signature matching
-│   ├── nuclei/          # Nuclei template engine integration
-│   ├── privesc/         # Privilege escalation detection
-│   └── secret_detection/  # Secret/credential detection in code
-├── cve/                 # CVE lookup: offline_db → cache → NVD API
-├── vuln/                # Vulnerability scanning and misconfiguration detection
-├── compliance/          # Security compliance frameworks
-│   ├── frameworks/      # CIS, NIST 800-53, NIST CSF, PCI-DSS, HIPAA, SOC2, FERPA, OWASP
-│   ├── controls/        # Control mappings and compliance checks
-│   ├── manual_assessment/  # Rubrics for non-automated controls
-│   ├── evidence/        # Evidence collection and management
-│   └── analyzer.rs, scanner.rs, scoring.rs
-├── agents/              # Distributed scanning agents and mesh networking
-├── ai/                  # AI-powered vulnerability prioritization
-│   ├── mod.rs           # AI module entrypoint
-│   ├── llm_orchestrator.rs  # LLM API orchestration (Claude, GPT, local models)
-│   └── ml_pipeline.rs   # ML pipeline for vulnerability classification
-├── ai_security/         # AI/ML model security scanning
-├── asm/                 # Attack Surface Management
-├── binary_analysis/     # Binary/malware analysis (PE/ELF/Mach-O parsing, entropy)
-├── c2/                  # Command & Control infrastructure (custom C2 framework)
-├── cracking/            # Password cracking integration
-├── detection_engineering/  # Detection rule creation and testing
-├── devsecops/           # DevSecOps integrations and CI/CD security
-├── dns_analytics/       # DNS traffic analysis and threat detection
-├── exploit_research/    # Exploit research and development tools
-├── forensics/           # Digital forensics and incident investigation
-├── fuzzing/             # Fuzzing framework for vulnerability discovery
-├── incident_response/   # Incident response automation and playbooks
-├── iot/                 # IoT device security scanning
-├── malware_analysis/    # Malware analysis sandbox and tools
-├── netflow/             # NetFlow/IPFIX traffic analysis
-├── phishing/            # Phishing campaign management
-├── plugins/             # Plugin marketplace and extensibility
-├── purple_team/         # Purple team exercises (combined red/blue team)
-├── siem/                # SIEM integration (log ingestion, correlation engine, alerting)
-├── threat_hunting/      # Threat hunting tools and analytics
-├── threat_intel/        # Threat intelligence feeds (CVE, exploit DB, Shodan, MISP, STIX)
-├── traffic_analysis/    # Network traffic analysis and packet inspection
-├── vpn/                 # VPN integration for scanning through OpenVPN/WireGuard tunnels
-├── webhooks/            # Outbound webhook notifications
-├── workflows/           # Custom remediation workflows
-├── notifications/       # Multi-channel notifications (Slack, Teams, email)
-├── integrations/        # External integrations (JIRA, ServiceNow, SIEM export, scanner import)
-├── email/               # SMTP notifications and email security validation
-├── reports/             # Report generation (JSON, HTML, PDF, CSV, Markdown)
-├── output/              # CLI output formatting
-├── db/                  # SQLite via sqlx (models, migrations, analytics, assets, crm, permissions)
-├── web/                 # Actix-web server
-│   ├── auth/            # JWT auth (jwt.rs, middleware.rs) + SSO (SAML, OAuth)
-│   ├── api/             # REST endpoints
-│   │   ├── portal/      # Customer portal API (separate auth)
-│   │   └── manual_compliance/  # Manual compliance assessment API
-│   ├── websocket/       # Real-time scan progress
-│   ├── error.rs         # Unified API error types
-│   ├── rate_limit.rs    # Request rate limiting
-│   └── scheduler.rs     # Background job scheduler
-├── ot_ics/              # OT/ICS industrial control systems security
-├── green_team/          # SOC operations (SOAR playbooks, case management, metrics)
-├── orange_team/         # Security awareness training and phishing analytics
-├── white_team/          # GRC (governance, risk, compliance, audit, policy, vendor management)
-└── yellow_team/         # Secure development (SAST, SCA, SBOM, architecture review, API security)
+├── Core
+│   ├── main.rs, config.rs, types.rs
+│   ├── db/                  # SQLite via sqlx (models, migrations, analytics, assets, crm, permissions)
+│   └── web/                 # Actix-web server (auth/, api/, websocket/, rate_limit.rs, scheduler.rs)
+│
+├── Scanning Engine
+│   ├── scanner/             # 30+ submodules: host_discovery, port_scanner, syn_scanner, service_detection,
+│   │                        # webapp/, enumeration/, cloud/, container/, ad_assessment/, nuclei/, etc.
+│   ├── vuln/                # Vulnerability scanning and misconfiguration detection
+│   └── cve/                 # CVE lookup: offline_db → cache → NVD API
+│
+├── Team Operations (Colored Teams)
+│   ├── red_team/            # Offensive operations coordination
+│   ├── blue_team/           # Defensive operations
+│   ├── purple_team/         # Combined red/blue exercises
+│   ├── green_team/          # SOC operations (SOAR playbooks, case management)
+│   ├── orange_team/         # Security awareness training and phishing
+│   ├── yellow_team/         # Secure development (SAST, SCA, SBOM)
+│   └── white_team/          # GRC (governance, risk, compliance, audit)
+│
+├── Security Domains
+│   ├── ai_security/         # AI/ML model security scanning
+│   ├── iot/                 # IoT device security
+│   ├── ot_ics/              # OT/ICS industrial control systems
+│   ├── web3/                # Web3/blockchain security
+│   ├── k8s_security/        # Kubernetes security
+│   └── supply_chain/        # Supply chain security
+│
+├── Analysis & Intelligence
+│   ├── binary_analysis/     # PE/ELF/Mach-O parsing, entropy
+│   ├── malware_analysis/    # Malware sandbox and tools
+│   ├── traffic_analysis/    # Network packet inspection
+│   ├── forensics/           # Digital forensics
+│   ├── threat_hunting/      # Threat hunting analytics
+│   ├── threat_intel/        # Threat feeds (CVE, Shodan, MISP, STIX)
+│   ├── cti_automation/      # CTI automation
+│   └── intelligence_platform/  # Intelligence aggregation
+│
+├── Defense & Detection
+│   ├── siem/                # Log ingestion, correlation, alerting
+│   ├── detection_engineering/  # Detection rule creation
+│   ├── incident_response/   # IR automation and playbooks
+│   ├── honeypots/           # Deception technology
+│   └── honeytokens/         # Canary tokens
+│
+├── AI/ML
+│   ├── ai/                  # LLM orchestration (Claude, GPT), ML pipeline
+│   ├── ml/                  # Machine learning models
+│   └── predictive_security/ # Predictive analytics
+│
+├── Compliance & Risk
+│   ├── compliance/          # CIS, NIST, PCI-DSS, HIPAA, SOC2, FERPA, OWASP
+│   ├── compliance_automation/
+│   └── patch_management/    # Patch management
+│
+├── Infrastructure
+│   ├── agents/              # Distributed scanning agents and mesh networking
+│   ├── plugins/             # Plugin marketplace
+│   ├── vpn/                 # OpenVPN/WireGuard tunnels
+│   ├── integrations/        # JIRA, ServiceNow, SIEM export, scanner import
+│   ├── webhooks/            # Outbound notifications
+│   └── workflows/           # Custom remediation workflows
+│
+└── Supporting
+    ├── reports/             # JSON, HTML, PDF, CSV, Markdown generation
+    ├── output/              # CLI formatting
+    ├── email/, notifications/  # SMTP and multi-channel alerts
+    ├── cache/, jobs/        # Caching and background processing
+    ├── rbac/, credentials/  # Access control and credential management
+    └── analytics_engine/, bi/  # Analytics and business intelligence
 ```
 
 ### REST API
@@ -242,6 +251,10 @@ Full API documentation available via Swagger UI at `/api/docs` (requires running
 - `/api/white-team/*` - GRC (governance, risk, compliance)
 - `/api/yellow-team/*` - Secure development (SAST, SCA, SBOM)
 - `WS /api/ws/scans/{id}` - WebSocket for real-time scan progress
+
+**Health Endpoints:**
+- `GET /health/live` - Liveness probe (container running)
+- `GET /health/ready` - Readiness probe (dependencies connected)
 
 ### Data Flow
 
@@ -365,9 +378,15 @@ All integrations are configured via Settings page in the web UI or via `/api/int
 | ServiceNow | Create incidents/change requests from vulnerabilities |
 | SIEM (Splunk, Elasticsearch, Syslog) | Export scan results and findings |
 
-### Compliance Frameworks
+### Compliance Frameworks (45 Total)
 
-Supported: PCI-DSS 4.0, NIST 800-53, NIST CSF, CIS Benchmarks, HIPAA, SOC 2, FERPA, OWASP Top 10
+**Original 12:** CIS Benchmarks, NIST 800-53, NIST CSF, PCI-DSS 4.0, HIPAA, FERPA, SOC 2, OWASP Top 10, HITRUST CSF, ISO 27001:2022, GDPR, DoD STIG
+
+**US Federal (16):** FedRAMP, CMMC 2.0, FISMA, NIST 800-171, NIST 800-82, NIST 800-61, StateRAMP, ITAR, EAR, DFARS, ICD 503, CNSSI 1253, RMF, DISA Cloud SRG, DoD Zero Trust, NIST Privacy Framework
+
+**Industry/Sector (8):** CSA CCM, NERC CIP, IEC 62443, TSA Pipeline Security, CISA CPGs, EO 14028, SOX IT Controls, GLBA
+
+**International (9):** Cyber Essentials (UK), Australian ISM, IRAP, NIS2 Directive, ENS (Spain), BSI IT-Grundschutz, C5, SecNumCloud, NATO Cyber Defence
 
 ## Rate Limiting
 
@@ -413,25 +432,6 @@ Some modules use external tools for specialized functionality. These are optiona
 
 **SQLCipher:** Database encryption via SQLCipher (bundled with `libsqlite3-sys` feature). Overrides sqlx's default SQLite. See `DATABASE_ENCRYPTION_MIGRATION.md` for migration guide.
 
-## Development Roadmap
-
-HeroForge follows a structured sprint-based development plan:
-
-### Priority 1 (P1) - ✅ COMPLETE
-**Focus**: Vulnerability research, malware analysis, network traffic analysis, threat intelligence. See `FEATURE_ROADMAP_P1.md`.
-
-### Priority 2 (P2) - ✅ COMPLETE
-**Focus**: Blue team, DevSecOps, SOAR automation, OT/ICS security, AI/ML security. See `FEATURE_ROADMAP_P2.md`.
-
-### Priority 3 (P3) - 📋 PLANNED
-**Focus**: Production hardening, performance optimization, zero trust architecture, enterprise scalability, cloud-native features. See `FEATURE_ROADMAP_P3.md`.
-
-### Priority 4 (P4) - 📋 PLANNED
-**Focus**: Advanced threat hunting, OT/IoT/Web3 security, AI/ML maturity, quantum-safe cryptography. See `FEATURE_ROADMAP_P4.md`.
-
-### Feature Matrix
-`docs/FEATURE_ROADMAP.md` provides complete status overview: ✅ Implemented | 🔨 Partial | 📋 Planned | 💡 Proposed
-
 ## Troubleshooting
 
 ### Compilation Errors About `Send`
@@ -466,53 +466,11 @@ cd /root && docker compose restart traefik     # Force refresh
 3. Ensure middleware skips `/ws/` paths (check `src/web/auth/middleware.rs`)
 4. Check Traefik logs: `docker logs root-traefik-1 | grep -i websocket`
 
-## Market Readiness & Launch Materials
-
-### Phase 1 Launch Documents
-
-All Phase 1 (Private Beta) launch materials are located at `/root/HF_Phase1/`:
-
-```
-/root/HF_Phase1/
-├── README.md                        # Overview and implementation checklist
-├── MARKET_READINESS_STATUS.md       # Current status and next steps tracker
-├── ci_cd/
-│   └── ci-cd-pipeline.yml           # Enhanced GitHub Actions workflow (deploy to .github/workflows/)
-├── testing/
-│   └── integration_tests.rs         # Comprehensive integration tests (deploy to tests/integration/)
-├── legal/
-│   ├── Terms_of_Service.md          # Draft ToS (needs legal review)
-│   ├── Privacy_Policy.md            # Draft Privacy Policy (GDPR/CCPA compliant)
-│   └── Acceptable_Use_Policy.md     # Draft AUP (critical for security tool)
-└── support/
-    └── Support_System_Design.md     # Zendesk-based support system design
-```
-
-### Market Readiness Status
-
-**Current Overall Readiness: ~55%**
-
-| Area | Status | Notes |
-|------|--------|-------|
-| Backend Code | 95% ✅ | Production ready |
-| Frontend Code | 85% ✅ | Bundle size needs optimization |
-| Test Coverage | 30% ⚠️ | Integration tests ready to deploy |
-| Legal Framework | 80% 🔨 | Drafts complete, needs legal review |
-| Support System | 80% 🔨 | Design complete, needs implementation |
-| Certifications | 0% ❌ | SOC 2 Type II needed for enterprise |
-
-### Additional Documentation
+## Additional Documentation
 
 | Document | Location | Description |
 |----------|----------|-------------|
+| Launch Materials | `/root/HF_Phase1/` | Phase 1 launch docs, legal drafts, CI/CD templates |
 | Feature Inventory | `/root/HeroForge_Features.md` | 83 modules, 160+ endpoints, 99 pages |
-| White Paper | `/root/HeroForge_WhitePaper.md` | General market positioning |
-| Novel Approach Paper | `/root/HeroForge_Novel_Approach_WhitePaper.md` | Differentiation and unique use cases |
-
-### Next Steps Priority
-
-When continuing development, check `/root/HF_Phase1/MARKET_READINESS_STATUS.md` for:
-- Current status of all launch items
-- Prioritized action items
-- Technical and business gaps
-- Launch timeline and milestones
+| Roadmaps | `FEATURE_ROADMAP_P1.md` through `P4.md` | Development priority planning |
+| Launch Status | `/root/HF_Phase1/MARKET_READINESS_STATUS.md` | Current launch readiness and action items |

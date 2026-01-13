@@ -1266,7 +1266,7 @@ export interface UpdateGapStatusRequest {
 // =============================================================================
 
 export type OrgRole = 'owner' | 'admin' | 'member';
-export type TeamRole = 'lead' | 'member';
+export type OrgTeamRole = 'lead' | 'member';
 export type ScopeType = 'organization' | 'department' | 'team' | 'global';
 
 export interface Organization {
@@ -1355,7 +1355,7 @@ export interface TeamMember {
   user_id: string;
   username: string;
   email: string;
-  role: TeamRole;
+  role: OrgTeamRole;
   joined_at: string;
 }
 
@@ -1375,7 +1375,7 @@ export interface AddOrgMemberRequest {
 
 export interface AddTeamMemberRequest {
   user_id: string;
-  role: TeamRole;
+  role: OrgTeamRole;
 }
 
 export interface RoleTemplate {
@@ -1386,7 +1386,7 @@ export interface RoleTemplate {
   icon?: string;
   color?: string;
   is_system: boolean;
-  permissions: string[];
+  permissions?: string[];
   created_at: string;
 }
 

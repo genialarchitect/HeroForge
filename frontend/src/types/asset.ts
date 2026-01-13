@@ -185,11 +185,55 @@ export interface EvidencePlaceholder {
 }
 
 export interface ComplianceMapping {
-  owasp_top_10?: string[];
-  pci_dss?: string[];
-  nist_800_53?: string[];
+  // Original frameworks
   cis?: string[];
+  nist_800_53?: string[];
+  nist_csf?: string[];
+  pci_dss?: string[];
   hipaa?: string[];
+  ferpa?: string[];
+  soc2?: string[];
+  owasp_top_10?: string[];
+  hitrust_csf?: string[];
+  iso_27001?: string[];
+  gdpr?: string[];
+  dod_stig?: string[];
+  // US Federal
+  fedramp?: string[];
+  cmmc?: string[];
+  fisma?: string[];
+  nist_800_171?: string[];
+  nist_800_82?: string[];
+  nist_800_61?: string[];
+  stateramp?: string[];
+  itar?: string[];
+  ear?: string[];
+  dfars?: string[];
+  icd_503?: string[];
+  cnssi_1253?: string[];
+  rmf?: string[];
+  disa_cloud_srg?: string[];
+  dod_zero_trust?: string[];
+  nist_privacy?: string[];
+  // Industry/Sector
+  csa_ccm?: string[];
+  nerc_cip?: string[];
+  iec_62443?: string[];
+  tsa_pipeline?: string[];
+  cisa_cpgs?: string[];
+  eo_14028?: string[];
+  sox?: string[];
+  glba?: string[];
+  // International
+  cyber_essentials?: string[];
+  ism_australia?: string[];
+  irap?: string[];
+  nis2?: string[];
+  ens_spain?: string[];
+  bsi_grundschutz?: string[];
+  c5?: string[];
+  secnumcloud?: string[];
+  nato_cyber?: string[];
 }
 
 export interface CreateFindingTemplateRequest {

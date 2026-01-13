@@ -89,13 +89,55 @@ const SEVERITY_OPTIONS = [
 ];
 
 const FRAMEWORKS = [
-  { value: 'pci_dss', label: 'PCI-DSS 4.0' },
+  // Original frameworks
+  { value: 'cis', label: 'CIS Benchmarks' },
   { value: 'nist_800_53', label: 'NIST 800-53' },
   { value: 'nist_csf', label: 'NIST CSF' },
-  { value: 'cis', label: 'CIS Benchmarks' },
+  { value: 'pci_dss', label: 'PCI-DSS 4.0' },
   { value: 'hipaa', label: 'HIPAA' },
+  { value: 'ferpa', label: 'FERPA' },
   { value: 'soc2', label: 'SOC 2' },
   { value: 'owasp_top10', label: 'OWASP Top 10' },
+  { value: 'hitrust_csf', label: 'HITRUST CSF' },
+  { value: 'iso_27001', label: 'ISO 27001:2022' },
+  { value: 'gdpr', label: 'GDPR' },
+  { value: 'dod_stig', label: 'DoD STIG' },
+  // US Federal
+  { value: 'fedramp', label: 'FedRAMP' },
+  { value: 'cmmc', label: 'CMMC 2.0' },
+  { value: 'fisma', label: 'FISMA' },
+  { value: 'nist_800_171', label: 'NIST 800-171' },
+  { value: 'nist_800_82', label: 'NIST 800-82' },
+  { value: 'nist_800_61', label: 'NIST 800-61' },
+  { value: 'stateramp', label: 'StateRAMP' },
+  { value: 'itar', label: 'ITAR' },
+  { value: 'ear', label: 'EAR' },
+  { value: 'dfars', label: 'DFARS 252.204-7012' },
+  { value: 'icd_503', label: 'ICD 503' },
+  { value: 'cnssi_1253', label: 'CNSSI 1253' },
+  { value: 'rmf', label: 'Risk Management Framework' },
+  { value: 'disa_cloud_srg', label: 'DISA Cloud SRG' },
+  { value: 'dod_zero_trust', label: 'DoD Zero Trust' },
+  { value: 'nist_privacy', label: 'NIST Privacy Framework' },
+  // Industry/Sector
+  { value: 'csa_ccm', label: 'CSA CCM' },
+  { value: 'nerc_cip', label: 'NERC CIP' },
+  { value: 'iec_62443', label: 'IEC 62443' },
+  { value: 'tsa_pipeline', label: 'TSA Pipeline Security' },
+  { value: 'cisa_cpgs', label: 'CISA CPGs' },
+  { value: 'eo_14028', label: 'EO 14028' },
+  { value: 'sox', label: 'SOX IT Controls' },
+  { value: 'glba', label: 'GLBA' },
+  // International
+  { value: 'cyber_essentials', label: 'Cyber Essentials (UK)' },
+  { value: 'ism_australia', label: 'Australian ISM' },
+  { value: 'irap', label: 'IRAP' },
+  { value: 'nis2', label: 'NIS2 Directive' },
+  { value: 'ens_spain', label: 'ENS (Spain)' },
+  { value: 'bsi_grundschutz', label: 'BSI IT-Grundschutz' },
+  { value: 'c5', label: 'C5' },
+  { value: 'secnumcloud', label: 'SecNumCloud' },
+  { value: 'nato_cyber', label: 'NATO Cyber Defence' },
 ];
 
 const ScheduledReports: React.FC = () => {

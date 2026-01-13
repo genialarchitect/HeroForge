@@ -10,6 +10,7 @@ use crate::compliance::frameworks;
 use crate::types::Severity;
 
 /// Weight factors for control priorities
+const PRIORITY_WEIGHT_CRITICAL: f32 = 2.0;
 const PRIORITY_WEIGHT_HIGH: f32 = 1.5;
 const PRIORITY_WEIGHT_MEDIUM: f32 = 1.0;
 const PRIORITY_WEIGHT_LOW: f32 = 0.5;
@@ -62,6 +63,7 @@ pub fn calculate_weighted_framework_score(
 
     for control in &controls {
         let priority_weight = match control.priority {
+            ControlPriority::Critical => PRIORITY_WEIGHT_CRITICAL,
             ControlPriority::High => PRIORITY_WEIGHT_HIGH,
             ControlPriority::Medium => PRIORITY_WEIGHT_MEDIUM,
             ControlPriority::Low => PRIORITY_WEIGHT_LOW,

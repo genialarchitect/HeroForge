@@ -46,15 +46,57 @@ const ControlMappingEditor: React.FC<ControlMappingEditorProps> = ({
   const [newCoverage, setNewCoverage] = useState(0.8);
   const [newNotes, setNewNotes] = useState('');
 
-  // Available frameworks (could be fetched from API)
+  // Available compliance frameworks
   const frameworks = [
-    { id: 'pci_dss', name: 'PCI-DSS' },
+    // Original frameworks
+    { id: 'cis', name: 'CIS Benchmarks' },
     { id: 'nist_800_53', name: 'NIST 800-53' },
     { id: 'nist_csf', name: 'NIST CSF' },
-    { id: 'cis', name: 'CIS Benchmarks' },
+    { id: 'pci_dss', name: 'PCI-DSS 4.0' },
     { id: 'hipaa', name: 'HIPAA' },
+    { id: 'ferpa', name: 'FERPA' },
     { id: 'soc2', name: 'SOC 2' },
     { id: 'owasp_top10', name: 'OWASP Top 10' },
+    { id: 'hitrust_csf', name: 'HITRUST CSF' },
+    { id: 'iso_27001', name: 'ISO 27001:2022' },
+    { id: 'gdpr', name: 'GDPR' },
+    { id: 'dod_stig', name: 'DoD STIG' },
+    // US Federal
+    { id: 'fedramp', name: 'FedRAMP' },
+    { id: 'cmmc', name: 'CMMC 2.0' },
+    { id: 'fisma', name: 'FISMA' },
+    { id: 'nist_800_171', name: 'NIST 800-171' },
+    { id: 'nist_800_82', name: 'NIST 800-82' },
+    { id: 'nist_800_61', name: 'NIST 800-61' },
+    { id: 'stateramp', name: 'StateRAMP' },
+    { id: 'itar', name: 'ITAR' },
+    { id: 'ear', name: 'EAR' },
+    { id: 'dfars', name: 'DFARS' },
+    { id: 'icd_503', name: 'ICD 503' },
+    { id: 'cnssi_1253', name: 'CNSSI 1253' },
+    { id: 'rmf', name: 'RMF' },
+    { id: 'disa_cloud_srg', name: 'DISA Cloud SRG' },
+    { id: 'dod_zero_trust', name: 'DoD Zero Trust' },
+    { id: 'nist_privacy', name: 'NIST Privacy' },
+    // Industry/Sector
+    { id: 'csa_ccm', name: 'CSA CCM' },
+    { id: 'nerc_cip', name: 'NERC CIP' },
+    { id: 'iec_62443', name: 'IEC 62443' },
+    { id: 'tsa_pipeline', name: 'TSA Pipeline' },
+    { id: 'cisa_cpgs', name: 'CISA CPGs' },
+    { id: 'eo_14028', name: 'EO 14028' },
+    { id: 'sox', name: 'SOX' },
+    { id: 'glba', name: 'GLBA' },
+    // International
+    { id: 'cyber_essentials', name: 'Cyber Essentials' },
+    { id: 'ism_australia', name: 'Australian ISM' },
+    { id: 'irap', name: 'IRAP' },
+    { id: 'nis2', name: 'NIS2' },
+    { id: 'ens_spain', name: 'ENS (Spain)' },
+    { id: 'bsi_grundschutz', name: 'BSI Grundschutz' },
+    { id: 'c5', name: 'C5' },
+    { id: 'secnumcloud', name: 'SecNumCloud' },
+    { id: 'nato_cyber', name: 'NATO Cyber' },
   ];
 
   useEffect(() => {

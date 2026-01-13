@@ -3,15 +3,56 @@
 // ============================================================================
 
 export type ComplianceFrameworkId =
-  | 'pci_dss'
+  // Original 12
+  | 'cis'
   | 'nist_800_53'
   | 'nist_csf'
-  | 'cis'
+  | 'pci_dss'
   | 'hipaa'
-  | 'soc2'
   | 'ferpa'
+  | 'soc2'
   | 'owasp'
-  | 'owasp_top10';
+  | 'owasp_top10'
+  | 'hitrust_csf'
+  | 'iso_27001'
+  | 'gdpr'
+  | 'dod_stig'
+  // US Federal (16)
+  | 'fedramp'
+  | 'cmmc'
+  | 'fisma'
+  | 'nist_800_171'
+  | 'nist_800_82'
+  | 'nist_800_61'
+  | 'stateramp'
+  | 'itar'
+  | 'ear'
+  | 'dfars'
+  | 'icd_503'
+  | 'cnssi_1253'
+  | 'rmf'
+  | 'disa_cloud_srg'
+  | 'dod_zero_trust'
+  | 'nist_privacy'
+  // Industry/Sector (8)
+  | 'csa_ccm'
+  | 'nerc_cip'
+  | 'iec_62443'
+  | 'tsa_pipeline'
+  | 'cisa_cpgs'
+  | 'eo_14028'
+  | 'sox'
+  | 'glba'
+  // International (9)
+  | 'cyber_essentials'
+  | 'ism_australia'
+  | 'irap'
+  | 'nis2'
+  | 'ens_spain'
+  | 'bsi_grundschutz'
+  | 'c5'
+  | 'secnumcloud'
+  | 'nato_cyber';
 
 export interface ComplianceFramework {
   id: string;

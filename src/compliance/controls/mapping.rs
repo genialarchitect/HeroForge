@@ -177,6 +177,108 @@ impl VulnerabilityMapper {
             ComplianceFramework::Gdpr => {
                 frameworks::gdpr::map_vulnerability(vuln_title, cve_id, port, service)
             }
+            ComplianceFramework::DodStig => {
+                frameworks::dod_stig::map_vulnerability(vuln_title, cve_id, port, service)
+            }
+            ComplianceFramework::Fisma => {
+                frameworks::fisma::map_vulnerability(vuln_title, cve_id, port, service)
+            }
+            ComplianceFramework::Rmf => {
+                frameworks::rmf::map_vulnerability(vuln_title, cve_id, port, service)
+            }
+            ComplianceFramework::Cmmc => {
+                frameworks::cmmc::map_vulnerability(vuln_title, cve_id, port, service)
+            }
+            ComplianceFramework::FedRamp => {
+                frameworks::fedramp::map_vulnerability(vuln_title, cve_id, port, service)
+            }
+            ComplianceFramework::Nist800171 => {
+                frameworks::nist_800_171::map_vulnerability(vuln_title, cve_id, port, service)
+            }
+            ComplianceFramework::Nist80082 => {
+                frameworks::nist_800_82::map_vulnerability(vuln_title, cve_id, port, service)
+            }
+            ComplianceFramework::Nist80061 => {
+                frameworks::nist_800_61::map_vulnerability(vuln_title, cve_id, port, service)
+            }
+            ComplianceFramework::NistPrivacy => {
+                frameworks::nist_privacy::map_vulnerability(vuln_title, cve_id, port, service)
+            }
+            ComplianceFramework::DodZeroTrust => {
+                frameworks::dod_zero_trust::map_vulnerability(vuln_title, cve_id, port, service)
+            }
+            ComplianceFramework::DisaCloudSrg => {
+                frameworks::disa_srg::map_vulnerability(vuln_title, cve_id, port, service)
+            }
+            ComplianceFramework::CisaCpgs => {
+                frameworks::cisa_cpgs::map_vulnerability(vuln_title, cve_id, port, service)
+            }
+            ComplianceFramework::Dfars => {
+                frameworks::dfars::map_vulnerability(vuln_title, cve_id, port, service)
+            }
+            ComplianceFramework::Icd503 => {
+                frameworks::icd_503::map_vulnerability(vuln_title, cve_id, port, service)
+            }
+            ComplianceFramework::Cnssi1253 => {
+                frameworks::cnssi_1253::map_vulnerability(vuln_title, cve_id, port, service)
+            }
+            ComplianceFramework::CyberEssentials => {
+                frameworks::cyber_essentials::map_vulnerability(vuln_title, cve_id, port, service)
+            }
+            ComplianceFramework::IsmAustralia => {
+                frameworks::ism_australia::map_vulnerability(vuln_title, cve_id, port, service)
+            }
+            ComplianceFramework::Glba => {
+                frameworks::glba::map_vulnerability(vuln_title, cve_id, port, service)
+            }
+            ComplianceFramework::CsaCcm => {
+                frameworks::csa_ccm::map_vulnerability(vuln_title, cve_id, port, service)
+            }
+            ComplianceFramework::NercCip => {
+                frameworks::nerc_cip::map_vulnerability(vuln_title, cve_id, port, service)
+            }
+            ComplianceFramework::Iec62443 => {
+                frameworks::iec_62443::map_vulnerability(vuln_title, cve_id, port, service)
+            }
+            ComplianceFramework::TsaPipeline => {
+                frameworks::tsa_pipeline::map_vulnerability(vuln_title, cve_id, port, service)
+            }
+            ComplianceFramework::Eo14028 => {
+                frameworks::eo_14028::map_vulnerability(vuln_title, cve_id, port, service)
+            }
+            ComplianceFramework::Sox => {
+                frameworks::sox::map_vulnerability(vuln_title, cve_id, port, service)
+            }
+            ComplianceFramework::StateRamp => {
+                frameworks::stateramp::map_vulnerability(vuln_title, cve_id, port, service)
+            }
+            ComplianceFramework::Itar => {
+                frameworks::itar::map_vulnerability(vuln_title, cve_id, port, service)
+            }
+            ComplianceFramework::Ear => {
+                frameworks::ear::map_vulnerability(vuln_title, cve_id, port, service)
+            }
+            ComplianceFramework::Nis2 => {
+                frameworks::nis2::map_vulnerability(vuln_title, cve_id, port, service)
+            }
+            ComplianceFramework::EnsSpain => {
+                frameworks::ens_spain::map_vulnerability(vuln_title, cve_id, port, service)
+            }
+            ComplianceFramework::BsiGrundschutz => {
+                frameworks::bsi_grundschutz::map_vulnerability(vuln_title, cve_id, port, service)
+            }
+            ComplianceFramework::C5 => {
+                frameworks::c5::map_vulnerability(vuln_title, cve_id, port, service)
+            }
+            ComplianceFramework::SecNumCloud => {
+                frameworks::secnumcloud::map_vulnerability(vuln_title, cve_id, port, service)
+            }
+            ComplianceFramework::NatoCyber => {
+                frameworks::nato_cyber::map_vulnerability(vuln_title, cve_id, port, service)
+            }
+            ComplianceFramework::Irap => {
+                frameworks::irap::map_vulnerability(vuln_title, cve_id, port, service)
+            }
         }
     }
 }
