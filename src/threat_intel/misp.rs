@@ -446,8 +446,8 @@ pub struct MispSearchQuery {
     pub timestamp: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub published: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub enforceWarninglist: Option<bool>,
+    #[serde(rename = "enforceWarninglist", skip_serializing_if = "Option::is_none")]
+    pub enforce_warninglist: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub to_ids: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]

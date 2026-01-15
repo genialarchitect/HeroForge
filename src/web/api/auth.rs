@@ -101,7 +101,7 @@ pub async fn register(
             let role_names: Vec<String> = roles.iter().map(|r| r.name.clone()).collect();
 
             // New users won't have organizations yet, but use extended function for consistency
-            let token = create_jwt_extended(&user.id, &user.username, role_names, None)
+            let token = create_jwt_extended(&user.id, &user.username, role_names.clone(), None)
                 .map_err(|_| actix_web::error::ErrorInternalServerError("Failed to create token"))?;
 
             let refresh_token = auth::create_refresh_token(&user.id)
@@ -110,7 +110,7 @@ pub async fn register(
             Ok(HttpResponse::Ok().json(models::LoginResponse {
                 token,
                 refresh_token,
-                user: user.into(),
+                user: models::UserInfo::with_roles(user, role_names),
             }))
         }
         Err(e) => Ok(HttpResponse::InternalServerError().json(serde_json::json!({
@@ -322,7 +322,7 @@ pub async fn login(
     let extended_claims = build_extended_claims(pool.get_ref(), &user.id).await;
 
     // Create JWT token with organization context
-    let token = create_jwt_extended(&user.id, &user.username, role_names, extended_claims)
+    let token = create_jwt_extended(&user.id, &user.username, role_names.clone(), extended_claims)
         .map_err(|_| actix_web::error::ErrorInternalServerError("Failed to create token"))?;
 
     let refresh_token = auth::create_refresh_token(&user.id)
@@ -337,7 +337,7 @@ pub async fn login(
     Ok(HttpResponse::Ok().json(models::LoginResponse {
         token,
         refresh_token,
-        user: user.into(),
+        user: models::UserInfo::with_roles(user, role_names),
     }))
 }
 

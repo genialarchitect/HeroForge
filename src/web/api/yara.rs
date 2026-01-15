@@ -201,12 +201,17 @@ pub struct RuleListResponse {
 pub struct RuleResponse {
     pub id: String,
     pub name: String,
+    pub description: Option<String>,
     pub rule_text: String,
-    pub metadata: serde_json::Value,
-    pub is_builtin: bool,
-    pub category: Option<String>,
+    pub category: String,
+    pub severity: Option<String>,
     pub enabled: bool,
+    pub is_builtin: bool,
+    pub tags: Vec<String>,
+    pub metadata: serde_json::Value,
+    pub match_count: i64,
     pub created_at: String,
+    pub updated_at: String,
 }
 
 /// Response for rule validation
@@ -834,15 +839,33 @@ pub async fn list_rules(
         .map(|r| {
             let metadata: serde_json::Value =
                 serde_json::from_str(&r.metadata).unwrap_or(serde_json::json!({}));
+
+            // Extract fields from metadata
+            let description = metadata.get("description")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let severity = metadata.get("severity")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let tags: Vec<String> = metadata.get("tags")
+                .and_then(|v| v.as_array())
+                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
+                .unwrap_or_default();
+
             RuleResponse {
                 id: r.id,
                 name: r.name,
+                description,
                 rule_text: r.rule_text,
-                metadata,
-                is_builtin: r.is_builtin,
-                category: r.category,
+                category: r.category.unwrap_or_else(|| "generic".to_string()),
+                severity,
                 enabled: r.enabled,
+                is_builtin: r.is_builtin,
+                tags,
+                metadata,
+                match_count: 0, // TODO: Could add match tracking
                 created_at: r.created_at.to_rfc3339(),
+                updated_at: r.updated_at.to_rfc3339(),
             }
         })
         .collect();
@@ -877,15 +900,32 @@ pub async fn get_rule(
             let metadata: serde_json::Value =
                 serde_json::from_str(&r.metadata).unwrap_or(serde_json::json!({}));
 
+            // Extract fields from metadata
+            let description = metadata.get("description")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let severity = metadata.get("severity")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let tags: Vec<String> = metadata.get("tags")
+                .and_then(|v| v.as_array())
+                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
+                .unwrap_or_default();
+
             Ok(HttpResponse::Ok().json(RuleResponse {
                 id: r.id,
                 name: r.name,
+                description,
                 rule_text: r.rule_text,
-                metadata,
-                is_builtin: r.is_builtin,
-                category: r.category,
+                category: r.category.unwrap_or_else(|| "generic".to_string()),
+                severity,
                 enabled: r.enabled,
+                is_builtin: r.is_builtin,
+                tags,
+                metadata,
+                match_count: 0,
                 created_at: r.created_at.to_rfc3339(),
+                updated_at: r.updated_at.to_rfc3339(),
             }))
         }
         None => Ok(HttpResponse::NotFound().json(serde_json::json!({

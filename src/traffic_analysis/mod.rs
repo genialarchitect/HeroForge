@@ -18,6 +18,7 @@ pub mod fingerprinting;
 pub mod beacon;
 pub mod carving;
 pub mod cred_extraction;
+pub mod live_capture;
 
 pub use pcap::PcapParser;
 pub use protocols::ProtocolAnalyzer;
@@ -26,3 +27,4 @@ pub use fingerprinting::Ja3Fingerprinter;
 pub use beacon::BeaconDetector;
 pub use carving::FileCarver;
 pub use cred_extraction::{CredentialExtractor, NetworkCredential, NetworkCredType};
+pub use live_capture::{LiveCaptureManager, CaptureConfig, CaptureInfo, NetworkInterface};

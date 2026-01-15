@@ -1,0 +1,66 @@
+#!/usr/bin/env python3
+"""
+PrintNightmare (CVE-2021-34527) Vulnerability Checker
+Checks Windows Print Spooler status and vulnerability
+"""
+import sys
+
+try:
+    from impacket.dcerpc.v5 import transport, rprn
+    from impacket.dcerpc.v5.rprn import MSRPC_UUID_RPRN
+    HAS_IMPACKET = True
+except ImportError:
+    HAS_IMPACKET = False
+    print("[!] Warning: impacket not installed, limited functionality")
+
+def check_spooler_accessible(target, username="", password="", domain=""):
+    """Check if Print Spooler is accessible remotely"""
+    if not HAS_IMPACKET:
+        print("[-] Impacket required for full check")
+        return None
+
+    try:
+        binding = f"ncacn_np:{target}[\\pipe\\spoolss]"
+        rpctransport = transport.DCERPCTransportFactory(binding)
+
+        if username:
+            rpctransport.set_credentials(username, password, domain)
+
+        dce = rpctransport.get_dce_rpc()
+        dce.connect()
+        dce.bind(MSRPC_UUID_RPRN)
+
+        print(f"[+] Print Spooler accessible on {target}")
+        print("[+] Target may be vulnerable to PrintNightmare")
+
+        dce.disconnect()
+        return True
+
+    except Exception as e:
+        print(f"[-] Cannot access Print Spooler: {e}")
+        return False
+
+def main():
+    if len(sys.argv) < 2:
+        print(f"Usage: {sys.argv[0]} <target_ip> [username] [password] [domain]")
+        sys.exit(1)
+
+    target = sys.argv[1]
+    username = sys.argv[2] if len(sys.argv) > 2 else ""
+    password = sys.argv[3] if len(sys.argv) > 3 else ""
+    domain = sys.argv[4] if len(sys.argv) > 4 else ""
+
+    print(f"[*] Checking {target} for PrintNightmare vulnerability...")
+
+    result = check_spooler_accessible(target, username, password, domain)
+
+    if result:
+        print("\n[!] Print Spooler is ACCESSIBLE - System may be vulnerable!")
+        print("[*] Verify spooler service status and apply KB5005010")
+    elif result is False:
+        print("\n[-] Print Spooler not accessible remotely")
+    else:
+        print("\n[?] Could not determine vulnerability status")
+
+if __name__ == "__main__":
+    main()

@@ -24,6 +24,8 @@ import {
   K8sManifestAnalyzer,
 } from '../components/container';
 import { containerAPI } from '../services/api';
+import { EngagementRequiredBanner } from '../components/engagement';
+import { useRequireEngagement } from '../hooks/useRequireEngagement';
 import type { ContainerScan, CreateContainerScanRequest } from '../types';
 
 type TabType = 'scans' | 'new-scan' | 'dockerfile' | 'k8s-manifest';
@@ -39,6 +41,7 @@ export default function ContainerSecurityPage() {
   const [activeTab, setActiveTab] = useState<TabType>('scans');
   const [selectedScanId, setSelectedScanId] = useState<string | null>(null);
   const queryClient = useQueryClient();
+  const { hasEngagement } = useRequireEngagement();
 
   // Fetch scans list
   const { data: scansData, isLoading: scansLoading } = useQuery({
@@ -109,6 +112,8 @@ export default function ContainerSecurityPage() {
           </div>
         </div>
 
+        <EngagementRequiredBanner toolName="Container Security" className="mb-6" />
+
         {/* Tabs */}
         <div className="border-b border-gray-700">
           <nav className="flex gap-4">
@@ -147,7 +152,7 @@ export default function ContainerSecurityPage() {
                   <p className="text-gray-400 mb-6">
                     Start by creating a new container security scan or analyzing a Dockerfile
                   </p>
-                  <Button onClick={() => setActiveTab('new-scan')}>
+                  <Button onClick={() => setActiveTab('new-scan')} disabled={!hasEngagement}>
                     <Plus className="w-4 h-4 mr-2" />
                     Create New Scan
                   </Button>
@@ -158,7 +163,7 @@ export default function ContainerSecurityPage() {
                     <h2 className="text-lg font-semibold text-white">
                       Container Scans ({scans.length})
                     </h2>
-                    <Button size="sm" onClick={() => setActiveTab('new-scan')}>
+                    <Button size="sm" onClick={() => setActiveTab('new-scan')} disabled={!hasEngagement}>
                       <Plus className="w-4 h-4 mr-2" />
                       New Scan
                     </Button>
@@ -259,6 +264,7 @@ export default function ContainerSecurityPage() {
                 onSubmit={(data) => createScanMutation.mutate(data)}
                 isLoading={createScanMutation.isPending}
                 scanTypes={scanTypes}
+                disabled={!hasEngagement}
               />
             </div>
           )}

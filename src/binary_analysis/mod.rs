@@ -265,12 +265,14 @@ pub fn detect_architecture(data: &[u8], file_type: BinaryType) -> Architecture {
             } else {
                 u32::from_le_bytes([data[4], data[5], data[6], data[7]])
             };
-            match cpu_type & 0xFF {
-                7 => Architecture::X86,
-                7 | 0x01000007 => Architecture::X64, // CPU_TYPE_X86_64
-                12 => Architecture::Arm,
-                12 | 0x0100000C => Architecture::Arm64, // CPU_TYPE_ARM64
-                _ => Architecture::Unknown,
+            match cpu_type {
+                0x01000007 => Architecture::X64, // CPU_TYPE_X86_64 (64-bit)
+                0x0100000C => Architecture::Arm64, // CPU_TYPE_ARM64
+                _ => match cpu_type & 0xFF {
+                    7 => Architecture::X86,
+                    12 => Architecture::Arm,
+                    _ => Architecture::Unknown,
+                }
             }
         }
         _ => Architecture::Unknown,

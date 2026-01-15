@@ -20,13 +20,16 @@ import {
   FileText,
   Download,
   Filter,
+  X,
+  Plus,
+  Trash2,
 } from 'lucide-react';
 import Layout from '../components/layout/Layout';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Badge from '../components/ui/Badge';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
-import { aiSecurityAPI } from '../services/api';
+import { aiSecurityAPI, LLMTarget } from '../services/api';
 
 // Types
 interface TestCategory {
@@ -36,14 +39,6 @@ interface TestCategory {
   description: string;
   testCount: number;
   passRate?: number;
-}
-
-interface LLMTarget {
-  id: string;
-  name: string;
-  endpoint: string;
-  model_type: string;
-  created_at: string;
 }
 
 interface TestResult {
@@ -75,6 +70,14 @@ const LlmTestingPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'targets' | 'run-test' | 'results'>('dashboard');
   const [selectedTarget, setSelectedTarget] = useState<string | null>(null);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [showAddTargetModal, setShowAddTargetModal] = useState(false);
+  const [newTarget, setNewTarget] = useState({
+    name: '',
+    endpoint: '',
+    model_type: 'openai',
+    description: '',
+    api_key: '',
+  });
   const queryClient = useQueryClient();
 
   const testCategories: TestCategory[] = [
@@ -120,29 +123,47 @@ const LlmTestingPage: React.FC = () => {
     },
   ];
 
-  // Fetch LLM targets from test runs (extract unique targets)
+  // Fetch LLM targets from API
   const { data: targets, isLoading: targetsLoading } = useQuery<LLMTarget[]>({
     queryKey: ['llm-targets'],
     queryFn: async () => {
       try {
-        const response = await aiSecurityAPI.getLLMTests({ limit: 100 });
-        // Extract unique targets from test runs
-        const targetsMap = new Map<string, LLMTarget>();
-        response.data.forEach((run: any) => {
-          if (!targetsMap.has(run.target_name)) {
-            targetsMap.set(run.target_name, {
-              id: run.id,
-              name: run.target_name,
-              endpoint: run.target_type || 'Unknown',
-              model_type: run.target_type || 'LLM',
-              created_at: run.created_at,
-            });
-          }
-        });
-        return Array.from(targetsMap.values());
+        const response = await aiSecurityAPI.getLLMTargets({ limit: 100 });
+        return response.data;
       } catch {
         return [];
       }
+    },
+  });
+
+  // Create target mutation
+  const createTargetMutation = useMutation({
+    mutationFn: async (data: { name: string; endpoint: string; model_type: string; description?: string; api_key?: string }) => {
+      const response = await aiSecurityAPI.createLLMTarget(data);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['llm-targets'] });
+      toast.success('Target created successfully');
+      setShowAddTargetModal(false);
+      setNewTarget({ name: '', endpoint: '', model_type: 'openai', description: '', api_key: '' });
+    },
+    onError: () => {
+      toast.error('Failed to create target');
+    },
+  });
+
+  // Delete target mutation
+  const deleteTargetMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await aiSecurityAPI.deleteLLMTarget(id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['llm-targets'] });
+      toast.success('Target deleted');
+    },
+    onError: () => {
+      toast.error('Failed to delete target');
     },
   });
 
@@ -241,6 +262,24 @@ const LlmTestingPage: React.FC = () => {
     runTestsMutation.mutate({
       target_id: selectedTarget,
       categories: selectedCategories,
+    });
+  };
+
+  const handleCreateTarget = () => {
+    if (!newTarget.name.trim()) {
+      toast.error('Please enter a target name');
+      return;
+    }
+    if (!newTarget.endpoint.trim()) {
+      toast.error('Please enter an endpoint URL');
+      return;
+    }
+    createTargetMutation.mutate({
+      name: newTarget.name.trim(),
+      endpoint: newTarget.endpoint.trim(),
+      model_type: newTarget.model_type,
+      description: newTarget.description.trim() || undefined,
+      api_key: newTarget.api_key.trim() || undefined,
     });
   };
 
@@ -463,8 +502,8 @@ const LlmTestingPage: React.FC = () => {
           <Card>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-white">LLM Targets</h3>
-              <Button variant="primary" size="sm">
-                <Target className="h-4 w-4 mr-2" />
+              <Button variant="primary" size="sm" onClick={() => setShowAddTargetModal(true)}>
+                <Plus className="h-4 w-4 mr-2" />
                 Add Target
               </Button>
             </div>
@@ -473,9 +512,9 @@ const LlmTestingPage: React.FC = () => {
               <div className="flex items-center justify-center py-12">
                 <LoadingSpinner />
               </div>
-            ) : (
+            ) : targets && targets.length > 0 ? (
               <div className="space-y-3">
-                {targets?.map((target) => (
+                {targets.map((target) => (
                   <div key={target.id} className="p-4 bg-dark-bg rounded-lg border border-dark-border hover:border-primary transition-colors">
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-3">
@@ -485,13 +524,32 @@ const LlmTestingPage: React.FC = () => {
                           <div className="text-sm text-slate-400">{target.endpoint}</div>
                         </div>
                       </div>
-                      <Badge variant="info">{target.model_type}</Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="info">{target.model_type}</Badge>
+                        <button
+                          onClick={() => deleteTargetMutation.mutate(target.id)}
+                          className="p-1.5 text-slate-400 hover:text-red-400 transition-colors"
+                          title="Delete target"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
                     </div>
-                    <div className="text-xs text-slate-500">
-                      Added: {new Date(target.created_at).toLocaleString()}
+                    <div className="flex items-center justify-between text-xs text-slate-500">
+                      <span>Added: {new Date(target.created_at).toLocaleString()}</span>
+                      {target.description && <span className="text-slate-400">{target.description}</span>}
                     </div>
                   </div>
                 ))}
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <Target className="h-12 w-12 text-slate-600 mx-auto mb-4" />
+                <p className="text-slate-400 mb-4">No LLM targets configured yet</p>
+                <Button variant="primary" size="sm" onClick={() => setShowAddTargetModal(true)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Your First Target
+                </Button>
               </div>
             )}
           </Card>
@@ -624,6 +682,112 @@ const LlmTestingPage: React.FC = () => {
           </Card>
         )}
       </div>
+
+      {/* Add Target Modal */}
+      {showAddTargetModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-dark-surface border border-dark-border rounded-lg w-full max-w-lg p-6 m-4">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-semibold text-white">Add LLM Target</h3>
+              <button
+                onClick={() => setShowAddTargetModal(false)}
+                className="text-slate-400 hover:text-white transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1">
+                  Target Name *
+                </label>
+                <input
+                  type="text"
+                  value={newTarget.name}
+                  onChange={(e) => setNewTarget({ ...newTarget, name: e.target.value })}
+                  placeholder="e.g., GPT-4 Production API"
+                  className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-primary"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1">
+                  API Endpoint *
+                </label>
+                <input
+                  type="url"
+                  value={newTarget.endpoint}
+                  onChange={(e) => setNewTarget({ ...newTarget, endpoint: e.target.value })}
+                  placeholder="e.g., https://api.openai.com/v1/chat/completions"
+                  className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-primary"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1">
+                  Model Type
+                </label>
+                <select
+                  value={newTarget.model_type}
+                  onChange={(e) => setNewTarget({ ...newTarget, model_type: e.target.value })}
+                  className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-white focus:outline-none focus:border-primary"
+                >
+                  <option value="openai">OpenAI (GPT)</option>
+                  <option value="anthropic">Anthropic (Claude)</option>
+                  <option value="google">Google (Gemini)</option>
+                  <option value="azure">Azure OpenAI</option>
+                  <option value="huggingface">Hugging Face</option>
+                  <option value="custom">Custom LLM</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1">
+                  API Key (Optional)
+                </label>
+                <input
+                  type="password"
+                  value={newTarget.api_key}
+                  onChange={(e) => setNewTarget({ ...newTarget, api_key: e.target.value })}
+                  placeholder="sk-..."
+                  className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-primary"
+                />
+                <p className="text-xs text-slate-500 mt-1">
+                  Required for testing protected endpoints
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1">
+                  Description (Optional)
+                </label>
+                <textarea
+                  value={newTarget.description}
+                  onChange={(e) => setNewTarget({ ...newTarget, description: e.target.value })}
+                  placeholder="Brief description of this target..."
+                  rows={2}
+                  className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-primary resize-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 mt-6">
+              <Button variant="secondary" onClick={() => setShowAddTargetModal(false)}>
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                onClick={handleCreateTarget}
+                loading={createTargetMutation.isPending}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add Target
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 };

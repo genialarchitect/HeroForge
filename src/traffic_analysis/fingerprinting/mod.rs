@@ -210,6 +210,11 @@ impl Ja3Fingerprinter {
         self.observed.values().collect()
     }
 
+    /// Get all known fingerprints from the database
+    pub fn get_all_known(&self) -> Vec<(&String, &KnownFingerprint)> {
+        self.known_fingerprints.iter().collect()
+    }
+
     /// Get fingerprints by threat score threshold
     pub fn get_suspicious(&self, min_score: u8) -> Vec<&Ja3Fingerprint> {
         self.observed.values()

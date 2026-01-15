@@ -21,6 +21,8 @@ import {
 import { toast } from 'react-toastify';
 import Button from '../components/ui/Button';
 import { Layout } from '../components/layout/Layout';
+import { EngagementRequiredBanner } from '../components/engagement';
+import { useRequireEngagement } from '../hooks/useRequireEngagement';
 import api from '../services/api';
 
 // Types
@@ -130,7 +132,7 @@ const nucleiAPI = {
 };
 
 // Scan Form Component
-function NucleiScanForm({ onScanCreated }: { onScanCreated: (id: string) => void }) {
+function NucleiScanForm({ onScanCreated, hasEngagement }: { onScanCreated: (id: string) => void; hasEngagement: boolean }) {
   const [targets, setTargets] = useState('');
   const [name, setName] = useState('');
   const [tags, setTags] = useState<string[]>([]);
@@ -292,7 +294,7 @@ function NucleiScanForm({ onScanCreated }: { onScanCreated: (id: string) => void
 
         <Button
           type="submit"
-          disabled={createMutation.isPending}
+          disabled={createMutation.isPending || !hasEngagement}
           className="w-full"
         >
           {createMutation.isPending ? (
@@ -637,6 +639,7 @@ export default function NucleiPage() {
   const [activeTab, setActiveTab] = useState<TabType>('scans');
   const [selectedScanId, setSelectedScanId] = useState<string | null>(null);
   const queryClient = useQueryClient();
+  const { hasEngagement } = useRequireEngagement();
 
   // Check Nuclei status
   const { data: status, isLoading: statusLoading } = useQuery({
@@ -696,6 +699,8 @@ export default function NucleiPage() {
           Fast vulnerability scanner using Nuclei templates
         </p>
       </div>
+
+      <EngagementRequiredBanner toolName="Nuclei Scanner" className="mb-6" />
 
       {/* Nuclei Status Alert */}
       {nucleiStatus && !nucleiStatus.installed && (
@@ -774,7 +779,7 @@ export default function NucleiPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Scan Form */}
           <div className="lg:col-span-1">
-            <NucleiScanForm onScanCreated={handleScanCreated} />
+            <NucleiScanForm onScanCreated={handleScanCreated} hasEngagement={hasEngagement} />
           </div>
 
           {/* Scans List */}

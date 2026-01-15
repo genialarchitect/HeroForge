@@ -9,6 +9,7 @@ interface ContainerScanFormProps {
   onSubmit: (data: CreateContainerScanRequest) => void;
   isLoading?: boolean;
   scanTypes?: ContainerScanTypeInfo[];
+  disabled?: boolean;
 }
 
 const defaultScanTypes: ContainerScanTypeInfo[] = [
@@ -65,7 +66,7 @@ const scanTypeIcons: Record<ContainerScanType, React.ReactNode> = {
   comprehensive: <AlertTriangle className="w-5 h-5" />,
 };
 
-export function ContainerScanForm({ onSubmit, isLoading, scanTypes = defaultScanTypes }: ContainerScanFormProps) {
+export function ContainerScanForm({ onSubmit, isLoading, scanTypes = defaultScanTypes, disabled }: ContainerScanFormProps) {
   const [name, setName] = useState('');
   const [scanType, setScanType] = useState<ContainerScanType>('image');
   const [target, setTarget] = useState('');
@@ -305,7 +306,7 @@ export function ContainerScanForm({ onSubmit, isLoading, scanTypes = defaultScan
 
       {/* Submit Button */}
       <div className="flex justify-end">
-        <Button type="submit" disabled={isLoading || !target}>
+        <Button type="submit" disabled={isLoading || !target || disabled}>
           <Play className="w-4 h-4 mr-2" />
           {isLoading ? 'Starting Scan...' : 'Start Scan'}
         </Button>

@@ -62,6 +62,7 @@ mod rbac;
 mod replication;
 mod resilience;
 mod reports;
+mod scap;
 mod scan_processor;
 mod scanner;
 mod screenshots;

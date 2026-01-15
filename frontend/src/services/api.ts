@@ -371,6 +371,10 @@ import type {
   RecordDataTransferRequest,
   RunAdvancedDetectionRequest,
   AdvancedDetectionResult,
+  ReportNotesResponse,
+  UpdateReportNotesRequest,
+  UpdateFindingNoteRequest,
+  ReportFindingNote,
 } from '../types';
 
 const api = axios.create({
@@ -680,6 +684,18 @@ export const reportAPI = {
 
   // Get available templates
   getTemplates: () => api.get<ReportTemplate[]>('/reports/templates'),
+
+  // Operator notes endpoints
+  getNotes: (id: string) => api.get<ReportNotesResponse>(`/reports/${id}/notes`),
+
+  updateNotes: (id: string, data: UpdateReportNotesRequest) =>
+    api.put(`/reports/${id}/notes`, data),
+
+  updateFindingNote: (reportId: string, findingId: string, data: UpdateFindingNoteRequest) =>
+    api.put<ReportFindingNote>(`/reports/${reportId}/findings/${findingId}/notes`, data),
+
+  deleteFindingNote: (reportId: string, findingId: string) =>
+    api.delete(`/reports/${reportId}/findings/${findingId}/notes`),
 };
 
 export const targetGroupAPI = {
@@ -2155,6 +2171,92 @@ export const aiAPI = {
   // Submit feedback for AI learning
   submitFeedback: (data: SubmitAIFeedbackRequest) =>
     api.post<{ message: string }>('/ai/feedback', data),
+};
+
+// ============================================================================
+// AI Settings API (LLM Provider Configuration)
+// ============================================================================
+
+import type {
+  AiConfigurationResponse,
+  UpdateAiConfigurationRequest,
+  ProviderStatusResponse,
+  TestConnectionResponse,
+  AvailableModelsResponse,
+} from '../types';
+
+export const aiSettingsAPI = {
+  // Get current AI configuration
+  getConfiguration: () =>
+    api.get<AiConfigurationResponse>('/ai-settings'),
+
+  // Update AI configuration
+  updateConfiguration: (data: UpdateAiConfigurationRequest) =>
+    api.put<AiConfigurationResponse>('/ai-settings', data),
+
+  // Test AI connection
+  testConnection: () =>
+    api.post<TestConnectionResponse>('/ai-settings/test'),
+
+  // Get status of all configured providers
+  getProviders: () =>
+    api.get<ProviderStatusResponse[]>('/ai-settings/providers'),
+
+  // Get available models for each provider
+  getModels: () =>
+    api.get<AvailableModelsResponse>('/ai-settings/models'),
+};
+
+// ============================================================================
+// AI Red Team Advisor API
+// ============================================================================
+
+import type {
+  AiRedTeamRecommendation,
+  AnalyzeTopologyRequest,
+  RedTeamAnalysisResult,
+  UpdateRecommendationStatusRequest,
+  RecommendationsSummary,
+  BulkActionResult,
+  GetRecommendationsQuery,
+} from '../types';
+
+export const redTeamAdvisorAPI = {
+  // Analyze topology and generate AI recommendations
+  analyzeTopology: (data: AnalyzeTopologyRequest) =>
+    api.post<RedTeamAnalysisResult>('/red-team-advisor/analyze', data),
+
+  // Get recommendations (with optional filters)
+  getRecommendations: (params?: GetRecommendationsQuery) =>
+    api.get<AiRedTeamRecommendation[]>('/red-team-advisor/recommendations', { params }),
+
+  // Get recommendations summary
+  getSummary: (params?: { topology_id?: string; scan_id?: string }) =>
+    api.get<RecommendationsSummary>('/red-team-advisor/summary', { params }),
+
+  // Update recommendation status (accept/reject)
+  updateStatus: (id: string, data: UpdateRecommendationStatusRequest) =>
+    api.put<AiRedTeamRecommendation>(`/red-team-advisor/recommendations/${id}/status`, data),
+
+  // Accept a single recommendation
+  accept: (id: string) =>
+    api.put<AiRedTeamRecommendation>(`/red-team-advisor/recommendations/${id}/status`, { status: 'accepted' }),
+
+  // Reject a single recommendation
+  reject: (id: string) =>
+    api.put<AiRedTeamRecommendation>(`/red-team-advisor/recommendations/${id}/status`, { status: 'rejected' }),
+
+  // Accept all pending recommendations
+  acceptAll: (topologyId?: string) =>
+    api.post<BulkActionResult>('/red-team-advisor/recommendations/accept-all', null, {
+      params: topologyId ? { topology_id: topologyId } : undefined,
+    }),
+
+  // Reject all pending recommendations
+  rejectAll: (topologyId?: string) =>
+    api.post<BulkActionResult>('/red-team-advisor/recommendations/reject-all', null, {
+      params: topologyId ? { topology_id: topologyId } : undefined,
+    }),
 };
 
 // ============================================================================
@@ -4233,23 +4335,22 @@ export const yellowTeamAPI = {
 
   // SBOM Projects
   listSbomProjects: () =>
-    api.get<SbomProject[]>('/yellow-team/sbom/projects'),
+    api.get<SbomProject[]>('/yellow-team/sbom'),
 
   getSbomProject: (id: string) =>
-    api.get<SbomProject>(`/yellow-team/sbom/projects/${id}`),
+    api.get<SbomProject>(`/yellow-team/sbom/${id}`),
 
   generateSbom: (data: CreateSbomRequest) =>
     api.post<SbomProject>('/yellow-team/sbom/generate', data),
 
   deleteSbomProject: (id: string) =>
-    api.delete<void>(`/yellow-team/sbom/projects/${id}`),
+    api.delete<void>(`/yellow-team/sbom/${id}`),
 
   getSbomComponents: (projectId: string) =>
-    api.get<SbomComponent[]>(`/yellow-team/sbom/projects/${projectId}/components`),
+    api.get<SbomComponent[]>(`/yellow-team/sbom/${projectId}/components`),
 
   exportSbom: (projectId: string, format: 'cyclonedx' | 'spdx') =>
-    api.get(`/yellow-team/sbom/projects/${projectId}/export`, {
-      params: { format },
+    api.get(`/yellow-team/sbom/${projectId}/export/${format}`, {
       responseType: 'blob',
     }),
 
@@ -5398,7 +5499,7 @@ export const extendedThreatIntelAPI = {
     api.get<{ bundle: string }>(`/threat-intel/stix/bundles/${bundleId}/export`),
 
   listStixObjects: (params?: { type?: string; name?: string; limit?: number }) =>
-    api.get<StixObject[]>('/threat-intel/stix/objects', { params }),
+    api.get<{ objects: StixObject[]; total: number }>('/threat-intel/stix/objects', { params }).then(r => r.data.objects),
 
   getStixObject: (id: string) =>
     api.get<StixObject>(`/threat-intel/stix/objects/${id}`),
@@ -5419,7 +5520,7 @@ export const extendedThreatIntelAPI = {
 
   // Sprint 12: Campaigns
   listCampaigns: () =>
-    api.get<ThreatCampaign[]>('/threat-intel/campaigns'),
+    api.get<{ campaigns: ThreatCampaign[]; total: number }>('/threat-intel/campaigns').then(r => r.data.campaigns),
 
   getCampaign: (id: string) =>
     api.get<ThreatCampaignDetail>(`/threat-intel/campaigns/${id}`),
@@ -5435,7 +5536,7 @@ export const extendedThreatIntelAPI = {
 
   // Sprint 12: Diamond Model
   listDiamondEvents: (params?: { campaign_id?: string; limit?: number }) =>
-    api.get<DiamondEvent[]>('/threat-intel/diamond/events', { params }),
+    api.get<{ events: DiamondEvent[]; total: number }>('/threat-intel/diamond/events', { params }).then(r => r.data.events),
 
   getDiamondEvent: (id: string) =>
     api.get<DiamondEvent>(`/threat-intel/diamond/events/${id}`),
@@ -5448,11 +5549,11 @@ export const extendedThreatIntelAPI = {
     api.get<KillChainAnalysis>(`/threat-intel/kill-chain/${campaignId}`),
 
   getKillChainPhases: () =>
-    api.get<KillChainPhaseInfo[]>('/threat-intel/kill-chain/phases'),
+    api.get<{ phases: KillChainPhaseInfo[]; total: number }>('/threat-intel/kill-chain/phases').then(r => r.data.phases),
 
   // Sprint 12: Intelligence Requirements
   listIntelRequirements: (params?: { status?: string; priority?: string }) =>
-    api.get<IntelligenceRequirement[]>('/threat-intel/requirements', { params }),
+    api.get<{ requirements: IntelligenceRequirement[]; total: number }>('/threat-intel/requirements', { params }).then(r => r.data.requirements),
 
   createIntelRequirement: (data: CreateIntelRequirementRequest) =>
     api.post<IntelligenceRequirement>('/threat-intel/requirements', data),
@@ -6069,14 +6170,14 @@ export interface SoarIntegration {
 }
 
 export const soarAPI = {
-  // Playbooks (using workflows API)
-  getPlaybooks: () => api.get<SoarPlaybook[]>('/workflows/templates'),
-  getPlaybook: (id: string) => api.get<SoarPlaybook>(`/workflows/templates/${id}`),
-  createPlaybook: (data: Partial<SoarPlaybook>) => api.post<SoarPlaybook>('/workflows/templates', data),
-  updatePlaybook: (id: string, data: Partial<SoarPlaybook>) => api.put<SoarPlaybook>(`/workflows/templates/${id}`, data),
-  deletePlaybook: (id: string) => api.delete(`/workflows/templates/${id}`),
+  // Playbooks (using green-team SOAR API)
+  getPlaybooks: () => api.get<SoarPlaybook[]>('/green-team/playbooks'),
+  getPlaybook: (id: string) => api.get<SoarPlaybook>(`/green-team/playbooks/${id}`),
+  createPlaybook: (data: Partial<SoarPlaybook>) => api.post<SoarPlaybook>('/green-team/playbooks', data),
+  updatePlaybook: (id: string, data: Partial<SoarPlaybook>) => api.put<SoarPlaybook>(`/green-team/playbooks/${id}`, data),
+  deletePlaybook: (id: string) => api.delete(`/green-team/playbooks/${id}`),
   runPlaybook: (id: string, data?: { input_data?: any }) =>
-    api.post(`/workflows/templates/${id}/start`, data),
+    api.post(`/green-team/playbooks/${id}/execute`, data),
 
   // Runs
   getRuns: (params?: { status?: string; playbook_id?: string; limit?: number; offset?: number }) =>
@@ -6173,6 +6274,20 @@ export interface LLMTestCase {
   enabled: boolean;
 }
 
+export interface LLMTarget {
+  id: string;
+  user_id: string;
+  name: string;
+  endpoint: string;
+  model_type: string;
+  description?: string;
+  api_key_encrypted?: string;
+  headers?: Record<string, string>;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface AIDashboard {
   total_predictions: number;
   prediction_accuracy: number;
@@ -6215,6 +6330,16 @@ export const aiSecurityAPI = {
     api.get<LLMTestCase[]>('/ai-security/llm-security/test-cases', { params }),
   createTestCase: (data: { category: string; name: string; description?: string; payload: string; expected_behavior?: string; severity: string; cwe_id?: string }) =>
     api.post('/ai-security/llm-security/test-cases', data),
+
+  // LLM Targets
+  getLLMTargets: (params?: { limit?: number; offset?: number }) =>
+    api.get<LLMTarget[]>('/ai-security/llm-security/targets', { params }),
+  getLLMTarget: (id: string) => api.get<LLMTarget>(`/ai-security/llm-security/targets/${id}`),
+  createLLMTarget: (data: { name: string; endpoint: string; model_type: string; description?: string; api_key?: string; headers?: Record<string, string> }) =>
+    api.post<{ id: string; message: string }>('/ai-security/llm-security/targets', data),
+  updateLLMTarget: (id: string, data: { name?: string; endpoint?: string; model_type?: string; description?: string; api_key?: string; headers?: Record<string, string>; enabled?: boolean }) =>
+    api.put<{ id: string; message: string }>(`/ai-security/llm-security/targets/${id}`, data),
+  deleteLLMTarget: (id: string) => api.delete(`/ai-security/llm-security/targets/${id}`),
 };
 
 // ============================================================================

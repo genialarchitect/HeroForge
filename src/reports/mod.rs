@@ -5,6 +5,9 @@ pub mod remediation;
 pub mod storage;
 pub mod compliance_report;
 pub mod compliance;
+pub mod comparison;
+pub mod watermark;
+pub mod audit_library;
 
 use anyhow::Result;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
@@ -96,6 +99,18 @@ impl ReportGenerator {
             Vec::new()
         };
 
+        // Fetch operator notes for the report
+        let (operator_notes, finding_notes) = match db::get_report_by_id(&self.pool, report_id).await {
+            Ok(Some(report)) => {
+                let notes = report.operator_notes;
+                let finding_notes_map = db::get_finding_notes_map(&self.pool, report_id)
+                    .await
+                    .unwrap_or_default();
+                (notes, finding_notes_map)
+            }
+            _ => (None, std::collections::HashMap::new()),
+        };
+
         let report_data = ReportData {
             id: report_id.to_string(),
             name: name.to_string(),
@@ -113,6 +128,8 @@ impl ReportGenerator {
             secrets,
             remediation,
             screenshots,
+            operator_notes,
+            finding_notes,
         };
 
         // Generate the report in the requested format
@@ -125,6 +142,23 @@ impl ReportGenerator {
             }
             ReportFormat::Pdf => {
                 formats::pdf::generate(&report_data, &self.reports_dir).await?
+            }
+            ReportFormat::Csv => {
+                formats::csv::generate(&report_data.hosts, &format!("{}/{}.csv", self.reports_dir, report_data.id)).await?
+            }
+            ReportFormat::Markdown => {
+                formats::markdown::generate_with_notes(&report_data, &self.reports_dir).await?
+            }
+            ReportFormat::Docx => {
+                formats::docx::generate(&report_data, &self.reports_dir).await?
+            }
+            ReportFormat::Pptx => {
+                formats::pptx::generate(&report_data, &self.reports_dir).await?
+            }
+            ReportFormat::Ckl | ReportFormat::Arf => {
+                // CKL and ARF are compliance-specific formats, not supported for general scan reports
+                // Fall back to JSON for these formats
+                formats::json::generate(&report_data, &self.reports_dir).await?
             }
         };
 

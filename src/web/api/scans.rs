@@ -463,6 +463,8 @@ pub async fn create_scan(
     // Start scan in background - clone only what's needed for the spawned task
     let scan_id = scan.id.clone();
     let scan_name = scan.name.clone();
+    let scan_engagement_id = scan.engagement_id.clone();
+    let scan_customer_id = scan.customer_id.clone();
     let pool_clone = pool.get_ref().clone();
     let user_id = claims.sub.clone();
     let targets = scan_request.targets.clone(); // Clone once, use in config
@@ -670,7 +672,7 @@ pub async fn create_scan(
 
                 // Update asset inventory from scan results
                 for host in &results {
-                    // Upsert asset
+                    // Upsert asset with engagement/customer linking for customer portal
                     let asset_result = db::assets::upsert_asset(
                         &pool_clone,
                         &user_id,
@@ -680,6 +682,8 @@ pub async fn create_scan(
                         host.os_guess.as_ref().map(|os| os.os_family.as_str()),
                         host.os_guess.as_ref().and_then(|os| os.os_version.as_deref()),
                         &scan_id,
+                        scan_engagement_id.as_deref(),
+                        scan_customer_id.as_deref(),
                     )
                     .await;
 
@@ -1469,6 +1473,8 @@ pub async fn bulk_export_scans(
                         secrets,
                         remediation,
                         screenshots: Vec::new(),
+                        operator_notes: None,
+                        finding_notes: std::collections::HashMap::new(),
                     };
 
                     // Generate HTML content first (same as single PDF generation)

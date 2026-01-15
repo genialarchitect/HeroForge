@@ -249,15 +249,22 @@ const StatsCard: React.FC<{
   icon: React.ReactNode;
   color: string;
   subtext?: string;
-}> = ({ label, value, icon, color, subtext }) => (
-  <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+  onClick?: () => void;
+}> = ({ label, value, icon, color, subtext, onClick }) => (
+  <div
+    onClick={onClick}
+    className={`bg-gray-800 border border-gray-700 rounded-lg p-4 ${onClick ? 'cursor-pointer hover:border-cyan-500/50 hover:bg-gray-750 transition-all group' : ''}`}
+  >
     <div className="flex items-center justify-between">
-      <div>
+      <div className="flex-1">
         <p className="text-sm text-gray-400">{label}</p>
         <p className="text-2xl font-bold text-white">{value}</p>
         {subtext && <p className="text-xs text-gray-500">{subtext}</p>}
       </div>
-      <div className={`p-3 rounded-lg ${color}`}>{icon}</div>
+      <div className="flex items-center gap-2">
+        <div className={`p-3 rounded-lg ${color}`}>{icon}</div>
+        {onClick && <ChevronRight className="w-5 h-5 text-gray-500 group-hover:text-cyan-400 transition-colors" />}
+      </div>
     </div>
   </div>
 );

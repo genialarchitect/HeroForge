@@ -88,6 +88,23 @@ const StatCard: React.FC<StatCardProps> = ({
   );
 };
 
+// Helper to check if time series data has any non-zero values
+const hasNonZeroValues = (data: TimeSeriesDataPoint[]): boolean => {
+  return data.some(point => point.value > 0);
+};
+
+// Helper to check if vulnerability time series has any non-zero values
+const hasNonZeroVulnData = (data: VulnerabilityTimeSeriesDataPoint[]): boolean => {
+  return data.some(point =>
+    point.critical > 0 || point.high > 0 || point.medium > 0 || point.low > 0
+  );
+};
+
+// Helper to check if summary has meaningful data
+const hasMeaningfulSummary = (summary: AnalyticsSummary): boolean => {
+  return summary.total_scans > 0 || summary.total_hosts > 0 || summary.total_vulnerabilities > 0;
+};
+
 const AnalyticsDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<AnalyticsTab>('overview');
   const [dateRange, setDateRange] = useState<DateRange>(30);
@@ -216,13 +233,29 @@ const AnalyticsDashboard: React.FC = () => {
     );
   }
 
-  if (!summary) {
+  if (!summary || !hasMeaningfulSummary(summary)) {
     return (
       <div className="space-y-6">
         <TabNavigation />
-        <div className="flex items-center justify-center h-96 text-slate-400">
-          No data available
-        </div>
+        <Card className="p-8">
+          <div className="text-center">
+            <Activity className="h-16 w-16 text-slate-600 mx-auto mb-4" />
+            <h3 className="text-xl font-semibold text-white mb-2">
+              No Scan Data Available
+            </h3>
+            <p className="text-slate-400 mb-6 max-w-md mx-auto">
+              Analytics will appear here once you've completed some security scans.
+              Start by creating a new scan to discover hosts and vulnerabilities.
+            </p>
+            <a
+              href="/dashboard"
+              className="inline-flex items-center gap-2 px-6 py-3 bg-cyan-600 text-white rounded-lg hover:bg-cyan-500 transition-colors"
+            >
+              <Activity className="h-5 w-5" />
+              Go to Dashboard
+            </a>
+          </div>
+        </Card>
       </div>
     );
   }
@@ -363,7 +396,7 @@ const AnalyticsDashboard: React.FC = () => {
           <h3 className="text-lg font-semibold text-white mb-4">
             Hosts Discovered Over Time
           </h3>
-          {hostsData.length > 0 ? (
+          {hasNonZeroValues(hostsData) ? (
             <ResponsiveContainer width="100%" height={300}>
               <LineChart data={hostsData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
@@ -395,8 +428,9 @@ const AnalyticsDashboard: React.FC = () => {
               </LineChart>
             </ResponsiveContainer>
           ) : (
-            <div className="flex items-center justify-center h-64 text-slate-400">
-              <p>No data available</p>
+            <div className="flex flex-col items-center justify-center h-64 text-slate-400">
+              <Server className="h-10 w-10 mb-2 text-slate-600" />
+              <p>No hosts discovered yet</p>
             </div>
           )}
         </Card>
@@ -406,7 +440,7 @@ const AnalyticsDashboard: React.FC = () => {
           <h3 className="text-lg font-semibold text-white mb-4">
             Scan Frequency
           </h3>
-          {frequencyData.length > 0 ? (
+          {hasNonZeroValues(frequencyData) ? (
             <ResponsiveContainer width="100%" height={300}>
               <LineChart data={frequencyData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
@@ -438,8 +472,9 @@ const AnalyticsDashboard: React.FC = () => {
               </LineChart>
             </ResponsiveContainer>
           ) : (
-            <div className="flex items-center justify-center h-64 text-slate-400">
-              <p>No data available</p>
+            <div className="flex flex-col items-center justify-center h-64 text-slate-400">
+              <Activity className="h-10 w-10 mb-2 text-slate-600" />
+              <p>No scans completed yet</p>
             </div>
           )}
         </Card>
@@ -449,7 +484,7 @@ const AnalyticsDashboard: React.FC = () => {
           <h3 className="text-lg font-semibold text-white mb-4">
             Vulnerability Trends by Severity
           </h3>
-          {vulnData.length > 0 ? (
+          {hasNonZeroVulnData(vulnData) ? (
             <ResponsiveContainer width="100%" height={300}>
               <AreaChart data={vulnData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
@@ -514,8 +549,9 @@ const AnalyticsDashboard: React.FC = () => {
               </AreaChart>
             </ResponsiveContainer>
           ) : (
-            <div className="flex items-center justify-center h-64 text-slate-400">
-              <p>No data available</p>
+            <div className="flex flex-col items-center justify-center h-64 text-slate-400">
+              <AlertTriangle className="h-10 w-10 mb-2 text-slate-600" />
+              <p>No vulnerabilities found yet</p>
             </div>
           )}
         </Card>
@@ -554,8 +590,9 @@ const AnalyticsDashboard: React.FC = () => {
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <div className="flex items-center justify-center h-64 text-slate-400">
-              <p>No data available</p>
+            <div className="flex flex-col items-center justify-center h-64 text-slate-400">
+              <Shield className="h-10 w-10 mb-2 text-slate-600" />
+              <p>No services detected yet</p>
             </div>
           )}
         </Card>

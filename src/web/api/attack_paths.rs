@@ -12,6 +12,37 @@ use crate::scanner::attack_paths::analyze_scan_for_attack_paths;
 use crate::web::auth::Claims;
 use crate::web::error::ApiErrorKind;
 
+/// Query parameters for listing attack paths
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ListAttackPathsQuery {
+    /// Maximum number of paths to return (default: 50)
+    pub limit: Option<i64>,
+    /// Offset for pagination (default: 0)
+    pub offset: Option<i64>,
+}
+
+/// Response for listing all attack paths
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ListAttackPathsResponse {
+    pub paths: Vec<AttackPathSummary>,
+    pub total: i64,
+    pub limit: i64,
+    pub offset: i64,
+}
+
+/// Summary of an attack path (lightweight for listing)
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AttackPathSummary {
+    pub id: String,
+    pub scan_id: String,
+    pub name: Option<String>,
+    pub risk_level: String,
+    pub probability: f64,
+    pub total_cvss: f64,
+    pub path_length: i32,
+    pub created_at: String,
+}
+
 /// Request to analyze attack paths
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct AnalyzeAttackPathsRequest {
@@ -77,6 +108,66 @@ pub struct AttackEdgeResponse {
     pub likelihood: f64,
     pub impact: f64,
     pub description: Option<String>,
+}
+
+/// List all attack paths for the current user
+///
+/// GET /api/attack-paths
+#[utoipa::path(
+    get,
+    path = "/api/attack-paths",
+    tag = "Attack Paths",
+    params(
+        ("limit" = Option<i64>, Query, description = "Max paths to return (default: 50)"),
+        ("offset" = Option<i64>, Query, description = "Pagination offset (default: 0)")
+    ),
+    responses(
+        (status = 200, description = "Attack paths list", body = ListAttackPathsResponse),
+        (status = 500, description = "Failed to retrieve paths")
+    ),
+    security(("bearer_auth" = []))
+)]
+pub async fn list_attack_paths(
+    pool: web::Data<SqlitePool>,
+    query: web::Query<ListAttackPathsQuery>,
+    claims: Claims,
+) -> Result<HttpResponse, ApiErrorKind> {
+    let limit = query.limit.unwrap_or(50);
+    let offset = query.offset.unwrap_or(0);
+
+    // Get paths for this user
+    let paths = attack_paths::get_attack_paths_by_user(pool.get_ref(), &claims.sub, Some(limit), Some(offset))
+        .await
+        .map_err(|e| ApiErrorKind::InternalError(e.to_string()))?;
+
+    // Get total count
+    let total = attack_paths::count_attack_paths_by_user(pool.get_ref(), &claims.sub)
+        .await
+        .map_err(|e| ApiErrorKind::InternalError(e.to_string()))?;
+
+    // Convert to summaries
+    let summaries: Vec<AttackPathSummary> = paths
+        .into_iter()
+        .map(|p| AttackPathSummary {
+            id: p.id,
+            scan_id: p.scan_id,
+            name: p.name,
+            risk_level: p.risk_level,
+            probability: p.probability.unwrap_or(0.0),
+            total_cvss: p.total_cvss.unwrap_or(0.0),
+            path_length: p.path_length.unwrap_or(0),
+            created_at: p.created_at.to_rfc3339(),
+        })
+        .collect();
+
+    let response = ListAttackPathsResponse {
+        paths: summaries,
+        total,
+        limit,
+        offset,
+    };
+
+    Ok(HttpResponse::Ok().json(response))
 }
 
 /// Analyze a scan for attack paths
@@ -505,9 +596,10 @@ pub async fn get_attack_path_detail(
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/attack-paths")
+            .route("", web::get().to(list_attack_paths))
             .route("/analyze/{scan_id}", web::post().to(analyze_attack_paths))
+            .route("/path/{path_id}", web::get().to(get_attack_path_detail))
             .route("/{scan_id}", web::get().to(get_attack_paths))
-            .route("/{scan_id}/critical", web::get().to(get_critical_attack_paths))
-            .route("/path/{path_id}", web::get().to(get_attack_path_detail)),
+            .route("/{scan_id}/critical", web::get().to(get_critical_attack_paths)),
     );
 }

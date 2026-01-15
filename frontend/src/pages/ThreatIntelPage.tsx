@@ -1033,7 +1033,7 @@ function StixTab() {
               </tr>
             </thead>
             <tbody>
-              {objects?.data?.map((obj) => (
+              {objects?.map((obj) => (
                 <tr key={obj.id} className="border-b border-gray-700 hover:bg-gray-700/50">
                   <td className="p-3">
                     <span className="px-2 py-1 bg-cyan-900 text-cyan-300 rounded text-xs">
@@ -1822,7 +1822,7 @@ function CampaignsTab() {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-700">
-            {campaigns?.data?.map((campaign) => (
+            {campaigns?.map((campaign) => (
               <tr key={campaign.id} className="hover:bg-gray-750">
                 <td className="p-4">
                   <button
@@ -1854,7 +1854,7 @@ function CampaignsTab() {
                 </td>
               </tr>
             ))}
-            {(!campaigns?.data || campaigns.data.length === 0) && (
+            {(!campaigns || campaigns.length === 0) && (
               <tr>
                 <td colSpan={6} className="p-8 text-center text-gray-400">
                   No campaigns found. Add your first campaign to start tracking threat activity.
@@ -2070,7 +2070,7 @@ function DiamondModelTab() {
       </div>
 
       <div className="grid gap-4">
-        {events?.data?.map((event) => (
+        {events?.map((event) => (
           <div key={event.id} className="bg-gray-800 rounded-lg border border-gray-700 p-4">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
@@ -2097,7 +2097,7 @@ function DiamondModelTab() {
             )}
           </div>
         ))}
-        {(!events?.data || events.data.length === 0) && (
+        {(!events || events.length === 0) && (
           <div className="bg-gray-800 rounded-lg border border-gray-700 p-8 text-center">
             <Diamond className="h-12 w-12 text-gray-600 mx-auto mb-4" />
             <p className="text-gray-400">No Diamond Model events recorded yet.</p>
@@ -2177,7 +2177,7 @@ function KillChainTab() {
           className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white"
         >
           <option value="">Select a campaign</option>
-          {campaigns?.data?.map((c) => (
+          {campaigns?.map((c) => (
             <option key={c.id} value={c.id}>{c.name}</option>
           ))}
         </select>
@@ -2323,7 +2323,7 @@ function IntelRequirementsTab() {
       </div>
 
       <div className="space-y-3">
-        {requirements?.data?.map((req) => (
+        {requirements?.map((req) => (
           <div key={req.id} className="bg-gray-800 rounded-lg border border-gray-700 p-4">
             <div className="flex items-start justify-between mb-2">
               <div className="flex items-center gap-2">
@@ -2362,7 +2362,7 @@ function IntelRequirementsTab() {
             )}
           </div>
         ))}
-        {(!requirements?.data || requirements.data.length === 0) && (
+        {(!requirements || requirements.length === 0) && (
           <div className="bg-gray-800 rounded-lg border border-gray-700 p-8 text-center">
             <ClipboardList className="h-12 w-12 text-gray-600 mx-auto mb-4" />
             <p className="text-gray-400">No intelligence requirements found.</p>

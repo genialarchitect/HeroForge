@@ -11,7 +11,16 @@
 //! - Integrates with threat intelligence and attack path analysis
 //! - Provides remediation effort estimates
 //! - Supports feedback learning for score adjustment
-//! - AI Chat assistant with Claude API integration
+//! - AI Chat assistant with multi-provider LLM support (Claude, Ollama, OpenAI)
+//!
+//! ## LLM Provider Abstraction
+//!
+//! The `providers` submodule provides a unified interface for LLM backends:
+//! - Anthropic Claude (cloud-based)
+//! - Ollama (self-hosted)
+//! - OpenAI (cloud-based, planned)
+//!
+//! See `providers::get_provider()` for usage.
 
 pub mod chat;
 pub mod context;
@@ -20,6 +29,8 @@ pub mod llm_orchestrator;
 pub mod ml_pipeline;
 pub mod models;
 pub mod prioritization;
+pub mod providers;
+pub mod red_team_advisor;
 
 use anyhow::Result;
 use chrono::Utc;

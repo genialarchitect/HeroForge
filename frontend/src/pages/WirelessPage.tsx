@@ -30,6 +30,8 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import Layout from '../components/layout/Layout';
+import { EngagementRequiredBanner } from '../components/engagement';
+import { useRequireEngagement } from '../hooks/useRequireEngagement';
 import Button from '../components/ui/Button';
 import api from '../services/api';
 
@@ -385,6 +387,7 @@ const HandshakeRow: React.FC<{
 // Main page component
 const WirelessPage: React.FC = () => {
   const queryClient = useQueryClient();
+  const { hasEngagement } = useRequireEngagement();
   const [activeTab, setActiveTab] = useState<'dashboard' | 'interfaces' | 'networks' | 'scans' | 'handshakes'>('dashboard');
   const [selectedInterface, setSelectedInterface] = useState<string>('');
   const [showScanModal, setShowScanModal] = useState(false);
@@ -554,11 +557,13 @@ const WirelessPage: React.FC = () => {
               WiFi network discovery, handshake capture, and password cracking
             </p>
           </div>
-          <Button onClick={() => setShowScanModal(true)}>
+          <Button onClick={() => setShowScanModal(true)} disabled={!hasEngagement}>
             <Search className="h-4 w-4 mr-2" />
             Start Scan
           </Button>
         </div>
+
+        <EngagementRequiredBanner toolName="Wireless Security Assessment" className="mb-6" />
 
         {/* Warning Banner */}
         <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4 flex items-start gap-3">

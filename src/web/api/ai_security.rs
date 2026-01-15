@@ -56,6 +56,12 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/llm-security/test-cases", web::get().to(list_test_cases))
             .route("/llm-security/test-cases", web::post().to(create_test_case))
             .route("/llm-security/validate-target", web::post().to(validate_llm_target))
+            // LLM Targets
+            .route("/llm-security/targets", web::get().to(list_llm_targets))
+            .route("/llm-security/targets", web::post().to(create_llm_target))
+            .route("/llm-security/targets/{id}", web::get().to(get_llm_target))
+            .route("/llm-security/targets/{id}", web::put().to(update_llm_target))
+            .route("/llm-security/targets/{id}", web::delete().to(delete_llm_target))
             // Dashboard
             .route("/dashboard", web::get().to(get_dashboard))
             .route("/recommendations", web::get().to(get_recommendations)),
@@ -695,6 +701,299 @@ pub async fn get_recommendations(
 ) -> Result<HttpResponse, ApiError> {
     let recommendations = crate::db::ai_security::get_security_recommendations(&pool).await?;
     Ok(HttpResponse::Ok().json(recommendations))
+}
+
+// ============================================================================
+// LLM Targets
+// ============================================================================
+
+/// LLM Target stored in database
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
+pub struct LLMTarget {
+    pub id: String,
+    pub user_id: String,
+    pub name: String,
+    pub endpoint: String,
+    pub model_type: String,
+    pub description: Option<String>,
+    pub api_key_encrypted: Option<String>,
+    #[sqlx(default)]
+    pub headers: Option<String>,
+    pub enabled: bool,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// Request to create a new LLM target
+#[derive(Debug, serde::Deserialize)]
+pub struct CreateLLMTargetRequest {
+    pub name: String,
+    pub endpoint: String,
+    pub model_type: String,
+    pub description: Option<String>,
+    pub api_key: Option<String>,
+    pub headers: Option<serde_json::Value>,
+}
+
+/// Request to update an LLM target
+#[derive(Debug, serde::Deserialize)]
+pub struct UpdateLLMTargetRequest {
+    pub name: Option<String>,
+    pub endpoint: Option<String>,
+    pub model_type: Option<String>,
+    pub description: Option<String>,
+    pub api_key: Option<String>,
+    pub headers: Option<serde_json::Value>,
+    pub enabled: Option<bool>,
+}
+
+/// GET /api/ai-security/llm-security/targets
+pub async fn list_llm_targets(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    query: web::Query<PaginationQuery>,
+) -> Result<HttpResponse, ApiError> {
+    let user_id = &claims.sub;
+    let limit = query.limit.unwrap_or(50);
+    let offset = query.offset.unwrap_or(0);
+
+    let targets = sqlx::query_as::<_, LLMTarget>(
+        r#"
+        SELECT id, user_id, name, endpoint, model_type, description,
+               api_key_encrypted, headers, enabled, created_at, updated_at
+        FROM llm_targets
+        WHERE user_id = ?1
+        ORDER BY created_at DESC
+        LIMIT ?2 OFFSET ?3
+        "#,
+    )
+    .bind(user_id)
+    .bind(limit)
+    .bind(offset)
+    .fetch_all(pool.get_ref())
+    .await
+    .map_err(|e| ApiError::new(ApiErrorKind::InternalError(e.to_string()), "Failed to fetch targets".to_string()))?;
+
+    Ok(HttpResponse::Ok().json(targets))
+}
+
+/// POST /api/ai-security/llm-security/targets
+pub async fn create_llm_target(
+    pool: web::Data<SqlitePool>,
+    body: web::Json<CreateLLMTargetRequest>,
+    claims: web::ReqData<auth::Claims>,
+) -> Result<HttpResponse, ApiError> {
+    let user_id = &claims.sub;
+    let target_id = uuid::Uuid::new_v4().to_string();
+    let now = Utc::now().to_rfc3339();
+
+    // For simplicity, we store the API key as-is for now
+    // In production, this should be encrypted
+    let api_key_encrypted = body.api_key.clone();
+    let headers_json = body.headers.as_ref().map(|h| h.to_string());
+
+    sqlx::query(
+        r#"
+        INSERT INTO llm_targets (id, user_id, name, endpoint, model_type, description, api_key_encrypted, headers, enabled, created_at, updated_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 1, ?9, ?9)
+        "#
+    )
+    .bind(&target_id)
+    .bind(user_id)
+    .bind(&body.name)
+    .bind(&body.endpoint)
+    .bind(&body.model_type)
+    .bind(&body.description)
+    .bind(&api_key_encrypted)
+    .bind(&headers_json)
+    .bind(&now)
+    .execute(pool.get_ref())
+    .await
+    .map_err(|e| ApiError::new(ApiErrorKind::InternalError(e.to_string()), "Failed to create target".to_string()))?;
+
+    crate::db::log_audit(
+        &pool,
+        user_id,
+        "llm_target_create",
+        Some("llm_target"),
+        Some(&target_id),
+        Some(&format!("Created LLM target: {}", body.name)),
+        None,
+    )
+    .await?;
+
+    Ok(HttpResponse::Created().json(serde_json::json!({
+        "id": target_id,
+        "message": "Target created successfully"
+    })))
+}
+
+/// GET /api/ai-security/llm-security/targets/{id}
+pub async fn get_llm_target(
+    pool: web::Data<SqlitePool>,
+    path: web::Path<String>,
+    claims: web::ReqData<auth::Claims>,
+) -> Result<HttpResponse, ApiError> {
+    let target_id = path.into_inner();
+    let user_id = &claims.sub;
+
+    let target = sqlx::query_as::<_, LLMTarget>(
+        r#"
+        SELECT id, user_id, name, endpoint, model_type, description,
+               api_key_encrypted, headers, enabled, created_at, updated_at
+        FROM llm_targets
+        WHERE id = ?1 AND user_id = ?2
+        "#,
+    )
+    .bind(&target_id)
+    .bind(user_id)
+    .fetch_optional(pool.get_ref())
+    .await
+    .map_err(|e| ApiError::new(ApiErrorKind::InternalError(e.to_string()), "Failed to fetch target".to_string()))?
+    .ok_or_else(|| ApiError::new(ApiErrorKind::NotFound(String::new()), "Target not found".to_string()))?;
+
+    Ok(HttpResponse::Ok().json(target))
+}
+
+/// PUT /api/ai-security/llm-security/targets/{id}
+pub async fn update_llm_target(
+    pool: web::Data<SqlitePool>,
+    path: web::Path<String>,
+    body: web::Json<UpdateLLMTargetRequest>,
+    claims: web::ReqData<auth::Claims>,
+) -> Result<HttpResponse, ApiError> {
+    let target_id = path.into_inner();
+    let user_id = &claims.sub;
+
+    // First verify the target exists and belongs to user
+    let existing: Option<(String,)> = sqlx::query_as(
+        "SELECT id FROM llm_targets WHERE id = ?1 AND user_id = ?2"
+    )
+    .bind(&target_id)
+    .bind(user_id)
+    .fetch_optional(pool.get_ref())
+    .await
+    .map_err(|e| ApiError::new(ApiErrorKind::InternalError(e.to_string()), "Failed to fetch target".to_string()))?;
+
+    let existing = existing
+        .ok_or_else(|| ApiError::new(ApiErrorKind::NotFound(String::new()), "Target not found".to_string()))?;
+
+    // Update each field individually if provided
+    if let Some(ref name) = body.name {
+        sqlx::query("UPDATE llm_targets SET name = ?1, updated_at = ?2 WHERE id = ?3 AND user_id = ?4")
+            .bind(name)
+            .bind(Utc::now().to_rfc3339())
+            .bind(&existing.0)
+            .bind(user_id)
+            .execute(pool.get_ref())
+            .await?;
+    }
+    if let Some(ref endpoint) = body.endpoint {
+        sqlx::query("UPDATE llm_targets SET endpoint = ?1, updated_at = ?2 WHERE id = ?3 AND user_id = ?4")
+            .bind(endpoint)
+            .bind(Utc::now().to_rfc3339())
+            .bind(&existing.0)
+            .bind(user_id)
+            .execute(pool.get_ref())
+            .await?;
+    }
+    if let Some(ref model_type) = body.model_type {
+        sqlx::query("UPDATE llm_targets SET model_type = ?1, updated_at = ?2 WHERE id = ?3 AND user_id = ?4")
+            .bind(model_type)
+            .bind(Utc::now().to_rfc3339())
+            .bind(&existing.0)
+            .bind(user_id)
+            .execute(pool.get_ref())
+            .await?;
+    }
+    if let Some(ref description) = body.description {
+        sqlx::query("UPDATE llm_targets SET description = ?1, updated_at = ?2 WHERE id = ?3 AND user_id = ?4")
+            .bind(description)
+            .bind(Utc::now().to_rfc3339())
+            .bind(&existing.0)
+            .bind(user_id)
+            .execute(pool.get_ref())
+            .await?;
+    }
+    if let Some(ref api_key) = body.api_key {
+        sqlx::query("UPDATE llm_targets SET api_key_encrypted = ?1, updated_at = ?2 WHERE id = ?3 AND user_id = ?4")
+            .bind(api_key)
+            .bind(Utc::now().to_rfc3339())
+            .bind(&existing.0)
+            .bind(user_id)
+            .execute(pool.get_ref())
+            .await?;
+    }
+    if let Some(ref headers) = body.headers {
+        sqlx::query("UPDATE llm_targets SET headers = ?1, updated_at = ?2 WHERE id = ?3 AND user_id = ?4")
+            .bind(headers.to_string())
+            .bind(Utc::now().to_rfc3339())
+            .bind(&existing.0)
+            .bind(user_id)
+            .execute(pool.get_ref())
+            .await?;
+    }
+    if let Some(enabled) = body.enabled {
+        sqlx::query("UPDATE llm_targets SET enabled = ?1, updated_at = ?2 WHERE id = ?3 AND user_id = ?4")
+            .bind(enabled)
+            .bind(Utc::now().to_rfc3339())
+            .bind(&existing.0)
+            .bind(user_id)
+            .execute(pool.get_ref())
+            .await?;
+    }
+
+    crate::db::log_audit(
+        &pool,
+        user_id,
+        "llm_target_update",
+        Some("llm_target"),
+        Some(&target_id),
+        Some("Updated LLM target"),
+        None,
+    )
+    .await?;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "id": target_id,
+        "message": "Target updated successfully"
+    })))
+}
+
+/// DELETE /api/ai-security/llm-security/targets/{id}
+pub async fn delete_llm_target(
+    pool: web::Data<SqlitePool>,
+    path: web::Path<String>,
+    claims: web::ReqData<auth::Claims>,
+) -> Result<HttpResponse, ApiError> {
+    let target_id = path.into_inner();
+    let user_id = &claims.sub;
+
+    let result = sqlx::query("DELETE FROM llm_targets WHERE id = ?1 AND user_id = ?2")
+        .bind(&target_id)
+        .bind(user_id)
+        .execute(pool.get_ref())
+        .await
+        .map_err(|e| ApiError::new(ApiErrorKind::InternalError(e.to_string()), "Failed to delete target".to_string()))?;
+
+    if result.rows_affected() == 0 {
+        return Err(ApiError::new(ApiErrorKind::NotFound(String::new()), "Target not found".to_string()));
+    }
+
+    crate::db::log_audit(
+        &pool,
+        user_id,
+        "llm_target_delete",
+        Some("llm_target"),
+        Some(&target_id),
+        Some("Deleted LLM target"),
+        None,
+    )
+    .await?;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "message": "Target deleted successfully"
+    })))
 }
 
 // ============================================================================

@@ -34,7 +34,7 @@ import {
 import Layout from '../components/layout/Layout';
 import api from '../services/api';
 
-type TabType = 'captures' | 'sessions' | 'alerts' | 'carved' | 'dns' | 'tls' | 'beacons' | 'rules' | 'fingerprints';
+type TabType = 'captures' | 'sessions' | 'alerts' | 'carved' | 'dns' | 'tls' | 'beacons' | 'rules' | 'fingerprints' | 'live';
 
 // ============================================================================
 // Types
@@ -190,6 +190,25 @@ interface Ja3Fingerprint {
   notes?: string;
 }
 
+interface NetworkInterface {
+  name: string;
+  description?: string;
+  addresses: string[];
+  is_up: boolean;
+  is_loopback: boolean;
+}
+
+interface LiveCaptureInfo {
+  id: string;
+  interface: string;
+  filter?: string;
+  file_path: string;
+  started_at: string;
+  status: 'running' | 'stopped' | 'error';
+  packet_count: number;
+  bytes_captured: number;
+}
+
 // ============================================================================
 // API
 // ============================================================================
@@ -250,6 +269,18 @@ const trafficApi = {
     api.get<Ja3Fingerprint[]>('/traffic-analysis/fingerprints', { params }).then(r => r.data),
   lookupFingerprint: (fingerprint: string) =>
     api.get<Ja3Fingerprint>(`/traffic-analysis/fingerprints/${fingerprint}`).then(r => r.data),
+
+  // Live Capture
+  listInterfaces: () =>
+    api.get<{ interfaces: NetworkInterface[] }>('/traffic-analysis/interfaces').then(r => r.data.interfaces),
+  startLiveCapture: (data: { interface: string; filter?: string; promiscuous?: boolean; max_packets?: number; max_duration_secs?: number }) =>
+    api.post<LiveCaptureInfo>('/traffic-analysis/live/start', data).then(r => r.data),
+  stopLiveCapture: (id: string) =>
+    api.post<LiveCaptureInfo>(`/traffic-analysis/live/stop/${id}`).then(r => r.data),
+  listLiveCaptures: () =>
+    api.get<{ captures: LiveCaptureInfo[] }>('/traffic-analysis/live/status').then(r => r.data.captures),
+  getLiveCaptureStatus: (id: string) =>
+    api.get<LiveCaptureInfo>(`/traffic-analysis/live/status/${id}`).then(r => r.data),
 };
 
 // ============================================================================
@@ -371,6 +402,20 @@ const TrafficAnalysisPage: React.FC = () => {
     enabled: !!selectedCapture && activeTab === 'beacons',
   });
 
+  // Live capture queries
+  const { data: interfaces = [], isLoading: interfacesLoading } = useQuery({
+    queryKey: ['traffic-interfaces'],
+    queryFn: trafficApi.listInterfaces,
+    enabled: activeTab === 'live',
+  });
+
+  const { data: liveCaptures = [], isLoading: liveCapturesLoading, refetch: refetchLiveCaptures } = useQuery({
+    queryKey: ['traffic-live-captures'],
+    queryFn: trafficApi.listLiveCaptures,
+    enabled: activeTab === 'live',
+    refetchInterval: activeTab === 'live' ? 2000 : false, // Auto-refresh every 2s when active
+  });
+
   // Mutations
   const uploadMutation = useMutation({
     mutationFn: trafficApi.uploadCapture,
@@ -422,6 +467,27 @@ const TrafficAnalysisPage: React.FC = () => {
     onError: (err: Error) => toast.error(`Failed to delete rule: ${err.message}`),
   });
 
+  // Live capture mutations
+  const startCaptureMutation = useMutation({
+    mutationFn: trafficApi.startLiveCapture,
+    onSuccess: () => {
+      toast.success('Live capture started');
+      queryClient.invalidateQueries({ queryKey: ['traffic-live-captures'] });
+    },
+    onError: (err: Error) => toast.error(`Failed to start capture: ${err.message}`),
+  });
+
+  const stopCaptureMutation = useMutation({
+    mutationFn: trafficApi.stopLiveCapture,
+    onSuccess: () => {
+      toast.success('Capture stopped');
+      queryClient.invalidateQueries({ queryKey: ['traffic-live-captures'] });
+      queryClient.invalidateQueries({ queryKey: ['traffic-captures'] });
+      queryClient.invalidateQueries({ queryKey: ['traffic-stats'] });
+    },
+    onError: (err: Error) => toast.error(`Failed to stop capture: ${err.message}`),
+  });
+
   // Handlers
   const handleUpload = useCallback((e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -443,6 +509,7 @@ const TrafficAnalysisPage: React.FC = () => {
 
   // Tabs configuration
   const tabs: { id: TabType; label: string; icon: React.ReactNode; requiresCapture?: boolean }[] = [
+    { id: 'live', label: 'Live Capture', icon: <Radio size={16} /> },
     { id: 'captures', label: 'Captures', icon: <FileText size={16} /> },
     { id: 'sessions', label: 'Sessions', icon: <Network size={16} />, requiresCapture: true },
     { id: 'alerts', label: 'IDS Alerts', icon: <AlertTriangle size={16} />, requiresCapture: true },
@@ -568,6 +635,18 @@ const TrafficAnalysisPage: React.FC = () => {
 
         {/* Tab Content */}
         <div className="bg-gray-800 rounded-lg overflow-hidden">
+          {activeTab === 'live' && (
+            <LiveCaptureTab
+              interfaces={interfaces}
+              captures={liveCaptures}
+              interfacesLoading={interfacesLoading}
+              capturesLoading={liveCapturesLoading}
+              onStart={(data) => startCaptureMutation.mutate(data)}
+              onStop={(id) => stopCaptureMutation.mutate(id)}
+              isStarting={startCaptureMutation.isPending}
+              isStopping={stopCaptureMutation.isPending}
+            />
+          )}
           {activeTab === 'captures' && (
             <CapturesTab
               captures={captures}
@@ -1186,6 +1265,257 @@ const FingerprintsTab: React.FC<{ fingerprints: Ja3Fingerprint[]; loading: boole
           ))}
         </tbody>
       </table>
+    </div>
+  );
+};
+
+const LiveCaptureTab: React.FC<{
+  interfaces: NetworkInterface[];
+  captures: LiveCaptureInfo[];
+  interfacesLoading: boolean;
+  capturesLoading: boolean;
+  onStart: (data: { interface: string; filter?: string; promiscuous?: boolean; max_packets?: number; max_duration_secs?: number }) => void;
+  onStop: (id: string) => void;
+  isStarting: boolean;
+  isStopping: boolean;
+}> = ({ interfaces, captures, interfacesLoading, capturesLoading, onStart, onStop, isStarting, isStopping }) => {
+  const [selectedInterface, setSelectedInterface] = useState('');
+  const [bpfFilter, setBpfFilter] = useState('');
+  const [promiscuous, setPromiscuous] = useState(true);
+  const [maxPackets, setMaxPackets] = useState<string>('');
+  const [maxDuration, setMaxDuration] = useState<string>('');
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  const handleStartCapture = () => {
+    if (!selectedInterface) {
+      toast.error('Please select a network interface');
+      return;
+    }
+    onStart({
+      interface: selectedInterface,
+      filter: bpfFilter || undefined,
+      promiscuous,
+      max_packets: maxPackets ? parseInt(maxPackets) : undefined,
+      max_duration_secs: maxDuration ? parseInt(maxDuration) : undefined,
+    });
+  };
+
+  const runningCaptures = captures.filter(c => c.status === 'running');
+
+  return (
+    <div className="p-6 space-y-6">
+      {/* Start New Capture Form */}
+      <div className="bg-gray-900 rounded-lg p-4">
+        <h3 className="text-white font-medium mb-4 flex items-center gap-2">
+          <Radio className="text-cyan-400" size={18} />
+          Start Live Capture
+        </h3>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Interface Selection */}
+          <div>
+            <label className="block text-gray-400 text-sm mb-1">Network Interface</label>
+            <select
+              value={selectedInterface}
+              onChange={(e) => setSelectedInterface(e.target.value)}
+              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white"
+              disabled={interfacesLoading}
+            >
+              <option value="">Select interface...</option>
+              {interfaces.map((iface) => (
+                <option key={iface.name} value={iface.name}>
+                  {iface.name} {iface.description ? `- ${iface.description}` : ''}
+                  {iface.is_loopback ? ' (loopback)' : ''}
+                </option>
+              ))}
+            </select>
+            {interfacesLoading && <p className="text-gray-500 text-xs mt-1">Loading interfaces...</p>}
+          </div>
+
+          {/* BPF Filter */}
+          <div>
+            <label className="block text-gray-400 text-sm mb-1">BPF Filter (optional)</label>
+            <input
+              type="text"
+              value={bpfFilter}
+              onChange={(e) => setBpfFilter(e.target.value)}
+              placeholder="e.g., tcp port 80 or host 192.168.1.1"
+              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white"
+            />
+          </div>
+        </div>
+
+        {/* Advanced Options */}
+        <button
+          onClick={() => setShowAdvanced(!showAdvanced)}
+          className="mt-3 text-gray-400 text-sm flex items-center gap-1 hover:text-white"
+        >
+          {showAdvanced ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          Advanced Options
+        </button>
+
+        {showAdvanced && (
+          <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="promiscuous"
+                checked={promiscuous}
+                onChange={(e) => setPromiscuous(e.target.checked)}
+                className="rounded bg-gray-800 border-gray-600"
+              />
+              <label htmlFor="promiscuous" className="text-gray-300 text-sm">Promiscuous Mode</label>
+            </div>
+            <div>
+              <label className="block text-gray-400 text-sm mb-1">Max Packets</label>
+              <input
+                type="number"
+                value={maxPackets}
+                onChange={(e) => setMaxPackets(e.target.value)}
+                placeholder="Unlimited"
+                className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-gray-400 text-sm mb-1">Max Duration (sec)</label>
+              <input
+                type="number"
+                value={maxDuration}
+                onChange={(e) => setMaxDuration(e.target.value)}
+                placeholder="Unlimited"
+                className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white"
+              />
+            </div>
+          </div>
+        )}
+
+        <div className="mt-4 flex justify-end">
+          <button
+            onClick={handleStartCapture}
+            disabled={isStarting || !selectedInterface}
+            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
+          >
+            <Play size={16} />
+            {isStarting ? 'Starting...' : 'Start Capture'}
+          </button>
+        </div>
+      </div>
+
+      {/* Active Captures */}
+      <div>
+        <h3 className="text-white font-medium mb-3 flex items-center gap-2">
+          <Activity className="text-green-400" size={18} />
+          Active Captures ({runningCaptures.length})
+        </h3>
+
+        {capturesLoading ? (
+          <div className="p-8 text-center text-gray-400">Loading captures...</div>
+        ) : runningCaptures.length === 0 ? (
+          <div className="bg-gray-900 rounded-lg p-8 text-center text-gray-400">
+            <Radio size={48} className="mx-auto mb-4 opacity-50" />
+            <p>No active captures. Start a capture above to begin collecting packets.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {runningCaptures.map((capture) => (
+              <div
+                key={capture.id}
+                className="bg-gray-900 rounded-lg p-4 border border-green-500/30"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse" />
+                    <div>
+                      <div className="text-white font-medium flex items-center gap-2">
+                        <Network size={16} className="text-cyan-400" />
+                        {capture.interface}
+                        {capture.filter && (
+                          <span className="text-gray-400 text-sm">({capture.filter})</span>
+                        )}
+                      </div>
+                      <div className="text-gray-400 text-sm mt-1">
+                        Started: {new Date(capture.started_at).toLocaleTimeString()}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-6">
+                    <div className="text-right">
+                      <div className="text-white font-mono">
+                        {capture.packet_count.toLocaleString()} packets
+                      </div>
+                      <div className="text-gray-400 text-sm">
+                        {formatBytes(capture.bytes_captured)}
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => onStop(capture.id)}
+                      disabled={isStopping}
+                      className="px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 flex items-center gap-2"
+                    >
+                      <XCircle size={16} />
+                      Stop
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* All Captures History */}
+      {captures.length > runningCaptures.length && (
+        <div>
+          <h3 className="text-white font-medium mb-3 flex items-center gap-2">
+            <Clock className="text-gray-400" size={18} />
+            Recent Captures
+          </h3>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-900">
+                <tr>
+                  <th className="px-4 py-3 text-left text-gray-400 text-sm">Interface</th>
+                  <th className="px-4 py-3 text-left text-gray-400 text-sm">Filter</th>
+                  <th className="px-4 py-3 text-left text-gray-400 text-sm">Started</th>
+                  <th className="px-4 py-3 text-left text-gray-400 text-sm">Packets</th>
+                  <th className="px-4 py-3 text-left text-gray-400 text-sm">Size</th>
+                  <th className="px-4 py-3 text-left text-gray-400 text-sm">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {captures.filter(c => c.status !== 'running').map((capture) => (
+                  <tr key={capture.id} className="border-t border-gray-700 hover:bg-gray-700/50">
+                    <td className="px-4 py-3 text-white">{capture.interface}</td>
+                    <td className="px-4 py-3 text-gray-300 font-mono text-sm">
+                      {capture.filter || '-'}
+                    </td>
+                    <td className="px-4 py-3 text-gray-400 text-sm">
+                      {new Date(capture.started_at).toLocaleString()}
+                    </td>
+                    <td className="px-4 py-3 text-gray-300">
+                      {capture.packet_count.toLocaleString()}
+                    </td>
+                    <td className="px-4 py-3 text-gray-300">
+                      {formatBytes(capture.bytes_captured)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`px-2 py-1 rounded text-xs ${
+                        capture.status === 'stopped'
+                          ? 'bg-gray-500/20 text-gray-400'
+                          : 'bg-red-500/20 text-red-400'
+                      }`}>
+                        {capture.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

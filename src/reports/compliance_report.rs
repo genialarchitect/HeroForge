@@ -361,6 +361,15 @@ pub async fn generate(
         ReportFormat::Html => generate_html(data, reports_dir).await,
         ReportFormat::Pdf => generate_pdf(data, reports_dir).await,
         ReportFormat::Json => generate_json(data, reports_dir).await,
+        ReportFormat::Csv | ReportFormat::Markdown | ReportFormat::Docx | ReportFormat::Pptx => {
+            // For compliance reports, fallback to JSON for unsupported formats
+            generate_json(data, reports_dir).await
+        }
+        ReportFormat::Ckl | ReportFormat::Arf => {
+            // CKL and ARF formats require STIG/SCAP data which is handled separately
+            // Use the dedicated ckl/arf modules for these formats
+            generate_json(data, reports_dir).await
+        }
     }
 }
 
@@ -1200,6 +1209,14 @@ pub async fn generate_combined(
         ReportFormat::Html => generate_combined_html(data, reports_dir).await,
         ReportFormat::Pdf => generate_combined_pdf(data, reports_dir).await,
         ReportFormat::Json => generate_combined_json(data, reports_dir).await,
+        ReportFormat::Csv | ReportFormat::Markdown | ReportFormat::Docx | ReportFormat::Pptx => {
+            // For combined compliance reports, fallback to JSON for unsupported formats
+            generate_combined_json(data, reports_dir).await
+        }
+        ReportFormat::Ckl | ReportFormat::Arf => {
+            // CKL and ARF formats require STIG/SCAP data which is handled separately
+            generate_combined_json(data, reports_dir).await
+        }
     }
 }
 

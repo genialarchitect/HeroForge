@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   FileText,
@@ -19,6 +19,9 @@ import {
   Play,
   Pause,
   Eye,
+  StickyNote,
+  X,
+  Save,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import Button from '../components/ui/Button';
@@ -30,6 +33,7 @@ import type {
   ReportFormat,
   ReportTemplateId,
   ScanResult,
+  ReportNotesResponse,
 } from '../types';
 
 type TabType = 'reports' | 'scheduled' | 'create';
@@ -66,6 +70,173 @@ const formatFileSize = (bytes: number | null | undefined) => {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
+
+// Operator Notes Panel Component
+function NotesPanel({
+  report,
+  onClose,
+}: {
+  report: Report;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [notes, setNotes] = useState(report.operator_notes || '');
+  const [hasChanges, setHasChanges] = useState(false);
+
+  // Fetch notes for this report
+  const { data: notesData, isLoading } = useQuery<ReportNotesResponse>({
+    queryKey: ['report-notes', report.id],
+    queryFn: async () => {
+      const response = await reportAPI.getNotes(report.id);
+      return response.data;
+    },
+  });
+
+  // Update notes state when data is fetched
+  useEffect(() => {
+    if (notesData) {
+      setNotes(notesData.operator_notes || '');
+    }
+  }, [notesData]);
+
+  // Update notes mutation
+  const updateMutation = useMutation({
+    mutationFn: () => reportAPI.updateNotes(report.id, { operator_notes: notes }),
+    onSuccess: () => {
+      toast.success('Notes saved');
+      setHasChanges(false);
+      queryClient.invalidateQueries({ queryKey: ['report-notes', report.id] });
+      queryClient.invalidateQueries({ queryKey: ['reports'] });
+    },
+    onError: () => toast.error('Failed to save notes'),
+  });
+
+  const handleSave = () => {
+    updateMutation.mutate();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 overflow-hidden">
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        onClick={onClose}
+      />
+
+      {/* Panel */}
+      <div className="absolute right-0 top-0 h-full w-full max-w-lg bg-slate-800 border-l border-slate-700 shadow-xl">
+        <div className="flex flex-col h-full">
+          {/* Header */}
+          <div className="flex items-center justify-between p-4 border-b border-slate-700">
+            <div className="flex items-center gap-2">
+              <StickyNote className="w-5 h-5 text-cyan-400" />
+              <h3 className="text-lg font-semibold text-white">Operator Notes</h3>
+            </div>
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-slate-700 rounded-lg transition-colors"
+            >
+              <X className="w-5 h-5 text-slate-400" />
+            </button>
+          </div>
+
+          {/* Report Info */}
+          <div className="p-4 border-b border-slate-700 bg-slate-900/50">
+            <p className="text-sm text-slate-400">Report</p>
+            <p className="text-white font-medium">{report.name}</p>
+            <p className="text-xs text-slate-500 mt-1">
+              {new Date(report.created_at).toLocaleString()}
+            </p>
+          </div>
+
+          {/* Notes Content */}
+          <div className="flex-1 p-4 overflow-y-auto">
+            {isLoading ? (
+              <div className="flex items-center justify-center h-32">
+                <RefreshCw className="w-6 h-6 text-cyan-400 animate-spin" />
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                    Assessment Notes
+                  </label>
+                  <p className="text-xs text-slate-500 mb-2">
+                    Add notes about the assessment, methodology, or observations. These notes will be included in regenerated reports.
+                  </p>
+                  <textarea
+                    value={notes}
+                    onChange={(e) => {
+                      setNotes(e.target.value);
+                      setHasChanges(true);
+                    }}
+                    placeholder="Enter operator notes for this report..."
+                    className="w-full h-64 bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 resize-none"
+                  />
+                </div>
+
+                {notesData?.finding_notes && notesData.finding_notes.length > 0 && (
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                      Finding-Specific Notes ({notesData.finding_notes.length})
+                    </label>
+                    <div className="space-y-2">
+                      {notesData.finding_notes.map((note) => (
+                        <div
+                          key={note.id}
+                          className="p-3 bg-slate-900 rounded-lg border border-slate-700"
+                        >
+                          <p className="text-xs text-slate-500 mb-1">
+                            Finding: {note.finding_id}
+                          </p>
+                          <p className="text-sm text-slate-300">{note.notes}</p>
+                          <p className="text-xs text-slate-600 mt-1">
+                            {new Date(note.created_at).toLocaleString()}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {notesData?.operator_notes_updated_at && (
+                  <p className="text-xs text-slate-500">
+                    Last updated: {new Date(notesData.operator_notes_updated_at).toLocaleString()}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="p-4 border-t border-slate-700 bg-slate-900/50">
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-slate-500">
+                {hasChanges ? 'Unsaved changes' : 'No changes'}
+              </p>
+              <div className="flex items-center gap-2">
+                <Button variant="secondary" onClick={onClose}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSave}
+                  disabled={!hasChanges || updateMutation.isPending}
+                >
+                  {updateMutation.isPending ? (
+                    <RefreshCw className="w-4 h-4 animate-spin mr-2" />
+                  ) : (
+                    <Save className="w-4 h-4 mr-2" />
+                  )}
+                  Save Notes
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // Create Report Form Component
 function CreateReportForm({ onReportCreated }: { onReportCreated: () => void }) {
@@ -451,6 +622,7 @@ function ScheduledReportsSection() {
 // Main Page Component
 export default function ReportsPage() {
   const [activeTab, setActiveTab] = useState<TabType>('reports');
+  const [notesReport, setNotesReport] = useState<Report | null>(null);
   const queryClient = useQueryClient();
 
   // Fetch reports
@@ -619,6 +791,13 @@ export default function ReportsPage() {
                       )}
                     </div>
                     <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setNotesReport(report)}
+                        className="p-2 hover:bg-slate-600 rounded-lg transition-colors"
+                        title="Operator Notes"
+                      >
+                        <StickyNote className={`w-4 h-4 ${report.operator_notes ? 'text-yellow-400' : 'text-slate-400'}`} />
+                      </button>
                       {report.status === 'completed' && (
                         <button
                           onClick={() => handleDownload(report)}
@@ -658,6 +837,14 @@ export default function ReportsPage() {
             }}
           />
         </div>
+      )}
+
+      {/* Notes Panel */}
+      {notesReport && (
+        <NotesPanel
+          report={notesReport}
+          onClose={() => setNotesReport(null)}
+        />
       )}
     </Layout>
   );

@@ -20,6 +20,8 @@ import {
   Database,
 } from 'lucide-react';
 import Layout from '../components/layout/Layout';
+import { EngagementRequiredBanner } from '../components/engagement';
+import { useRequireEngagement } from '../hooks/useRequireEngagement';
 import Button from '../components/ui/Button';
 import {
   bloodhoundAPI,
@@ -34,9 +36,10 @@ import {
 } from '../services/api';
 
 // File upload component
-const FileUpload: React.FC<{ onUpload: (file: File) => void; isUploading: boolean }> = ({
+const FileUpload: React.FC<{ onUpload: (file: File) => void; isUploading: boolean; hasEngagement: boolean }> = ({
   onUpload,
   isUploading,
+  hasEngagement,
 }) => {
   const [dragActive, setDragActive] = useState(false);
   const inputRef = React.useRef<HTMLInputElement>(null);
@@ -97,7 +100,7 @@ const FileUpload: React.FC<{ onUpload: (file: File) => void; isUploading: boolea
       </p>
       <Button
         onClick={() => inputRef.current?.click()}
-        disabled={isUploading}
+        disabled={isUploading || !hasEngagement}
         variant="primary"
       >
         {isUploading ? (
@@ -581,6 +584,7 @@ const ImportDetail: React.FC<{ importData: BloodHoundImportDetail; onClose: () =
 const BloodHoundPage: React.FC = () => {
   const queryClient = useQueryClient();
   const [selectedImportId, setSelectedImportId] = useState<string | null>(null);
+  const { hasEngagement } = useRequireEngagement();
 
   // Fetch imports list
   const { data: importsData, isLoading: importsLoading } = useQuery({
@@ -666,12 +670,14 @@ const BloodHoundPage: React.FC = () => {
           </p>
         </div>
 
+        <EngagementRequiredBanner toolName="BloodHound Integration" className="mb-6" />
+
         {/* Upload Section */}
         <div className="bg-light-surface dark:bg-dark-surface border border-light-border dark:border-dark-border rounded-lg p-6 mb-6">
           <h2 className="text-lg font-semibold text-slate-800 dark:text-white mb-4">
             Import SharpHound Data
           </h2>
-          <FileUpload onUpload={handleUpload} isUploading={uploadMutation.isPending} />
+          <FileUpload onUpload={handleUpload} isUploading={uploadMutation.isPending} hasEngagement={hasEngagement} />
         </div>
 
         {/* Imports List */}

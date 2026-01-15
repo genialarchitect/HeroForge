@@ -217,7 +217,7 @@ const ScheduledScans: React.FC = () => {
     }
   };
 
-  const useTargetGroup = (group: TargetGroup) => {
+  const applyTargetGroup = (group: TargetGroup) => {
     const targets = JSON.parse(group.targets || '[]');
     setFormData((prev) => ({
       ...prev,
@@ -379,7 +379,7 @@ const ScheduledScans: React.FC = () => {
                       <button
                         key={g.id}
                         type="button"
-                        onClick={() => useTargetGroup(g)}
+                        onClick={() => applyTargetGroup(g)}
                         className="px-2 py-0.5 text-xs rounded border border-dark-border text-slate-400 hover:text-white hover:border-primary"
                         style={{ borderLeftColor: g.color, borderLeftWidth: 3 }}
                       >

@@ -12,6 +12,14 @@ pub enum ReportFormat {
     Pdf,
     Html,
     Json,
+    Csv,
+    Markdown,
+    Docx,
+    Pptx,
+    /// DISA STIG Viewer Checklist format
+    Ckl,
+    /// SCAP Asset Reporting Format
+    Arf,
 }
 
 impl ReportFormat {
@@ -20,6 +28,12 @@ impl ReportFormat {
             ReportFormat::Pdf => "pdf",
             ReportFormat::Html => "html",
             ReportFormat::Json => "json",
+            ReportFormat::Csv => "csv",
+            ReportFormat::Markdown => "md",
+            ReportFormat::Docx => "docx",
+            ReportFormat::Pptx => "pptx",
+            ReportFormat::Ckl => "ckl",
+            ReportFormat::Arf => "xml",
         }
     }
 
@@ -28,7 +42,43 @@ impl ReportFormat {
             ReportFormat::Pdf => "application/pdf",
             ReportFormat::Html => "text/html",
             ReportFormat::Json => "application/json",
+            ReportFormat::Csv => "text/csv",
+            ReportFormat::Markdown => "text/markdown",
+            ReportFormat::Docx => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ReportFormat::Pptx => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            ReportFormat::Ckl => "application/xml",
+            ReportFormat::Arf => "application/xml",
         }
+    }
+
+    /// Get all available formats
+    pub fn all() -> Vec<ReportFormat> {
+        vec![
+            ReportFormat::Pdf,
+            ReportFormat::Html,
+            ReportFormat::Json,
+            ReportFormat::Csv,
+            ReportFormat::Markdown,
+            ReportFormat::Docx,
+            ReportFormat::Pptx,
+            ReportFormat::Ckl,
+            ReportFormat::Arf,
+        ]
+    }
+
+    /// Check if format supports embedded images
+    pub fn supports_images(&self) -> bool {
+        matches!(self, ReportFormat::Pdf | ReportFormat::Html | ReportFormat::Docx | ReportFormat::Pptx)
+    }
+
+    /// Check if format supports charts
+    pub fn supports_charts(&self) -> bool {
+        matches!(self, ReportFormat::Pdf | ReportFormat::Html | ReportFormat::Pptx)
+    }
+
+    /// Check if format is for compliance/audit purposes
+    pub fn is_compliance_format(&self) -> bool {
+        matches!(self, ReportFormat::Ckl | ReportFormat::Arf)
     }
 }
 
@@ -40,6 +90,12 @@ impl std::str::FromStr for ReportFormat {
             "pdf" => Ok(ReportFormat::Pdf),
             "html" => Ok(ReportFormat::Html),
             "json" => Ok(ReportFormat::Json),
+            "csv" => Ok(ReportFormat::Csv),
+            "markdown" | "md" => Ok(ReportFormat::Markdown),
+            "docx" | "word" => Ok(ReportFormat::Docx),
+            "pptx" | "powerpoint" => Ok(ReportFormat::Pptx),
+            "ckl" | "checklist" | "stig" => Ok(ReportFormat::Ckl),
+            "arf" | "scap" => Ok(ReportFormat::Arf),
             _ => Err(format!("Unknown report format: {}", s)),
         }
     }
@@ -58,6 +114,7 @@ pub enum ReportSection {
     ServiceEnumeration,
     Screenshots,
     RemediationRecommendations,
+    OperatorNotes,
     Appendix,
 }
 
@@ -74,6 +131,7 @@ impl ReportSection {
             "serviceenumeration" | "enumeration" => Some(ReportSection::ServiceEnumeration),
             "screenshots" | "evidence" => Some(ReportSection::Screenshots),
             "remediationrecommendations" | "remediation" => Some(ReportSection::RemediationRecommendations),
+            "operatornotes" | "notes" => Some(ReportSection::OperatorNotes),
             "appendix" => Some(ReportSection::Appendix),
             _ => None,
         }
@@ -91,6 +149,7 @@ impl ReportSection {
             ReportSection::ServiceEnumeration => "Service Enumeration",
             ReportSection::Screenshots => "Visual Evidence",
             ReportSection::RemediationRecommendations => "Remediation Recommendations",
+            ReportSection::OperatorNotes => "Operator Notes",
             ReportSection::Appendix => "Appendix",
         }
     }
@@ -233,6 +292,10 @@ pub struct ReportData {
     pub secrets: Vec<SecretFindingRecord>,
     pub remediation: Vec<RemediationRecommendation>,
     pub screenshots: Vec<ReportScreenshot>,
+    /// Operator notes for the entire report
+    pub operator_notes: Option<String>,
+    /// Per-finding operator notes (finding_id -> notes)
+    pub finding_notes: HashMap<String, String>,
 }
 
 /// Summary statistics for the report

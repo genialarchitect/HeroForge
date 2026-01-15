@@ -668,7 +668,8 @@ interface ZeusPanelProps {
 }
 
 const ZeusPanel: React.FC<ZeusPanelProps> = ({ atoData, onAction }) => {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isAwake, setIsAwake] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(false);
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string }>>([]);
   const [loading, setLoading] = useState(false);
@@ -724,92 +725,130 @@ const ZeusPanel: React.FC<ZeusPanelProps> = ({ atoData, onAction }) => {
     { label: 'Recommend actions', prompt: 'What controls should I focus on to improve the overall score?' },
   ];
 
-  return (
-    <>
-      {/* Zeus toggle button */}
+  const handleWakeUp = () => {
+    setIsAwake(true);
+    setIsMinimized(false);
+  };
+
+  const handleMinimize = () => {
+    setIsMinimized(true);
+  };
+
+  const handleClose = () => {
+    setIsAwake(false);
+    setIsMinimized(false);
+  };
+
+  // Show floating button when not awake OR when minimized
+  if (!isAwake || isMinimized) {
+    return (
       <button
-        onClick={() => setIsOpen(true)}
-        className="fixed bottom-6 right-6 p-4 bg-purple-600 hover:bg-purple-500 rounded-full shadow-lg z-40 print:hidden transition-colors"
-        title="Ask Zeus AI Assistant"
+        onClick={handleWakeUp}
+        className={`fixed bottom-6 right-6 p-4 rounded-full shadow-lg z-40 print:hidden transition-all ${
+          isMinimized
+            ? 'bg-purple-500 hover:bg-purple-400 ring-2 ring-purple-300 ring-offset-2 ring-offset-gray-900'
+            : 'bg-purple-600 hover:bg-purple-500'
+        }`}
+        title={isMinimized ? 'Restore Zeus' : 'Ask Zeus AI Assistant'}
       >
         <Bot className="w-6 h-6 text-white" />
+        {/* Show indicator when minimized with active conversation */}
+        {isMinimized && messages.length > 0 && (
+          <span className="absolute -top-1 -right-1 w-3 h-3 bg-cyan-400 rounded-full animate-pulse" />
+        )}
       </button>
+    );
+  }
 
-      {/* Zeus panel */}
-      {isOpen && (
-        <div className="fixed bottom-6 right-6 w-96 bg-gray-800 rounded-lg shadow-xl border border-gray-700 z-50 print:hidden">
-          <div className="p-4 border-b border-gray-700 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Bot className="w-5 h-5 text-purple-400" />
-              <span className="font-semibold text-white">Zeus AI Assistant</span>
-            </div>
-            <button onClick={() => setIsOpen(false)} className="text-gray-400 hover:text-white">
+  return (
+    <>
+      <div className="fixed bottom-6 right-6 w-96 bg-gray-800 rounded-lg shadow-xl border border-gray-700 z-50 print:hidden">
+        <div className="p-4 border-b border-gray-700 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Bot className="w-5 h-5 text-purple-400" />
+            <span className="font-semibold text-white">Zeus AI Assistant</span>
+          </div>
+          <div className="flex items-center gap-1">
+            {/* Minimize Button */}
+            <button
+              onClick={handleMinimize}
+              className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
+              title="Minimize"
+            >
+              <MinusCircle className="w-4 h-4" />
+            </button>
+            {/* Close Button */}
+            <button
+              onClick={handleClose}
+              className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
+              title="Close"
+            >
               <X className="w-5 h-5" />
             </button>
           </div>
+        </div>
 
-          {/* Messages */}
-          <div className="h-64 overflow-y-auto p-4 space-y-3">
-            {messages.length === 0 && (
-              <div className="text-center text-gray-400 py-8">
-                <Bot className="w-12 h-12 mx-auto mb-2 text-purple-400/50" />
-                <p className="text-sm">Ask me about your ATO assessment or use quick actions below.</p>
-              </div>
-            )}
-            {messages.map((msg, idx) => (
-              <div
+        {/* Messages */}
+        <div className="h-64 overflow-y-auto p-4 space-y-3">
+          {messages.length === 0 && (
+            <div className="text-center text-gray-400 py-8">
+              <Bot className="w-12 h-12 mx-auto mb-2 text-purple-400/50" />
+              <p className="text-sm">Ask me about your ATO assessment or use quick actions below.</p>
+            </div>
+          )}
+          {messages.map((msg, idx) => (
+            <div
+              key={idx}
+              className={`p-3 rounded-lg ${
+                msg.role === 'user'
+                  ? 'bg-cyan-500/20 text-cyan-100 ml-8'
+                  : 'bg-gray-700 text-gray-100 mr-8'
+              }`}
+            >
+              {msg.content}
+            </div>
+          ))}
+          {loading && (
+            <div className="flex items-center gap-2 text-gray-400">
+              <LoadingSpinner />
+              <span className="text-sm">Zeus is thinking...</span>
+            </div>
+          )}
+        </div>
+
+        {/* Quick actions */}
+        <div className="px-4 py-2 border-t border-gray-700">
+          <div className="flex flex-wrap gap-1">
+            {quickActions.map((action, idx) => (
+              <button
                 key={idx}
-                className={`p-3 rounded-lg ${
-                  msg.role === 'user'
-                    ? 'bg-cyan-500/20 text-cyan-100 ml-8'
-                    : 'bg-gray-700 text-gray-100 mr-8'
-                }`}
+                onClick={() => setPrompt(action.prompt)}
+                className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded text-gray-300"
               >
-                {msg.content}
-              </div>
+                {action.label}
+              </button>
             ))}
-            {loading && (
-              <div className="flex items-center gap-2 text-gray-400">
-                <LoadingSpinner />
-                <span className="text-sm">Zeus is thinking...</span>
-              </div>
-            )}
-          </div>
-
-          {/* Quick actions */}
-          <div className="px-4 py-2 border-t border-gray-700">
-            <div className="flex flex-wrap gap-1">
-              {quickActions.map((action, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => setPrompt(action.prompt)}
-                  className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded text-gray-300"
-                >
-                  {action.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Input */}
-          <div className="p-4 border-t border-gray-700">
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
-                placeholder="Ask Zeus..."
-                className="flex-1 p-2 bg-gray-900 border border-gray-600 rounded-lg text-white text-sm"
-                disabled={loading}
-              />
-              <Button onClick={handleSubmit} disabled={loading || !prompt.trim()}>
-                <MessageSquare className="w-4 h-4" />
-              </Button>
-            </div>
           </div>
         </div>
-      )}
+
+        {/* Input */}
+        <div className="p-4 border-t border-gray-700">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
+              placeholder="Ask Zeus..."
+              className="flex-1 p-2 bg-gray-900 border border-gray-600 rounded-lg text-white text-sm"
+              disabled={loading}
+            />
+            <Button onClick={handleSubmit} disabled={loading || !prompt.trim()}>
+              <MessageSquare className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+      </div>
     </>
   );
 };

@@ -1,0 +1,77 @@
+#!/usr/bin/env python3
+"""
+Zerologon (CVE-2020-1472) Vulnerability Checker
+Checks Domain Controllers for Netlogon vulnerability
+WARNING: DO NOT run exploit against production DCs without authorization
+"""
+import sys
+import socket
+import struct
+
+try:
+    from impacket.dcerpc.v5 import nrpc, epm, transport
+    from impacket.dcerpc.v5.dtypes import NULL
+    HAS_IMPACKET = True
+except ImportError:
+    HAS_IMPACKET = False
+
+MAX_ATTEMPTS = 2000
+
+def check_zerologon(dc_ip, dc_name):
+    """Check if DC is vulnerable to Zerologon (non-exploitative check)"""
+    if not HAS_IMPACKET:
+        print("[-] Impacket library required")
+        return None
+
+    print(f"[*] Connecting to {dc_ip}...")
+
+    try:
+        binding = epm.hept_map(
+            dc_ip,
+            nrpc.MSRPC_UUID_NRPC,
+            protocol='ncacn_ip_tcp'
+        )
+
+        rpc = transport.DCERPCTransportFactory(binding).get_dce_rpc()
+        rpc.connect()
+        rpc.bind(nrpc.MSRPC_UUID_NRPC)
+
+        print("[+] RPC connection established")
+        print("[*] Checking Netlogon service...")
+
+        # Perform a safe check without attempting exploitation
+        # Real check would test for zero IV vulnerability
+
+        rpc.disconnect()
+        print("[+] Netlogon service accessible")
+        print("[!] Manual verification required - use Zerologon scanner tools")
+        return True
+
+    except Exception as e:
+        print(f"[-] Error: {e}")
+        return False
+
+def main():
+    print("=" * 60)
+    print("Zerologon (CVE-2020-1472) Vulnerability Checker")
+    print("FOR AUTHORIZED SECURITY TESTING ONLY")
+    print("=" * 60)
+
+    if len(sys.argv) < 3:
+        print(f"\nUsage: {sys.argv[0]} <dc_ip> <dc_netbios_name>")
+        print("Example: python3 zerologon.py 192.168.1.1 DC01")
+        sys.exit(1)
+
+    dc_ip = sys.argv[1]
+    dc_name = sys.argv[2]
+
+    print(f"\n[*] Target DC: {dc_name} ({dc_ip})")
+
+    result = check_zerologon(dc_ip, dc_name)
+
+    if result:
+        print("\n[!] Further testing needed to confirm vulnerability")
+        print("[*] Apply security update KB4571731")
+
+if __name__ == "__main__":
+    main()

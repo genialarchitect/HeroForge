@@ -58,19 +58,15 @@ interface Ioc {
   expires_at?: string;
 }
 
-interface HuntingPlaybook {
-  id: string;
-  name: string;
-  description?: string;
-  category: string;
-  hypothesis: string;
-  data_sources: string[];
+interface PlaybookStep {
+  title: string;
+  description: string;
   queries: PlaybookQuery[];
-  mitre_techniques: string[];
-  success_criteria: string;
-  is_active: boolean;
-  created_by: string;
-  created_at: string;
+  expected_results: string[];
+  evidence_checklist: string[];
+  indicators: string[];
+  decision_points: DecisionPoint[];
+  duration_estimate: string;
 }
 
 interface PlaybookQuery {
@@ -78,6 +74,30 @@ interface PlaybookQuery {
   query: string;
   platform: string;
   description?: string;
+}
+
+interface DecisionPoint {
+  condition: string;
+  if_true: string;
+  if_false: string;
+}
+
+interface HuntingPlaybook {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  difficulty: string;
+  estimated_duration: string;
+  steps: PlaybookStep[];
+  tags: string[];
+  mitre_tactics: string[];
+  mitre_techniques: string[];
+  is_builtin: boolean;
+  user_id?: string;
+  version: string;
+  created_at: string;
+  updated_at: string;
 }
 
 interface HuntingSession {
@@ -171,7 +191,7 @@ const huntingAPI = {
 
   // Playbooks
   listPlaybooks: (params?: Record<string, string>) =>
-    api.get<HuntingPlaybook[]>('/hunting/playbooks', { params }).then(r => r.data),
+    api.get<{ playbooks: HuntingPlaybook[]; count: number }>('/hunting/playbooks', { params }).then(r => r.data.playbooks),
   createPlaybook: (data: { name: string; description?: string; category: string; hypothesis: string; data_sources: string[]; queries: PlaybookQuery[]; mitre_techniques?: string[]; success_criteria: string }) =>
     api.post<HuntingPlaybook>('/hunting/playbooks', data).then(r => r.data),
   getPlaybook: (id: string) => api.get<HuntingPlaybook>(`/hunting/playbooks/${id}`).then(r => r.data),
@@ -444,11 +464,16 @@ const CreateSessionForm: React.FC<{
     if (playbookId) {
       const pb = playbooks.find(p => p.id === playbookId);
       if (pb) {
+        // Extract data sources from query platforms in steps
+        const dataSources = new Set<string>();
+        pb.steps.forEach(step => {
+          step.queries.forEach(q => dataSources.add(q.platform));
+        });
         setFormData(prev => ({
           ...prev,
           playbook_id: playbookId,
-          hypothesis: pb.hypothesis,
-          data_sources: pb.data_sources.join(', '),
+          hypothesis: pb.description,
+          data_sources: Array.from(dataSources).join(', '),
         }));
       }
     }
@@ -1070,25 +1095,47 @@ export default function ThreatHuntingPage() {
                             <span className="px-2 py-0.5 bg-purple-500/20 text-purple-400 rounded text-xs">
                               {pb.category}
                             </span>
-                            <span className={`px-2 py-0.5 rounded text-xs ${pb.is_active ? 'bg-green-500/20 text-green-400' : 'bg-gray-500/20 text-gray-400'}`}>
-                              {pb.is_active ? 'Active' : 'Inactive'}
+                            <span className={`px-2 py-0.5 rounded text-xs ${
+                              pb.difficulty === 'Beginner' ? 'bg-green-500/20 text-green-400' :
+                              pb.difficulty === 'Intermediate' ? 'bg-yellow-500/20 text-yellow-400' :
+                              pb.difficulty === 'Advanced' ? 'bg-orange-500/20 text-orange-400' :
+                              'bg-red-500/20 text-red-400'
+                            }`}>
+                              {pb.difficulty}
                             </span>
+                            {pb.is_builtin && (
+                              <span className="px-2 py-0.5 bg-cyan-500/20 text-cyan-400 rounded text-xs">
+                                Built-in
+                              </span>
+                            )}
                           </div>
                           <h3 className="text-lg font-medium text-white">{pb.name}</h3>
                         </div>
                       </div>
                       {pb.description && (
-                        <p className="text-sm text-gray-400 mb-3">{pb.description}</p>
+                        <p className="text-sm text-gray-400 mb-3 line-clamp-2">{pb.description}</p>
                       )}
                       <div className="p-3 bg-gray-900 rounded-lg mb-3">
-                        <p className="text-xs text-gray-500 mb-1">Hypothesis</p>
-                        <p className="text-gray-300 text-sm">{pb.hypothesis}</p>
+                        <p className="text-xs text-gray-500 mb-1">Estimated Duration</p>
+                        <p className="text-gray-300 text-sm">{pb.estimated_duration}</p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 mb-3">
+                        {pb.tags.slice(0, 4).map((tag, i) => (
+                          <span key={i} className="px-2 py-0.5 bg-gray-700 text-gray-300 rounded text-xs">
+                            {tag}
+                          </span>
+                        ))}
+                        {pb.tags.length > 4 && (
+                          <span className="text-xs text-gray-500">+{pb.tags.length - 4} more</span>
+                        )}
                       </div>
                       <div className="flex items-center gap-3 text-xs text-gray-500">
-                        <span>{pb.queries.length} queries</span>
-                        <span>{pb.data_sources.length} data sources</span>
+                        <span>{pb.steps.length} steps</span>
                         {pb.mitre_techniques.length > 0 && (
                           <span>{pb.mitre_techniques.length} techniques</span>
+                        )}
+                        {pb.mitre_tactics.length > 0 && (
+                          <span>{pb.mitre_tactics.length} tactics</span>
                         )}
                       </div>
                     </div>

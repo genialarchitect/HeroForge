@@ -7,7 +7,7 @@
 //! - Response playbooks and automated actions
 
 use actix_web::{web, HttpResponse, HttpRequest};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 
 use crate::db;
@@ -16,6 +16,86 @@ use crate::incident_response::{
     types::*,
 };
 use crate::web::auth::jwt::Claims;
+
+// ============================================================================
+// Response DTOs for Frontend
+// ============================================================================
+
+/// Playbook response for frontend consumption
+#[derive(Debug, Serialize)]
+pub struct PlaybookApiResponse {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub incident_types: Vec<String>,
+    pub severity_levels: Vec<String>,
+    pub steps: Vec<PlaybookStepApi>,
+    pub is_active: bool,
+    pub version: String,
+    pub created_at: String,
+}
+
+/// Playbook step for frontend consumption
+#[derive(Debug, Serialize)]
+pub struct PlaybookStepApi {
+    pub order: i32,
+    pub title: String,
+    pub description: String,
+    pub action_type: String,
+    pub responsible_role: Option<String>,
+    pub estimated_duration_minutes: Option<i32>,
+    pub required: bool,
+}
+
+impl From<ResponsePlaybook> for PlaybookApiResponse {
+    fn from(p: ResponsePlaybook) -> Self {
+        // Parse trigger conditions
+        let (incident_types, severity_levels) = if let Some(tc) = &p.trigger_conditions {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(tc) {
+                let types = json.get("classification")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                    .unwrap_or_default();
+                let levels = json.get("severity")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                    .unwrap_or_default();
+                (types, levels)
+            } else {
+                (vec![], vec![])
+            }
+        } else {
+            (vec![], vec![])
+        };
+
+        // Parse steps
+        let steps: Vec<PlaybookStepApi> = serde_json::from_str::<Vec<PlaybookStep>>(&p.steps_json)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|s| PlaybookStepApi {
+                order: s.order,
+                title: s.name,
+                description: s.description.unwrap_or_default(),
+                action_type: s.action_type,
+                responsible_role: None,
+                estimated_duration_minutes: s.timeout_seconds.map(|t| t / 60),
+                required: s.requires_approval,
+            })
+            .collect();
+
+        PlaybookApiResponse {
+            id: p.id,
+            name: p.name,
+            description: p.description,
+            incident_types,
+            severity_levels,
+            steps,
+            is_active: true, // Built-in playbooks are always active
+            version: "1.0".to_string(),
+            created_at: p.created_at.to_rfc3339(),
+        }
+    }
+}
 
 // ============================================================================
 // Query Parameters
@@ -888,7 +968,13 @@ pub async fn list_playbooks(
     _claims: Claims,
 ) -> HttpResponse {
     match incident_response::automation::list_playbooks(pool.get_ref()).await {
-        Ok(playbooks) => HttpResponse::Ok().json(playbooks),
+        Ok(playbooks) => {
+            let response: Vec<PlaybookApiResponse> = playbooks
+                .into_iter()
+                .map(PlaybookApiResponse::from)
+                .collect();
+            HttpResponse::Ok().json(response)
+        }
         Err(e) => {
             log::error!("Failed to list playbooks: {}", e);
             HttpResponse::InternalServerError().json(serde_json::json!({
@@ -923,12 +1009,8 @@ pub async fn get_playbook(
 
     match incident_response::automation::get_playbook(pool.get_ref(), &playbook_id).await {
         Ok(playbook) => {
-            // Parse steps for response
-            let steps = incident_response::automation::get_playbook_steps(&playbook).unwrap_or_default();
-            HttpResponse::Ok().json(serde_json::json!({
-                "playbook": playbook,
-                "steps": steps
-            }))
+            let response = PlaybookApiResponse::from(playbook);
+            HttpResponse::Ok().json(response)
         }
         Err(e) => {
             let error_str = e.to_string();

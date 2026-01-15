@@ -74,15 +74,19 @@ pub struct StartSimulationRequest {
 /// Response for technique list
 #[derive(Debug, Serialize, ToSchema)]
 pub struct TechniqueResponse {
-    pub technique_id: String,
+    pub id: String,
     pub name: String,
     pub description: String,
-    pub tactics: Vec<TacticInfo>,
+    pub tactic: String,
+    pub tactic_name: String,
+    pub mitre_url: String,
     pub platforms: Vec<String>,
-    pub detection_sources: Vec<String>,
+    pub permissions_required: Vec<String>,
+    pub data_sources: Vec<String>,
+    pub detection: String,
+    pub payloads: Vec<String>,
     pub is_safe: bool,
     pub risk_level: u8,
-    pub min_execution_mode: String,
 }
 
 /// Tactic information
@@ -248,29 +252,49 @@ pub async fn list_techniques(
         techniques.retain(|t| t.is_safe);
     }
 
-    let response: Vec<TechniqueResponse> = techniques
+    let techniques_list: Vec<TechniqueResponse> = techniques
         .into_iter()
-        .map(|t| TechniqueResponse {
-            technique_id: t.technique_id.clone(),
-            name: t.name.clone(),
-            description: t.description.clone(),
-            tactics: t
-                .tactics
+        .map(|t| {
+            // Get primary tactic (first one if multiple)
+            let (tactic_id, tactic_name) = t.tactics.first()
+                .map(|tac| (tac.id().to_string(), tac.name().to_string()))
+                .unwrap_or_else(|| ("unknown".to_string(), "Unknown".to_string()));
+
+            // Build MITRE URL
+            let mitre_url = format!(
+                "https://attack.mitre.org/techniques/{}/",
+                t.technique_id.replace('.', "/")
+            );
+
+            // Map payload types to strings
+            let payloads: Vec<String> = t.payload_types
                 .iter()
-                .map(|tactic| TacticInfo {
-                    id: tactic.id().to_string(),
-                    name: tactic.name().to_string(),
-                })
-                .collect(),
-            platforms: t.platforms.clone(),
-            detection_sources: t.detection_sources.clone(),
-            is_safe: t.is_safe,
-            risk_level: t.risk_level,
-            min_execution_mode: t.min_execution_mode.as_str().to_string(),
+                .map(|p| p.as_str().to_string())
+                .collect();
+
+            TechniqueResponse {
+                id: t.technique_id.clone(),
+                name: t.name.clone(),
+                description: t.description.clone(),
+                tactic: tactic_id,
+                tactic_name,
+                mitre_url,
+                platforms: t.platforms.clone(),
+                permissions_required: Vec::new(), // Not tracked in current model
+                data_sources: t.detection_sources.clone(),
+                detection: t.detection_sources.join(", "),
+                payloads,
+                is_safe: t.is_safe,
+                risk_level: t.risk_level,
+            }
         })
         .collect();
 
-    Ok(HttpResponse::Ok().json(response))
+    let total = techniques_list.len();
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "techniques": techniques_list,
+        "total": total
+    })))
 }
 
 #[derive(Debug, Deserialize)]
@@ -294,7 +318,7 @@ pub struct TechniqueQuery {
     security(("bearer_auth" = []))
 )]
 pub async fn list_tactics(_claims: Claims) -> Result<HttpResponse, ApiErrorKind> {
-    let tactics: Vec<TacticInfo> = MitreTactic::all()
+    let tactics_list: Vec<TacticInfo> = MitreTactic::all()
         .into_iter()
         .map(|t| TacticInfo {
             id: t.id().to_string(),
@@ -302,7 +326,11 @@ pub async fn list_tactics(_claims: Claims) -> Result<HttpResponse, ApiErrorKind>
         })
         .collect();
 
-    Ok(HttpResponse::Ok().json(tactics))
+    let total = tactics_list.len();
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "tactics": tactics_list,
+        "total": total
+    })))
 }
 
 /// List user's BAS scenarios

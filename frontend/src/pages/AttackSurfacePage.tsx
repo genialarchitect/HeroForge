@@ -26,6 +26,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { Layout } from '../components/layout/Layout';
+import { EngagementRequiredBanner } from '../components/engagement';
+import { useRequireEngagement } from '../hooks/useRequireEngagement';
 import Button from '../components/ui/Button';
 import { asmAPI } from '../services/api';
 import type {
@@ -471,6 +473,7 @@ export default function AttackSurfacePage() {
   const queryClient = useQueryClient();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedMonitorId, setSelectedMonitorId] = useState<string | null>(null);
+  const { hasEngagement } = useRequireEngagement();
 
   // Dashboard query
   const { data: dashboard } = useQuery({
@@ -596,11 +599,13 @@ export default function AttackSurfacePage() {
             Continuous external monitoring with change detection and risk scoring
           </p>
         </div>
-        <Button onClick={() => setShowCreateModal(true)}>
+        <Button onClick={() => setShowCreateModal(true)} disabled={!hasEngagement}>
           <Plus className="w-4 h-4 mr-2" />
           New Monitor
         </Button>
       </div>
+
+      <EngagementRequiredBanner toolName="Attack Surface Management" className="mb-6" />
 
       {/* Dashboard Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-6">

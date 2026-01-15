@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import Layout from '../components/layout/Layout';
+import { EngagementRequiredBanner } from '../components/engagement';
+import { useRequireEngagement } from '../hooks/useRequireEngagement';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
@@ -53,6 +55,7 @@ interface DiscoveredEndpoint {
 }
 
 const ApiSecurityPage: React.FC = () => {
+  const { hasEngagement } = useRequireEngagement();
   const [scans, setScans] = useState<ApiScan[]>([]);
   const [selectedScan, setSelectedScan] = useState<ApiScan | null>(null);
   const [endpoints, setEndpoints] = useState<ApiEndpoint[]>([]);
@@ -241,6 +244,8 @@ const ApiSecurityPage: React.FC = () => {
             Test APIs for security vulnerabilities including authentication bypass, injection, and CORS issues
           </p>
         </div>
+
+        <EngagementRequiredBanner toolName="API Security Scanner" className="mb-6" />
 
         {/* Tabs */}
         <div className="flex gap-2 border-b border-gray-700 pb-2">
@@ -607,7 +612,7 @@ const ApiSecurityPage: React.FC = () => {
                 </div>
 
                 <div className="flex gap-3 pt-4">
-                  <Button type="submit" disabled={scanLoading}>
+                  <Button type="submit" disabled={scanLoading || !hasEngagement}>
                     {scanLoading ? (
                       <>
                         <LoadingSpinner size="sm" />
@@ -684,7 +689,7 @@ const ApiSecurityPage: React.FC = () => {
                     />
                   </div>
 
-                  <Button onClick={handleDiscover} disabled={discoverLoading}>
+                  <Button onClick={handleDiscover} disabled={discoverLoading || !hasEngagement}>
                     {discoverLoading ? (
                       <>
                         <LoadingSpinner size="sm" />

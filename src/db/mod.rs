@@ -50,6 +50,7 @@ pub mod dlp;
 pub mod dorking;
 pub mod evidence;
 pub mod exclusions;
+pub mod exploits;
 pub mod finding_templates;
 pub mod iac;
 pub mod insider_threat;
@@ -111,6 +112,11 @@ pub mod performance;
 pub mod analytics_engine;
 pub mod intelligence_platform;
 pub mod client_compliance;
+// ACAS-inspired modules
+pub mod scap;
+pub mod windows_audit;
+pub mod emass;
+pub mod audit_files;
 
 // Core imports used by this module
 use sqlx::sqlite::SqlitePool;
@@ -314,6 +320,10 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     // Run Cross-Team Data Flow migrations
     cross_team::run_migrations(pool).await?;
 
+    // Note: ACAS tables (scap, windows_audit, emass, audit_files) are already
+    // created by migrations::run_migrations(), so we don't call their init_tables
+    // here to avoid schema conflicts.
+
     Ok(())
 }
 
@@ -359,6 +369,12 @@ pub use scans::{
     update_report_status,
     delete_report,
     get_all_reports,
+    // Report operator notes functions
+    update_report_notes,
+    get_report_notes,
+    upsert_finding_note,
+    delete_finding_note,
+    get_finding_notes_map,
     // Template functions
     create_template,
     get_user_templates,

@@ -20,6 +20,8 @@ import IacScanResults from '../components/iac/IacScanResults';
 import IacRulesManager from '../components/iac/IacRulesManager';
 import Button from '../components/ui/Button';
 import { Layout } from '../components/layout/Layout';
+import { EngagementRequiredBanner } from '../components/engagement';
+import { useRequireEngagement } from '../hooks/useRequireEngagement';
 
 type TabType = 'scans' | 'rules';
 
@@ -48,6 +50,7 @@ const getSeverityBadge = (count: number, severity: string, color: string) => {
 export default function IacSecurityPage() {
   const [activeTab, setActiveTab] = useState<TabType>('scans');
   const [selectedScanId, setSelectedScanId] = useState<string | null>(null);
+  const { hasEngagement } = useRequireEngagement();
 
   // Fetch scans
   const {
@@ -101,6 +104,8 @@ export default function IacSecurityPage() {
           Scan Terraform, CloudFormation, and Azure ARM templates for security issues
         </p>
       </div>
+
+      <EngagementRequiredBanner toolName="IaC Security Scanning" className="mb-6" />
 
       {/* Tabs */}
       <div className="flex items-center gap-4 mb-6 border-b border-gray-700">

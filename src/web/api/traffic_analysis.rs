@@ -24,10 +24,41 @@ use std::fs;
 use crate::traffic_analysis::{
     PcapParser, IdsEngine, Ja3Fingerprinter,
     BeaconDetector, FileCarver,
+    LiveCaptureManager, CaptureConfig,
 };
 use crate::traffic_analysis::types::{IdsRuleSource, SessionType};
 use crate::web::auth;
 use crate::web::error::ApiError;
+
+use once_cell::sync::Lazy;
+use std::sync::Arc;
+use tokio::sync::RwLock;
+
+/// Global live capture manager
+static LIVE_CAPTURE_MANAGER: Lazy<Arc<RwLock<Option<LiveCaptureManager>>>> =
+    Lazy::new(|| Arc::new(RwLock::new(None)));
+
+/// Initialize the live capture manager
+pub async fn init_live_capture_manager(output_dir: std::path::PathBuf) {
+    let mut manager = LIVE_CAPTURE_MANAGER.write().await;
+    *manager = Some(LiveCaptureManager::new(output_dir));
+}
+
+/// Get the live capture manager
+async fn get_capture_manager() -> Result<LiveCaptureManager, ApiError> {
+    let manager = LIVE_CAPTURE_MANAGER.read().await;
+    match &*manager {
+        Some(m) => {
+            // Create a new manager with the same output dir for each request
+            // This is needed because LiveCaptureManager contains async state
+            Ok(LiveCaptureManager::new(std::path::PathBuf::from("/data/pcap_captures")))
+        }
+        None => {
+            // Initialize with default path if not set
+            Ok(LiveCaptureManager::new(std::path::PathBuf::from("/data/pcap_captures")))
+        }
+    }
+}
 
 /// Traffic analysis statistics
 #[derive(Debug, Serialize)]
@@ -36,11 +67,9 @@ pub struct TrafficAnalysisStats {
     pub total_sessions: i64,
     pub total_packets: i64,
     pub total_bytes: i64,
-    pub ids_alerts: i64,
-    pub beacon_detections: i64,
-    pub carved_files: i64,
-    pub suspicious_dns: i64,
-    pub malware_fingerprints: i64,
+    pub total_alerts: i64,
+    pub total_carved_files: i64,
+    pub protocol_breakdown: std::collections::HashMap<String, i64>,
 }
 
 /// Capture upload response
@@ -63,16 +92,24 @@ pub struct CaptureListQuery {
 }
 
 /// Capture summary for list view
-#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize)]
 pub struct CaptureSummary {
     pub id: String,
+    pub user_id: String,
     pub name: String,
     pub description: Option<String>,
+    pub file_path: String,
     pub file_size: i64,
-    pub total_packets: i64,
-    pub total_bytes: i64,
+    pub packet_count: i64,
+    pub duration_seconds: f64,
+    pub capture_start: Option<String>,
+    pub capture_end: Option<String>,
     pub status: String,
+    pub sessions_count: i64,
+    pub alerts_count: i64,
+    pub carved_files_count: i64,
     pub created_at: String,
+    pub analyzed_at: Option<String>,
 }
 
 /// Full capture detail
@@ -328,7 +365,13 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             // Statistics
             .route("/stats", web::get().to(get_stats))
             .route("/fingerprints", web::get().to(list_fingerprints))
-            .route("/fingerprints/lookup", web::post().to(lookup_fingerprint)),
+            .route("/fingerprints/lookup", web::post().to(lookup_fingerprint))
+            // Live Capture
+            .route("/interfaces", web::get().to(list_interfaces))
+            .route("/live/start", web::post().to(start_live_capture))
+            .route("/live/stop/{id}", web::post().to(stop_live_capture))
+            .route("/live/status", web::get().to(list_live_captures))
+            .route("/live/status/{id}", web::get().to(get_live_capture_status)),
     );
 }
 
@@ -466,32 +509,61 @@ async fn list_captures(
     let limit = query.limit.unwrap_or(20).min(100);
     let offset = (page - 1) * limit;
 
+    // Build base query with all required fields and counts via subqueries
     let mut sql = String::from(
         r#"
-        SELECT id, name, description, file_size, total_packets, total_bytes, status, created_at
-        FROM traffic_captures
-        WHERE user_id = ?
+        SELECT
+            c.id, c.user_id, c.name, c.description, c.file_path, c.file_size,
+            c.total_packets, COALESCE(c.duration_seconds, 0.0) as duration_seconds,
+            c.start_time, c.end_time, c.status, c.created_at, c.analyzed_at,
+            (SELECT COUNT(*) FROM traffic_sessions WHERE capture_id = c.id) as sessions_count,
+            (SELECT COUNT(*) FROM traffic_ids_alerts WHERE capture_id = c.id) as alerts_count,
+            (SELECT COUNT(*) FROM traffic_carved_files WHERE capture_id = c.id) as carved_count
+        FROM traffic_captures c
+        WHERE c.user_id = ?
         "#
     );
 
     if let Some(ref status) = query.status {
-        sql.push_str(&format!(" AND status = '{}'", status.replace('\'', "''")));
+        sql.push_str(&format!(" AND c.status = '{}'", status.replace('\'', "''")));
     }
 
     if let Some(ref search) = query.search {
-        sql.push_str(&format!(" AND (name LIKE '%{}%' OR description LIKE '%{}%')",
+        sql.push_str(&format!(" AND (c.name LIKE '%{}%' OR c.description LIKE '%{}%')",
             search.replace('\'', "''"), search.replace('\'', "''")));
     }
 
-    sql.push_str(" ORDER BY created_at DESC LIMIT ? OFFSET ?");
+    sql.push_str(" ORDER BY c.created_at DESC LIMIT ? OFFSET ?");
 
-    let captures: Vec<CaptureSummary> = sqlx::query_as(&sql)
+    // Query raw tuples
+    let rows: Vec<(String, String, String, Option<String>, String, i64, i64, f64, Option<String>, Option<String>, String, String, Option<String>, i64, i64, i64)> =
+        sqlx::query_as(&sql)
         .bind(&claims.sub)
         .bind(limit as i64)
         .bind(offset as i64)
         .fetch_all(pool.get_ref())
         .await
         .map_err(|e| ApiError::internal(format!("Database error: {}", e)))?;
+
+    // Convert to CaptureSummary
+    let captures: Vec<CaptureSummary> = rows.into_iter().map(|r| CaptureSummary {
+        id: r.0,
+        user_id: r.1,
+        name: r.2,
+        description: r.3,
+        file_path: r.4,
+        file_size: r.5,
+        packet_count: r.6,
+        duration_seconds: r.7,
+        capture_start: r.8,
+        capture_end: r.9,
+        status: r.10,
+        created_at: r.11,
+        analyzed_at: r.12,
+        sessions_count: r.13,
+        alerts_count: r.14,
+        carved_files_count: r.15,
+    }).collect();
 
     // Get total count
     let count: (i64,) = sqlx::query_as(
@@ -502,12 +574,8 @@ async fn list_captures(
     .await
     .map_err(|e| ApiError::internal(format!("Database error: {}", e)))?;
 
-    Ok(HttpResponse::Ok().json(serde_json::json!({
-        "captures": captures,
-        "total": count.0,
-        "page": page,
-        "limit": limit
-    })))
+    // Return as array (frontend expects array, not wrapped object)
+    Ok(HttpResponse::Ok().json(captures))
 }
 
 /// Get capture details
@@ -767,7 +835,6 @@ async fn analyze_capture(
                 SessionType::Tcp => 6,
                 SessionType::Udp => 17,
                 SessionType::Icmp => 1,
-                _ => 0,
             };
 
             let alerts = ids.match_packet(
@@ -1806,28 +1873,36 @@ async fn get_stats(
     .await
     .map_err(|e| ApiError::internal(format!("Database error: {}", e)))?;
 
-    let malware_fps: (i64,) = sqlx::query_as(
+    // Get protocol breakdown
+    let protocol_rows: Vec<(String, i64)> = sqlx::query_as(
         r#"
-        SELECT COUNT(*) FROM traffic_tls_analysis t
-        JOIN traffic_captures c ON t.capture_id = c.id
-        WHERE c.user_id = ? AND t.ja3_known_match IS NOT NULL
+        SELECT COALESCE(s.protocol, 'unknown') as protocol, COUNT(*) as count
+        FROM traffic_sessions s
+        JOIN traffic_captures c ON s.capture_id = c.id
+        WHERE c.user_id = ?
+        GROUP BY s.protocol
+        ORDER BY count DESC
+        LIMIT 10
         "#
     )
     .bind(&claims.sub)
-    .fetch_one(pool.get_ref())
+    .fetch_all(pool.get_ref())
     .await
-    .map_err(|e| ApiError::internal(format!("Database error: {}", e)))?;
+    .unwrap_or_default();
+
+    let mut protocol_breakdown = std::collections::HashMap::new();
+    for (proto, count) in protocol_rows {
+        protocol_breakdown.insert(proto, count);
+    }
 
     Ok(HttpResponse::Ok().json(TrafficAnalysisStats {
         total_captures: total_captures.0,
         total_sessions: total_sessions.0,
         total_packets: totals.0,
         total_bytes: totals.1,
-        ids_alerts: ids_alerts.0,
-        beacon_detections: beacons.0,
-        carved_files: carved.0,
-        suspicious_dns: suspicious_dns.0,
-        malware_fingerprints: malware_fps.0,
+        total_alerts: ids_alerts.0,
+        total_carved_files: carved.0,
+        protocol_breakdown,
     }))
 }
 
@@ -1837,16 +1912,33 @@ async fn list_fingerprints(
     _claims: web::ReqData<auth::Claims>,
 ) -> Result<HttpResponse, ApiError> {
     let fingerprinter = Ja3Fingerprinter::new();
-    let stats = fingerprinter.get_statistics();
+    let known = fingerprinter.get_all_known();
 
-    Ok(HttpResponse::Ok().json(serde_json::json!({
-        "total_known": stats.known_fingerprints,
-        "categories": {
-            "browsers": ["Chrome", "Firefox", "Safari", "Edge"],
-            "tools": ["curl", "Python requests", "Nmap", "Metasploit"],
-            "malware": ["Trickbot", "Cobalt Strike", "Emotet"]
-        }
-    })))
+    // Convert to the format the frontend expects
+    let fingerprints: Vec<serde_json::Value> = known.iter().enumerate().map(|(idx, (hash, fp))| {
+        let category = format!("{:?}", fp.category);
+        let is_malicious = category == "Malware";
+        let fingerprint_type = match category.as_str() {
+            "Browser" => "JA3",
+            "Tool" => "JA3",
+            "Malware" => "JA3",
+            _ => "JA3",
+        };
+
+        serde_json::json!({
+            "id": format!("known-{}", idx),
+            "fingerprint": hash,
+            "fingerprint_type": fingerprint_type,
+            "first_seen": "2024-01-01T00:00:00Z",
+            "last_seen": "2024-01-01T00:00:00Z",
+            "hits": 0,
+            "known_client": fp.client_name,
+            "is_malicious": is_malicious,
+            "notes": fp.notes
+        })
+    }).collect();
+
+    Ok(HttpResponse::Ok().json(fingerprints))
 }
 
 /// Lookup a JA3 fingerprint
@@ -1872,4 +1964,97 @@ async fn lookup_fingerprint(
             "found": false
         })))
     }
+}
+
+// ============================================================================
+// Live Capture Endpoints
+// ============================================================================
+
+/// Request to start a live capture
+#[derive(Debug, Deserialize)]
+pub struct StartCaptureRequest {
+    /// Network interface to capture from
+    pub interface: String,
+    /// BPF filter expression (optional)
+    pub filter: Option<String>,
+    /// Capture in promiscuous mode (default: true)
+    pub promiscuous: Option<bool>,
+    /// Maximum packets to capture (optional)
+    pub max_packets: Option<u64>,
+    /// Maximum duration in seconds (optional)
+    pub max_duration_secs: Option<u64>,
+}
+
+/// List available network interfaces
+async fn list_interfaces(
+    _claims: web::ReqData<auth::Claims>,
+) -> Result<HttpResponse, ApiError> {
+    let interfaces = LiveCaptureManager::list_interfaces()
+        .map_err(|e| ApiError::internal(format!("Failed to list interfaces: {}", e)))?;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "interfaces": interfaces
+    })))
+}
+
+/// Start a live packet capture
+async fn start_live_capture(
+    _claims: web::ReqData<auth::Claims>,
+    body: web::Json<StartCaptureRequest>,
+) -> Result<HttpResponse, ApiError> {
+    let manager = get_capture_manager().await?;
+
+    let config = CaptureConfig {
+        interface: body.interface.clone(),
+        filter: body.filter.clone(),
+        promiscuous: body.promiscuous.unwrap_or(true),
+        snaplen: 65535,
+        max_packets: body.max_packets,
+        max_duration_secs: body.max_duration_secs,
+    };
+
+    let capture_info = manager.start_capture(config).await
+        .map_err(|e| ApiError::internal(format!("Failed to start capture: {}", e)))?;
+
+    Ok(HttpResponse::Ok().json(capture_info))
+}
+
+/// Stop a live packet capture
+async fn stop_live_capture(
+    _claims: web::ReqData<auth::Claims>,
+    path: web::Path<String>,
+) -> Result<HttpResponse, ApiError> {
+    let capture_id = path.into_inner();
+    let manager = get_capture_manager().await?;
+
+    let capture_info = manager.stop_capture(&capture_id).await
+        .map_err(|e| ApiError::internal(format!("Failed to stop capture: {}", e)))?;
+
+    Ok(HttpResponse::Ok().json(capture_info))
+}
+
+/// List all active live captures
+async fn list_live_captures(
+    _claims: web::ReqData<auth::Claims>,
+) -> Result<HttpResponse, ApiError> {
+    let manager = get_capture_manager().await?;
+    let captures = manager.list_active_captures().await;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "captures": captures
+    })))
+}
+
+/// Get status of a specific live capture
+async fn get_live_capture_status(
+    _claims: web::ReqData<auth::Claims>,
+    path: web::Path<String>,
+) -> Result<HttpResponse, ApiError> {
+    let capture_id = path.into_inner();
+    let manager = get_capture_manager().await?;
+
+    let capture_info = manager.get_capture_status(&capture_id).await
+        .map_err(|e| ApiError::not_found(format!("Capture not found: {}", e)))?;
+
+    Ok(HttpResponse::Ok().json(capture_info))
 }

@@ -17,6 +17,7 @@ export type ReportSectionId =
   | 'vulnerabilityFindings'
   | 'serviceEnumeration'
   | 'remediationRecommendations'
+  | 'operatorNotes'
   | 'appendix';
 
 export interface ReportOptions {
@@ -53,6 +54,9 @@ export interface Report {
   created_at: string;
   completed_at?: string;
   expires_at?: string;
+  // Operator notes for red team assessments
+  operator_notes?: string;
+  operator_notes_updated_at?: string;
 }
 
 export interface ReportTemplate {
@@ -61,4 +65,31 @@ export interface ReportTemplate {
   description: string;
   default_sections: string[];
   supports_formats: string[];
+}
+
+// ============================================================================
+// Operator Notes Types - For red team report annotations
+// ============================================================================
+
+export interface ReportFindingNote {
+  id: string;
+  report_id: string;
+  finding_id: string;
+  notes: string;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface ReportNotesResponse {
+  operator_notes?: string;
+  operator_notes_updated_at?: string;
+  finding_notes: ReportFindingNote[];
+}
+
+export interface UpdateReportNotesRequest {
+  operator_notes: string;
+}
+
+export interface UpdateFindingNoteRequest {
+  notes: string;
 }

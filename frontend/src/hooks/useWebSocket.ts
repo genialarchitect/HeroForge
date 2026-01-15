@@ -58,7 +58,7 @@ export const useWebSocket = (scanId: string | null) => {
         // Update progress in UI (could add progress state to scanStore)
         break;
 
-      case 'hostDiscovered':
+      case 'hostDiscovered': {
         const newHost: HostInfo = {
           target: {
             ip: message.ip,
@@ -72,8 +72,9 @@ export const useWebSocket = (scanId: string | null) => {
         };
         addHostToResults(scanId, newHost);
         break;
+      }
 
-      case 'portFound':
+      case 'portFound': {
         const currentHosts = results.get(scanId) || [];
         const hostForPort = currentHosts.find(h => h.target.ip === message.ip);
 
@@ -89,8 +90,9 @@ export const useWebSocket = (scanId: string | null) => {
           updateHostInResults(scanId, message.ip, { ports: updatedPorts });
         }
         break;
+      }
 
-      case 'serviceDetected':
+      case 'serviceDetected': {
         const hostsForService = results.get(scanId) || [];
         const hostForService = hostsForService.find(h => h.target.ip === message.ip);
 
@@ -112,8 +114,9 @@ export const useWebSocket = (scanId: string | null) => {
           updateHostInResults(scanId, message.ip, { ports: updatedPorts });
         }
         break;
+      }
 
-      case 'vulnerabilityFound':
+      case 'vulnerabilityFound': {
         const hostsForVuln = results.get(scanId) || [];
         const hostForVuln = hostsForVuln.find(h => h.target.ip === message.ip);
 
@@ -143,6 +146,7 @@ export const useWebSocket = (scanId: string | null) => {
           }
         }
         break;
+      }
 
       case 'scanCompleted':
         updateScanStatus(scanId, 'completed');

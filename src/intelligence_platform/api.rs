@@ -1569,7 +1569,7 @@ mod tests {
                 },
             ],
             source: "test".to_string(),
-            tlp: SharingLevel::TLP_GREEN,
+            tlp: SharingLevel::TlpGreen,
             description: None,
             tags: None,
         };

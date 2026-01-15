@@ -61,6 +61,7 @@ pub fn generate_html(data: &ReportData) -> String {
             ReportSection::ServiceEnumeration => html.push_str(&generate_service_enumeration(data)),
             ReportSection::Screenshots => html.push_str(&generate_screenshots(data)),
             ReportSection::RemediationRecommendations => html.push_str(&generate_remediation(data)),
+            ReportSection::OperatorNotes => html.push_str(&generate_operator_notes(data)),
             ReportSection::Appendix => html.push_str(&generate_appendix(data)),
         }
     }
@@ -805,6 +806,55 @@ fn generate_remediation(data: &ReportData) -> String {
     html
 }
 
+fn generate_operator_notes(data: &ReportData) -> String {
+    let mut html = String::from(
+        r#"<div class="section" id="operator-notes"><h2>Operator Notes</h2>"#
+    );
+
+    // Report-level notes
+    if let Some(ref notes) = data.operator_notes {
+        html.push_str("<div class=\"operator-notes-content\">");
+        html.push_str("<h3>Assessment Notes</h3>");
+        html.push_str("<div class=\"notes-block\">");
+        // Convert newlines to <br> for HTML display
+        let formatted_notes = html_escape(notes).replace('\n', "<br>");
+        html.push_str(&formatted_notes);
+        html.push_str("</div></div>");
+    }
+
+    // Finding-level notes
+    if !data.finding_notes.is_empty() {
+        html.push_str("<div class=\"finding-notes\">");
+        html.push_str("<h3>Finding-Specific Notes</h3>");
+
+        for (finding_id, note) in &data.finding_notes {
+            // Try to find the finding title
+            let finding_title = data.findings.iter()
+                .find(|f| &f.id == finding_id)
+                .map(|f| f.title.as_str())
+                .unwrap_or(finding_id);
+
+            html.push_str(&format!(
+                r#"<div class="finding-note-item">
+                    <div class="finding-note-header">{}</div>
+                    <div class="finding-note-content">{}</div>
+                </div>"#,
+                html_escape(finding_title),
+                html_escape(note).replace('\n', "<br>")
+            ));
+        }
+
+        html.push_str("</div>");
+    }
+
+    if data.operator_notes.is_none() && data.finding_notes.is_empty() {
+        html.push_str("<p>No operator notes have been added for this assessment.</p>");
+    }
+
+    html.push_str("</div>");
+    html
+}
+
 fn generate_appendix(data: &ReportData) -> String {
     format!(
         r#"
@@ -874,6 +924,7 @@ fn section_id(section: &ReportSection) -> &'static str {
         ReportSection::ServiceEnumeration => "service-enumeration",
         ReportSection::Screenshots => "visual-evidence",
         ReportSection::RemediationRecommendations => "remediation-recommendations",
+        ReportSection::OperatorNotes => "operator-notes",
         ReportSection::Appendix => "appendix",
     }
 }

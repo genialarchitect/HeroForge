@@ -609,11 +609,15 @@ async fn list_email_templates(
     pool: web::Data<SqlitePool>,
     claims: auth::Claims,
 ) -> Result<HttpResponse, ApiError> {
-    let templates = sqlx::query_as::<_, (String, String, String, String, String, String)>(
+    // Include both user's templates and system templates
+    let templates = sqlx::query_as::<_, (String, String, String, String, String, String, String)>(
         r#"
-        SELECT id, name, subject, from_name, from_email, created_at
-        FROM phishing_email_templates WHERE user_id = ?
-        ORDER BY created_at DESC
+        SELECT id, name, subject, from_name, from_email, created_at, user_id
+        FROM phishing_email_templates
+        WHERE user_id = ? OR user_id = 'system'
+        ORDER BY
+            CASE WHEN user_id = 'system' THEN 1 ELSE 0 END,
+            created_at DESC
         "#,
     )
     .bind(&claims.sub)
@@ -627,7 +631,8 @@ async fn list_email_templates(
             "subject": r.2,
             "from_name": r.3,
             "from_email": r.4,
-            "created_at": r.5
+            "created_at": r.5,
+            "is_system": r.6 == "system"
         })
     }).collect();
 
@@ -646,7 +651,8 @@ async fn get_email_template(
     let template = manager.get_email_template(&template_id).await?
         .ok_or_else(|| ApiError::not_found("Template not found".to_string()))?;
 
-    if template.user_id != claims.sub {
+    // Allow access to user's own templates and system templates
+    if template.user_id != claims.sub && template.user_id != "system" {
         return Err(ApiError::forbidden("Access denied".to_string()));
     }
 

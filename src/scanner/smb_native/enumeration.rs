@@ -93,7 +93,7 @@ impl SmbEnumerator {
 
         // Cleanup
         conn.close(file_id).await.ok();
-        drop(conn); // Explicitly drop to release borrow
+        let _ = &conn; // Release borrow
         self.client.disconnect_share().await.ok();
 
         Ok(shares)
@@ -138,7 +138,7 @@ impl SmbEnumerator {
         let server_info = parse_server_get_info_response(&rpc_response.stub_data)?;
 
         conn.close(file_id).await.ok();
-        drop(conn);
+        let _ = &conn;
         self.client.disconnect_share().await.ok();
 
         Ok(server_info)
@@ -182,7 +182,7 @@ impl SmbEnumerator {
         let sessions = parse_session_enum_response(&rpc_response.stub_data)?;
 
         conn.close(file_id).await.ok();
-        drop(conn);
+        let _ = &conn;
         self.client.disconnect_share().await.ok();
 
         Ok(sessions)
@@ -262,7 +262,7 @@ impl SmbEnumerator {
             Some(d) => d,
             None => {
                 conn.close(file_id).await.ok();
-                drop(conn);
+                let _ = &conn;
                 self.client.disconnect_share().await.ok();
                 return Ok(Vec::new());
             }
@@ -330,7 +330,7 @@ impl SmbEnumerator {
             .ok();
 
         conn.close(file_id).await.ok();
-        drop(conn);
+        let _ = &conn;
         self.client.disconnect_share().await.ok();
 
         Ok(users)
@@ -405,7 +405,7 @@ impl SmbEnumerator {
             Some(d) => d,
             None => {
                 conn.close(file_id).await.ok();
-                drop(conn);
+                let _ = &conn;
                 self.client.disconnect_share().await.ok();
                 return Ok(Vec::new());
             }
@@ -465,7 +465,7 @@ impl SmbEnumerator {
             .ok();
 
         conn.close(file_id).await.ok();
-        drop(conn);
+        let _ = &conn;
         self.client.disconnect_share().await.ok();
 
         Ok(groups)

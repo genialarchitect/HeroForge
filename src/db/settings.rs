@@ -212,7 +212,7 @@ pub async fn get_audit_action_types(pool: &SqlitePool) -> Result<Vec<String>> {
 
 /// Get all users who have audit log entries (for filtering)
 pub async fn get_audit_users(pool: &SqlitePool) -> Result<Vec<models::UserInfo>> {
-    let users = sqlx::query_as::<_, models::UserInfo>(
+    let users = sqlx::query_as::<_, models::UserInfoBasic>(
         r#"
         SELECT DISTINCT u.id, u.username, u.email
         FROM audit_logs a
@@ -223,7 +223,7 @@ pub async fn get_audit_users(pool: &SqlitePool) -> Result<Vec<models::UserInfo>>
     .fetch_all(pool)
     .await?;
 
-    Ok(users)
+    Ok(users.into_iter().map(|u| u.into()).collect())
 }
 
 // ============================================================================

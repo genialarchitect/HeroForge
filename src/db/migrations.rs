@@ -144,6 +144,7 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     create_bloodhound_tables(pool).await?;
     // Phishing campaign tables
     create_phishing_tables(pool).await?;
+    seed_phishing_email_templates(pool).await?;
     // SMS phishing (smishing) campaign tables
     create_sms_phishing_tables(pool).await?;
     // Vishing (voice phishing) and pretexting tables
@@ -219,6 +220,9 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     create_tls_analysis_tables(pool).await?;
     // Incident Response tables (blue team)
     create_incident_response_tables(pool).await?;
+    crate::incident_response::automation::seed_builtin_playbooks(pool).await?;
+    // Digital Forensics tables (blue team)
+    create_forensics_tables(pool).await?;
     // Threat Hunting tables (blue team)
     super::threat_hunting::create_threat_hunting_tables(pool).await?;
     super::threat_hunting::seed_builtin_playbooks(pool).await?;
@@ -300,6 +304,25 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     create_screenshots_table(pool).await?;
     // Network topology tables for cATO visualization
     create_network_topology_tables(pool).await?;
+    // Add engagement/customer linking to assets
+    add_engagement_customer_to_assets(pool).await?;
+    // Seed common exploits for offline use
+    seed_exploits(pool).await?;
+    // Operator notes support for red team reports
+    add_operator_notes_to_reports(pool).await?;
+    // AI Red Team Advisor tables
+    create_ai_red_team_advisor_tables(pool).await?;
+    // SCAP 1.3 Content and Assessment tables
+    create_scap_content_tables(pool).await?;
+    create_scap_assessment_tables(pool).await?;
+    // Windows Audit and STIG scanning tables
+    create_windows_audit_tables(pool).await?;
+    // eMASS Integration tables
+    create_emass_tables(pool).await?;
+    // Audit File Library tables (CKL/ARF versioning)
+    create_audit_file_tables(pool).await?;
+    // AI Configuration table (per-user LLM provider settings)
+    create_ai_config_table(pool).await?;
     Ok(())
 }
 
@@ -9345,6 +9368,14 @@ async fn create_permissions_system(pool: &SqlitePool) -> Result<()> {
         ("auditor", "Auditor", "Read-only access for compliance auditing", "clipboard-check", "#8b5cf6"),
         ("engineer", "Security Engineer", "Scans and asset management", "wrench", "#10b981"),
         ("manager", "Team Manager", "Team resources management", "users", "#f59e0b"),
+        // Team-based role templates for colored team views
+        ("red_team", "Red Team", "Offensive security - recon, exploitation, attack simulation", "swords", "#ef4444"),
+        ("blue_team", "Blue Team", "Defensive security - SIEM, forensics, incident response", "shield-alert", "#3b82f6"),
+        ("yellow_team", "Yellow Team", "DevSecOps - SAST, SCA, SBOM, CI/CD security", "cpu", "#eab308"),
+        ("white_team", "White Team", "GRC - compliance, governance, auditing, evidence", "scale", "#94a3b8"),
+        ("orange_team", "Orange Team", "Security awareness - training, phishing education", "graduation-cap", "#f97316"),
+        ("green_team", "Green Team", "SOC operations - SOAR, playbooks, workflows", "workflow", "#22c55e"),
+        ("purple_team", "Purple Team", "Combined red/blue team exercises", "eye", "#a855f7"),
     ];
 
     for (id, display_name, desc, icon, color) in role_templates {
@@ -19381,6 +19412,38 @@ async fn create_threat_actor_tables(pool: &SqlitePool) -> Result<()> {
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_campaign_iocs_value ON campaign_iocs(value)")
         .execute(pool)
         .await?;
+
+    // Add missing columns for diamond_events (Sprint 12 fix)
+    // These columns are needed by the API but were missing from the original schema
+    for col in &[
+        "adversary_json TEXT",
+        "capability_json TEXT",
+        "infrastructure_json TEXT",
+        "victim_json TEXT",
+        "event_json TEXT",
+    ] {
+        let _ = sqlx::query(&format!(
+            "ALTER TABLE diamond_events ADD COLUMN {}",
+            col
+        ))
+        .execute(pool)
+        .await; // Ignore errors (column may already exist)
+    }
+
+    // Add missing columns for intelligence_requirements (Sprint 12 fix)
+    // API uses linked_actors/linked_campaigns/requester but schema had different names
+    for col in &[
+        "linked_actors TEXT",
+        "linked_campaigns TEXT",
+        "requester TEXT",
+    ] {
+        let _ = sqlx::query(&format!(
+            "ALTER TABLE intelligence_requirements ADD COLUMN {}",
+            col
+        ))
+        .execute(pool)
+        .await; // Ignore errors (column may already exist)
+    }
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_campaign_timeline_campaign ON campaign_timeline(campaign_id)")
         .execute(pool)
         .await?;
@@ -21772,6 +21835,9 @@ async fn create_soar_foundation_tables(pool: &SqlitePool) -> Result<()> {
     // Seed built-in SOAR actions
     seed_soar_actions(pool).await?;
 
+    // Seed built-in SOAR playbooks
+    seed_soar_playbooks(pool).await?;
+
     log::info!("Created SOAR Foundation Enhancement tables (Sprint 11-12 - Priority 2 Features)");
     Ok(())
 }
@@ -21867,6 +21933,1614 @@ async fn seed_soar_actions(pool: &SqlitePool) -> Result<()> {
     }
 
     log::info!("Seeded {} built-in SOAR actions", actions_len);
+    Ok(())
+}
+
+/// Seed built-in SOAR playbooks for common security operations
+async fn seed_soar_playbooks(pool: &SqlitePool) -> Result<()> {
+    let now = chrono::Utc::now().to_rfc3339();
+    let system_user = "system";
+
+    // Define comprehensive security playbooks
+    let playbooks: Vec<(&str, &str, &str, &str, &str, serde_json::Value)> = vec![
+        // 1. Phishing Response Playbook
+        (
+            "playbook_phishing_response",
+            "Phishing Email Response",
+            "Automated response to reported phishing emails including IOC extraction, threat analysis, email quarantine, and user notification.",
+            "incident_response",
+            "manual",
+            serde_json::json!([
+                {
+                    "id": "step_1",
+                    "name": "Extract Email IOCs",
+                    "description": "Extract URLs, domains, IPs, and file hashes from the phishing email",
+                    "action_type": "regex_extract",
+                    "config": {
+                        "patterns": {
+                            "urls": "https?://[^\\s<>\"']+",
+                            "domains": "(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\\.)+[a-zA-Z]{2,}",
+                            "ips": "\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b",
+                            "hashes": "\\b[a-fA-F0-9]{32,64}\\b"
+                        }
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_2",
+                    "name": "Enrich URLs with VirusTotal",
+                    "description": "Check extracted URLs against VirusTotal",
+                    "action_type": "url_lookup",
+                    "config": {
+                        "source": "virustotal",
+                        "input": "{{ steps.step_1.urls }}"
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_3",
+                    "name": "Check Sender Reputation",
+                    "description": "Verify sender domain and IP reputation",
+                    "action_type": "domain_lookup",
+                    "config": {
+                        "sources": ["virustotal", "abuseipdb"],
+                        "input": "{{ input.sender_domain }}"
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_4",
+                    "name": "Quarantine Email",
+                    "description": "Move the phishing email to quarantine",
+                    "action_type": "quarantine_email",
+                    "config": {
+                        "message_id": "{{ input.message_id }}",
+                        "reason": "Phishing attempt detected"
+                    },
+                    "condition": "{{ steps.step_2.malicious == true || steps.step_3.reputation_score < 30 }}",
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_5",
+                    "name": "Block Malicious URLs",
+                    "description": "Add malicious URLs to blocklist",
+                    "action_type": "block_domain",
+                    "config": {
+                        "domains": "{{ steps.step_1.domains | select('malicious') }}",
+                        "duration_hours": 168
+                    },
+                    "condition": "{{ steps.step_2.malicious == true }}",
+                    "requires_approval": true,
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_6",
+                    "name": "Create Security Case",
+                    "description": "Create a case for tracking and investigation",
+                    "action_type": "create_case",
+                    "config": {
+                        "title": "Phishing Email: {{ input.subject | truncate(50) }}",
+                        "severity": "{{ 'high' if steps.step_2.malicious else 'medium' }}",
+                        "case_type": "phishing",
+                        "tags": ["phishing", "email", "automated"]
+                    },
+                    "on_failure": "stop"
+                },
+                {
+                    "id": "step_7",
+                    "name": "Notify Security Team",
+                    "description": "Alert the security team via Slack",
+                    "action_type": "send_slack",
+                    "config": {
+                        "channel": "#security-alerts",
+                        "message": "🎣 *Phishing Alert*\n*Subject:* {{ input.subject }}\n*Sender:* {{ input.sender }}\n*Case:* {{ steps.step_6.case_id }}\n*Malicious URLs Found:* {{ steps.step_2.malicious_count | default(0) }}"
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_8",
+                    "name": "Notify Affected User",
+                    "description": "Send confirmation to the user who reported the phishing",
+                    "action_type": "send_email",
+                    "config": {
+                        "to": "{{ input.reporter_email }}",
+                        "subject": "Thank you for reporting the phishing email",
+                        "template": "phishing_report_acknowledgment"
+                    },
+                    "on_failure": "continue"
+                }
+            ])
+        ),
+        // 2. Malware Containment Playbook
+        (
+            "playbook_malware_containment",
+            "Malware Detection & Containment",
+            "Immediate response to malware detection including host isolation, evidence collection, hash blocking, and incident creation.",
+            "incident_response",
+            "alert",
+            serde_json::json!([
+                {
+                    "id": "step_1",
+                    "name": "Isolate Infected Host",
+                    "description": "Immediately isolate the compromised endpoint from the network",
+                    "action_type": "isolate_host",
+                    "config": {
+                        "hostname": "{{ input.hostname }}",
+                        "isolation_type": "network",
+                        "reason": "Malware detected: {{ input.malware_name }}"
+                    },
+                    "requires_approval": false,
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_2",
+                    "name": "Collect Process List",
+                    "description": "Get running processes from the infected host",
+                    "action_type": "edr_get_processes",
+                    "config": {
+                        "hostname": "{{ input.hostname }}",
+                        "include_network_connections": true
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_3",
+                    "name": "Enrich Malware Hash",
+                    "description": "Get threat intelligence on the malware hash",
+                    "action_type": "hash_lookup",
+                    "config": {
+                        "hash": "{{ input.file_hash }}",
+                        "sources": ["virustotal", "malwarebazaar", "hybridanalysis"]
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_4",
+                    "name": "Block Malware Hash",
+                    "description": "Add malware hash to blocklist across all endpoints",
+                    "action_type": "block_hash",
+                    "config": {
+                        "hash": "{{ input.file_hash }}",
+                        "hash_type": "{{ input.hash_type | default('sha256') }}",
+                        "comment": "Blocked via automated playbook - {{ input.malware_name }}"
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_5",
+                    "name": "Collect Memory Dump",
+                    "description": "Capture memory for forensic analysis",
+                    "action_type": "edr_collect_artifact",
+                    "config": {
+                        "hostname": "{{ input.hostname }}",
+                        "artifact_type": "memory_dump",
+                        "compress": true
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_6",
+                    "name": "Check for Lateral Movement",
+                    "description": "Search SIEM for related activity on other hosts",
+                    "action_type": "siem_search",
+                    "config": {
+                        "query": "file.hash:{{ input.file_hash }} OR source.ip:{{ input.host_ip }}",
+                        "timeframe": "-24h",
+                        "exclude_host": "{{ input.hostname }}"
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_7",
+                    "name": "Create Incident Case",
+                    "description": "Create a case for incident tracking",
+                    "action_type": "create_case",
+                    "config": {
+                        "title": "Malware Infection: {{ input.malware_name }} on {{ input.hostname }}",
+                        "severity": "{{ input.severity | default('high') }}",
+                        "case_type": "malware",
+                        "tags": ["malware", "{{ input.malware_family | default('unknown') }}", "automated"],
+                        "description": "Malware detected on {{ input.hostname }}.\n\nFile: {{ input.file_path }}\nHash: {{ input.file_hash }}\nMalware Family: {{ steps.step_3.malware_family | default('Unknown') }}\n\nHost has been isolated automatically."
+                    },
+                    "on_failure": "stop"
+                },
+                {
+                    "id": "step_8",
+                    "name": "Send Critical Alert",
+                    "description": "Notify security team and management",
+                    "action_type": "send_slack",
+                    "config": {
+                        "channel": "#security-incidents",
+                        "message": "🦠 *MALWARE ALERT*\n*Host:* {{ input.hostname }} (ISOLATED)\n*Malware:* {{ input.malware_name }}\n*Family:* {{ steps.step_3.malware_family | default('Unknown') }}\n*Case:* {{ steps.step_7.case_id }}\n*VT Score:* {{ steps.step_3.detection_ratio | default('N/A') }}"
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_9",
+                    "name": "Create JIRA Ticket",
+                    "description": "Create a ticket for IT remediation",
+                    "action_type": "create_ticket",
+                    "config": {
+                        "system": "jira",
+                        "project": "SEC",
+                        "title": "[MALWARE] {{ input.hostname }} - {{ input.malware_name }}",
+                        "priority": "critical",
+                        "description": "A malware infection has been detected and contained.\n\nPlease coordinate with the security team for system reimaging."
+                    },
+                    "on_failure": "continue"
+                }
+            ])
+        ),
+        // 3. Ransomware Response Playbook
+        (
+            "playbook_ransomware_response",
+            "Ransomware Emergency Response",
+            "Critical response playbook for ransomware incidents including immediate isolation, network segmentation, and executive notification.",
+            "incident_response",
+            "alert",
+            serde_json::json!([
+                {
+                    "id": "step_1",
+                    "name": "EMERGENCY: Isolate Infected Host",
+                    "description": "Immediately isolate the ransomware-infected host",
+                    "action_type": "isolate_host",
+                    "config": {
+                        "hostname": "{{ input.hostname }}",
+                        "isolation_type": "full",
+                        "reason": "RANSOMWARE DETECTED"
+                    },
+                    "requires_approval": false,
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_2",
+                    "name": "Disable Network Shares",
+                    "description": "Disable network shares to prevent spread",
+                    "action_type": "edr_run_command",
+                    "config": {
+                        "hostname": "{{ input.hostname }}",
+                        "command": "net share | findstr /v \"$\" | for /f \"tokens=1\" %s in ('findstr /v \"Share\"') do net share %s /delete /y",
+                        "timeout": 60
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_3",
+                    "name": "Search for Other Infections",
+                    "description": "Search for ransomware indicators across the network",
+                    "action_type": "siem_search",
+                    "config": {
+                        "query": "file.extension:(encrypted OR locked OR crypto) OR process.name:(*ransom* OR *crypt* OR *locker*)",
+                        "timeframe": "-1h"
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_4",
+                    "name": "Block Ransomware C2",
+                    "description": "Block known ransomware command and control IPs",
+                    "action_type": "block_ip_firewall",
+                    "config": {
+                        "ips": "{{ input.c2_ips | default([]) }}",
+                        "duration_hours": 720,
+                        "comment": "Ransomware C2 block"
+                    },
+                    "condition": "{{ input.c2_ips | length > 0 }}",
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_5",
+                    "name": "Create Critical Incident",
+                    "description": "Create a critical incident case",
+                    "action_type": "create_case",
+                    "config": {
+                        "title": "🚨 RANSOMWARE INCIDENT: {{ input.ransomware_name | default('Unknown Variant') }}",
+                        "severity": "critical",
+                        "case_type": "ransomware",
+                        "tags": ["ransomware", "critical", "executive-notification"],
+                        "tlp": "red"
+                    },
+                    "on_failure": "stop"
+                },
+                {
+                    "id": "step_6",
+                    "name": "Page On-Call Security",
+                    "description": "Send emergency page to on-call security team",
+                    "action_type": "send_pagerduty",
+                    "config": {
+                        "severity": "critical",
+                        "description": "RANSOMWARE INCIDENT - Immediate response required. Host: {{ input.hostname }}"
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_7",
+                    "name": "Notify Executive Team",
+                    "description": "Alert executives about the ransomware incident",
+                    "action_type": "send_email",
+                    "config": {
+                        "to": "{{ config.executive_distribution_list }}",
+                        "subject": "🚨 CRITICAL: Ransomware Incident Detected",
+                        "template": "ransomware_executive_alert",
+                        "priority": "high"
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_8",
+                    "name": "Notify All Channels",
+                    "description": "Send alerts to all security channels",
+                    "action_type": "send_slack",
+                    "config": {
+                        "channel": "#security-incidents",
+                        "message": "🚨🚨🚨 *RANSOMWARE ALERT* 🚨🚨🚨\n\n*Type:* {{ input.ransomware_name | default('Unknown') }}\n*Initial Host:* {{ input.hostname }}\n*Status:* Host Isolated\n*Case:* {{ steps.step_5.case_id }}\n\n*INCIDENT RESPONSE ACTIVATED*\nAll hands on deck. Check #incident-response for coordination."
+                    },
+                    "on_failure": "continue"
+                }
+            ])
+        ),
+        // 4. Brute Force Attack Response
+        (
+            "playbook_brute_force_response",
+            "Brute Force Attack Response",
+            "Automated response to detected brute force attacks including IP blocking, account protection, and threat investigation.",
+            "incident_response",
+            "alert",
+            serde_json::json!([
+                {
+                    "id": "step_1",
+                    "name": "Enrich Attacker IP",
+                    "description": "Get intelligence on the attacking IP address",
+                    "action_type": "ip_lookup",
+                    "config": {
+                        "ip": "{{ input.source_ip }}",
+                        "sources": ["abuseipdb", "virustotal", "shodan"]
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_2",
+                    "name": "Block Attacker IP",
+                    "description": "Block the attacking IP on perimeter firewall",
+                    "action_type": "block_ip_firewall",
+                    "config": {
+                        "ip": "{{ input.source_ip }}",
+                        "duration_hours": 24,
+                        "comment": "Brute force attack - {{ input.failed_attempts }} failed attempts"
+                    },
+                    "condition": "{{ input.failed_attempts > 10 }}",
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_3",
+                    "name": "Check Account Status",
+                    "description": "Verify the targeted account status",
+                    "action_type": "http_request",
+                    "config": {
+                        "method": "GET",
+                        "url": "{{ config.identity_api }}/users/{{ input.target_username }}/status"
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_4",
+                    "name": "Lock Account (If Compromised)",
+                    "description": "Temporarily lock the account if compromise is suspected",
+                    "action_type": "disable_user",
+                    "config": {
+                        "username": "{{ input.target_username }}",
+                        "reason": "Brute force attack detected - precautionary lock"
+                    },
+                    "condition": "{{ input.successful_login == true && steps.step_1.reputation_score < 20 }}",
+                    "requires_approval": true,
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_5",
+                    "name": "Search for Related Activity",
+                    "description": "Find other targets from the same attacker",
+                    "action_type": "siem_search",
+                    "config": {
+                        "query": "source.ip:{{ input.source_ip }} AND event.category:authentication",
+                        "timeframe": "-24h"
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_6",
+                    "name": "Create Security Case",
+                    "description": "Create a case for the brute force incident",
+                    "action_type": "create_case",
+                    "config": {
+                        "title": "Brute Force Attack: {{ input.target_username }} from {{ input.source_ip }}",
+                        "severity": "{{ 'high' if input.successful_login else 'medium' }}",
+                        "case_type": "brute_force",
+                        "tags": ["brute-force", "authentication", "automated"]
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_7",
+                    "name": "Notify User",
+                    "description": "Alert the targeted user about the attack",
+                    "action_type": "send_email",
+                    "config": {
+                        "to": "{{ input.target_email }}",
+                        "subject": "Security Alert: Unusual Login Activity Detected",
+                        "template": "brute_force_user_notification"
+                    },
+                    "condition": "{{ input.failed_attempts > 5 }}",
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_8",
+                    "name": "Alert Security Team",
+                    "description": "Send alert to security operations",
+                    "action_type": "send_slack",
+                    "config": {
+                        "channel": "#security-alerts",
+                        "message": "🔐 *Brute Force Attack Detected*\n*Target:* {{ input.target_username }}\n*Source IP:* {{ input.source_ip }} ({{ steps.step_1.country | default('Unknown') }})\n*Failed Attempts:* {{ input.failed_attempts }}\n*Successful Login:* {{ 'Yes ⚠️' if input.successful_login else 'No ✅' }}\n*IP Reputation:* {{ steps.step_1.reputation_score | default('N/A') }}"
+                    },
+                    "on_failure": "continue"
+                }
+            ])
+        ),
+        // 5. Suspicious Login Investigation
+        (
+            "playbook_suspicious_login",
+            "Suspicious Login Investigation",
+            "Investigate and respond to suspicious login attempts including impossible travel, unusual location, or new device access.",
+            "incident_response",
+            "alert",
+            serde_json::json!([
+                {
+                    "id": "step_1",
+                    "name": "Get Login Context",
+                    "description": "Gather additional context about the login",
+                    "action_type": "geoip_lookup",
+                    "config": {
+                        "ip": "{{ input.source_ip }}"
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_2",
+                    "name": "Check User's Login History",
+                    "description": "Retrieve recent login history for the user",
+                    "action_type": "siem_search",
+                    "config": {
+                        "query": "user.name:{{ input.username }} AND event.category:authentication AND event.outcome:success",
+                        "timeframe": "-7d",
+                        "limit": 100
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_3",
+                    "name": "Calculate Travel Feasibility",
+                    "description": "Check if login locations are physically possible",
+                    "action_type": "decision",
+                    "config": {
+                        "condition": "calculate_travel_time(steps.step_2.last_location, steps.step_1.location) < time_since_last_login"
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_4",
+                    "name": "Request User Verification",
+                    "description": "Send verification request to the user",
+                    "action_type": "send_email",
+                    "config": {
+                        "to": "{{ input.user_email }}",
+                        "subject": "Was this you? Unusual login detected",
+                        "template": "suspicious_login_verification",
+                        "variables": {
+                            "location": "{{ steps.step_1.city }}, {{ steps.step_1.country }}",
+                            "time": "{{ input.timestamp }}",
+                            "device": "{{ input.device_info }}"
+                        }
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_5",
+                    "name": "Revoke Sessions (If Suspicious)",
+                    "description": "Revoke all active sessions if high risk",
+                    "action_type": "revoke_sessions",
+                    "config": {
+                        "username": "{{ input.username }}"
+                    },
+                    "condition": "{{ input.risk_score > 80 || steps.step_3.impossible_travel == true }}",
+                    "requires_approval": true,
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_6",
+                    "name": "Create Case",
+                    "description": "Create a case for tracking",
+                    "action_type": "create_case",
+                    "config": {
+                        "title": "Suspicious Login: {{ input.username }} from {{ steps.step_1.country }}",
+                        "severity": "{{ 'high' if steps.step_3.impossible_travel else 'medium' }}",
+                        "case_type": "suspicious_access",
+                        "tags": ["suspicious-login", "{{ 'impossible-travel' if steps.step_3.impossible_travel else 'unusual-location' }}"]
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_7",
+                    "name": "Alert Security",
+                    "description": "Notify security team",
+                    "action_type": "send_slack",
+                    "config": {
+                        "channel": "#security-alerts",
+                        "message": "🔍 *Suspicious Login Detected*\n*User:* {{ input.username }}\n*Location:* {{ steps.step_1.city }}, {{ steps.step_1.country }}\n*Reason:* {{ input.detection_reason }}\n*Risk Score:* {{ input.risk_score }}\n*Verification:* Email sent to user"
+                    },
+                    "on_failure": "continue"
+                }
+            ])
+        ),
+        // 6. IOC Enrichment Playbook
+        (
+            "playbook_ioc_enrichment",
+            "IOC Enrichment & Analysis",
+            "Comprehensive enrichment of indicators of compromise (IOCs) from multiple threat intelligence sources.",
+            "enrichment",
+            "manual",
+            serde_json::json!([
+                {
+                    "id": "step_1",
+                    "name": "Determine IOC Type",
+                    "description": "Identify the type of indicator",
+                    "action_type": "decision",
+                    "config": {
+                        "conditions": [
+                            {"if": "match(input.ioc, ip_regex)", "then": "ip"},
+                            {"if": "match(input.ioc, domain_regex)", "then": "domain"},
+                            {"if": "match(input.ioc, url_regex)", "then": "url"},
+                            {"if": "match(input.ioc, hash_md5_regex)", "then": "hash_md5"},
+                            {"if": "match(input.ioc, hash_sha256_regex)", "then": "hash_sha256"},
+                            {"if": "match(input.ioc, email_regex)", "then": "email"},
+                            {"default": "unknown"}
+                        ]
+                    },
+                    "on_failure": "stop"
+                },
+                {
+                    "id": "step_2",
+                    "name": "VirusTotal Lookup",
+                    "description": "Query VirusTotal for IOC information",
+                    "action_type": "http_request",
+                    "config": {
+                        "method": "GET",
+                        "url": "https://www.virustotal.com/api/v3/{{ steps.step_1.ioc_type }}s/{{ input.ioc }}",
+                        "headers": {"x-apikey": "{{ config.virustotal_api_key }}"}
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_3",
+                    "name": "AbuseIPDB Lookup",
+                    "description": "Query AbuseIPDB for IP reputation",
+                    "action_type": "ip_lookup",
+                    "config": {
+                        "source": "abuseipdb",
+                        "ip": "{{ input.ioc }}"
+                    },
+                    "condition": "{{ steps.step_1.ioc_type == 'ip' }}",
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_4",
+                    "name": "Shodan Lookup",
+                    "description": "Query Shodan for host information",
+                    "action_type": "shodan_lookup",
+                    "config": {
+                        "ip": "{{ input.ioc }}"
+                    },
+                    "condition": "{{ steps.step_1.ioc_type == 'ip' }}",
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_5",
+                    "name": "WHOIS Lookup",
+                    "description": "Get WHOIS information for domain/IP",
+                    "action_type": "whois_lookup",
+                    "config": {
+                        "target": "{{ input.ioc }}"
+                    },
+                    "condition": "{{ steps.step_1.ioc_type in ['ip', 'domain'] }}",
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_6",
+                    "name": "DNS Lookup",
+                    "description": "Perform DNS resolution",
+                    "action_type": "dns_lookup",
+                    "config": {
+                        "domain": "{{ input.ioc }}",
+                        "record_types": ["A", "AAAA", "MX", "NS", "TXT"]
+                    },
+                    "condition": "{{ steps.step_1.ioc_type == 'domain' }}",
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_7",
+                    "name": "Calculate Risk Score",
+                    "description": "Aggregate findings into a risk score",
+                    "action_type": "transform_data",
+                    "config": {
+                        "expression": "calculate_ioc_risk_score(steps)"
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_8",
+                    "name": "Store Enrichment Results",
+                    "description": "Save enrichment data to the IOC database",
+                    "action_type": "add_to_watchlist",
+                    "config": {
+                        "indicator": "{{ input.ioc }}",
+                        "indicator_type": "{{ steps.step_1.ioc_type }}",
+                        "enrichment_data": "{{ steps | json }}",
+                        "risk_score": "{{ steps.step_7.risk_score }}",
+                        "tags": "{{ input.tags | default([]) }}"
+                    },
+                    "on_failure": "continue"
+                }
+            ])
+        ),
+        // 7. Vulnerability Triage Playbook
+        (
+            "playbook_vulnerability_triage",
+            "Critical Vulnerability Triage",
+            "Automated triage and response workflow for critical vulnerabilities including asset identification, owner notification, and remediation tracking.",
+            "vulnerability_management",
+            "alert",
+            serde_json::json!([
+                {
+                    "id": "step_1",
+                    "name": "Get Asset Details",
+                    "description": "Retrieve asset information from CMDB",
+                    "action_type": "http_request",
+                    "config": {
+                        "method": "GET",
+                        "url": "{{ config.cmdb_api }}/assets/{{ input.asset_id }}"
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_2",
+                    "name": "Check Exploit Availability",
+                    "description": "Check if exploits exist for this vulnerability",
+                    "action_type": "http_request",
+                    "config": {
+                        "method": "GET",
+                        "url": "https://services.nvd.nist.gov/rest/json/cves/2.0?cveId={{ input.cve_id }}"
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_3",
+                    "name": "Calculate Risk Priority",
+                    "description": "Calculate risk based on CVSS, asset criticality, and exploit availability",
+                    "action_type": "transform_data",
+                    "config": {
+                        "expression": "calculate_vulnerability_priority(input.cvss_score, steps.step_1.asset_criticality, steps.step_2.exploit_available)"
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_4",
+                    "name": "Create Remediation Ticket",
+                    "description": "Create a ticket for vulnerability remediation",
+                    "action_type": "create_ticket",
+                    "config": {
+                        "system": "jira",
+                        "project": "{{ config.vuln_project }}",
+                        "title": "[{{ input.severity | upper }}] {{ input.cve_id }} - {{ input.vulnerability_name }}",
+                        "priority": "{{ steps.step_3.priority }}",
+                        "assignee": "{{ steps.step_1.asset_owner }}",
+                        "description": "Vulnerability Details:\n- CVE: {{ input.cve_id }}\n- CVSS: {{ input.cvss_score }}\n- Asset: {{ steps.step_1.asset_name }}\n- Criticality: {{ steps.step_1.asset_criticality }}\n\nRemediation Required: {{ input.remediation_guidance }}",
+                        "due_date": "{{ calculate_sla_date(steps.step_3.priority) }}"
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_5",
+                    "name": "Notify Asset Owner",
+                    "description": "Send email notification to the asset owner",
+                    "action_type": "send_email",
+                    "config": {
+                        "to": "{{ steps.step_1.asset_owner_email }}",
+                        "cc": "{{ steps.step_1.asset_team_email }}",
+                        "subject": "[Action Required] Critical Vulnerability on {{ steps.step_1.asset_name }}",
+                        "template": "vulnerability_notification",
+                        "variables": {
+                            "cve_id": "{{ input.cve_id }}",
+                            "asset_name": "{{ steps.step_1.asset_name }}",
+                            "ticket_url": "{{ steps.step_4.ticket_url }}",
+                            "due_date": "{{ steps.step_4.due_date }}"
+                        }
+                    },
+                    "condition": "{{ input.severity in ['critical', 'high'] }}",
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_6",
+                    "name": "Alert Security Team",
+                    "description": "Send Slack alert for critical vulnerabilities",
+                    "action_type": "send_slack",
+                    "config": {
+                        "channel": "#vulnerability-alerts",
+                        "message": "🔴 *Critical Vulnerability Detected*\n*CVE:* {{ input.cve_id }}\n*CVSS:* {{ input.cvss_score }}\n*Asset:* {{ steps.step_1.asset_name }}\n*Owner:* {{ steps.step_1.asset_owner }}\n*Exploit Available:* {{ 'Yes ⚠️' if steps.step_2.exploit_available else 'No' }}\n*Ticket:* {{ steps.step_4.ticket_url }}"
+                    },
+                    "condition": "{{ input.severity == 'critical' }}",
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_7",
+                    "name": "Update Asset Risk Score",
+                    "description": "Update the asset's risk score in the asset inventory",
+                    "action_type": "update_asset",
+                    "config": {
+                        "asset_id": "{{ input.asset_id }}",
+                        "updates": {
+                            "risk_score": "{{ steps.step_3.risk_score }}",
+                            "last_vulnerability_scan": "{{ timestamp() }}",
+                            "open_critical_vulns": "{{ input.open_critical_count }}"
+                        }
+                    },
+                    "on_failure": "continue"
+                }
+            ])
+        ),
+        // 8. User Account Compromise Response
+        (
+            "playbook_account_compromise",
+            "User Account Compromise Response",
+            "Response playbook for confirmed or suspected account compromise including credential reset, session revocation, and forensic data collection.",
+            "incident_response",
+            "manual",
+            serde_json::json!([
+                {
+                    "id": "step_1",
+                    "name": "Revoke All Sessions",
+                    "description": "Immediately terminate all active sessions",
+                    "action_type": "revoke_sessions",
+                    "config": {
+                        "username": "{{ input.username }}"
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_2",
+                    "name": "Reset Password",
+                    "description": "Force password reset for the compromised account",
+                    "action_type": "reset_password",
+                    "config": {
+                        "username": "{{ input.username }}",
+                        "notify_user": false,
+                        "require_mfa_reset": true
+                    },
+                    "on_failure": "stop"
+                },
+                {
+                    "id": "step_3",
+                    "name": "Disable Account",
+                    "description": "Temporarily disable the account",
+                    "action_type": "disable_user",
+                    "config": {
+                        "username": "{{ input.username }}",
+                        "reason": "Account compromise investigation"
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_4",
+                    "name": "Collect Login History",
+                    "description": "Gather authentication logs for investigation",
+                    "action_type": "siem_search",
+                    "config": {
+                        "query": "user.name:{{ input.username }} AND event.category:authentication",
+                        "timeframe": "-30d",
+                        "limit": 1000
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_5",
+                    "name": "Collect Activity Logs",
+                    "description": "Gather all user activity for forensic analysis",
+                    "action_type": "siem_search",
+                    "config": {
+                        "query": "user.name:{{ input.username }}",
+                        "timeframe": "-7d",
+                        "limit": 5000
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_6",
+                    "name": "Check for Data Exfiltration",
+                    "description": "Search for unusual data access or downloads",
+                    "action_type": "siem_search",
+                    "config": {
+                        "query": "user.name:{{ input.username }} AND (event.action:download OR event.action:export OR file.size:>10000000)",
+                        "timeframe": "-7d"
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_7",
+                    "name": "Identify Affected Resources",
+                    "description": "List resources accessed by the compromised account",
+                    "action_type": "http_request",
+                    "config": {
+                        "method": "GET",
+                        "url": "{{ config.identity_api }}/users/{{ input.username }}/permissions"
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_8",
+                    "name": "Create Investigation Case",
+                    "description": "Create a case with all collected evidence",
+                    "action_type": "create_case",
+                    "config": {
+                        "title": "Account Compromise: {{ input.username }}",
+                        "severity": "high",
+                        "case_type": "account_compromise",
+                        "tags": ["account-compromise", "credential-theft", "investigation"],
+                        "description": "Suspected account compromise for {{ input.username }}.\n\nInitial Detection: {{ input.detection_source }}\nCompromise Indicator: {{ input.indicator }}\n\nImmediate Actions Taken:\n- Sessions revoked\n- Password reset forced\n- Account disabled",
+                        "evidence": [
+                            {"type": "log", "name": "Login History", "data": "{{ steps.step_4.events | json }}"},
+                            {"type": "log", "name": "User Activity", "data": "{{ steps.step_5.events | json }}"},
+                            {"type": "log", "name": "Data Access", "data": "{{ steps.step_6.events | json }}"}
+                        ]
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_9",
+                    "name": "Notify User via Alternate Channel",
+                    "description": "Contact user through verified alternate contact",
+                    "action_type": "send_sms",
+                    "config": {
+                        "to": "{{ input.user_phone }}",
+                        "message": "SECURITY ALERT: Your {{ config.company_name }} account has been locked due to suspicious activity. Contact IT Security immediately."
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_10",
+                    "name": "Alert Security Team",
+                    "description": "Send comprehensive alert to security team",
+                    "action_type": "send_slack",
+                    "config": {
+                        "channel": "#security-incidents",
+                        "message": "🔓 *Account Compromise Detected*\n*User:* {{ input.username }}\n*Detection:* {{ input.detection_source }}\n*Status:* Account Locked\n*Case:* {{ steps.step_8.case_id }}\n*Suspicious Logins:* {{ steps.step_4.suspicious_count | default(0) }}\n*Data Exfiltration Risk:* {{ 'HIGH' if steps.step_6.events | length > 0 else 'LOW' }}"
+                    },
+                    "on_failure": "continue"
+                }
+            ])
+        ),
+        // 9. DDoS Attack Response
+        (
+            "playbook_ddos_response",
+            "DDoS Attack Response",
+            "Automated response to DDoS attacks including traffic analysis, mitigation activation, and stakeholder communication.",
+            "incident_response",
+            "alert",
+            serde_json::json!([
+                {
+                    "id": "step_1",
+                    "name": "Analyze Attack Traffic",
+                    "description": "Gather attack traffic characteristics",
+                    "action_type": "siem_search",
+                    "config": {
+                        "query": "destination.ip:{{ input.target_ip }} AND event.category:network",
+                        "timeframe": "-15m",
+                        "aggregations": ["source.ip", "destination.port", "network.protocol"]
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_2",
+                    "name": "Identify Top Attackers",
+                    "description": "Find the top source IPs in the attack",
+                    "action_type": "transform_data",
+                    "config": {
+                        "expression": "top_n(steps.step_1.aggregations.source_ip, 100)"
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_3",
+                    "name": "Enable DDoS Mitigation",
+                    "description": "Activate DDoS mitigation service",
+                    "action_type": "http_request",
+                    "config": {
+                        "method": "POST",
+                        "url": "{{ config.ddos_mitigation_api }}/activate",
+                        "body": {
+                            "target_ip": "{{ input.target_ip }}",
+                            "attack_type": "{{ input.attack_type }}",
+                            "scrubbing_enabled": true
+                        }
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_4",
+                    "name": "Block Top Attackers",
+                    "description": "Block the most aggressive source IPs",
+                    "action_type": "block_ip_firewall",
+                    "config": {
+                        "ips": "{{ steps.step_2.top_ips }}",
+                        "duration_hours": 24,
+                        "comment": "DDoS attack mitigation"
+                    },
+                    "requires_approval": false,
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_5",
+                    "name": "Create Incident Case",
+                    "description": "Create a case for the DDoS incident",
+                    "action_type": "create_case",
+                    "config": {
+                        "title": "DDoS Attack: {{ input.attack_type }} on {{ input.target_ip }}",
+                        "severity": "critical",
+                        "case_type": "ddos",
+                        "tags": ["ddos", "{{ input.attack_type }}", "availability"]
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_6",
+                    "name": "Page NOC Team",
+                    "description": "Alert the Network Operations Center",
+                    "action_type": "send_pagerduty",
+                    "config": {
+                        "severity": "critical",
+                        "description": "DDoS Attack in progress. Target: {{ input.target_ip }}. Attack type: {{ input.attack_type }}. Mitigation activated."
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_7",
+                    "name": "Notify Stakeholders",
+                    "description": "Send status update to stakeholders",
+                    "action_type": "send_slack",
+                    "config": {
+                        "channel": "#incidents",
+                        "message": "🌊 *DDoS Attack Alert*\n*Target:* {{ input.target_ip }}\n*Attack Type:* {{ input.attack_type }}\n*Traffic Volume:* {{ input.traffic_gbps }} Gbps\n*Status:* Mitigation ACTIVE\n*Top Sources:* {{ steps.step_2.top_ips | length }} IPs blocked\n*Case:* {{ steps.step_5.case_id }}"
+                    },
+                    "on_failure": "continue"
+                }
+            ])
+        ),
+        // 10. Threat Intel Alert Processing
+        (
+            "playbook_threat_intel_alert",
+            "Threat Intel Alert Processing",
+            "Process incoming threat intelligence alerts, correlate with internal data, and trigger appropriate responses.",
+            "threat_intelligence",
+            "webhook",
+            serde_json::json!([
+                {
+                    "id": "step_1",
+                    "name": "Parse Threat Intel",
+                    "description": "Extract IOCs from the threat intel feed",
+                    "action_type": "parse_json",
+                    "config": {
+                        "json_string": "{{ input.raw_intel }}"
+                    },
+                    "on_failure": "stop"
+                },
+                {
+                    "id": "step_2",
+                    "name": "Search SIEM for Matches",
+                    "description": "Check if any IOCs have been seen in our environment",
+                    "action_type": "siem_search",
+                    "config": {
+                        "query": "{{ steps.step_1.iocs | map('escape') | join(' OR ') }}",
+                        "timeframe": "-30d"
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_3",
+                    "name": "Enrich Matched IOCs",
+                    "description": "Get additional context for matched IOCs",
+                    "action_type": "loop",
+                    "config": {
+                        "items": "{{ steps.step_2.matched_iocs }}",
+                        "action": "enrich_ioc"
+                    },
+                    "condition": "{{ steps.step_2.matched_iocs | length > 0 }}",
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_4",
+                    "name": "Add to Watchlist",
+                    "description": "Add IOCs to the internal watchlist",
+                    "action_type": "loop",
+                    "config": {
+                        "items": "{{ steps.step_1.iocs }}",
+                        "action": "add_to_watchlist",
+                        "action_config": {
+                            "indicator_type": "{{ item.type }}",
+                            "source": "{{ input.feed_name }}",
+                            "confidence": "{{ input.confidence }}"
+                        }
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_5",
+                    "name": "Block High-Confidence IOCs",
+                    "description": "Automatically block IOCs with high confidence scores",
+                    "action_type": "block_domain",
+                    "config": {
+                        "domains": "{{ steps.step_1.iocs | select('type', 'domain') | select('confidence', '>', 80) | map('value') }}"
+                    },
+                    "condition": "{{ input.auto_block == true }}",
+                    "requires_approval": true,
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_6",
+                    "name": "Create Alert for Matches",
+                    "description": "Create an alert if IOCs were found in our environment",
+                    "action_type": "create_case",
+                    "config": {
+                        "title": "Threat Intel Match: {{ input.threat_name }}",
+                        "severity": "{{ input.severity | default('medium') }}",
+                        "case_type": "threat_intel",
+                        "tags": ["threat-intel", "{{ input.feed_name }}", "{{ input.threat_actor | default('unknown') }}"],
+                        "description": "Threat intelligence IOCs from {{ input.feed_name }} were found in our environment.\n\nMatched IOCs: {{ steps.step_2.matched_iocs | length }}\nTotal IOCs: {{ steps.step_1.iocs | length }}\nThreat Actor: {{ input.threat_actor | default('Unknown') }}"
+                    },
+                    "condition": "{{ steps.step_2.matched_iocs | length > 0 }}",
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_7",
+                    "name": "Alert Security Team",
+                    "description": "Notify about matched threat intel",
+                    "action_type": "send_slack",
+                    "config": {
+                        "channel": "#threat-intel",
+                        "message": "🎯 *Threat Intel Alert*\n*Feed:* {{ input.feed_name }}\n*Threat:* {{ input.threat_name }}\n*Actor:* {{ input.threat_actor | default('Unknown') }}\n*IOCs Ingested:* {{ steps.step_1.iocs | length }}\n*Matches Found:* {{ steps.step_2.matched_iocs | length }}\n{{ '⚠️ *INVESTIGATION REQUIRED*' if steps.step_2.matched_iocs | length > 0 else '✅ No matches found' }}"
+                    },
+                    "on_failure": "continue"
+                }
+            ])
+        ),
+        // 11. Cloud Security Alert Response
+        (
+            "playbook_cloud_security_alert",
+            "Cloud Security Alert Response",
+            "Respond to cloud security alerts from AWS, Azure, or GCP including resource isolation and forensic data collection.",
+            "incident_response",
+            "alert",
+            serde_json::json!([
+                {
+                    "id": "step_1",
+                    "name": "Identify Cloud Provider",
+                    "description": "Determine which cloud provider generated the alert",
+                    "action_type": "decision",
+                    "config": {
+                        "conditions": [
+                            {"if": "input.source contains 'aws' or input.source contains 'guardduty'", "then": "aws"},
+                            {"if": "input.source contains 'azure' or input.source contains 'sentinel'", "then": "azure"},
+                            {"if": "input.source contains 'gcp' or input.source contains 'scc'", "then": "gcp"}
+                        ]
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_2",
+                    "name": "Get Resource Details",
+                    "description": "Retrieve details about the affected cloud resource",
+                    "action_type": "http_request",
+                    "config": {
+                        "method": "GET",
+                        "url": "{{ config.cloud_api[steps.step_1.provider] }}/resources/{{ input.resource_id }}"
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_3",
+                    "name": "Isolate Compromised Resource",
+                    "description": "Apply restrictive security group/NSG to isolate the resource",
+                    "action_type": "http_request",
+                    "config": {
+                        "method": "POST",
+                        "url": "{{ config.cloud_api[steps.step_1.provider] }}/resources/{{ input.resource_id }}/isolate",
+                        "body": {
+                            "isolation_type": "network",
+                            "allow_security_access": true
+                        }
+                    },
+                    "condition": "{{ input.severity in ['critical', 'high'] }}",
+                    "requires_approval": true,
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_4",
+                    "name": "Collect Cloud Logs",
+                    "description": "Gather relevant cloud audit logs",
+                    "action_type": "http_request",
+                    "config": {
+                        "method": "POST",
+                        "url": "{{ config.cloud_api[steps.step_1.provider] }}/logs/query",
+                        "body": {
+                            "resource_id": "{{ input.resource_id }}",
+                            "timeframe": "-24h",
+                            "log_types": ["audit", "flow", "access"]
+                        }
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_5",
+                    "name": "Create Cloud Incident Case",
+                    "description": "Create a case for the cloud security incident",
+                    "action_type": "create_case",
+                    "config": {
+                        "title": "Cloud Security Alert: {{ input.alert_type }} in {{ steps.step_1.provider | upper }}",
+                        "severity": "{{ input.severity }}",
+                        "case_type": "cloud_security",
+                        "tags": ["cloud", "{{ steps.step_1.provider }}", "{{ input.alert_type | lower | replace(' ', '-') }}"],
+                        "description": "Cloud security alert detected.\n\nProvider: {{ steps.step_1.provider | upper }}\nResource: {{ input.resource_id }}\nType: {{ steps.step_2.resource_type }}\nRegion: {{ steps.step_2.region }}\nOwner: {{ steps.step_2.owner }}"
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_6",
+                    "name": "Notify Cloud Team",
+                    "description": "Alert the cloud infrastructure team",
+                    "action_type": "send_slack",
+                    "config": {
+                        "channel": "#cloud-security",
+                        "message": "☁️ *Cloud Security Alert*\n*Provider:* {{ steps.step_1.provider | upper }}\n*Alert:* {{ input.alert_type }}\n*Resource:* {{ input.resource_id }}\n*Region:* {{ steps.step_2.region }}\n*Severity:* {{ input.severity | upper }}\n*Status:* {{ 'Isolated' if steps.step_3.success else 'Active' }}\n*Case:* {{ steps.step_5.case_id }}"
+                    },
+                    "on_failure": "continue"
+                }
+            ])
+        ),
+        // 12. Compliance Violation Response
+        (
+            "playbook_compliance_violation",
+            "Compliance Violation Response",
+            "Automated response to compliance violations including documentation, stakeholder notification, and remediation tracking.",
+            "compliance",
+            "alert",
+            serde_json::json!([
+                {
+                    "id": "step_1",
+                    "name": "Get Violation Details",
+                    "description": "Retrieve full details of the compliance violation",
+                    "action_type": "http_request",
+                    "config": {
+                        "method": "GET",
+                        "url": "{{ config.compliance_api }}/violations/{{ input.violation_id }}"
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_2",
+                    "name": "Identify Control Owner",
+                    "description": "Find the owner responsible for this control",
+                    "action_type": "http_request",
+                    "config": {
+                        "method": "GET",
+                        "url": "{{ config.compliance_api }}/controls/{{ steps.step_1.control_id }}/owner"
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_3",
+                    "name": "Create Compliance Ticket",
+                    "description": "Create a ticket for remediation tracking",
+                    "action_type": "create_ticket",
+                    "config": {
+                        "system": "jira",
+                        "project": "{{ config.compliance_project }}",
+                        "title": "[{{ input.framework }}] {{ steps.step_1.control_name }} Violation",
+                        "priority": "{{ steps.step_1.severity }}",
+                        "assignee": "{{ steps.step_2.owner_email }}",
+                        "description": "A compliance violation has been detected.\n\nFramework: {{ input.framework }}\nControl: {{ steps.step_1.control_id }} - {{ steps.step_1.control_name }}\nViolation: {{ steps.step_1.description }}\n\nRemediation Guidance:\n{{ steps.step_1.remediation_steps }}",
+                        "labels": ["compliance", "{{ input.framework | lower }}", "audit"]
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_4",
+                    "name": "Update Compliance Status",
+                    "description": "Update the compliance tracking system",
+                    "action_type": "http_request",
+                    "config": {
+                        "method": "PATCH",
+                        "url": "{{ config.compliance_api }}/controls/{{ steps.step_1.control_id }}/status",
+                        "body": {
+                            "status": "non_compliant",
+                            "violation_id": "{{ input.violation_id }}",
+                            "ticket_id": "{{ steps.step_3.ticket_id }}",
+                            "detected_at": "{{ timestamp() }}"
+                        }
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_5",
+                    "name": "Notify Control Owner",
+                    "description": "Send notification to the control owner",
+                    "action_type": "send_email",
+                    "config": {
+                        "to": "{{ steps.step_2.owner_email }}",
+                        "cc": "{{ config.compliance_team_email }}",
+                        "subject": "[Action Required] Compliance Violation: {{ steps.step_1.control_name }}",
+                        "template": "compliance_violation_notification",
+                        "priority": "high"
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_6",
+                    "name": "Alert Compliance Team",
+                    "description": "Notify the compliance team",
+                    "action_type": "send_slack",
+                    "config": {
+                        "channel": "#compliance",
+                        "message": "⚠️ *Compliance Violation Detected*\n*Framework:* {{ input.framework }}\n*Control:* {{ steps.step_1.control_id }}\n*Description:* {{ steps.step_1.description | truncate(100) }}\n*Owner:* {{ steps.step_2.owner_name }}\n*Ticket:* {{ steps.step_3.ticket_url }}\n*Due Date:* {{ steps.step_3.due_date }}"
+                    },
+                    "on_failure": "continue"
+                }
+            ])
+        ),
+        // 13. Network Intrusion Response
+        (
+            "playbook_network_intrusion",
+            "Network Intrusion Response",
+            "Response playbook for detected network intrusions including traffic capture, host investigation, and containment actions.",
+            "incident_response",
+            "alert",
+            serde_json::json!([
+                {
+                    "id": "step_1",
+                    "name": "Enrich Source IP",
+                    "description": "Get threat intelligence on the intruding IP",
+                    "action_type": "ip_lookup",
+                    "config": {
+                        "ip": "{{ input.source_ip }}",
+                        "sources": ["virustotal", "abuseipdb", "shodan", "greynoise"]
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_2",
+                    "name": "Capture Network Traffic",
+                    "description": "Start packet capture for forensic analysis",
+                    "action_type": "http_request",
+                    "config": {
+                        "method": "POST",
+                        "url": "{{ config.network_api }}/capture/start",
+                        "body": {
+                            "filter": "host {{ input.source_ip }} or host {{ input.destination_ip }}",
+                            "duration_seconds": 300,
+                            "interface": "{{ input.interface }}"
+                        }
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_3",
+                    "name": "Block Intruder IP",
+                    "description": "Block the attacking IP at the firewall",
+                    "action_type": "block_ip_firewall",
+                    "config": {
+                        "ip": "{{ input.source_ip }}",
+                        "duration_hours": 72,
+                        "comment": "Network intrusion detected - {{ input.alert_type }}"
+                    },
+                    "condition": "{{ steps.step_1.reputation_score < 30 || input.severity == 'critical' }}",
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_4",
+                    "name": "Search for Related Activity",
+                    "description": "Find other connections from the same IP",
+                    "action_type": "siem_search",
+                    "config": {
+                        "query": "source.ip:{{ input.source_ip }} OR destination.ip:{{ input.source_ip }}",
+                        "timeframe": "-24h"
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_5",
+                    "name": "Investigate Target Host",
+                    "description": "Get process and connection info from the target",
+                    "action_type": "edr_get_connections",
+                    "config": {
+                        "hostname": "{{ input.destination_hostname }}",
+                        "filter_ip": "{{ input.source_ip }}"
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_6",
+                    "name": "Create Intrusion Case",
+                    "description": "Create a case for the intrusion incident",
+                    "action_type": "create_case",
+                    "config": {
+                        "title": "Network Intrusion: {{ input.alert_type }} from {{ input.source_ip }}",
+                        "severity": "{{ input.severity }}",
+                        "case_type": "intrusion",
+                        "tags": ["intrusion", "network", "{{ input.protocol | lower }}"],
+                        "description": "Network intrusion detected.\n\nSource: {{ input.source_ip }} ({{ steps.step_1.country | default('Unknown') }})\nTarget: {{ input.destination_ip }}:{{ input.destination_port }}\nProtocol: {{ input.protocol }}\nReputation: {{ steps.step_1.reputation_score | default('N/A') }}\n\nRelated Connections: {{ steps.step_4.total | default(0) }}"
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_7",
+                    "name": "Alert Security Team",
+                    "description": "Send alert with investigation details",
+                    "action_type": "send_slack",
+                    "config": {
+                        "channel": "#security-incidents",
+                        "message": "🛡️ *Network Intrusion Detected*\n*Type:* {{ input.alert_type }}\n*Source:* {{ input.source_ip }} ({{ steps.step_1.country | default('Unknown') }})\n*Target:* {{ input.destination_ip }}:{{ input.destination_port }}\n*Reputation:* {{ steps.step_1.reputation_score | default('N/A') }}\n*Status:* {{ 'IP Blocked' if steps.step_3.blocked else 'Monitoring' }}\n*Case:* {{ steps.step_6.case_id }}"
+                    },
+                    "on_failure": "continue"
+                }
+            ])
+        ),
+        // 14. Scheduled Vulnerability Scan
+        (
+            "playbook_scheduled_scan",
+            "Scheduled Vulnerability Scan",
+            "Automated vulnerability scanning workflow that runs on a schedule, processes results, and creates actionable tickets.",
+            "vulnerability_management",
+            "schedule",
+            serde_json::json!([
+                {
+                    "id": "step_1",
+                    "name": "Get Target Assets",
+                    "description": "Retrieve list of assets to scan",
+                    "action_type": "http_request",
+                    "config": {
+                        "method": "GET",
+                        "url": "{{ config.asset_api }}/assets?scan_group={{ input.scan_group }}"
+                    },
+                    "on_failure": "stop"
+                },
+                {
+                    "id": "step_2",
+                    "name": "Launch Vulnerability Scan",
+                    "description": "Initiate the vulnerability scan",
+                    "action_type": "run_scan",
+                    "config": {
+                        "targets": "{{ steps.step_1.assets | map('ip_address') }}",
+                        "scan_type": "{{ input.scan_type | default('full') }}",
+                        "scan_profile": "{{ input.scan_profile | default('standard') }}"
+                    },
+                    "on_failure": "stop"
+                },
+                {
+                    "id": "step_3",
+                    "name": "Wait for Scan Completion",
+                    "description": "Wait for the scan to finish",
+                    "action_type": "wait",
+                    "config": {
+                        "condition": "scan_complete",
+                        "scan_id": "{{ steps.step_2.scan_id }}",
+                        "timeout_minutes": 120
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_4",
+                    "name": "Get Scan Results",
+                    "description": "Retrieve vulnerability scan results",
+                    "action_type": "http_request",
+                    "config": {
+                        "method": "GET",
+                        "url": "{{ config.scanner_api }}/scans/{{ steps.step_2.scan_id }}/results"
+                    },
+                    "on_failure": "stop"
+                },
+                {
+                    "id": "step_5",
+                    "name": "Process Critical Findings",
+                    "description": "Create tickets for critical vulnerabilities",
+                    "action_type": "loop",
+                    "config": {
+                        "items": "{{ steps.step_4.vulnerabilities | select('severity', 'critical') }}",
+                        "action": "create_ticket",
+                        "action_config": {
+                            "system": "jira",
+                            "project": "SEC",
+                            "title": "[CRITICAL] {{ item.cve_id }} - {{ item.name }}",
+                            "priority": "critical"
+                        }
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_6",
+                    "name": "Generate Scan Report",
+                    "description": "Create a summary report of the scan",
+                    "action_type": "format_string",
+                    "config": {
+                        "template": "## Vulnerability Scan Report\n**Scan ID:** {{ steps.step_2.scan_id }}\n**Date:** {{ timestamp() }}\n**Assets Scanned:** {{ steps.step_1.assets | length }}\n\n### Summary\n- Critical: {{ steps.step_4.critical_count }}\n- High: {{ steps.step_4.high_count }}\n- Medium: {{ steps.step_4.medium_count }}\n- Low: {{ steps.step_4.low_count }}\n\n### Tickets Created\n{{ steps.step_5.tickets | length }} tickets created for critical findings."
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_7",
+                    "name": "Send Summary Report",
+                    "description": "Email the scan summary to stakeholders",
+                    "action_type": "send_email",
+                    "config": {
+                        "to": "{{ config.security_team_email }}",
+                        "subject": "Vulnerability Scan Complete: {{ input.scan_group }}",
+                        "body": "{{ steps.step_6.result }}"
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_8",
+                    "name": "Post to Slack",
+                    "description": "Post scan summary to Slack",
+                    "action_type": "send_slack",
+                    "config": {
+                        "channel": "#vulnerability-management",
+                        "message": "📊 *Scheduled Scan Complete*\n*Scan Group:* {{ input.scan_group }}\n*Assets:* {{ steps.step_1.assets | length }}\n*Critical:* {{ steps.step_4.critical_count }}\n*High:* {{ steps.step_4.high_count }}\n*Tickets Created:* {{ steps.step_5.tickets | length }}"
+                    },
+                    "on_failure": "continue"
+                }
+            ])
+        ),
+        // 15. Insider Threat Investigation
+        (
+            "playbook_insider_threat",
+            "Insider Threat Investigation",
+            "Investigation playbook for suspected insider threats including data access analysis, behavioral review, and HR notification.",
+            "incident_response",
+            "manual",
+            serde_json::json!([
+                {
+                    "id": "step_1",
+                    "name": "Collect User Activity",
+                    "description": "Gather comprehensive user activity logs",
+                    "action_type": "siem_search",
+                    "config": {
+                        "query": "user.name:{{ input.username }}",
+                        "timeframe": "-30d",
+                        "limit": 10000
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_2",
+                    "name": "Analyze Data Access",
+                    "description": "Review sensitive data access patterns",
+                    "action_type": "siem_search",
+                    "config": {
+                        "query": "user.name:{{ input.username }} AND (file.path:*confidential* OR file.path:*sensitive* OR file.classification:*)",
+                        "timeframe": "-30d"
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_3",
+                    "name": "Check for Data Exfiltration",
+                    "description": "Search for signs of data exfiltration",
+                    "action_type": "siem_search",
+                    "config": {
+                        "query": "user.name:{{ input.username }} AND (event.action:upload OR event.action:email_send_attachment OR event.action:usb_write OR destination.ip:NOT {{ config.internal_ranges }})",
+                        "timeframe": "-30d"
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_4",
+                    "name": "Review Off-Hours Activity",
+                    "description": "Analyze activity outside normal working hours",
+                    "action_type": "transform_data",
+                    "config": {
+                        "expression": "filter_by_time(steps.step_1.events, outside_hours=true)"
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_5",
+                    "name": "Get User's Access Permissions",
+                    "description": "Retrieve current access rights for the user",
+                    "action_type": "http_request",
+                    "config": {
+                        "method": "GET",
+                        "url": "{{ config.identity_api }}/users/{{ input.username }}/permissions"
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_6",
+                    "name": "Create Confidential Case",
+                    "description": "Create a restricted case for the investigation",
+                    "action_type": "create_case",
+                    "config": {
+                        "title": "Insider Threat Investigation: [REDACTED]",
+                        "severity": "{{ input.severity | default('high') }}",
+                        "case_type": "insider_threat",
+                        "tags": ["insider-threat", "confidential", "hr-required"],
+                        "tlp": "red",
+                        "restricted": true,
+                        "description": "Confidential insider threat investigation.\n\nTrigger: {{ input.trigger_reason }}\nDepartment: {{ input.department }}\n\n[Details restricted to case participants]"
+                    },
+                    "on_failure": "stop"
+                },
+                {
+                    "id": "step_7",
+                    "name": "Notify HR Confidentially",
+                    "description": "Send confidential notification to HR",
+                    "action_type": "send_email",
+                    "config": {
+                        "to": "{{ config.hr_security_contact }}",
+                        "subject": "[CONFIDENTIAL] Security Investigation - Case {{ steps.step_6.case_id }}",
+                        "template": "insider_threat_hr_notification",
+                        "encrypt": true
+                    },
+                    "on_failure": "continue"
+                },
+                {
+                    "id": "step_8",
+                    "name": "Notify Legal (If Required)",
+                    "description": "Alert legal team for serious cases",
+                    "action_type": "send_email",
+                    "config": {
+                        "to": "{{ config.legal_security_contact }}",
+                        "subject": "[CONFIDENTIAL] Security Investigation Requiring Legal Review",
+                        "template": "insider_threat_legal_notification",
+                        "encrypt": true
+                    },
+                    "condition": "{{ input.severity == 'critical' || steps.step_3.exfiltration_detected == true }}",
+                    "on_failure": "continue"
+                }
+            ])
+        )
+    ];
+
+    let playbooks_count = playbooks.len();
+
+    for (id, name, description, category, trigger_type, steps) in playbooks {
+        let steps_json = serde_json::to_string(&steps).unwrap_or_else(|_| "[]".to_string());
+
+        // Use INSERT OR IGNORE to avoid duplicates
+        let _ = sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO soar_playbooks
+            (id, name, description, category, trigger_type, trigger_config, steps_json, is_active, version, created_by, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, NULL, ?, TRUE, '1.0.0', ?, ?, ?)
+            "#
+        )
+        .bind(id)
+        .bind(name)
+        .bind(description)
+        .bind(category)
+        .bind(trigger_type)
+        .bind(&steps_json)
+        .bind(system_user)
+        .bind(&now)
+        .bind(&now)
+        .execute(pool)
+        .await;
+    }
+
+    log::info!("Seeded {} built-in SOAR playbooks", playbooks_count);
     Ok(())
 }
 
@@ -22759,6 +24433,38 @@ async fn create_ai_security_tables(pool: &SqlitePool) -> Result<()> {
         .execute(pool)
         .await?;
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_llm_test_cases_enabled ON llm_test_cases(enabled)")
+        .execute(pool)
+        .await?;
+
+    // LLM Targets - stores LLM target configurations for testing
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS llm_targets (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            endpoint TEXT NOT NULL,
+            model_type TEXT NOT NULL DEFAULT 'custom',
+            description TEXT,
+            api_key_encrypted TEXT,
+            headers TEXT,
+            enabled INTEGER DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_llm_targets_user ON llm_targets(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_llm_targets_name ON llm_targets(name)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_llm_targets_enabled ON llm_targets(enabled)")
         .execute(pool)
         .await?;
 
@@ -23903,5 +25609,1825 @@ async fn create_network_topology_tables(pool: &SqlitePool) -> Result<()> {
         .await?;
 
     log::info!("Created network topology tables");
+    Ok(())
+}
+
+/// Add engagement_id and customer_id columns to assets table for CRM linking
+async fn add_engagement_customer_to_assets(pool: &SqlitePool) -> Result<()> {
+    // Check if columns already exist
+    let table_info: Vec<(i64, String, String, i64, Option<String>, i64)> =
+        sqlx::query_as("PRAGMA table_info(assets)")
+            .fetch_all(pool)
+            .await?;
+
+    let has_engagement_id = table_info.iter().any(|(_, name, _, _, _, _)| name == "engagement_id");
+    let has_customer_id = table_info.iter().any(|(_, name, _, _, _, _)| name == "customer_id");
+
+    if !has_engagement_id {
+        sqlx::query("ALTER TABLE assets ADD COLUMN engagement_id TEXT REFERENCES engagements(id)")
+            .execute(pool)
+            .await?;
+        log::info!("Added engagement_id column to assets table");
+    }
+
+    if !has_customer_id {
+        sqlx::query("ALTER TABLE assets ADD COLUMN customer_id TEXT REFERENCES customers(id)")
+            .execute(pool)
+            .await?;
+        log::info!("Added customer_id column to assets table");
+    }
+
+    // Create indexes for efficient lookups
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_assets_engagement ON assets(engagement_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_assets_customer ON assets(customer_id)")
+        .execute(pool)
+        .await?;
+
+    // Also add to asset_ports table for consistency
+    let ports_table_info: Vec<(i64, String, String, i64, Option<String>, i64)> =
+        sqlx::query_as("PRAGMA table_info(asset_ports)")
+            .fetch_all(pool)
+            .await?;
+
+    let ports_has_engagement_id = ports_table_info.iter().any(|(_, name, _, _, _, _)| name == "engagement_id");
+    let ports_has_customer_id = ports_table_info.iter().any(|(_, name, _, _, _, _)| name == "customer_id");
+
+    if !ports_has_engagement_id {
+        sqlx::query("ALTER TABLE asset_ports ADD COLUMN engagement_id TEXT REFERENCES engagements(id)")
+            .execute(pool)
+            .await?;
+    }
+
+    if !ports_has_customer_id {
+        sqlx::query("ALTER TABLE asset_ports ADD COLUMN customer_id TEXT REFERENCES customers(id)")
+            .execute(pool)
+            .await?;
+    }
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_asset_ports_engagement ON asset_ports(engagement_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_asset_ports_customer ON asset_ports(customer_id)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Added engagement/customer linking to assets tables");
+    Ok(())
+}
+
+/// Seed common exploits for offline use
+async fn seed_exploits(pool: &SqlitePool) -> Result<()> {
+    match super::exploits::seed_common_exploits(pool).await {
+        Ok(count) => {
+            if count > 0 {
+                log::info!("Seeded {} common exploits", count);
+            }
+        }
+        Err(e) => {
+            log::warn!("Failed to seed exploits: {}", e);
+        }
+    }
+    Ok(())
+}
+
+/// Seed sample phishing email templates for security awareness testing
+async fn seed_phishing_email_templates(pool: &SqlitePool) -> Result<()> {
+    // Check if system templates already exist
+    let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM phishing_email_templates WHERE user_id = 'system'")
+        .fetch_one(pool)
+        .await?;
+
+    if count.0 > 0 {
+        return Ok(()); // Templates already seeded
+    }
+
+    let now = chrono::Utc::now().to_rfc3339();
+
+    // Sample templates - these are for authorized security awareness training only
+    let templates = vec![
+        // Password Reset Template
+        (
+            "Password Reset - IT Security",
+            "Urgent: Your password will expire in 24 hours",
+            r#"<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: #0078d4; color: white; padding: 20px; text-align: center; }
+        .content { padding: 20px; background: #f9f9f9; }
+        .button { display: inline-block; background: #0078d4; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin: 20px 0; }
+        .footer { font-size: 12px; color: #666; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>IT Security Alert</h1>
+        </div>
+        <div class="content">
+            <p>Dear {{.FirstName}},</p>
+            <p>Our security system has detected that your password will expire in <strong>24 hours</strong>. To maintain access to your account and company resources, please update your password immediately.</p>
+            <p style="text-align: center;">
+                <a href="{{.URL}}" class="button">Reset Password Now</a>
+            </p>
+            <p>If you do not reset your password within 24 hours:</p>
+            <ul>
+                <li>Your account will be temporarily locked</li>
+                <li>You will lose access to email and company applications</li>
+                <li>A support ticket will be required to restore access</li>
+            </ul>
+            <p class="footer">
+                This is an automated message from IT Security.<br>
+                If you did not request this email, please contact the IT Help Desk immediately.
+            </p>
+        </div>
+    </div>
+    <img src="{{.TrackingURL}}" width="1" height="1" alt="" />
+</body>
+</html>"#,
+            "Your password is expiring in 24 hours. Click here to reset: {{.URL}}",
+            "IT Security",
+            "security@company.com",
+        ),
+        // Microsoft 365 Login Alert
+        (
+            "Microsoft 365 - Suspicious Login",
+            "Security Alert: Unusual sign-in activity detected",
+            r#"<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #f5f5f5; padding: 20px; }
+        .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 8px; overflow: hidden; }
+        .header { background: #0078d4; padding: 20px; text-align: center; }
+        .header img { height: 24px; }
+        .content { padding: 30px; }
+        .alert-box { background: #fff4ce; border-left: 4px solid #ffb900; padding: 15px; margin: 20px 0; }
+        .button { display: inline-block; background: #0078d4; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; }
+        .details { background: #f5f5f5; padding: 15px; margin: 15px 0; border-radius: 4px; }
+        .footer { font-size: 11px; color: #666; padding: 20px; border-top: 1px solid #eee; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <span style="color: white; font-size: 20px; font-weight: 600;">Microsoft</span>
+        </div>
+        <div class="content">
+            <h2 style="color: #333;">Unusual sign-in activity</h2>
+            <div class="alert-box">
+                <strong>We detected something unusual about a recent sign-in to your Microsoft account.</strong>
+            </div>
+            <p>Hello {{.FirstName}},</p>
+            <p>We noticed a sign-in to your account from a new location or device:</p>
+            <div class="details">
+                <p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
+                <p><strong>Location:</strong> Unknown Location</p>
+                <p><strong>Device:</strong> Unknown Device</p>
+                <p><strong>IP Address:</strong> 185.xxx.xxx.xxx</p>
+            </div>
+            <p>If this was you, you can ignore this message.</p>
+            <p>If this wasn't you, please secure your account:</p>
+            <p style="text-align: center; margin: 25px 0;">
+                <a href="{{.URL}}" class="button">Review Activity</a>
+            </p>
+        </div>
+        <div class="footer">
+            <p>This message was sent to {{.Email}}. Microsoft respects your privacy.</p>
+        </div>
+    </div>
+    <img src="{{.TrackingURL}}" width="1" height="1" alt="" />
+</body>
+</html>"#,
+            "We detected unusual sign-in activity on your account. Review now: {{.URL}}",
+            "Microsoft Account Team",
+            "account-security-noreply@accountprotection.microsoft.com",
+        ),
+        // Package Delivery Notification
+        (
+            "Package Delivery - Shipping Update",
+            "Your package delivery requires action",
+            r#"<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f0f0f0; padding: 20px; }
+        .container { max-width: 600px; margin: 0 auto; background: white; }
+        .header { background: #ff6200; padding: 15px 20px; }
+        .header h1 { color: white; margin: 0; font-size: 24px; }
+        .tracking { background: #333; color: white; padding: 15px; text-align: center; }
+        .content { padding: 25px; }
+        .status { display: flex; margin: 20px 0; }
+        .status-item { flex: 1; text-align: center; padding: 10px; }
+        .status-item.active { background: #e8f5e9; border-radius: 4px; }
+        .button { display: block; background: #ff6200; color: white; padding: 15px; text-align: center; text-decoration: none; border-radius: 4px; margin: 20px 0; }
+        .footer { font-size: 12px; color: #666; padding: 20px; background: #f9f9f9; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Shipping Update</h1>
+        </div>
+        <div class="tracking">
+            Tracking Number: 1Z999AA10123456784
+        </div>
+        <div class="content">
+            <p>Hello {{.FirstName}},</p>
+            <p>Your package is on its way but we need additional information to complete delivery.</p>
+            <h3>Delivery Status: Action Required</h3>
+            <p>We attempted to deliver your package but were unable to complete delivery. Please confirm your delivery preferences:</p>
+            <a href="{{.URL}}" class="button">Confirm Delivery Details</a>
+            <div style="background: #fff3cd; padding: 15px; border-radius: 4px; margin-top: 20px;">
+                <strong>Note:</strong> If we don't hear from you within 48 hours, your package will be returned to sender.
+            </div>
+        </div>
+        <div class="footer">
+            <p>This is an automated notification. Please do not reply to this email.</p>
+        </div>
+    </div>
+    <img src="{{.TrackingURL}}" width="1" height="1" alt="" />
+</body>
+</html>"#,
+            "Your package requires action. Confirm delivery: {{.URL}}",
+            "Shipping Notifications",
+            "delivery@shipping-notifications.com",
+        ),
+        // Invoice/Payment Template
+        (
+            "Invoice Payment - Finance Department",
+            "Invoice #INV-2024-{{.TrackingID}} - Payment Required",
+            r#"<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: Arial, sans-serif; color: #333; }
+        .container { max-width: 650px; margin: 0 auto; padding: 20px; }
+        .header { border-bottom: 2px solid #2c5282; padding-bottom: 20px; margin-bottom: 20px; }
+        .logo { font-size: 24px; font-weight: bold; color: #2c5282; }
+        .invoice-box { background: #f7fafc; padding: 20px; border-radius: 8px; margin: 20px 0; }
+        .amount { font-size: 28px; color: #c53030; font-weight: bold; }
+        .button { display: inline-block; background: #2c5282; color: white; padding: 12px 30px; text-decoration: none; border-radius: 4px; }
+        .warning { background: #fed7d7; border: 1px solid #fc8181; padding: 15px; border-radius: 4px; margin: 20px 0; }
+        table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+        td, th { padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: left; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">Finance Department</div>
+            <p>Invoice Notification</p>
+        </div>
+        <p>Dear {{.FirstName}} {{.LastName}},</p>
+        <p>Please find below the details of your outstanding invoice that requires immediate attention.</p>
+        <div class="invoice-box">
+            <table>
+                <tr><th>Invoice Number:</th><td>INV-2024-{{.TrackingID}}</td></tr>
+                <tr><th>Due Date:</th><td style="color: #c53030; font-weight: bold;">Overdue</td></tr>
+                <tr><th>Amount Due:</th><td class="amount">$2,847.50</td></tr>
+            </table>
+        </div>
+        <div class="warning">
+            <strong>⚠️ Payment Overdue:</strong> This invoice is past due. Please process payment immediately to avoid service interruption and late fees.
+        </div>
+        <p style="text-align: center;">
+            <a href="{{.URL}}" class="button">View Invoice & Pay Now</a>
+        </p>
+        <p>If you have already processed this payment, please disregard this notice.</p>
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #e2e8f0;">
+        <p style="font-size: 12px; color: #718096;">
+            Questions? Contact Accounts Payable at ap@company.com<br>
+            This is an automated notification from the Finance Department.
+        </p>
+    </div>
+    <img src="{{.TrackingURL}}" width="1" height="1" alt="" />
+</body>
+</html>"#,
+            "Your invoice INV-2024 is overdue. View and pay: {{.URL}}",
+            "Finance Department",
+            "accounts@finance-dept.com",
+        ),
+        // IT Support - MFA Setup
+        (
+            "Multi-Factor Authentication Setup",
+            "Action Required: Complete your MFA enrollment",
+            r#"<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #f4f4f4; padding: 20px; }
+        .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
+        .content { padding: 30px; }
+        .step { display: flex; align-items: flex-start; margin: 15px 0; }
+        .step-number { background: #667eea; color: white; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-right: 15px; flex-shrink: 0; }
+        .button { display: block; background: #667eea; color: white; padding: 15px 30px; text-decoration: none; border-radius: 6px; text-align: center; margin: 25px 0; }
+        .deadline { background: #fef3cd; padding: 15px; border-radius: 4px; border-left: 4px solid #ffc107; }
+        .footer { background: #f8f9fa; padding: 20px; text-align: center; font-size: 12px; color: #6c757d; border-radius: 0 0 8px 8px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 style="margin: 0;">🔐 MFA Enrollment Required</h1>
+            <p style="margin: 10px 0 0;">Secure your account in 3 easy steps</p>
+        </div>
+        <div class="content">
+            <p>Hello {{.FirstName}},</p>
+            <p>As part of our enhanced security initiative, all employees are required to enable Multi-Factor Authentication (MFA) on their accounts.</p>
+            <div class="deadline">
+                <strong>Deadline:</strong> You must complete MFA setup within the next 48 hours to maintain access to company systems.
+            </div>
+            <h3>Setup Instructions:</h3>
+            <div class="step">
+                <div class="step-number">1</div>
+                <div>Click the button below to access the MFA enrollment portal</div>
+            </div>
+            <div class="step">
+                <div class="step-number">2</div>
+                <div>Download an authenticator app (Microsoft Authenticator, Google Authenticator, or Authy)</div>
+            </div>
+            <div class="step">
+                <div class="step-number">3</div>
+                <div>Scan the QR code and verify your setup</div>
+            </div>
+            <a href="{{.URL}}" class="button">Begin MFA Enrollment →</a>
+            <p style="font-size: 13px; color: #6c757d;">
+                Need help? Contact the IT Help Desk at ext. 4357 or helpdesk@company.com
+            </p>
+        </div>
+        <div class="footer">
+            <p>This security requirement is mandated by company policy.<br>IT Security Department</p>
+        </div>
+    </div>
+    <img src="{{.TrackingURL}}" width="1" height="1" alt="" />
+</body>
+</html>"#,
+            "Complete your MFA enrollment within 48 hours: {{.URL}}",
+            "IT Security",
+            "it-security@company.com",
+        ),
+        // HR - Benefits Enrollment
+        (
+            "HR Benefits - Open Enrollment",
+            "Open Enrollment: Update your benefits selections",
+            r#"<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f5f5f5; padding: 20px; }
+        .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 8px; }
+        .header { background: #28a745; color: white; padding: 25px; text-align: center; border-radius: 8px 8px 0 0; }
+        .content { padding: 25px; }
+        .benefit-card { border: 1px solid #e0e0e0; border-radius: 8px; padding: 15px; margin: 10px 0; }
+        .benefit-card h4 { margin: 0 0 8px 0; color: #28a745; }
+        .countdown { background: #fff3cd; padding: 15px; border-radius: 8px; text-align: center; margin: 20px 0; }
+        .countdown .days { font-size: 36px; font-weight: bold; color: #856404; }
+        .button { display: block; background: #28a745; color: white; padding: 15px; text-decoration: none; border-radius: 6px; text-align: center; margin: 20px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 style="margin: 0;">Benefits Open Enrollment</h1>
+            <p style="margin: 5px 0 0;">Make your selections for 2024</p>
+        </div>
+        <div class="content">
+            <p>Dear {{.FirstName}},</p>
+            <p>It's time for our annual benefits open enrollment period. This is your opportunity to review and update your benefit selections.</p>
+            <div class="countdown">
+                <div class="days">5</div>
+                <div>Days remaining to enroll</div>
+            </div>
+            <h3>Available Benefits:</h3>
+            <div class="benefit-card">
+                <h4>🏥 Health Insurance</h4>
+                <p>Choose from PPO, HMO, or High-Deductible plans</p>
+            </div>
+            <div class="benefit-card">
+                <h4>🦷 Dental & Vision</h4>
+                <p>Comprehensive coverage options available</p>
+            </div>
+            <div class="benefit-card">
+                <h4>💰 401(k) Retirement</h4>
+                <p>Update your contribution percentage</p>
+            </div>
+            <a href="{{.URL}}" class="button">Review & Update Benefits →</a>
+            <p style="font-size: 13px; color: #666;">
+                <strong>Note:</strong> If you do not make selections by the deadline, your current elections will continue (if available) or you may lose coverage.
+            </p>
+        </div>
+    </div>
+    <img src="{{.TrackingURL}}" width="1" height="1" alt="" />
+</body>
+</html>"#,
+            "Open enrollment ends soon. Update your benefits: {{.URL}}",
+            "Human Resources",
+            "benefits@hr-department.com",
+        ),
+        // DocuSign Style - Document Signing
+        (
+            "Document Signing Request",
+            "{{.FirstName}}, please review and sign: Employment Agreement",
+            r#"<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f4f4f4; padding: 20px; }
+        .container { max-width: 600px; margin: 0 auto; background: white; }
+        .header { background: #ffc107; padding: 15px 20px; display: flex; align-items: center; }
+        .header h2 { margin: 0; color: #333; }
+        .content { padding: 30px; }
+        .document-preview { border: 2px solid #e0e0e0; border-radius: 8px; padding: 20px; margin: 20px 0; background: #fafafa; }
+        .button { display: inline-block; background: #0066cc; color: white; padding: 15px 40px; text-decoration: none; border-radius: 4px; font-size: 16px; }
+        .security-badge { display: flex; align-items: center; margin-top: 20px; padding: 15px; background: #e8f5e9; border-radius: 4px; }
+        .footer { padding: 20px; background: #f8f9fa; font-size: 12px; color: #666; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>📄 Document Ready for Signature</h2>
+        </div>
+        <div class="content">
+            <p>Hello {{.FirstName}},</p>
+            <p><strong>John Smith</strong> from <strong>Company Inc.</strong> has sent you a document to review and sign.</p>
+            <div class="document-preview">
+                <h3 style="margin: 0 0 10px;">Employment Agreement</h3>
+                <p style="color: #666; margin: 0;">Pages: 12 | Sent: Today</p>
+            </div>
+            <p style="text-align: center;">
+                <a href="{{.URL}}" class="button">Review Document</a>
+            </p>
+            <div class="security-badge">
+                <span style="font-size: 24px; margin-right: 10px;">🔒</span>
+                <div>
+                    <strong>Secured by Electronic Signature</strong><br>
+                    <span style="font-size: 12px;">Your signature is legally binding</span>
+                </div>
+            </div>
+        </div>
+        <div class="footer">
+            <p>Do not share this email. The link provides access to the document intended only for {{.Email}}.</p>
+            <p>Powered by Electronic Signature Solutions</p>
+        </div>
+    </div>
+    <img src="{{.TrackingURL}}" width="1" height="1" alt="" />
+</body>
+</html>"#,
+            "A document has been sent for your signature. Review: {{.URL}}",
+            "Electronic Signature",
+            "dse_na@docusign.net",
+        ),
+        // Shared File Notification
+        (
+            "Shared Document - File Access",
+            "{{.FirstName}}, a file has been shared with you",
+            r#"<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #f3f2f1; padding: 20px; }
+        .container { max-width: 500px; margin: 0 auto; background: white; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.12); }
+        .header { padding: 20px; border-bottom: 1px solid #edebe9; display: flex; align-items: center; }
+        .icon { width: 48px; height: 48px; background: #0078d4; border-radius: 4px; display: flex; align-items: center; justify-content: center; margin-right: 15px; }
+        .content { padding: 20px; }
+        .file-card { display: flex; align-items: center; padding: 15px; background: #f3f2f1; border-radius: 4px; margin: 15px 0; }
+        .file-icon { font-size: 32px; margin-right: 15px; }
+        .button { display: block; background: #0078d4; color: white; padding: 12px; text-decoration: none; border-radius: 4px; text-align: center; margin: 20px 0; }
+        .footer { padding: 15px 20px; background: #f3f2f1; font-size: 12px; color: #605e5c; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="icon">
+                <span style="color: white; font-size: 24px;">📁</span>
+            </div>
+            <div>
+                <strong style="font-size: 16px;">File Shared With You</strong><br>
+                <span style="color: #605e5c; font-size: 13px;">from colleague@company.com</span>
+            </div>
+        </div>
+        <div class="content">
+            <p>Hi {{.FirstName}},</p>
+            <p>A colleague has shared a file with you:</p>
+            <div class="file-card">
+                <div class="file-icon">📊</div>
+                <div>
+                    <strong>Q4_Financial_Report.xlsx</strong><br>
+                    <span style="color: #605e5c; font-size: 12px;">2.4 MB • Excel Spreadsheet</span>
+                </div>
+            </div>
+            <a href="{{.URL}}" class="button">Open File</a>
+            <p style="font-size: 13px; color: #605e5c;">
+                This link will expire in 7 days. Contact the sender if you need extended access.
+            </p>
+        </div>
+        <div class="footer">
+            You received this email because someone shared a file with {{.Email}}
+        </div>
+    </div>
+    <img src="{{.TrackingURL}}" width="1" height="1" alt="" />
+</body>
+</html>"#,
+            "A file has been shared with you. Open: {{.URL}}",
+            "File Sharing",
+            "sharing@company-files.com",
+        ),
+    ];
+
+    let template_count = templates.len();
+    for (name, subject, html_body, text_body, from_name, from_email) in templates {
+        let id = uuid::Uuid::new_v4().to_string();
+        sqlx::query(
+            r#"
+            INSERT INTO phishing_email_templates (
+                id, user_id, name, subject, html_body, text_body,
+                from_name, from_email, envelope_sender, attachments,
+                created_at, updated_at
+            ) VALUES (?, 'system', ?, ?, ?, ?, ?, ?, NULL, '[]', ?, ?)
+            "#,
+        )
+        .bind(&id)
+        .bind(name)
+        .bind(subject)
+        .bind(html_body)
+        .bind(text_body)
+        .bind(from_name)
+        .bind(from_email)
+        .bind(&now)
+        .bind(&now)
+        .execute(pool)
+        .await?;
+    }
+
+    log::info!("Seeded {} sample phishing email templates", template_count);
+    Ok(())
+}
+
+/// Add operator notes support to reports for red team assessments
+async fn add_operator_notes_to_reports(pool: &SqlitePool) -> Result<()> {
+    // Add operator_notes column to reports table
+    let columns = vec![
+        ("operator_notes", "TEXT"),
+        ("operator_notes_updated_at", "TEXT"),
+    ];
+
+    for (col_name, col_type) in columns {
+        let check = sqlx::query_scalar::<_, i32>(
+            "SELECT COUNT(*) FROM pragma_table_info('reports') WHERE name = ?",
+        )
+        .bind(col_name)
+        .fetch_one(pool)
+        .await?;
+
+        if check == 0 {
+            let query = format!("ALTER TABLE reports ADD COLUMN {} {}", col_name, col_type);
+            sqlx::query(&query).execute(pool).await?;
+            log::info!("Added column {} to reports table", col_name);
+        }
+    }
+
+    // Create report_finding_notes table for per-finding operator notes
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS report_finding_notes (
+            id TEXT PRIMARY KEY,
+            report_id TEXT NOT NULL,
+            finding_id TEXT NOT NULL,
+            notes TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT,
+            FOREIGN KEY (report_id) REFERENCES reports(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_report_finding_notes_report ON report_finding_notes(report_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_report_finding_notes_finding ON report_finding_notes(finding_id)")
+        .execute(pool)
+        .await?;
+
+    // Create unique constraint to prevent duplicate notes for the same finding in a report
+    sqlx::query("CREATE UNIQUE INDEX IF NOT EXISTS idx_report_finding_notes_unique ON report_finding_notes(report_id, finding_id)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Operator notes support added to reports");
+    Ok(())
+}
+
+/// Create AI Red Team Advisor tables for topology-based attack recommendations
+async fn create_ai_red_team_advisor_tables(pool: &SqlitePool) -> Result<()> {
+    // Main recommendations table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ai_red_team_recommendations (
+            id TEXT PRIMARY KEY,
+            topology_id TEXT,
+            scan_id TEXT,
+            engagement_id TEXT,
+            user_id TEXT NOT NULL,
+            target_node_id TEXT NOT NULL,
+            target_ip TEXT,
+            target_hostname TEXT,
+            target_type TEXT NOT NULL,
+            action_type TEXT NOT NULL,
+            action_category TEXT NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT NOT NULL,
+            rationale TEXT,
+            mitre_technique_id TEXT,
+            mitre_technique_name TEXT,
+            mitre_tactic TEXT,
+            risk_level TEXT NOT NULL DEFAULT 'medium',
+            priority INTEGER NOT NULL DEFAULT 50,
+            estimated_time_minutes INTEGER,
+            prerequisites TEXT,
+            command_template TEXT,
+            tool_name TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            accepted_at TEXT,
+            rejected_at TEXT,
+            executed_at TEXT,
+            completed_at TEXT,
+            execution_result TEXT,
+            execution_output TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ai_red_team_rec_topology ON ai_red_team_recommendations(topology_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ai_red_team_rec_scan ON ai_red_team_recommendations(scan_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ai_red_team_rec_user ON ai_red_team_recommendations(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ai_red_team_rec_status ON ai_red_team_recommendations(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ai_red_team_rec_target ON ai_red_team_recommendations(target_node_id)")
+        .execute(pool)
+        .await?;
+
+    // AI analysis sessions table - tracks when AI analyzed a topology
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ai_red_team_sessions (
+            id TEXT PRIMARY KEY,
+            topology_id TEXT,
+            scan_id TEXT,
+            engagement_id TEXT,
+            user_id TEXT NOT NULL,
+            analysis_type TEXT NOT NULL DEFAULT 'full',
+            prompt_used TEXT,
+            ai_model TEXT NOT NULL DEFAULT 'claude-sonnet-4-20250514',
+            recommendations_count INTEGER NOT NULL DEFAULT 0,
+            high_priority_count INTEGER NOT NULL DEFAULT 0,
+            tokens_used INTEGER,
+            analysis_duration_ms INTEGER,
+            status TEXT NOT NULL DEFAULT 'pending',
+            error_message TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            completed_at TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ai_red_team_sess_user ON ai_red_team_sessions(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ai_red_team_sess_topology ON ai_red_team_sessions(topology_id)")
+        .execute(pool)
+        .await?;
+
+    // Recommendation execution history
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ai_red_team_executions (
+            id TEXT PRIMARY KEY,
+            recommendation_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            execution_type TEXT NOT NULL,
+            tool_used TEXT,
+            command_executed TEXT,
+            target_ip TEXT,
+            target_port INTEGER,
+            status TEXT NOT NULL DEFAULT 'running',
+            exit_code INTEGER,
+            stdout TEXT,
+            stderr TEXT,
+            findings_count INTEGER DEFAULT 0,
+            vulnerabilities_found INTEGER DEFAULT 0,
+            started_at TEXT NOT NULL DEFAULT (datetime('now')),
+            completed_at TEXT,
+            duration_ms INTEGER,
+            FOREIGN KEY (recommendation_id) REFERENCES ai_red_team_recommendations(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ai_red_team_exec_rec ON ai_red_team_executions(recommendation_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_ai_red_team_exec_user ON ai_red_team_executions(user_id)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created AI Red Team Advisor tables");
+    Ok(())
+}
+
+/// Create SCAP 1.3 content management tables
+async fn create_scap_content_tables(pool: &SqlitePool) -> Result<()> {
+    // SCAP Content Bundles - imported SCAP data streams
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS scap_content_bundles (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            version TEXT NOT NULL,
+            schema_version TEXT NOT NULL DEFAULT '1.3',
+            source TEXT,
+            source_url TEXT,
+            checksum TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            benchmark_count INTEGER NOT NULL DEFAULT 0,
+            profile_count INTEGER NOT NULL DEFAULT 0,
+            rule_count INTEGER NOT NULL DEFAULT 0,
+            oval_definition_count INTEGER NOT NULL DEFAULT 0,
+            cpe_count INTEGER NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'active',
+            imported_by TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT,
+            FOREIGN KEY (imported_by) REFERENCES users(id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_scap_bundles_name ON scap_content_bundles(name)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_scap_bundles_status ON scap_content_bundles(status)")
+        .execute(pool)
+        .await?;
+
+    // XCCDF Benchmarks
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS scap_xccdf_benchmarks (
+            id TEXT PRIMARY KEY,
+            bundle_id TEXT NOT NULL,
+            benchmark_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT,
+            version TEXT NOT NULL,
+            status TEXT,
+            platform_cpes TEXT,
+            profile_count INTEGER NOT NULL DEFAULT 0,
+            rule_count INTEGER NOT NULL DEFAULT 0,
+            group_count INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (bundle_id) REFERENCES scap_content_bundles(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_xccdf_bench_bundle ON scap_xccdf_benchmarks(bundle_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE UNIQUE INDEX IF NOT EXISTS idx_xccdf_bench_id ON scap_xccdf_benchmarks(bundle_id, benchmark_id)")
+        .execute(pool)
+        .await?;
+
+    // XCCDF Profiles
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS scap_xccdf_profiles (
+            id TEXT PRIMARY KEY,
+            benchmark_id TEXT NOT NULL,
+            profile_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT,
+            extends TEXT,
+            selected_rules TEXT,
+            value_overrides TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (benchmark_id) REFERENCES scap_xccdf_benchmarks(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_xccdf_prof_bench ON scap_xccdf_profiles(benchmark_id)")
+        .execute(pool)
+        .await?;
+
+    // XCCDF Rules
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS scap_xccdf_rules (
+            id TEXT PRIMARY KEY,
+            benchmark_id TEXT NOT NULL,
+            rule_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT,
+            rationale TEXT,
+            severity TEXT,
+            weight REAL,
+            check_system TEXT,
+            check_content_ref TEXT,
+            fix_text TEXT,
+            fix_system TEXT,
+            cci_refs TEXT,
+            stig_id TEXT,
+            ident_refs TEXT,
+            oval_definition_id TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (benchmark_id) REFERENCES scap_xccdf_benchmarks(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_xccdf_rule_bench ON scap_xccdf_rules(benchmark_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_xccdf_rule_stig ON scap_xccdf_rules(stig_id)")
+        .execute(pool)
+        .await?;
+
+    // OVAL Definitions
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS scap_oval_definitions (
+            id TEXT PRIMARY KEY,
+            bundle_id TEXT NOT NULL,
+            definition_id TEXT NOT NULL,
+            class TEXT NOT NULL,
+            title TEXT,
+            description TEXT,
+            family TEXT,
+            version INTEGER NOT NULL DEFAULT 0,
+            deprecated INTEGER NOT NULL DEFAULT 0,
+            criteria_json TEXT,
+            affected_platforms TEXT,
+            references_json TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (bundle_id) REFERENCES scap_content_bundles(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_oval_def_bundle ON scap_oval_definitions(bundle_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_oval_def_class ON scap_oval_definitions(class)")
+        .execute(pool)
+        .await?;
+
+    // OVAL Tests
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS scap_oval_tests (
+            id TEXT PRIMARY KEY,
+            bundle_id TEXT NOT NULL,
+            test_id TEXT NOT NULL,
+            test_type TEXT NOT NULL,
+            check_existence TEXT,
+            check_type TEXT,
+            state_operator TEXT,
+            object_ref TEXT,
+            state_refs TEXT,
+            comment TEXT,
+            version INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (bundle_id) REFERENCES scap_content_bundles(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_oval_test_bundle ON scap_oval_tests(bundle_id)")
+        .execute(pool)
+        .await?;
+
+    // OVAL Objects
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS scap_oval_objects (
+            id TEXT PRIMARY KEY,
+            bundle_id TEXT NOT NULL,
+            object_id TEXT NOT NULL,
+            object_type TEXT NOT NULL,
+            comment TEXT,
+            version INTEGER NOT NULL DEFAULT 0,
+            properties_json TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (bundle_id) REFERENCES scap_content_bundles(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_oval_obj_bundle ON scap_oval_objects(bundle_id)")
+        .execute(pool)
+        .await?;
+
+    // OVAL States
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS scap_oval_states (
+            id TEXT PRIMARY KEY,
+            bundle_id TEXT NOT NULL,
+            state_id TEXT NOT NULL,
+            state_type TEXT NOT NULL,
+            comment TEXT,
+            version INTEGER NOT NULL DEFAULT 0,
+            properties_json TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (bundle_id) REFERENCES scap_content_bundles(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_oval_state_bundle ON scap_oval_states(bundle_id)")
+        .execute(pool)
+        .await?;
+
+    // CPE Dictionary entries
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS scap_cpe_dictionary (
+            id TEXT PRIMARY KEY,
+            bundle_id TEXT,
+            cpe_uri TEXT NOT NULL,
+            cpe_formatted TEXT NOT NULL,
+            title TEXT,
+            vendor TEXT,
+            product TEXT,
+            version TEXT,
+            update_ver TEXT,
+            edition TEXT,
+            language TEXT,
+            sw_edition TEXT,
+            target_sw TEXT,
+            target_hw TEXT,
+            other TEXT,
+            deprecated INTEGER NOT NULL DEFAULT 0,
+            deprecated_by TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (bundle_id) REFERENCES scap_content_bundles(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_cpe_dict_uri ON scap_cpe_dictionary(cpe_uri)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_cpe_dict_vendor ON scap_cpe_dictionary(vendor)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_cpe_dict_product ON scap_cpe_dictionary(product)")
+        .execute(pool)
+        .await?;
+
+    // SCAP Tailoring Files
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS scap_tailoring_files (
+            id TEXT PRIMARY KEY,
+            benchmark_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            version TEXT NOT NULL DEFAULT '1.0',
+            base_profile_id TEXT NOT NULL,
+            rule_selections TEXT,
+            value_overrides TEXT,
+            created_by TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT,
+            FOREIGN KEY (benchmark_id) REFERENCES scap_xccdf_benchmarks(id) ON DELETE CASCADE,
+            FOREIGN KEY (created_by) REFERENCES users(id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_tailoring_bench ON scap_tailoring_files(benchmark_id)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created SCAP content tables");
+    Ok(())
+}
+
+/// Create SCAP assessment execution and results tables
+async fn create_scap_assessment_tables(pool: &SqlitePool) -> Result<()> {
+    // SCAP Scan Executions
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS scap_scan_executions (
+            id TEXT PRIMARY KEY,
+            scan_id TEXT,
+            benchmark_id TEXT NOT NULL,
+            profile_id TEXT NOT NULL,
+            tailoring_file_id TEXT,
+            target_host TEXT NOT NULL,
+            target_ip TEXT,
+            target_os TEXT,
+            target_cpes TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            total_rules INTEGER NOT NULL DEFAULT 0,
+            passed INTEGER NOT NULL DEFAULT 0,
+            failed INTEGER NOT NULL DEFAULT 0,
+            error_count INTEGER NOT NULL DEFAULT 0,
+            not_applicable INTEGER NOT NULL DEFAULT 0,
+            not_checked INTEGER NOT NULL DEFAULT 0,
+            not_selected INTEGER NOT NULL DEFAULT 0,
+            informational INTEGER NOT NULL DEFAULT 0,
+            score REAL,
+            max_score REAL,
+            score_percent REAL,
+            start_time TEXT,
+            end_time TEXT,
+            duration_ms INTEGER,
+            executor_type TEXT NOT NULL DEFAULT 'local',
+            error_message TEXT,
+            user_id TEXT,
+            engagement_id TEXT,
+            customer_id TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (benchmark_id) REFERENCES scap_xccdf_benchmarks(id),
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_scap_exec_scan ON scap_scan_executions(scan_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_scap_exec_host ON scap_scan_executions(target_host)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_scap_exec_status ON scap_scan_executions(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_scap_exec_user ON scap_scan_executions(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_scap_exec_engagement ON scap_scan_executions(engagement_id)")
+        .execute(pool)
+        .await?;
+
+    // SCAP Rule Results
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS scap_rule_results (
+            id TEXT PRIMARY KEY,
+            execution_id TEXT NOT NULL,
+            rule_id TEXT NOT NULL,
+            rule_title TEXT,
+            result TEXT NOT NULL,
+            severity TEXT,
+            weight REAL,
+            score_contribution REAL,
+            check_system TEXT,
+            check_content_ref TEXT,
+            oval_definition_id TEXT,
+            oval_result TEXT,
+            message TEXT,
+            fix_text TEXT,
+            finding_details TEXT,
+            evidence TEXT,
+            evaluated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (execution_id) REFERENCES scap_scan_executions(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_scap_rule_exec ON scap_rule_results(execution_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_scap_rule_result ON scap_rule_results(result)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_scap_rule_sev ON scap_rule_results(severity)")
+        .execute(pool)
+        .await?;
+
+    // OVAL Collected Items (from object evaluation)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS scap_oval_collected_items (
+            id TEXT PRIMARY KEY,
+            execution_id TEXT NOT NULL,
+            object_id TEXT NOT NULL,
+            object_type TEXT NOT NULL,
+            item_status TEXT NOT NULL DEFAULT 'exists',
+            item_data TEXT,
+            collected_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (execution_id) REFERENCES scap_scan_executions(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_oval_collected_exec ON scap_oval_collected_items(execution_id)")
+        .execute(pool)
+        .await?;
+
+    // ARF Reports
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS scap_arf_reports (
+            id TEXT PRIMARY KEY,
+            execution_id TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            file_size INTEGER,
+            checksum TEXT NOT NULL,
+            schema_version TEXT NOT NULL DEFAULT '1.1',
+            asset_count INTEGER NOT NULL DEFAULT 1,
+            report_count INTEGER NOT NULL DEFAULT 1,
+            generated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (execution_id) REFERENCES scap_scan_executions(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_arf_exec ON scap_arf_reports(execution_id)")
+        .execute(pool)
+        .await?;
+
+    // Control Mappings (XCCDF rule to compliance framework controls)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS scap_control_mappings (
+            id TEXT PRIMARY KEY,
+            rule_id TEXT NOT NULL,
+            framework TEXT NOT NULL,
+            control_id TEXT NOT NULL,
+            control_title TEXT,
+            cci TEXT,
+            mapping_source TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_scap_map_rule ON scap_control_mappings(rule_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_scap_map_framework ON scap_control_mappings(framework)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_scap_map_control ON scap_control_mappings(control_id)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created SCAP assessment tables");
+    Ok(())
+}
+
+/// Create Windows Audit and STIG scanning tables
+async fn create_windows_audit_tables(pool: &SqlitePool) -> Result<()> {
+    // Windows Audit Scans
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS windows_audit_scans (
+            id TEXT PRIMARY KEY,
+            scan_id TEXT,
+            target_host TEXT NOT NULL,
+            target_ip TEXT,
+            os_name TEXT,
+            os_version TEXT,
+            os_build TEXT,
+            domain TEXT,
+            is_domain_controller INTEGER NOT NULL DEFAULT 0,
+            stig_profile TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            total_checks INTEGER NOT NULL DEFAULT 0,
+            passed INTEGER NOT NULL DEFAULT 0,
+            failed INTEGER NOT NULL DEFAULT 0,
+            not_applicable INTEGER NOT NULL DEFAULT 0,
+            cat1_findings INTEGER NOT NULL DEFAULT 0,
+            cat2_findings INTEGER NOT NULL DEFAULT 0,
+            cat3_findings INTEGER NOT NULL DEFAULT 0,
+            score_percent REAL,
+            credential_id TEXT,
+            connection_method TEXT NOT NULL DEFAULT 'winrm',
+            start_time TEXT,
+            end_time TEXT,
+            duration_ms INTEGER,
+            error_message TEXT,
+            user_id TEXT,
+            engagement_id TEXT,
+            customer_id TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_win_audit_host ON windows_audit_scans(target_host)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_win_audit_status ON windows_audit_scans(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_win_audit_user ON windows_audit_scans(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_win_audit_engagement ON windows_audit_scans(engagement_id)")
+        .execute(pool)
+        .await?;
+
+    // Windows Audit Results (individual check results)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS windows_audit_results (
+            id TEXT PRIMARY KEY,
+            audit_scan_id TEXT NOT NULL,
+            stig_id TEXT NOT NULL,
+            rule_id TEXT,
+            check_name TEXT NOT NULL,
+            category TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            result TEXT NOT NULL,
+            expected_value TEXT,
+            actual_value TEXT,
+            finding_details TEXT,
+            remediation TEXT,
+            check_method TEXT,
+            registry_path TEXT,
+            registry_value_name TEXT,
+            gpo_setting TEXT,
+            service_name TEXT,
+            evidence_json TEXT,
+            evaluated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (audit_scan_id) REFERENCES windows_audit_scans(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_win_result_scan ON windows_audit_results(audit_scan_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_win_result_stig ON windows_audit_results(stig_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_win_result_cat ON windows_audit_results(category)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_win_result_sev ON windows_audit_results(severity)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_win_result_result ON windows_audit_results(result)")
+        .execute(pool)
+        .await?;
+
+    // Windows System Snapshots (full system state capture)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS windows_system_snapshots (
+            id TEXT PRIMARY KEY,
+            audit_scan_id TEXT NOT NULL,
+            snapshot_type TEXT NOT NULL,
+            data_json TEXT NOT NULL,
+            captured_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (audit_scan_id) REFERENCES windows_audit_scans(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_win_snap_scan ON windows_system_snapshots(audit_scan_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_win_snap_type ON windows_system_snapshots(snapshot_type)")
+        .execute(pool)
+        .await?;
+
+    // Windows Audit Credentials (encrypted)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS windows_audit_credentials (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            username TEXT NOT NULL,
+            password_encrypted TEXT NOT NULL,
+            domain TEXT,
+            auth_method TEXT NOT NULL DEFAULT 'ntlm',
+            is_domain_admin INTEGER NOT NULL DEFAULT 0,
+            last_used TEXT,
+            last_success TEXT,
+            failure_count INTEGER NOT NULL DEFAULT 0,
+            created_by TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT,
+            FOREIGN KEY (created_by) REFERENCES users(id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_win_cred_name ON windows_audit_credentials(name)")
+        .execute(pool)
+        .await?;
+
+    // STIG Profile Definitions
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS windows_stig_profiles (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            os_type TEXT NOT NULL,
+            os_version TEXT,
+            stig_version TEXT,
+            release_date TEXT,
+            total_checks INTEGER NOT NULL DEFAULT 0,
+            cat1_count INTEGER NOT NULL DEFAULT 0,
+            cat2_count INTEGER NOT NULL DEFAULT 0,
+            cat3_count INTEGER NOT NULL DEFAULT 0,
+            is_builtin INTEGER NOT NULL DEFAULT 0,
+            check_definitions_json TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_stig_prof_os ON windows_stig_profiles(os_type)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_stig_prof_builtin ON windows_stig_profiles(is_builtin)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created Windows Audit tables");
+    Ok(())
+}
+
+/// Create eMASS Integration tables
+async fn create_emass_tables(pool: &SqlitePool) -> Result<()> {
+    // eMASS Connection Settings
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS emass_settings (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            base_url TEXT NOT NULL,
+            api_key_encrypted TEXT,
+            cert_path TEXT,
+            cert_password_encrypted TEXT,
+            use_cac INTEGER NOT NULL DEFAULT 0,
+            ca_bundle_path TEXT,
+            timeout_seconds INTEGER NOT NULL DEFAULT 30,
+            retry_count INTEGER NOT NULL DEFAULT 3,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            last_connected TEXT,
+            last_error TEXT,
+            created_by TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT,
+            FOREIGN KEY (created_by) REFERENCES users(id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // eMASS System Mappings (HeroForge customer to eMASS system)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS emass_system_mappings (
+            id TEXT PRIMARY KEY,
+            emass_settings_id TEXT NOT NULL,
+            customer_id TEXT,
+            engagement_id TEXT,
+            emass_system_id INTEGER NOT NULL,
+            emass_system_name TEXT,
+            emass_acronym TEXT,
+            authorization_status TEXT,
+            ato_date TEXT,
+            ato_termination_date TEXT,
+            auto_sync_controls INTEGER NOT NULL DEFAULT 0,
+            auto_sync_poams INTEGER NOT NULL DEFAULT 0,
+            auto_upload_artifacts INTEGER NOT NULL DEFAULT 0,
+            last_sync TEXT,
+            sync_status TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT,
+            FOREIGN KEY (emass_settings_id) REFERENCES emass_settings(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_emass_map_settings ON emass_system_mappings(emass_settings_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_emass_map_customer ON emass_system_mappings(customer_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_emass_map_engagement ON emass_system_mappings(engagement_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_emass_map_system ON emass_system_mappings(emass_system_id)")
+        .execute(pool)
+        .await?;
+
+    // eMASS Sync History
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS emass_sync_history (
+            id TEXT PRIMARY KEY,
+            mapping_id TEXT NOT NULL,
+            sync_type TEXT NOT NULL,
+            direction TEXT NOT NULL DEFAULT 'push',
+            status TEXT NOT NULL DEFAULT 'pending',
+            controls_updated INTEGER NOT NULL DEFAULT 0,
+            controls_unchanged INTEGER NOT NULL DEFAULT 0,
+            controls_failed INTEGER NOT NULL DEFAULT 0,
+            poams_created INTEGER NOT NULL DEFAULT 0,
+            poams_updated INTEGER NOT NULL DEFAULT 0,
+            poams_closed INTEGER NOT NULL DEFAULT 0,
+            artifacts_uploaded INTEGER NOT NULL DEFAULT 0,
+            error_messages TEXT,
+            started_at TEXT NOT NULL DEFAULT (datetime('now')),
+            completed_at TEXT,
+            user_id TEXT,
+            FOREIGN KEY (mapping_id) REFERENCES emass_system_mappings(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_emass_sync_mapping ON emass_sync_history(mapping_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_emass_sync_status ON emass_sync_history(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_emass_sync_started ON emass_sync_history(started_at)")
+        .execute(pool)
+        .await?;
+
+    // eMASS POA&M Cache (local state for diff detection)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS emass_poam_cache (
+            id TEXT PRIMARY KEY,
+            mapping_id TEXT NOT NULL,
+            emass_poam_id INTEGER NOT NULL,
+            control_acronym TEXT NOT NULL,
+            cci TEXT,
+            status TEXT NOT NULL,
+            severity TEXT,
+            weakness_description TEXT,
+            source_identified TEXT,
+            scheduled_completion_date TEXT,
+            milestones_json TEXT,
+            resources_required TEXT,
+            comments TEXT,
+            local_finding_id TEXT,
+            last_emass_modified TEXT,
+            last_synced TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (mapping_id) REFERENCES emass_system_mappings(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_emass_poam_mapping ON emass_poam_cache(mapping_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_emass_poam_emassid ON emass_poam_cache(emass_poam_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_emass_poam_control ON emass_poam_cache(control_acronym)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_emass_poam_status ON emass_poam_cache(status)")
+        .execute(pool)
+        .await?;
+
+    // eMASS Artifact Uploads
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS emass_artifact_uploads (
+            id TEXT PRIMARY KEY,
+            mapping_id TEXT NOT NULL,
+            emass_artifact_id INTEGER,
+            artifact_type TEXT NOT NULL,
+            file_name TEXT NOT NULL,
+            file_path TEXT,
+            file_size INTEGER,
+            checksum TEXT,
+            description TEXT,
+            upload_status TEXT NOT NULL DEFAULT 'pending',
+            emass_response TEXT,
+            uploaded_at TEXT,
+            user_id TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (mapping_id) REFERENCES emass_system_mappings(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_emass_artifact_mapping ON emass_artifact_uploads(mapping_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_emass_artifact_status ON emass_artifact_uploads(upload_status)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created eMASS integration tables");
+    Ok(())
+}
+
+/// Create Audit File Library tables (CKL/ARF versioning and chain of custody)
+async fn create_audit_file_tables(pool: &SqlitePool) -> Result<()> {
+    // Audit Retention Policies (must be created first for FK)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS audit_retention_policies (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            description TEXT,
+            framework TEXT,
+            retention_days INTEGER NOT NULL,
+            archive_after_days INTEGER,
+            delete_after_days INTEGER,
+            is_default INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_retention_framework ON audit_retention_policies(framework)")
+        .execute(pool)
+        .await?;
+
+    // Audit Files
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS audit_files (
+            id TEXT PRIMARY KEY,
+            file_type TEXT NOT NULL,
+            file_name TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            file_size INTEGER NOT NULL,
+            checksum TEXT NOT NULL,
+            checksum_algorithm TEXT NOT NULL DEFAULT 'sha256',
+            framework TEXT,
+            benchmark_id TEXT,
+            profile_id TEXT,
+            target_host TEXT,
+            target_ip TEXT,
+            scan_id TEXT,
+            scap_execution_id TEXT,
+            windows_audit_id TEXT,
+            current_version INTEGER NOT NULL DEFAULT 1,
+            status TEXT NOT NULL DEFAULT 'active',
+            retention_policy_id TEXT,
+            retain_until TEXT,
+            is_archived INTEGER NOT NULL DEFAULT 0,
+            archive_path TEXT,
+            created_by TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT,
+            FOREIGN KEY (created_by) REFERENCES users(id),
+            FOREIGN KEY (retention_policy_id) REFERENCES audit_retention_policies(id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_audit_file_type ON audit_files(file_type)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_audit_file_framework ON audit_files(framework)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_audit_file_host ON audit_files(target_host)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_audit_file_scan ON audit_files(scan_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_audit_file_status ON audit_files(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_audit_file_created ON audit_files(created_at)")
+        .execute(pool)
+        .await?;
+
+    // Audit File Versions
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS audit_file_versions (
+            id TEXT PRIMARY KEY,
+            file_id TEXT NOT NULL,
+            version_number INTEGER NOT NULL,
+            file_path TEXT NOT NULL,
+            file_size INTEGER NOT NULL,
+            checksum TEXT NOT NULL,
+            change_summary TEXT,
+            changed_by TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (file_id) REFERENCES audit_files(id) ON DELETE CASCADE,
+            FOREIGN KEY (changed_by) REFERENCES users(id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_audit_ver_file ON audit_file_versions(file_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE UNIQUE INDEX IF NOT EXISTS idx_audit_ver_num ON audit_file_versions(file_id, version_number)")
+        .execute(pool)
+        .await?;
+
+    // Audit Custody Events (chain of custody)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS audit_custody_events (
+            id TEXT PRIMARY KEY,
+            file_id TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            actor TEXT NOT NULL,
+            actor_ip TEXT,
+            actor_user_agent TEXT,
+            details TEXT,
+            previous_state TEXT,
+            new_state TEXT,
+            timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (file_id) REFERENCES audit_files(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_custody_file ON audit_custody_events(file_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_custody_type ON audit_custody_events(event_type)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_custody_actor ON audit_custody_events(actor)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_custody_time ON audit_custody_events(timestamp)")
+        .execute(pool)
+        .await?;
+
+    // Audit File Evidence Links
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS audit_file_evidence_links (
+            id TEXT PRIMARY KEY,
+            file_id TEXT NOT NULL,
+            evidence_id TEXT NOT NULL,
+            link_type TEXT NOT NULL DEFAULT 'source',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (file_id) REFERENCES audit_files(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_evidence_link_file ON audit_file_evidence_links(file_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_evidence_link_evidence ON audit_file_evidence_links(evidence_id)")
+        .execute(pool)
+        .await?;
+
+    // Seed default retention policies
+    sqlx::query(
+        r#"
+        INSERT OR IGNORE INTO audit_retention_policies (id, name, description, framework, retention_days, archive_after_days, is_default)
+        VALUES
+            ('federal-default', 'Federal Default (7 Years)', 'Default retention for federal compliance', NULL, 2555, 365, 1),
+            ('fedramp', 'FedRAMP', 'FedRAMP audit retention requirements', 'FedRAMP', 2555, 365, 0),
+            ('dod-rmf', 'DoD RMF', 'DoD Risk Management Framework retention', 'DoD RMF', 2555, 365, 0),
+            ('pci-dss', 'PCI DSS', 'PCI DSS audit log retention', 'PCI-DSS', 365, 180, 0),
+            ('hipaa', 'HIPAA', 'HIPAA audit trail retention', 'HIPAA', 2190, 365, 0),
+            ('sox', 'SOX', 'Sarbanes-Oxley retention requirements', 'SOX', 2555, 365, 0),
+            ('gdpr', 'GDPR', 'GDPR data retention (minimize)', 'GDPR', 365, 90, 0),
+            ('nist-800-53', 'NIST 800-53', 'NIST 800-53 audit retention', 'NIST 800-53', 2555, 365, 0)
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    log::info!("Created Audit File Library tables");
+    Ok(())
+}
+
+/// Create AI configuration table for per-user LLM provider settings
+async fn create_ai_config_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS ai_user_config (
+            user_id TEXT PRIMARY KEY,
+            provider TEXT NOT NULL DEFAULT 'anthropic',
+            model TEXT,
+            anthropic_api_key TEXT,
+            openai_api_key TEXT,
+            ollama_base_url TEXT,
+            ollama_model TEXT,
+            fallback_provider TEXT,
+            auto_reports INTEGER NOT NULL DEFAULT 0,
+            auto_remediation INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    log::info!("Created AI configuration table");
     Ok(())
 }

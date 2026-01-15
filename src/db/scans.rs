@@ -355,6 +355,159 @@ pub async fn get_all_reports(pool: &SqlitePool) -> Result<Vec<models::Report>> {
 }
 
 // ============================================================================
+// Report Operator Notes Functions
+// ============================================================================
+
+/// Update report-level operator notes
+pub async fn update_report_notes(
+    pool: &SqlitePool,
+    report_id: &str,
+    notes: &str,
+) -> Result<()> {
+    let now = Utc::now();
+
+    sqlx::query(
+        "UPDATE reports SET operator_notes = ?1, operator_notes_updated_at = ?2 WHERE id = ?3",
+    )
+    .bind(notes)
+    .bind(now)
+    .bind(report_id)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Get all operator notes for a report (report-level + finding-level)
+pub async fn get_report_notes(
+    pool: &SqlitePool,
+    report_id: &str,
+) -> Result<models::ReportNotesResponse> {
+    // Get report-level notes
+    let report = sqlx::query_as::<_, models::Report>(
+        "SELECT * FROM reports WHERE id = ?1",
+    )
+    .bind(report_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| anyhow::anyhow!("Report not found"))?;
+
+    // Get finding-level notes
+    let finding_notes = sqlx::query_as::<_, models::ReportFindingNote>(
+        "SELECT * FROM report_finding_notes WHERE report_id = ?1 ORDER BY created_at ASC",
+    )
+    .bind(report_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(models::ReportNotesResponse {
+        operator_notes: report.operator_notes,
+        operator_notes_updated_at: report.operator_notes_updated_at,
+        finding_notes,
+    })
+}
+
+/// Upsert a finding-level note (create or update)
+pub async fn upsert_finding_note(
+    pool: &SqlitePool,
+    report_id: &str,
+    finding_id: &str,
+    notes: &str,
+) -> Result<models::ReportFindingNote> {
+    let now = Utc::now();
+
+    // Try to update existing note first
+    let existing = sqlx::query_as::<_, models::ReportFindingNote>(
+        "SELECT * FROM report_finding_notes WHERE report_id = ?1 AND finding_id = ?2",
+    )
+    .bind(report_id)
+    .bind(finding_id)
+    .fetch_optional(pool)
+    .await?;
+
+    if let Some(existing_note) = existing {
+        // Update existing note
+        sqlx::query(
+            "UPDATE report_finding_notes SET notes = ?1, updated_at = ?2 WHERE id = ?3",
+        )
+        .bind(notes)
+        .bind(now)
+        .bind(&existing_note.id)
+        .execute(pool)
+        .await?;
+
+        Ok(models::ReportFindingNote {
+            notes: notes.to_string(),
+            updated_at: Some(now),
+            ..existing_note
+        })
+    } else {
+        // Create new note
+        let id = Uuid::new_v4().to_string();
+
+        sqlx::query(
+            r#"
+            INSERT INTO report_finding_notes (id, report_id, finding_id, notes, created_at)
+            VALUES (?1, ?2, ?3, ?4, ?5)
+            "#,
+        )
+        .bind(&id)
+        .bind(report_id)
+        .bind(finding_id)
+        .bind(notes)
+        .bind(now)
+        .execute(pool)
+        .await?;
+
+        Ok(models::ReportFindingNote {
+            id,
+            report_id: report_id.to_string(),
+            finding_id: finding_id.to_string(),
+            notes: notes.to_string(),
+            created_at: now,
+            updated_at: None,
+        })
+    }
+}
+
+/// Delete a finding-level note
+pub async fn delete_finding_note(
+    pool: &SqlitePool,
+    report_id: &str,
+    finding_id: &str,
+) -> Result<()> {
+    sqlx::query(
+        "DELETE FROM report_finding_notes WHERE report_id = ?1 AND finding_id = ?2",
+    )
+    .bind(report_id)
+    .bind(finding_id)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Get all finding notes for a report (used during report generation)
+pub async fn get_finding_notes_map(
+    pool: &SqlitePool,
+    report_id: &str,
+) -> Result<std::collections::HashMap<String, String>> {
+    let notes = sqlx::query_as::<_, models::ReportFindingNote>(
+        "SELECT * FROM report_finding_notes WHERE report_id = ?1",
+    )
+    .bind(report_id)
+    .fetch_all(pool)
+    .await?;
+
+    let map: std::collections::HashMap<String, String> = notes
+        .into_iter()
+        .map(|n| (n.finding_id, n.notes))
+        .collect();
+
+    Ok(map)
+}
+
+// ============================================================================
 // Scan Template Management Functions
 // ============================================================================
 

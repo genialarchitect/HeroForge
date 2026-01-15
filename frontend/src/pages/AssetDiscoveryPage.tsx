@@ -23,6 +23,8 @@ import {
 import { toast } from 'react-toastify';
 import Button from '../components/ui/Button';
 import { Layout } from '../components/layout/Layout';
+import { EngagementRequiredBanner } from '../components/engagement';
+import { useRequireEngagement } from '../hooks/useRequireEngagement';
 import api from '../services/api';
 
 interface DiscoveredAsset {
@@ -121,7 +123,7 @@ const getSourceColor = (source: string) => {
 };
 
 // Discovery Form Component
-function DiscoveryForm({ onSuccess }: { onSuccess: () => void }) {
+function DiscoveryForm({ onSuccess, hasEngagement }: { onSuccess: () => void; hasEngagement: boolean }) {
   const [domain, setDomain] = useState('');
   const [includeCT, setIncludeCT] = useState(true);
   const [includeDNS, setIncludeDNS] = useState(true);
@@ -242,7 +244,7 @@ function DiscoveryForm({ onSuccess }: { onSuccess: () => void }) {
           </div>
         )}
 
-        <Button type="submit" disabled={startMutation.isPending || !domain}>
+        <Button type="submit" disabled={startMutation.isPending || !domain || !hasEngagement}>
           {startMutation.isPending ? (
             <RefreshCw className="w-4 h-4 animate-spin mr-2" />
           ) : (
@@ -440,6 +442,7 @@ function ScanDetail({ scanId, onClose }: { scanId: string; onClose: () => void }
 export default function AssetDiscoveryPage() {
   const queryClient = useQueryClient();
   const [selectedScanId, setSelectedScanId] = useState<string | null>(null);
+  const { hasEngagement } = useRequireEngagement();
 
   const { data: scansData, isLoading, refetch } = useQuery({
     queryKey: ['discovery-scans'],
@@ -474,6 +477,8 @@ export default function AssetDiscoveryPage() {
         </p>
       </div>
 
+      <EngagementRequiredBanner toolName="Asset Discovery" className="mb-6" />
+
       {selectedScanId ? (
         <ScanDetail scanId={selectedScanId} onClose={() => setSelectedScanId(null)} />
       ) : (
@@ -481,6 +486,7 @@ export default function AssetDiscoveryPage() {
           {/* Left: Discovery Form */}
           <div className="lg:col-span-1">
             <DiscoveryForm
+              hasEngagement={hasEngagement}
               onSuccess={() => {
                 queryClient.invalidateQueries({ queryKey: ['discovery-scans'] });
               }}

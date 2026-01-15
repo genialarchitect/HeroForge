@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 
 use crate::db;
-use crate::db::models::CreateReportRequest;
+use crate::db::models::{CreateReportRequest, UpdateReportNotesRequest, UpdateFindingNoteRequest};
 use crate::db::quotas::{self, QuotaType};
 use crate::reports::storage;
 use crate::reports::types::{ReportFormat, ReportTemplate};
@@ -362,4 +362,161 @@ struct TemplateResponse {
     description: String,
     default_sections: Vec<String>,
     supports_formats: Vec<String>,
+}
+
+// ============================================================================
+// Operator Notes Endpoints
+// ============================================================================
+
+/// Get all operator notes for a report (report-level + finding-level)
+pub async fn get_report_notes(
+    req: HttpRequest,
+    pool: web::Data<SqlitePool>,
+    path: web::Path<String>,
+) -> HttpResponse {
+    let claims = match req.extensions().get::<Claims>() {
+        Some(claims) => claims.clone(),
+        None => return HttpResponse::Unauthorized().json(serde_json::json!({"error": "Unauthorized"})),
+    };
+
+    let report_id = path.into_inner();
+
+    // Verify report exists and user owns it
+    let report = match db::get_report_by_id(&pool, &report_id).await {
+        Ok(Some(r)) => r,
+        Ok(None) => return HttpResponse::NotFound().json(serde_json::json!({"error": "Report not found"})),
+        Err(e) => {
+            error!("Database error: {}", e);
+            return HttpResponse::InternalServerError().json(serde_json::json!({"error": "Database error"}));
+        }
+    };
+
+    // Verify ownership (unless admin)
+    if report.user_id != claims.sub && !claims.roles.contains(&"admin".to_string()) {
+        return HttpResponse::Forbidden().json(serde_json::json!({"error": "Access denied"}));
+    }
+
+    match db::get_report_notes(&pool, &report_id).await {
+        Ok(notes) => HttpResponse::Ok().json(notes),
+        Err(e) => {
+            error!("Failed to get report notes: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({"error": "Failed to get notes"}))
+        }
+    }
+}
+
+/// Update report-level operator notes
+pub async fn update_report_notes(
+    req: HttpRequest,
+    pool: web::Data<SqlitePool>,
+    path: web::Path<String>,
+    body: web::Json<UpdateReportNotesRequest>,
+) -> HttpResponse {
+    let claims = match req.extensions().get::<Claims>() {
+        Some(claims) => claims.clone(),
+        None => return HttpResponse::Unauthorized().json(serde_json::json!({"error": "Unauthorized"})),
+    };
+
+    let report_id = path.into_inner();
+
+    // Verify report exists and user owns it
+    let report = match db::get_report_by_id(&pool, &report_id).await {
+        Ok(Some(r)) => r,
+        Ok(None) => return HttpResponse::NotFound().json(serde_json::json!({"error": "Report not found"})),
+        Err(e) => {
+            error!("Database error: {}", e);
+            return HttpResponse::InternalServerError().json(serde_json::json!({"error": "Database error"}));
+        }
+    };
+
+    // Verify ownership (unless admin)
+    if report.user_id != claims.sub && !claims.roles.contains(&"admin".to_string()) {
+        return HttpResponse::Forbidden().json(serde_json::json!({"error": "Access denied"}));
+    }
+
+    if let Err(e) = db::update_report_notes(&pool, &report_id, &body.operator_notes).await {
+        error!("Failed to update report notes: {}", e);
+        return HttpResponse::InternalServerError().json(serde_json::json!({"error": "Failed to update notes"}));
+    }
+
+    info!("Updated operator notes for report: {}", report_id);
+    HttpResponse::Ok().json(serde_json::json!({"status": "ok", "message": "Notes updated"}))
+}
+
+/// Update or create a finding-level note
+pub async fn update_finding_note(
+    req: HttpRequest,
+    pool: web::Data<SqlitePool>,
+    path: web::Path<(String, String)>,
+    body: web::Json<UpdateFindingNoteRequest>,
+) -> HttpResponse {
+    let claims = match req.extensions().get::<Claims>() {
+        Some(claims) => claims.clone(),
+        None => return HttpResponse::Unauthorized().json(serde_json::json!({"error": "Unauthorized"})),
+    };
+
+    let (report_id, finding_id) = path.into_inner();
+
+    // Verify report exists and user owns it
+    let report = match db::get_report_by_id(&pool, &report_id).await {
+        Ok(Some(r)) => r,
+        Ok(None) => return HttpResponse::NotFound().json(serde_json::json!({"error": "Report not found"})),
+        Err(e) => {
+            error!("Database error: {}", e);
+            return HttpResponse::InternalServerError().json(serde_json::json!({"error": "Database error"}));
+        }
+    };
+
+    // Verify ownership (unless admin)
+    if report.user_id != claims.sub && !claims.roles.contains(&"admin".to_string()) {
+        return HttpResponse::Forbidden().json(serde_json::json!({"error": "Access denied"}));
+    }
+
+    match db::upsert_finding_note(&pool, &report_id, &finding_id, &body.notes).await {
+        Ok(note) => {
+            info!("Updated finding note for report {}, finding {}", report_id, finding_id);
+            HttpResponse::Ok().json(note)
+        }
+        Err(e) => {
+            error!("Failed to update finding note: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({"error": "Failed to update note"}))
+        }
+    }
+}
+
+/// Delete a finding-level note
+pub async fn delete_finding_note(
+    req: HttpRequest,
+    pool: web::Data<SqlitePool>,
+    path: web::Path<(String, String)>,
+) -> HttpResponse {
+    let claims = match req.extensions().get::<Claims>() {
+        Some(claims) => claims.clone(),
+        None => return HttpResponse::Unauthorized().json(serde_json::json!({"error": "Unauthorized"})),
+    };
+
+    let (report_id, finding_id) = path.into_inner();
+
+    // Verify report exists and user owns it
+    let report = match db::get_report_by_id(&pool, &report_id).await {
+        Ok(Some(r)) => r,
+        Ok(None) => return HttpResponse::NotFound().json(serde_json::json!({"error": "Report not found"})),
+        Err(e) => {
+            error!("Database error: {}", e);
+            return HttpResponse::InternalServerError().json(serde_json::json!({"error": "Database error"}));
+        }
+    };
+
+    // Verify ownership (unless admin)
+    if report.user_id != claims.sub && !claims.roles.contains(&"admin".to_string()) {
+        return HttpResponse::Forbidden().json(serde_json::json!({"error": "Access denied"}));
+    }
+
+    if let Err(e) = db::delete_finding_note(&pool, &report_id, &finding_id).await {
+        error!("Failed to delete finding note: {}", e);
+        return HttpResponse::InternalServerError().json(serde_json::json!({"error": "Failed to delete note"}));
+    }
+
+    info!("Deleted finding note for report {}, finding {}", report_id, finding_id);
+    HttpResponse::NoContent().finish()
 }

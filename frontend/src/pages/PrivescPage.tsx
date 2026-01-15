@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-toastify';
 import Layout from '../components/layout/Layout';
+import { EngagementRequiredBanner } from '../components/engagement';
+import { useRequireEngagement } from '../hooks/useRequireEngagement';
 import Button from '../components/ui/Button';
 import Badge from '../components/ui/Badge';
 import {
@@ -38,7 +40,8 @@ import {
 const ScanForm: React.FC<{
   onSubmit: (data: StartPrivescRequest) => void;
   isSubmitting: boolean;
-}> = ({ onSubmit, isSubmitting }) => {
+  hasEngagement: boolean;
+}> = ({ onSubmit, isSubmitting, hasEngagement }) => {
   const [osType, setOsType] = useState<'linux' | 'windows'>('linux');
   const [target, setTarget] = useState('');
   const [sshUsername, setSshUsername] = useState('');
@@ -245,7 +248,7 @@ const ScanForm: React.FC<{
             <span className="text-sm text-slate-500 dark:text-slate-400">seconds</span>
           </div>
         </div>
-        <Button type="submit" variant="primary" disabled={isSubmitting}>
+        <Button type="submit" variant="primary" disabled={isSubmitting || !hasEngagement}>
           {isSubmitting ? (
             <>
               <Loader className="h-4 w-4 mr-2 animate-spin" />
@@ -500,6 +503,7 @@ const ScanDetail: React.FC<{
 const PrivescPage: React.FC = () => {
   const queryClient = useQueryClient();
   const [selectedScanId, setSelectedScanId] = useState<string | null>(null);
+  const { hasEngagement } = useRequireEngagement();
 
   const { data: scansData, isLoading } = useQuery({
     queryKey: ['privesc-scans'],
@@ -562,6 +566,8 @@ const PrivescPage: React.FC = () => {
           </div>
         </div>
 
+        <EngagementRequiredBanner toolName="Privilege Escalation Scanner" className="mb-6" />
+
         {/* Info banner */}
         <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 flex items-start gap-3">
           <Info className="h-5 w-5 text-blue-400 mt-0.5" />
@@ -576,7 +582,7 @@ const PrivescPage: React.FC = () => {
         </div>
 
         {/* Scan Form */}
-        <ScanForm onSubmit={(data) => startMutation.mutate(data)} isSubmitting={startMutation.isPending} />
+        <ScanForm onSubmit={(data) => startMutation.mutate(data)} isSubmitting={startMutation.isPending} hasEngagement={hasEngagement} />
 
         {/* Scan Detail or List */}
         {selectedScanId ? (

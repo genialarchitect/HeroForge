@@ -314,12 +314,13 @@ function Modal({ isOpen, onClose, title, children }: {
 // Stats Card Component
 // ============================================================================
 
-function StatsCard({ icon: Icon, title, value, subtitle, color = 'cyan' }: {
+function StatsCard({ icon: Icon, title, value, subtitle, color = 'cyan', onClick }: {
   icon: React.ElementType;
   title: string;
   value: number | string;
   subtitle?: string;
   color?: 'cyan' | 'green' | 'yellow' | 'red' | 'purple' | 'orange';
+  onClick?: () => void;
 }) {
   const colorClasses = {
     cyan: 'text-cyan-400 bg-cyan-500/20',
@@ -331,16 +332,20 @@ function StatsCard({ icon: Icon, title, value, subtitle, color = 'cyan' }: {
   };
 
   return (
-    <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+    <div
+      onClick={onClick}
+      className={`bg-gray-800 rounded-lg p-4 border border-gray-700 ${onClick ? 'cursor-pointer hover:border-cyan-500/50 hover:bg-gray-750 transition-all group' : ''}`}
+    >
       <div className="flex items-center gap-3">
         <div className={`p-2 rounded-lg ${colorClasses[color]}`}>
           <Icon className="w-5 h-5" />
         </div>
-        <div>
+        <div className="flex-1">
           <p className="text-sm text-gray-400">{title}</p>
           <p className="text-2xl font-bold text-white">{value}</p>
           {subtitle && <p className="text-xs text-gray-500">{subtitle}</p>}
         </div>
+        {onClick && <ChevronRight className="w-5 h-5 text-gray-500 group-hover:text-cyan-400 transition-colors" />}
       </div>
     </div>
   );
@@ -350,7 +355,7 @@ function StatsCard({ icon: Icon, title, value, subtitle, color = 'cyan' }: {
 // Dashboard Tab
 // ============================================================================
 
-function DashboardTab() {
+function DashboardTab({ onTabChange }: { onTabChange?: (tab: TabType) => void }) {
   const { data: dashboard, isLoading, refetch } = useQuery({
     queryKey: ['grc-dashboard'],
     queryFn: whiteTeamAPI.getDashboard,
@@ -389,6 +394,7 @@ function DashboardTab() {
           value={dashboard?.policies?.active || 0}
           subtitle={`${dashboard?.policies?.pending_review || 0} pending review`}
           color="cyan"
+          onClick={() => onTabChange?.('policies')}
         />
         <StatsCard
           icon={AlertTriangle}
@@ -396,6 +402,7 @@ function DashboardTab() {
           value={dashboard?.risks?.open || 0}
           subtitle={`${dashboard?.risks?.critical || 0} critical`}
           color="red"
+          onClick={() => onTabChange?.('risks')}
         />
         <StatsCard
           icon={Shield}
@@ -403,6 +410,7 @@ function DashboardTab() {
           value={dashboard?.controls?.total || 0}
           subtitle={`${dashboard?.controls?.effective || 0} effective`}
           color="green"
+          onClick={() => onTabChange?.('controls')}
         />
         <StatsCard
           icon={ClipboardCheck}
@@ -410,6 +418,7 @@ function DashboardTab() {
           value={dashboard?.audits?.active_audits || 0}
           subtitle={`${dashboard?.audits?.open_findings || 0} open findings`}
           color="yellow"
+          onClick={() => onTabChange?.('audits')}
         />
         <StatsCard
           icon={Building2}
@@ -417,6 +426,7 @@ function DashboardTab() {
           value={dashboard?.vendors?.active || 0}
           subtitle={`${dashboard?.vendors?.high_risk || 0} high risk`}
           color="purple"
+          onClick={() => onTabChange?.('vendors')}
         />
       </div>
 
@@ -1680,7 +1690,7 @@ export default function WhiteTeamPage() {
 
         {/* Tab Content */}
         <div>
-          {activeTab === 'dashboard' && <DashboardTab />}
+          {activeTab === 'dashboard' && <DashboardTab onTabChange={setActiveTab} />}
           {activeTab === 'policies' && <PoliciesTab />}
           {activeTab === 'risks' && <RisksTab />}
           {activeTab === 'controls' && <ControlsTab />}

@@ -3,6 +3,7 @@ pub mod admin;
 pub mod agents;
 pub mod asm;
 pub mod ai;
+pub mod ai_config;
 pub mod ai_llm;
 pub mod ai_ml;
 pub mod ai_security;
@@ -67,6 +68,7 @@ pub mod privesc;
 pub mod purple_team;
 pub mod push;
 pub mod reports;
+pub mod red_team_advisor;
 pub mod scan_presets;
 pub mod scans;
 pub mod screenshots;
@@ -133,6 +135,11 @@ pub mod whitepapers;
 pub mod client_compliance;
 pub mod ato_map;
 pub mod network_topology;
+// ACAS-inspired modules (SCAP, Windows Audit, eMASS, Audit Files)
+pub mod scap;
+pub mod windows_audit;
+pub mod emass;
+pub mod audit_files;
 
 #[cfg(test)]
 mod tests;

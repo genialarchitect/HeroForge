@@ -1,6 +1,6 @@
 FROM debian:trixie-slim
 
-# Install required dependencies including VPN tools
+# Install required dependencies including VPN tools, PDF generation, and packet capture
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     openvpn \
@@ -10,6 +10,11 @@ RUN apt-get update && apt-get install -y \
     curl \
     unzip \
     whois \
+    chromium \
+    fontconfig \
+    fonts-liberation \
+    fonts-dejavu-core \
+    libpcap0.8 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Nuclei (vulnerability scanner)
@@ -41,6 +46,12 @@ RUN mkdir -p /data /app/vpn_configs /etc/wireguard /home/heroforge/.config/nucle
 
 # Switch to non-root user for the main application
 USER heroforge
+
+# Set HOME for the heroforge user
+ENV HOME=/home/heroforge
+
+# Download Nuclei templates (as heroforge user so templates are properly owned)
+RUN nuclei -ut || true
 
 # Expose port 8080
 EXPOSE 8080

@@ -112,16 +112,15 @@ pub async fn generate_executive_report(
         }
     };
 
-    // Get API key from environment
-    let api_key = std::env::var("ANTHROPIC_API_KEY").map_err(|_| {
+    // Create orchestrator (uses configured LLM provider)
+    let orchestrator = LLMOrchestrator::new().await.map_err(|e| {
         ApiError::new(
             ApiErrorKind::InternalError(String::new()),
-            "ANTHROPIC_API_KEY not configured".to_string(),
+            format!("Failed to initialize LLM: {}", e),
         )
     })?;
 
     // Generate report
-    let orchestrator = LLMOrchestrator::new(api_key);
     let report = orchestrator
         .generate_executive_report(&scan_results)
         .await
@@ -206,13 +205,12 @@ pub async fn generate_technical_report(
 
     let scan_results: Vec<crate::types::HostInfo> = serde_json::from_str(scan.results.as_ref().unwrap())?;
 
-    let api_key = std::env::var("ANTHROPIC_API_KEY").map_err(|_| {
+    let orchestrator = LLMOrchestrator::new().await.map_err(|e| {
         ApiError::new(
             ApiErrorKind::InternalError(String::new()),
-            "ANTHROPIC_API_KEY not configured".to_string(),
+            format!("Failed to initialize LLM: {}", e),
         )
     })?;
-    let orchestrator = LLMOrchestrator::new(api_key);
 
     let report = orchestrator.generate_technical_report(&scan_results).await.map_err(|e| {
         ApiError::new(ApiErrorKind::InternalError(String::new()), format!("Failed to generate report: {}", e))
@@ -267,13 +265,12 @@ pub async fn plan_scan(
 ) -> Result<HttpResponse, ApiError> {
     let user_id = &claims.sub;
 
-    let api_key = std::env::var("ANTHROPIC_API_KEY").map_err(|_| {
+    let orchestrator = LLMOrchestrator::new().await.map_err(|e| {
         ApiError::new(
             ApiErrorKind::InternalError(String::new()),
-            "ANTHROPIC_API_KEY not configured".to_string(),
+            format!("Failed to initialize LLM: {}", e),
         )
     })?;
-    let orchestrator = LLMOrchestrator::new(api_key);
 
     let plan = orchestrator
         .plan_scan(&body.targets, &body.objectives)
@@ -308,13 +305,12 @@ pub async fn analyze_exploit(
 ) -> Result<HttpResponse, ApiError> {
     let user_id = &claims.sub;
 
-    let api_key = std::env::var("ANTHROPIC_API_KEY").map_err(|_| {
+    let orchestrator = LLMOrchestrator::new().await.map_err(|e| {
         ApiError::new(
             ApiErrorKind::InternalError(String::new()),
-            "ANTHROPIC_API_KEY not configured".to_string(),
+            format!("Failed to initialize LLM: {}", e),
         )
     })?;
-    let orchestrator = LLMOrchestrator::new(api_key);
 
     let analysis = orchestrator
         .analyze_exploit(&body.code, body.context.as_deref())
@@ -366,13 +362,12 @@ pub async fn generate_policy(
         }
     };
 
-    let api_key = std::env::var("ANTHROPIC_API_KEY").map_err(|_| {
+    let orchestrator = LLMOrchestrator::new().await.map_err(|e| {
         ApiError::new(
             ApiErrorKind::InternalError(String::new()),
-            "ANTHROPIC_API_KEY not configured".to_string(),
+            format!("Failed to initialize LLM: {}", e),
         )
     })?;
-    let orchestrator = LLMOrchestrator::new(api_key);
 
     let policy = orchestrator
         .generate_security_policy(policy_type, &body.organization, &body.compliance_frameworks)
@@ -407,13 +402,12 @@ pub async fn get_remediation_guidance(
 ) -> Result<HttpResponse, ApiError> {
     let user_id = &claims.sub;
 
-    let api_key = std::env::var("ANTHROPIC_API_KEY").map_err(|_| {
+    let orchestrator = LLMOrchestrator::new().await.map_err(|e| {
         ApiError::new(
             ApiErrorKind::InternalError(String::new()),
-            "ANTHROPIC_API_KEY not configured".to_string(),
+            format!("Failed to initialize LLM: {}", e),
         )
     })?;
-    let orchestrator = LLMOrchestrator::new(api_key);
 
     let guidance = orchestrator
         .generate_remediation_guidance(&body.vulnerability, &body.context)

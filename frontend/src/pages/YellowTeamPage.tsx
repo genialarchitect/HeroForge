@@ -110,50 +110,61 @@ function StrideCategory({ category }: { category: string }) {
 }
 
 // Dashboard Stats Component
-function DashboardStats({ data }: { data: YellowTeamDashboard }) {
+function DashboardStats({ data, onTabChange }: { data: YellowTeamDashboard; onTabChange?: (tab: TabType) => void }) {
   const stats = [
     {
       label: 'Mean Time to Remediate',
       value: `${data.mttr_days.toFixed(1)}d`,
       icon: <Clock className="h-5 w-5 text-cyan-400" />,
       trend: data.mttr_trend,
+      tab: 'sast' as TabType,
     },
     {
       label: 'Vulnerability Density',
       value: `${data.vuln_density.toFixed(2)}/kLOC`,
       icon: <AlertTriangle className="h-5 w-5 text-orange-400" />,
       trend: data.vuln_density_trend,
+      tab: 'sast' as TabType,
     },
     {
       label: 'SLA Compliance',
       value: `${data.sla_compliance.toFixed(1)}%`,
       icon: <Target className="h-5 w-5 text-green-400" />,
       trend: data.sla_trend,
+      tab: 'sast' as TabType,
     },
     {
       label: 'Open Findings',
       value: data.open_findings,
       icon: <Shield className="h-5 w-5 text-red-400" />,
       subtext: `${data.critical_findings} critical`,
+      tab: 'sast' as TabType,
     },
   ];
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
       {stats.map((stat) => (
-        <div key={stat.label} className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+        <div
+          key={stat.label}
+          onClick={() => onTabChange?.(stat.tab)}
+          className={`bg-gray-800 rounded-lg p-4 border border-gray-700 ${onTabChange ? 'cursor-pointer hover:border-cyan-500/50 hover:bg-gray-750 transition-all group' : ''}`}
+        >
           <div className="flex items-center justify-between mb-2">
             <div className="p-2 bg-gray-700 rounded-lg">{stat.icon}</div>
-            {stat.trend !== undefined && (
-              <div className={`flex items-center text-sm ${stat.trend < 0 ? 'text-green-400' : 'text-red-400'}`}>
-                {stat.trend < 0 ? (
-                  <TrendingDown className="h-4 w-4 mr-1" />
-                ) : (
-                  <TrendingUp className="h-4 w-4 mr-1" />
-                )}
-                {Math.abs(stat.trend).toFixed(1)}%
-              </div>
-            )}
+            <div className="flex items-center gap-2">
+              {stat.trend !== undefined && (
+                <div className={`flex items-center text-sm ${stat.trend < 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {stat.trend < 0 ? (
+                    <TrendingDown className="h-4 w-4 mr-1" />
+                  ) : (
+                    <TrendingUp className="h-4 w-4 mr-1" />
+                  )}
+                  {Math.abs(stat.trend).toFixed(1)}%
+                </div>
+              )}
+              {onTabChange && <ChevronRight className="w-5 h-5 text-gray-500 group-hover:text-cyan-400 transition-colors" />}
+            </div>
           </div>
           <p className="text-gray-400 text-sm">{stat.label}</p>
           <p className="text-2xl font-bold text-white">{stat.value}</p>
@@ -1036,7 +1047,7 @@ export default function YellowTeamPage() {
                 </div>
               ) : dashboard ? (
                 <>
-                  <DashboardStats data={dashboard} />
+                  <DashboardStats data={dashboard} onTabChange={setActiveTab} />
                   <DashboardCharts data={dashboard} />
 
                   {/* Recent Activity */}

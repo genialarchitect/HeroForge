@@ -3,10 +3,16 @@
 //! Provides endpoints for managing and retrieving network topology data
 //! from discovered assets, manual configurations, and scan results.
 
+use actix_multipart::Multipart;
 use actix_web::{web, HttpResponse, Result};
+use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use std::collections::HashMap;
+
+use crate::integrations::topology_import::{
+    self, get_supported_formats, ImportedTopologyHost, TopologyImportResult, TopologyImportSource,
+};
 
 // ============================================================================
 // Types
@@ -779,6 +785,267 @@ fn infer_network_connections(nodes: &[NetworkNode]) -> Vec<NetworkEdge> {
 }
 
 // ============================================================================
+// Tool Import
+// ============================================================================
+
+/// Query parameters for tool import
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportToolQuery {
+    pub engagement_id: Option<String>,
+    #[serde(default = "default_merge_mode")]
+    pub merge_mode: String,
+    pub format: Option<String>,
+}
+
+fn default_merge_mode() -> String {
+    "merge".to_string()
+}
+
+/// Response for tool import
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportToolResponse {
+    pub success: bool,
+    pub nodes: Vec<NetworkNode>,
+    pub edges: Vec<NetworkEdge>,
+    pub stats: ImportStats,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportStats {
+    pub hosts_imported: usize,
+    pub ports_discovered: usize,
+    pub source_format: String,
+}
+
+/// Import topology from external tool output file
+pub async fn import_from_tool(
+    pool: web::Data<SqlitePool>,
+    query: web::Query<ImportToolQuery>,
+    mut payload: Multipart,
+) -> Result<HttpResponse> {
+    // Extract file from multipart
+    let (filename, content) = match extract_file_from_multipart(&mut payload).await {
+        Ok(result) => result,
+        Err(e) => {
+            return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+                "success": false,
+                "error": format!("Failed to read file: {}", e)
+            })));
+        }
+    };
+
+    // Detect or use specified format
+    let source = if let Some(format_str) = &query.format {
+        match format_str.as_str() {
+            "nmap_xml" => TopologyImportSource::NmapXml,
+            "nmap_grepable" => TopologyImportSource::NmapGrepable,
+            "masscan_json" | "masscan" => TopologyImportSource::MasscanJson,
+            "netcat_log" | "netcat" => TopologyImportSource::NetcatLog,
+            "rustscan" => TopologyImportSource::Rustscan,
+            _ => {
+                return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+                    "success": false,
+                    "error": format!("Unknown format: {}", format_str)
+                })));
+            }
+        }
+    } else {
+        match topology_import::detect_format(&content, &filename) {
+            Some(s) => s,
+            None => {
+                return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+                    "success": false,
+                    "error": "Could not auto-detect file format. Please specify format parameter."
+                })));
+            }
+        }
+    };
+
+    // Parse the file
+    let import_result = match topology_import::parse(&content, source) {
+        Ok(r) => r,
+        Err(e) => {
+            return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+                "success": false,
+                "error": format!("Failed to parse file: {}", e)
+            })));
+        }
+    };
+
+    // Convert to NetworkNodes
+    let (nodes, total_ports) = convert_import_to_nodes(&import_result);
+
+    // Infer network connections
+    let edges = infer_network_connections(&nodes);
+
+    // If merge mode, load existing topology and merge
+    let (final_nodes, final_edges) = if query.merge_mode == "merge" {
+        if let Some(eng_id) = &query.engagement_id {
+            if let Ok(Some(mut existing)) = load_saved_topology(pool.get_ref(), Some(eng_id)).await {
+                merge_imported_nodes(&mut existing, nodes.clone());
+                let new_edges = infer_network_connections(&existing.nodes);
+                (existing.nodes, new_edges)
+            } else {
+                (nodes, edges)
+            }
+        } else {
+            (nodes, edges)
+        }
+    } else {
+        (nodes, edges)
+    };
+
+    Ok(HttpResponse::Ok().json(ImportToolResponse {
+        success: true,
+        nodes: final_nodes,
+        edges: final_edges,
+        stats: ImportStats {
+            hosts_imported: import_result.hosts.len(),
+            ports_discovered: total_ports,
+            source_format: source.to_string(),
+        },
+        warnings: import_result.warnings,
+    }))
+}
+
+/// Get list of supported import formats
+pub async fn get_import_formats() -> Result<HttpResponse> {
+    let formats = get_supported_formats();
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "formats": formats
+    })))
+}
+
+/// Extract file content from multipart upload
+async fn extract_file_from_multipart(payload: &mut Multipart) -> anyhow::Result<(String, String)> {
+    let mut filename = String::new();
+    let mut content = Vec::new();
+
+    while let Some(Ok(mut field)) = payload.next().await {
+        // Get filename from content disposition
+        if let Some(cd) = field.content_disposition() {
+            if let Some(name) = cd.get_filename() {
+                filename = name.to_string();
+            }
+        }
+
+        // Read field content
+        while let Some(chunk) = field.next().await {
+            let chunk = chunk.map_err(|e| anyhow::anyhow!("Failed to read chunk: {}", e))?;
+            content.extend_from_slice(&chunk);
+        }
+    }
+
+    if content.is_empty() {
+        return Err(anyhow::anyhow!("No file content received"));
+    }
+
+    let content_str = String::from_utf8(content)
+        .map_err(|_| anyhow::anyhow!("File content is not valid UTF-8"))?;
+
+    Ok((filename, content_str))
+}
+
+/// Convert imported hosts to NetworkNodes
+fn convert_import_to_nodes(import_result: &TopologyImportResult) -> (Vec<NetworkNode>, usize) {
+    let mut nodes = Vec::new();
+    let mut total_ports = 0;
+
+    for (idx, host) in import_result.hosts.iter().enumerate() {
+        // Convert ports
+        let ports: Vec<PortInfo> = host.ports.iter().map(|p| {
+            total_ports += 1;
+            PortInfo {
+                port: p.port as i32,
+                protocol: p.protocol.clone(),
+                service: p.service.clone(),
+                version: p.version.clone().or_else(|| p.product.clone()),
+            }
+        }).collect();
+
+        // Infer device type from hostname, OS, and ports
+        let ports_opt = if ports.is_empty() { None } else { Some(&ports) };
+        let device_type = infer_device_type(
+            &host.os,
+            &host.hostname,
+            &ports_opt,
+        );
+
+        // Infer security zone from IP
+        let security_zone = infer_security_zone(&host.ip);
+
+        // Calculate position in grid
+        let col = idx % 4;
+        let row = idx / 4;
+        let position = Position {
+            x: 200.0 + col as f64 * 200.0,
+            y: 100.0 + row as f64 * 150.0,
+        };
+
+        // Create node
+        let node = NetworkNode {
+            id: format!("import-{}-{}", import_result.source, idx),
+            node_type: "networkDevice".to_string(),
+            position,
+            data: NodeData {
+                label: host.hostname.clone().unwrap_or_else(|| host.ip.clone()),
+                device_type,
+                security_zone,
+                ip_address: Some(host.ip.clone()),
+                hostname: host.hostname.clone(),
+                os: host.os.clone(),
+                compliance_status: "not_assessed".to_string(),
+                controls_assessed: None,
+                controls_passing: None,
+                vulnerabilities: None,
+                description: Some(format!("Imported from {}", import_result.source)),
+                ports: if ports.is_empty() { None } else { Some(ports) },
+                asset_id: None,
+            },
+        };
+
+        nodes.push(node);
+    }
+
+    (nodes, total_ports)
+}
+
+/// Merge imported nodes into existing topology
+fn merge_imported_nodes(topology: &mut NetworkTopology, imported: Vec<NetworkNode>) {
+    let existing_ips: std::collections::HashSet<String> = topology.nodes.iter()
+        .filter_map(|n| n.data.ip_address.clone())
+        .collect();
+
+    for node in imported {
+        if let Some(ip) = &node.data.ip_address {
+            if existing_ips.contains(ip) {
+                // Update existing node with new port information
+                if let Some(existing) = topology.nodes.iter_mut().find(|n| n.data.ip_address.as_ref() == Some(ip)) {
+                    // Merge ports
+                    if let (Some(existing_ports), Some(new_ports)) = (&mut existing.data.ports, &node.data.ports) {
+                        for new_port in new_ports {
+                            if !existing_ports.iter().any(|p| p.port == new_port.port && p.protocol == new_port.protocol) {
+                                existing_ports.push(new_port.clone());
+                            }
+                        }
+                    } else if existing.data.ports.is_none() && node.data.ports.is_some() {
+                        existing.data.ports = node.data.ports.clone();
+                    }
+                }
+            } else {
+                // Add new node
+                topology.nodes.push(node);
+                topology.metadata.total_devices += 1;
+            }
+        }
+    }
+}
+
+// ============================================================================
 // Route Configuration
 // ============================================================================
 
@@ -790,5 +1057,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/list", web::get().to(list_topologies))
             .route("/{id}", web::delete().to(delete_topology))
             .route("/import/scan/{scan_id}", web::get().to(import_from_scan))
+            .route("/import/tool", web::post().to(import_from_tool))
+            .route("/import/formats", web::get().to(get_import_formats))
     );
 }

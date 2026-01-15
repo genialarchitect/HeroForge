@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import Layout from '../components/layout/Layout';
+import { ChevronRight } from 'lucide-react';
 import { executiveAnalyticsAPI, crmAPI } from '../services/api';
 import type {
   ExecutiveDashboard,
@@ -179,10 +180,16 @@ const ExecutiveDashboardPage: React.FC = () => {
             {dashboard.summary && (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 {/* Risk Rating */}
-                <div className="bg-dark-surface rounded-lg border border-dark-border p-4">
+                <Link
+                  to="/compliance"
+                  className="bg-dark-surface rounded-lg border border-dark-border p-4 group hover:border-primary hover:shadow-xl transition-all duration-200 cursor-pointer"
+                >
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-slate-400 text-sm">Risk Rating</span>
-                    <Shield className="h-5 w-5 text-primary" />
+                    <div className="flex items-center gap-2">
+                      <Shield className="h-5 w-5 text-primary" />
+                      <ChevronRight className="h-4 w-4 text-slate-500 group-hover:text-primary transition-colors" />
+                    </div>
                   </div>
                   <div className="flex items-center gap-3">
                     <span
@@ -197,15 +204,21 @@ const ExecutiveDashboardPage: React.FC = () => {
                   <p className="text-xs text-slate-500 mt-2">
                     {dashboard.summary.trend_direction}
                   </p>
-                </div>
+                </Link>
 
                 {/* Open Vulnerabilities */}
-                <div className="bg-dark-surface rounded-lg border border-dark-border p-4">
+                <Link
+                  to="/vulnerabilities"
+                  className="bg-dark-surface rounded-lg border border-dark-border p-4 group hover:border-primary hover:shadow-xl transition-all duration-200 cursor-pointer"
+                >
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-slate-400 text-sm">
                       Open Vulnerabilities
                     </span>
-                    <AlertTriangle className="h-5 w-5 text-yellow-400" />
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="h-5 w-5 text-yellow-400" />
+                      <ChevronRight className="h-4 w-4 text-slate-500 group-hover:text-primary transition-colors" />
+                    </div>
                   </div>
                   <div className="text-3xl font-bold text-white">
                     {dashboard.summary.open_vulnerabilities}
@@ -218,15 +231,21 @@ const ExecutiveDashboardPage: React.FC = () => {
                       {dashboard.summary.high_open} High
                     </span>
                   </div>
-                </div>
+                </Link>
 
                 {/* Avg Remediation Time */}
-                <div className="bg-dark-surface rounded-lg border border-dark-border p-4">
+                <Link
+                  to="/remediation"
+                  className="bg-dark-surface rounded-lg border border-dark-border p-4 group hover:border-primary hover:shadow-xl transition-all duration-200 cursor-pointer"
+                >
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-slate-400 text-sm">
                       Avg Remediation
                     </span>
-                    <Clock className="h-5 w-5 text-cyan-400" />
+                    <div className="flex items-center gap-2">
+                      <Clock className="h-5 w-5 text-cyan-400" />
+                      <ChevronRight className="h-4 w-4 text-slate-500 group-hover:text-primary transition-colors" />
+                    </div>
                   </div>
                   <div className="text-3xl font-bold text-white">
                     {dashboard.summary.avg_remediation_days.toFixed(1)}
@@ -235,13 +254,19 @@ const ExecutiveDashboardPage: React.FC = () => {
                   <p className="text-xs text-slate-500 mt-2">
                     Time to resolve issues
                   </p>
-                </div>
+                </Link>
 
                 {/* Engagements */}
-                <div className="bg-dark-surface rounded-lg border border-dark-border p-4">
+                <Link
+                  to="/crm/engagements"
+                  className="bg-dark-surface rounded-lg border border-dark-border p-4 group hover:border-primary hover:shadow-xl transition-all duration-200 cursor-pointer"
+                >
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-slate-400 text-sm">Engagements</span>
-                    <Building2 className="h-5 w-5 text-purple-400" />
+                    <div className="flex items-center gap-2">
+                      <Building2 className="h-5 w-5 text-purple-400" />
+                      <ChevronRight className="h-4 w-4 text-slate-500 group-hover:text-primary transition-colors" />
+                    </div>
                   </div>
                   <div className="text-3xl font-bold text-white">
                     {dashboard.summary.active_engagements}
@@ -250,7 +275,7 @@ const ExecutiveDashboardPage: React.FC = () => {
                     </span>
                   </div>
                   <p className="text-xs text-slate-500 mt-2">Active / Total</p>
-                </div>
+                </Link>
               </div>
             )}
 

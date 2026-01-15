@@ -61,13 +61,37 @@ pub struct LoginResponse {
     pub user: UserInfo,
 }
 
+/// Basic user info for database queries (without roles)
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct UserInfoBasic {
+    pub id: String,
+    pub username: String,
+    pub email: String,
+}
+
+impl From<UserInfoBasic> for UserInfo {
+    fn from(basic: UserInfoBasic) -> Self {
+        UserInfo {
+            id: basic.id,
+            username: basic.username,
+            email: basic.email,
+            first_name: None,
+            last_name: None,
+            roles: Vec::new(),
+        }
+    }
+}
+
+/// Full user info for API responses (with roles)
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserInfo {
     pub id: String,
     pub username: String,
     pub email: String,
     pub first_name: Option<String>,
     pub last_name: Option<String>,
+    #[serde(default)]
+    pub roles: Vec<String>,
 }
 
 impl From<User> for UserInfo {
@@ -78,6 +102,21 @@ impl From<User> for UserInfo {
             email: user.email,
             first_name: user.first_name,
             last_name: user.last_name,
+            roles: Vec::new(), // Roles must be set explicitly after fetching
+        }
+    }
+}
+
+impl UserInfo {
+    /// Create UserInfo with roles
+    pub fn with_roles(user: User, roles: Vec<String>) -> Self {
+        UserInfo {
+            id: user.id,
+            username: user.username,
+            email: user.email,
+            first_name: user.first_name,
+            last_name: user.last_name,
+            roles,
         }
     }
 }
@@ -313,6 +352,9 @@ pub struct Report {
     pub organization_id: Option<String>,
     // Portal engagement link - reports with engagement_id are visible to portal customers
     pub engagement_id: Option<String>,
+    // Operator notes for red team assessments
+    pub operator_notes: Option<String>,
+    pub operator_notes_updated_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -337,6 +379,37 @@ pub struct ReportTemplate {
     pub description: String,
     pub default_sections: Vec<String>,
     pub supports_formats: Vec<String>,
+}
+
+/// Finding-level operator notes for red team reports
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct ReportFindingNote {
+    pub id: String,
+    pub report_id: String,
+    pub finding_id: String,
+    pub notes: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: Option<DateTime<Utc>>,
+}
+
+/// Request to update report-level operator notes
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateReportNotesRequest {
+    pub operator_notes: String,
+}
+
+/// Request to update finding-level operator notes
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateFindingNoteRequest {
+    pub notes: String,
+}
+
+/// Response containing all operator notes for a report
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ReportNotesResponse {
+    pub operator_notes: Option<String>,
+    pub operator_notes_updated_at: Option<DateTime<Utc>>,
+    pub finding_notes: Vec<ReportFindingNote>,
 }
 
 // Scan Template Models
@@ -1505,6 +1578,9 @@ pub struct Asset {
     pub notes: Option<String>,
     // Multi-tenant organization field
     pub organization_id: Option<String>,
+    // CRM engagement/customer linking for customer portal and scoped views
+    pub engagement_id: Option<String>,
+    pub customer_id: Option<String>,
 }
 
 /// Port associated with an asset
@@ -2350,5 +2426,194 @@ pub struct CiCdPlatformCount {
 #[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct CiCdCategoryCount {
     pub category: String,
+    pub count: i64,
+}
+
+// ============================================================================
+// AI Red Team Advisor Models
+// ============================================================================
+
+/// AI-generated red team recommendation
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema, sqlx::FromRow)]
+pub struct AiRedTeamRecommendation {
+    pub id: String,
+    pub topology_id: Option<String>,
+    pub scan_id: Option<String>,
+    pub engagement_id: Option<String>,
+    pub user_id: String,
+    pub target_node_id: String,
+    pub target_ip: Option<String>,
+    pub target_hostname: Option<String>,
+    pub target_type: String,
+    pub action_type: String,
+    pub action_category: String,
+    pub title: String,
+    pub description: String,
+    pub rationale: Option<String>,
+    pub mitre_technique_id: Option<String>,
+    pub mitre_technique_name: Option<String>,
+    pub mitre_tactic: Option<String>,
+    pub risk_level: String,
+    pub priority: i32,
+    pub estimated_time_minutes: Option<i32>,
+    pub prerequisites: Option<String>,
+    pub command_template: Option<String>,
+    pub tool_name: Option<String>,
+    pub status: String,
+    pub accepted_at: Option<String>,
+    pub rejected_at: Option<String>,
+    pub executed_at: Option<String>,
+    pub completed_at: Option<String>,
+    pub execution_result: Option<String>,
+    pub execution_output: Option<String>,
+    pub created_at: String,
+    pub updated_at: Option<String>,
+}
+
+/// Status of a recommendation
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum RecommendationStatus {
+    Pending,
+    Accepted,
+    Rejected,
+    Running,
+    Completed,
+    Failed,
+}
+
+/// Risk level for recommendations
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum RecommendationRiskLevel {
+    Critical,
+    High,
+    Medium,
+    Low,
+    Info,
+}
+
+/// Action categories for recommendations
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum RecommendationActionCategory {
+    Reconnaissance,
+    InitialAccess,
+    Execution,
+    Persistence,
+    PrivilegeEscalation,
+    DefenseEvasion,
+    CredentialAccess,
+    Discovery,
+    LateralMovement,
+    Collection,
+    Exfiltration,
+    Impact,
+}
+
+/// AI analysis session
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema, sqlx::FromRow)]
+pub struct AiRedTeamSession {
+    pub id: String,
+    pub topology_id: Option<String>,
+    pub scan_id: Option<String>,
+    pub engagement_id: Option<String>,
+    pub user_id: String,
+    pub analysis_type: String,
+    pub prompt_used: Option<String>,
+    pub ai_model: String,
+    pub recommendations_count: i32,
+    pub high_priority_count: i32,
+    pub tokens_used: Option<i32>,
+    pub analysis_duration_ms: Option<i32>,
+    pub status: String,
+    pub error_message: Option<String>,
+    pub created_at: String,
+    pub completed_at: Option<String>,
+}
+
+/// Recommendation execution record
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema, sqlx::FromRow)]
+pub struct AiRedTeamExecution {
+    pub id: String,
+    pub recommendation_id: String,
+    pub user_id: String,
+    pub execution_type: String,
+    pub tool_used: Option<String>,
+    pub command_executed: Option<String>,
+    pub target_ip: Option<String>,
+    pub target_port: Option<i32>,
+    pub status: String,
+    pub exit_code: Option<i32>,
+    pub stdout: Option<String>,
+    pub stderr: Option<String>,
+    pub findings_count: Option<i32>,
+    pub vulnerabilities_found: Option<i32>,
+    pub started_at: String,
+    pub completed_at: Option<String>,
+    pub duration_ms: Option<i32>,
+}
+
+/// Request to analyze topology with AI
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct AnalyzeTopologyRequest {
+    pub topology_id: Option<String>,
+    pub scan_id: Option<String>,
+    pub engagement_id: Option<String>,
+    pub analysis_type: Option<String>,
+    pub focus_areas: Option<Vec<String>>,
+    pub exclude_node_ids: Option<Vec<String>>,
+    pub max_recommendations: Option<i32>,
+}
+
+/// Request to update recommendation status
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct UpdateRecommendationRequest {
+    pub status: String,
+}
+
+/// Request to execute a recommendation
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct ExecuteRecommendationRequest {
+    pub custom_target_ip: Option<String>,
+    pub custom_target_port: Option<i32>,
+    pub custom_options: Option<String>,
+}
+
+/// Summary of AI recommendations
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct RecommendationsSummary {
+    pub total: i64,
+    pub pending: i64,
+    pub accepted: i64,
+    pub rejected: i64,
+    pub running: i64,
+    pub completed: i64,
+    pub failed: i64,
+    pub by_risk_level: Vec<RiskLevelCount>,
+    pub by_category: Vec<CategoryCount>,
+    pub by_target: Vec<TargetCount>,
+}
+
+/// Count by risk level
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema, sqlx::FromRow)]
+pub struct RiskLevelCount {
+    pub risk_level: String,
+    pub count: i64,
+}
+
+/// Count by category
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema, sqlx::FromRow)]
+pub struct CategoryCount {
+    pub category: String,
+    pub count: i64,
+}
+
+/// Count by target
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema, sqlx::FromRow)]
+pub struct TargetCount {
+    pub target_node_id: String,
+    pub target_ip: Option<String>,
+    pub target_hostname: Option<String>,
     pub count: i64,
 }

@@ -157,11 +157,12 @@ pub enum NetworkType {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum SharingLevel {
-    TLP_WHITE,    // Unlimited disclosure
-    TLP_GREEN,    // Community disclosure
-    TLP_AMBER,    // Limited disclosure
-    TLP_RED,      // Personal use only
+    TlpWhite,    // Unlimited disclosure
+    TlpGreen,    // Community disclosure
+    TlpAmber,    // Limited disclosure
+    TlpRed,      // Personal use only
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

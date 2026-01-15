@@ -1,7 +1,363 @@
+use anyhow::Result;
+use std::collections::HashMap;
 use std::fmt::Write;
+use std::path::Path;
+use tokio::fs;
 
 use crate::db::models::ScanResult;
+use crate::reports::types::ReportData;
 use crate::types::{HostInfo, PortState, Severity};
+
+/// Generate a Markdown report and save to file
+///
+/// This is the async wrapper that matches the signature expected by ReportGenerator
+pub async fn generate(hosts: &[HostInfo], output_path: &str) -> Result<(String, i64)> {
+    // Ensure parent directory exists
+    if let Some(parent) = Path::new(output_path).parent() {
+        fs::create_dir_all(parent).await?;
+    }
+
+    // Generate markdown content (simplified version without full scan metadata)
+    let markdown = generate_simple_markdown(hosts);
+
+    // Write to file
+    fs::write(output_path, &markdown).await?;
+
+    let file_size = markdown.len() as i64;
+    Ok((output_path.to_string(), file_size))
+}
+
+/// Generate simplified markdown without requiring full ScanResult
+fn generate_simple_markdown(hosts: &[HostInfo]) -> String {
+    let mut md = String::new();
+
+    // Header
+    writeln!(md, "# Security Scan Report").unwrap();
+    writeln!(md).unwrap();
+    writeln!(md, "**Generated:** {}", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC")).unwrap();
+    writeln!(md).unwrap();
+    writeln!(md, "---").unwrap();
+    writeln!(md).unwrap();
+
+    // Executive Summary
+    writeln!(md, "## Executive Summary").unwrap();
+    writeln!(md).unwrap();
+
+    let summary = calculate_summary(hosts);
+    writeln!(md, "| Metric | Count |").unwrap();
+    writeln!(md, "|--------|-------|").unwrap();
+    writeln!(md, "| Hosts Discovered | {} |", summary.total_hosts).unwrap();
+    writeln!(md, "| Alive Hosts | {} |", summary.alive_hosts).unwrap();
+    writeln!(md, "| Open Ports | {} |", summary.open_ports).unwrap();
+    writeln!(md, "| Total Vulnerabilities | {} |", summary.total_vulns).unwrap();
+    writeln!(md, "| Critical Vulnerabilities | {} |", summary.critical_vulns).unwrap();
+    writeln!(md, "| High Vulnerabilities | {} |", summary.high_vulns).unwrap();
+    writeln!(md, "| Medium Vulnerabilities | {} |", summary.medium_vulns).unwrap();
+    writeln!(md, "| Low Vulnerabilities | {} |", summary.low_vulns).unwrap();
+    writeln!(md).unwrap();
+
+    // Risk assessment
+    let risk_level = calculate_risk_level(&summary);
+    writeln!(md, "**Overall Risk Level:** {}", risk_level).unwrap();
+    writeln!(md).unwrap();
+
+    // Hosts Overview
+    writeln!(md, "## Hosts").unwrap();
+    writeln!(md).unwrap();
+
+    if hosts.is_empty() {
+        writeln!(md, "_No hosts discovered._").unwrap();
+    } else {
+        writeln!(md, "| IP | Hostname | OS | Open Ports | Vulnerabilities |").unwrap();
+        writeln!(md, "|----|----------|-----|------------|-----------------|").unwrap();
+
+        for host in hosts {
+            let ip = host.target.ip.to_string();
+            let hostname = host.target.hostname.as_deref().unwrap_or("-");
+            let os = host.os_guess.as_ref()
+                .map(|o| format!("{} {}", o.os_family, o.os_version.as_deref().unwrap_or("")))
+                .unwrap_or_else(|| "-".to_string());
+            let open_ports = host.ports.iter()
+                .filter(|p| p.state == PortState::Open)
+                .count();
+            let vuln_count = host.vulnerabilities.len();
+
+            writeln!(md, "| {} | {} | {} | {} | {} |",
+                     ip, hostname, os.trim(), open_ports, vuln_count).unwrap();
+        }
+    }
+    writeln!(md).unwrap();
+
+    // Host Details
+    for host in hosts {
+        writeln!(md, "### {}{}",
+                 host.target.ip,
+                 host.target.hostname.as_ref()
+                     .map(|h| format!(" ({})", h))
+                     .unwrap_or_default()).unwrap();
+        writeln!(md).unwrap();
+
+        // Open Ports
+        let open_ports: Vec<_> = host.ports.iter()
+            .filter(|p| p.state == PortState::Open)
+            .collect();
+
+        if !open_ports.is_empty() {
+            writeln!(md, "#### Open Ports").unwrap();
+            writeln!(md).unwrap();
+            writeln!(md, "| Port | Protocol | Service | Version |").unwrap();
+            writeln!(md, "|------|----------|---------|---------|").unwrap();
+
+            for port in open_ports {
+                let protocol = match port.protocol {
+                    crate::types::Protocol::TCP => "TCP",
+                    crate::types::Protocol::UDP => "UDP",
+                };
+                let service_name = port.service.as_ref()
+                    .map(|s| s.name.as_str())
+                    .unwrap_or("-");
+                let version = port.service.as_ref()
+                    .and_then(|s| s.version.as_deref())
+                    .unwrap_or("-");
+
+                writeln!(md, "| {} | {} | {} | {} |",
+                         port.port, protocol, service_name, version).unwrap();
+            }
+            writeln!(md).unwrap();
+        }
+
+        // Vulnerabilities
+        if !host.vulnerabilities.is_empty() {
+            writeln!(md, "#### Vulnerabilities").unwrap();
+            writeln!(md).unwrap();
+
+            for vuln in &host.vulnerabilities {
+                let severity_str = severity_to_string(&vuln.severity);
+                writeln!(md, "**[{}] {}**", severity_str, escape_markdown(&vuln.title)).unwrap();
+                if let Some(ref cve) = vuln.cve_id {
+                    writeln!(md, "- CVE: {}", cve).unwrap();
+                }
+                writeln!(md, "- {}", escape_markdown(&vuln.description)).unwrap();
+                writeln!(md).unwrap();
+            }
+        }
+
+        writeln!(md, "---").unwrap();
+        writeln!(md).unwrap();
+    }
+
+    // Footer
+    writeln!(md, "_Report generated by HeroForge - Network Reconnaissance Tool_").unwrap();
+
+    md
+}
+
+/// Generate a Markdown report from ReportData (supports operator notes)
+///
+/// This is the full-featured version that includes operator notes
+pub async fn generate_with_notes(data: &ReportData, reports_dir: &str) -> Result<(String, i64)> {
+    let output_path = format!("{}/{}.md", reports_dir, data.id);
+
+    // Ensure parent directory exists
+    if let Some(parent) = Path::new(&output_path).parent() {
+        fs::create_dir_all(parent).await?;
+    }
+
+    // Generate markdown content with full report data
+    let markdown = generate_full_markdown(data);
+
+    // Write to file
+    fs::write(&output_path, &markdown).await?;
+
+    let file_size = markdown.len() as i64;
+    Ok((output_path, file_size))
+}
+
+/// Generate full markdown report including operator notes
+fn generate_full_markdown(data: &ReportData) -> String {
+    let mut md = String::new();
+
+    // Header
+    writeln!(md, "# Security Assessment Report: {}", data.name).unwrap();
+    writeln!(md).unwrap();
+    writeln!(md, "**Report ID:** {}", data.id).unwrap();
+    writeln!(md, "**Generated:** {}", data.created_at.format("%Y-%m-%d %H:%M:%S UTC")).unwrap();
+    writeln!(md, "**Scan Date:** {}", data.scan_date.format("%Y-%m-%d %H:%M:%S UTC")).unwrap();
+    if let Some(ref desc) = data.description {
+        writeln!(md, "**Description:** {}", desc).unwrap();
+    }
+    writeln!(md).unwrap();
+    writeln!(md, "---").unwrap();
+    writeln!(md).unwrap();
+
+    // Executive Summary
+    writeln!(md, "## Executive Summary").unwrap();
+    writeln!(md).unwrap();
+
+    let summary = calculate_summary(&data.hosts);
+    writeln!(md, "| Metric | Count |").unwrap();
+    writeln!(md, "|--------|-------|").unwrap();
+    writeln!(md, "| Hosts Discovered | {} |", summary.total_hosts).unwrap();
+    writeln!(md, "| Alive Hosts | {} |", summary.alive_hosts).unwrap();
+    writeln!(md, "| Open Ports | {} |", summary.open_ports).unwrap();
+    writeln!(md, "| Total Vulnerabilities | {} |", summary.total_vulns).unwrap();
+    writeln!(md, "| Critical Vulnerabilities | {} |", summary.critical_vulns).unwrap();
+    writeln!(md, "| High Vulnerabilities | {} |", summary.high_vulns).unwrap();
+    writeln!(md, "| Medium Vulnerabilities | {} |", summary.medium_vulns).unwrap();
+    writeln!(md, "| Low Vulnerabilities | {} |", summary.low_vulns).unwrap();
+    writeln!(md).unwrap();
+
+    // Risk assessment
+    let risk_level = calculate_risk_level(&summary);
+    writeln!(md, "**Overall Risk Level:** {}", risk_level).unwrap();
+    writeln!(md).unwrap();
+
+    // Operator Notes Section (if present)
+    if data.operator_notes.is_some() || !data.finding_notes.is_empty() {
+        writeln!(md, "## Operator Notes").unwrap();
+        writeln!(md).unwrap();
+
+        if let Some(ref notes) = data.operator_notes {
+            writeln!(md, "### Assessment Notes").unwrap();
+            writeln!(md).unwrap();
+            writeln!(md, "{}", notes).unwrap();
+            writeln!(md).unwrap();
+        }
+    }
+
+    // Hosts Overview
+    writeln!(md, "## Hosts").unwrap();
+    writeln!(md).unwrap();
+
+    if data.hosts.is_empty() {
+        writeln!(md, "_No hosts discovered._").unwrap();
+    } else {
+        writeln!(md, "| IP | Hostname | OS | Open Ports | Vulnerabilities |").unwrap();
+        writeln!(md, "|----|----------|-----|------------|-----------------|").unwrap();
+
+        for host in &data.hosts {
+            let ip = host.target.ip.to_string();
+            let hostname = host.target.hostname.as_deref().unwrap_or("-");
+            let os = host.os_guess.as_ref()
+                .map(|o| format!("{} {}", o.os_family, o.os_version.as_deref().unwrap_or("")))
+                .unwrap_or_else(|| "-".to_string());
+            let open_ports = host.ports.iter()
+                .filter(|p| p.state == PortState::Open)
+                .count();
+            let vuln_count = host.vulnerabilities.len();
+
+            writeln!(md, "| {} | {} | {} | {} | {} |",
+                     ip, hostname, os.trim(), open_ports, vuln_count).unwrap();
+        }
+    }
+    writeln!(md).unwrap();
+
+    // Vulnerability Findings with per-finding notes
+    if !data.findings.is_empty() {
+        writeln!(md, "## Vulnerability Findings").unwrap();
+        writeln!(md).unwrap();
+
+        for finding in &data.findings {
+            let severity_str = severity_to_string(&finding.severity);
+            writeln!(md, "### [{}] {}", severity_str, escape_markdown(&finding.title)).unwrap();
+            writeln!(md).unwrap();
+
+            if let Some(ref cve) = finding.cve_id {
+                writeln!(md, "**CVE:** {}", cve).unwrap();
+            }
+            if let Some(score) = finding.cvss_score {
+                writeln!(md, "**CVSS Score:** {:.1}", score).unwrap();
+            }
+            writeln!(md, "**Affected Hosts:** {}", finding.affected_hosts.join(", ")).unwrap();
+            writeln!(md).unwrap();
+
+            writeln!(md, "**Description:**").unwrap();
+            writeln!(md, "{}", escape_markdown(&finding.description)).unwrap();
+            writeln!(md).unwrap();
+
+            writeln!(md, "**Impact:**").unwrap();
+            writeln!(md, "{}", escape_markdown(&finding.impact)).unwrap();
+            writeln!(md).unwrap();
+
+            writeln!(md, "**Remediation:**").unwrap();
+            writeln!(md, "{}", escape_markdown(&finding.remediation)).unwrap();
+            writeln!(md).unwrap();
+
+            // Per-finding operator notes
+            if let Some(note) = data.finding_notes.get(&finding.id) {
+                writeln!(md, "**Operator Notes:**").unwrap();
+                writeln!(md, "> {}", note.replace('\n', "\n> ")).unwrap();
+                writeln!(md).unwrap();
+            }
+
+            writeln!(md, "---").unwrap();
+            writeln!(md).unwrap();
+        }
+    }
+
+    // Host Details
+    for host in &data.hosts {
+        writeln!(md, "## Host: {}{}",
+                 host.target.ip,
+                 host.target.hostname.as_ref()
+                     .map(|h| format!(" ({})", h))
+                     .unwrap_or_default()).unwrap();
+        writeln!(md).unwrap();
+
+        // Open Ports
+        let open_ports: Vec<_> = host.ports.iter()
+            .filter(|p| p.state == PortState::Open)
+            .collect();
+
+        if !open_ports.is_empty() {
+            writeln!(md, "### Open Ports").unwrap();
+            writeln!(md).unwrap();
+            writeln!(md, "| Port | Protocol | Service | Version |").unwrap();
+            writeln!(md, "|------|----------|---------|---------|").unwrap();
+
+            for port in open_ports {
+                let protocol = match port.protocol {
+                    crate::types::Protocol::TCP => "TCP",
+                    crate::types::Protocol::UDP => "UDP",
+                };
+                let service_name = port.service.as_ref()
+                    .map(|s| s.name.as_str())
+                    .unwrap_or("-");
+                let version = port.service.as_ref()
+                    .and_then(|s| s.version.as_deref())
+                    .unwrap_or("-");
+
+                writeln!(md, "| {} | {} | {} | {} |",
+                         port.port, protocol, service_name, version).unwrap();
+            }
+            writeln!(md).unwrap();
+        }
+
+        // Host vulnerabilities
+        if !host.vulnerabilities.is_empty() {
+            writeln!(md, "### Vulnerabilities").unwrap();
+            writeln!(md).unwrap();
+
+            for vuln in &host.vulnerabilities {
+                let severity_str = severity_to_string(&vuln.severity);
+                writeln!(md, "**[{}] {}**", severity_str, escape_markdown(&vuln.title)).unwrap();
+                if let Some(ref cve) = vuln.cve_id {
+                    writeln!(md, "- CVE: {}", cve).unwrap();
+                }
+                writeln!(md, "- {}", escape_markdown(&vuln.description)).unwrap();
+                writeln!(md).unwrap();
+            }
+        }
+
+        writeln!(md, "---").unwrap();
+        writeln!(md).unwrap();
+    }
+
+    // Footer
+    writeln!(md, "_Report generated by HeroForge - Network Reconnaissance Tool_").unwrap();
+
+    md
+}
 
 /// Generate a Markdown report from scan results
 ///

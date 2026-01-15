@@ -14,6 +14,8 @@ import {
   Info,
 } from 'lucide-react';
 import Layout from '../components/layout/Layout';
+import { EngagementRequiredBanner } from '../components/engagement';
+import { useRequireEngagement } from '../hooks/useRequireEngagement';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
@@ -272,6 +274,7 @@ const AttackPathCard: React.FC<{
 const AttackPathsPage: React.FC = () => {
   const { scanId } = useParams<{ scanId: string }>();
   const navigate = useNavigate();
+  const { hasEngagement } = useRequireEngagement();
 
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
@@ -394,6 +397,8 @@ const AttackPathsPage: React.FC = () => {
             </p>
           </div>
 
+          <EngagementRequiredBanner toolName="Attack Path Analysis" className="mb-6" />
+
           {scans.length === 0 ? (
             <Card className="p-8 text-center">
               <Network className="h-16 w-16 text-slate-500 mx-auto mb-4" />
@@ -495,7 +500,7 @@ const AttackPathsPage: React.FC = () => {
             )}
             <Button
               onClick={() => handleAnalyze(hasAnalyzed)}
-              disabled={analyzing || scan.status !== 'completed'}
+              disabled={analyzing || scan.status !== 'completed' || !hasEngagement}
             >
               {analyzing ? (
                 <>
@@ -602,7 +607,7 @@ const AttackPathsPage: React.FC = () => {
             )}
             <Button
               onClick={() => handleAnalyze(false)}
-              disabled={analyzing || scan.status !== 'completed'}
+              disabled={analyzing || scan.status !== 'completed' || !hasEngagement}
               className="mx-auto"
             >
               {analyzing ? (

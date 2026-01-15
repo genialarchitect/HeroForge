@@ -1305,28 +1305,39 @@ export default function GreenTeamPage() {
                 <>
                   {/* Stats Cards */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+                    <div
+                      onClick={() => setActiveTab('cases')}
+                      className="bg-gray-800 border border-gray-700 rounded-lg p-4 cursor-pointer hover:border-cyan-500/50 hover:bg-gray-750 transition-all group"
+                    >
                       <div className="flex items-center gap-3">
                         <div className="p-3 bg-blue-500/20 rounded-lg">
                           <Briefcase className="w-6 h-6 text-blue-400" />
                         </div>
-                        <div>
+                        <div className="flex-1">
                           <p className="text-sm text-gray-400">Total Cases</p>
                           <p className="text-2xl font-bold text-white">{metrics.total_cases}</p>
                           <p className="text-xs text-yellow-400">{metrics.open_cases} open</p>
                         </div>
+                        <ChevronRight className="w-5 h-5 text-gray-500 group-hover:text-cyan-400 transition-colors" />
                       </div>
                     </div>
 
-                    <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+                    <div
+                      onClick={() => {
+                        setCaseStatusFilter('resolved');
+                        setActiveTab('cases');
+                      }}
+                      className="bg-gray-800 border border-gray-700 rounded-lg p-4 cursor-pointer hover:border-cyan-500/50 hover:bg-gray-750 transition-all group"
+                    >
                       <div className="flex items-center gap-3">
                         <div className="p-3 bg-green-500/20 rounded-lg">
                           <CheckCircle className="w-6 h-6 text-green-400" />
                         </div>
-                        <div>
+                        <div className="flex-1">
                           <p className="text-sm text-gray-400">Resolved Today</p>
                           <p className="text-2xl font-bold text-white">{metrics.resolved_today}</p>
                         </div>
+                        <ChevronRight className="w-5 h-5 text-gray-500 group-hover:text-cyan-400 transition-colors" />
                       </div>
                     </div>
 
@@ -1347,17 +1358,21 @@ export default function GreenTeamPage() {
                       </div>
                     </div>
 
-                    <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+                    <div
+                      onClick={() => setActiveTab('playbooks')}
+                      className="bg-gray-800 border border-gray-700 rounded-lg p-4 cursor-pointer hover:border-cyan-500/50 hover:bg-gray-750 transition-all group"
+                    >
                       <div className="flex items-center gap-3">
                         <div className="p-3 bg-purple-500/20 rounded-lg">
                           <TrendingUp className="w-6 h-6 text-purple-400" />
                         </div>
-                        <div>
+                        <div className="flex-1">
                           <p className="text-sm text-gray-400">SLA Compliance</p>
                           <p className="text-2xl font-bold text-white">
                             {(metrics.sla_compliance_rate * 100).toFixed(1)}%
                           </p>
                         </div>
+                        <ChevronRight className="w-5 h-5 text-gray-500 group-hover:text-cyan-400 transition-colors" />
                       </div>
                     </div>
                   </div>

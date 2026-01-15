@@ -27,18 +27,21 @@ import type {
   SimulationSummary,
   BasStats,
 } from '../types';
-import Header from '../components/layout/Header';
+import Layout from '../components/layout/Layout';
 import Button from '../components/ui/Button';
 import TechniqueCard from '../components/bas/TechniqueCard';
 import ScenarioBuilder from '../components/bas/ScenarioBuilder';
 import SimulationResults from '../components/bas/SimulationResults';
 import DetectionGapList from '../components/bas/DetectionGapList';
+import { EngagementRequiredBanner } from '../components/engagement';
+import { useRequireEngagement } from '../hooks/useRequireEngagement';
 
 type TabType = 'techniques' | 'scenarios' | 'simulations' | 'gaps';
 
 const AttackSimulationPage: React.FC = () => {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<TabType>('scenarios');
+  const { hasEngagement } = useRequireEngagement();
   const [showScenarioBuilder, setShowScenarioBuilder] = useState(false);
   const [selectedSimulationId, setSelectedSimulationId] = useState<string | null>(null);
   const [tacticFilter, setTacticFilter] = useState<string>('all');
@@ -164,40 +167,33 @@ const AttackSimulationPage: React.FC = () => {
   // If viewing simulation results
   if (selectedSimulationId) {
     return (
-      <div className="min-h-screen bg-light-bg dark:bg-dark-bg">
-        <Header />
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <SimulationResults
-            simulationId={selectedSimulationId}
-            onBack={() => setSelectedSimulationId(null)}
-          />
-        </main>
-      </div>
+      <Layout>
+        <SimulationResults
+          simulationId={selectedSimulationId}
+          onBack={() => setSelectedSimulationId(null)}
+        />
+      </Layout>
     );
   }
 
   // If showing scenario builder
   if (showScenarioBuilder) {
     return (
-      <div className="min-h-screen bg-light-bg dark:bg-dark-bg">
-        <Header />
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <ScenarioBuilder
-            onScenarioCreated={() => {
-              setShowScenarioBuilder(false);
-              setActiveTab('scenarios');
-            }}
-            onCancel={() => setShowScenarioBuilder(false)}
-          />
-        </main>
-      </div>
+      <Layout>
+        <ScenarioBuilder
+          onScenarioCreated={() => {
+            setShowScenarioBuilder(false);
+            setActiveTab('scenarios');
+          }}
+          onCancel={() => setShowScenarioBuilder(false)}
+        />
+      </Layout>
     );
   }
 
   return (
-    <div className="min-h-screen bg-light-bg dark:bg-dark-bg">
-      <Header />
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <Layout>
+      <div className="space-y-6">
         {/* Page Header */}
         <div className="mb-6">
           <div className="flex items-center justify-between">
@@ -210,12 +206,14 @@ const AttackSimulationPage: React.FC = () => {
                 Test your security controls against MITRE ATT&CK techniques
               </p>
             </div>
-            <Button onClick={() => setShowScenarioBuilder(true)}>
+            <Button onClick={() => setShowScenarioBuilder(true)} disabled={!hasEngagement}>
               <Plus className="w-4 h-4 mr-2" />
               New Scenario
             </Button>
           </div>
         </div>
+
+        <EngagementRequiredBanner toolName="Breach & Attack Simulation" className="mb-6" />
 
         {/* Stats Cards */}
         {stats && (
@@ -414,8 +412,8 @@ const AttackSimulationPage: React.FC = () => {
             <DetectionGapList />
           </div>
         )}
-      </main>
-    </div>
+      </div>
+    </Layout>
   );
 };
 

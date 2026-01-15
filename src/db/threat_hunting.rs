@@ -930,9 +930,13 @@ pub async fn delete_playbook(pool: &SqlitePool, id: &str) -> Result<bool> {
 
 /// Seed built-in playbooks
 pub async fn seed_builtin_playbooks(pool: &SqlitePool) -> Result<()> {
-    let playbooks = crate::threat_hunting::playbooks::BuiltinPlaybooks::get_all();
+    use log::info;
 
-    for playbook in playbooks {
+    let playbooks = crate::threat_hunting::playbooks::BuiltinPlaybooks::get_all();
+    info!("Seeding {} built-in threat hunting playbooks", playbooks.len());
+
+    let mut inserted = 0;
+    for playbook in &playbooks {
         // Check if already exists
         let exists = sqlx::query_scalar::<_, i32>(
             "SELECT COUNT(*) FROM hunting_playbooks WHERE id = ?"
@@ -973,9 +977,13 @@ pub async fn seed_builtin_playbooks(pool: &SqlitePool) -> Result<()> {
         .bind(playbook.updated_at.to_rfc3339())
         .execute(pool)
         .await?;
+
+        inserted += 1;
     }
 
-    debug!("Built-in hunting playbooks seeded");
+    if inserted > 0 {
+        info!("Seeded {} new threat hunting playbooks", inserted);
+    }
     Ok(())
 }
 

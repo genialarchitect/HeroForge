@@ -1,6 +1,7 @@
 use anyhow::Result;
 pub mod ad_assessment;
 pub mod api_security;
+pub mod windows_audit;
 pub mod asset_discovery;
 pub mod attack_paths;
 pub mod bas;

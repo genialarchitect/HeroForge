@@ -18,6 +18,8 @@ pub async fn upsert_asset(
     os_family: Option<&str>,
     os_version: Option<&str>,
     scan_id: &str,
+    engagement_id: Option<&str>,
+    customer_id: Option<&str>,
 ) -> Result<models::Asset> {
     let now = Utc::now();
 
@@ -78,12 +80,16 @@ pub async fn upsert_asset(
         asset.last_seen = now;
         asset.scan_count += 1;
 
+        // Update engagement_id and customer_id if provided (don't overwrite with None)
+        let final_engagement_id = engagement_id.map(|e| e.to_string()).or(asset.engagement_id.clone());
+        let final_customer_id = customer_id.map(|c| c.to_string()).or(asset.customer_id.clone());
+
         sqlx::query(
             r#"
             UPDATE assets
             SET hostname = ?1, mac_address = ?2, last_seen = ?3, scan_count = ?4,
-                os_family = ?5, os_version = ?6
-            WHERE id = ?7
+                os_family = ?5, os_version = ?6, engagement_id = ?7, customer_id = ?8
+            WHERE id = ?9
             "#,
         )
         .bind(&asset.hostname)
@@ -92,9 +98,15 @@ pub async fn upsert_asset(
         .bind(asset.scan_count)
         .bind(&asset.os_family)
         .bind(&asset.os_version)
+        .bind(&final_engagement_id)
+        .bind(&final_customer_id)
         .bind(&asset.id)
         .execute(pool)
         .await?;
+
+        // Update in-memory asset with final values
+        asset.engagement_id = final_engagement_id;
+        asset.customer_id = final_customer_id;
 
         // Record changes if any
         if !changes.is_empty() {
@@ -109,8 +121,8 @@ pub async fn upsert_asset(
 
         let asset = sqlx::query_as::<_, models::Asset>(
             r#"
-            INSERT INTO assets (id, user_id, ip_address, hostname, mac_address, first_seen, last_seen, scan_count, os_family, os_version, status, tags)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+            INSERT INTO assets (id, user_id, ip_address, hostname, mac_address, first_seen, last_seen, scan_count, os_family, os_version, status, tags, engagement_id, customer_id)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
             RETURNING *
             "#,
         )
@@ -126,6 +138,8 @@ pub async fn upsert_asset(
         .bind(os_version)
         .bind("active")
         .bind(tags_json)
+        .bind(engagement_id)
+        .bind(customer_id)
         .fetch_one(pool)
         .await?;
 
@@ -1849,16 +1863,13 @@ pub async fn get_organization_assets_with_owners(
     limit: i64,
     offset: i64,
 ) -> Result<Vec<AssetWithOwner>> {
-    let assets_raw: Vec<(String, String, String, Option<String>, Option<String>, String, DateTime<Utc>, DateTime<Utc>, i32, Option<String>, Option<String>, String, String, Option<String>, Option<String>, Option<String>)> = sqlx::query_as(
+    // First get assets
+    let assets = sqlx::query_as::<_, models::Asset>(
         r#"
-        SELECT
-            a.id, a.user_id, a.ip_address, a.hostname, a.mac_address, a.status,
-            a.first_seen, a.last_seen, a.scan_count, a.os_family, a.os_version,
-            a.tags, u.username, u.email, a.notes, a.organization_id
-        FROM assets a
-        JOIN users u ON a.user_id = u.id
-        WHERE a.organization_id = ?1
-        ORDER BY a.last_seen DESC
+        SELECT *
+        FROM assets
+        WHERE organization_id = ?1
+        ORDER BY last_seen DESC
         LIMIT ?2 OFFSET ?3
         "#,
     )
@@ -1868,31 +1879,24 @@ pub async fn get_organization_assets_with_owners(
     .fetch_all(pool)
     .await?;
 
-    let assets_with_owners = assets_raw
-        .into_iter()
-        .map(|(id, user_id, ip_address, hostname, mac_address, status, first_seen, last_seen, scan_count, os_family, os_version, tags, username, email, notes, organization_id)| {
-            AssetWithOwner {
-                asset: models::Asset {
-                    id,
-                    user_id: user_id.clone(),
-                    ip_address,
-                    hostname,
-                    mac_address,
-                    first_seen,
-                    last_seen,
-                    scan_count,
-                    os_family,
-                    os_version,
-                    status,
-                    tags,
-                    notes,
-                    organization_id,
-                },
-                owner_username: username,
-                owner_email: email,
-            }
-        })
-        .collect();
+    // Then get owner info for each asset
+    let mut assets_with_owners = Vec::with_capacity(assets.len());
+    for asset in assets {
+        let owner_info: Option<(String, Option<String>)> = sqlx::query_as(
+            "SELECT username, email FROM users WHERE id = ?1",
+        )
+        .bind(&asset.user_id)
+        .fetch_optional(pool)
+        .await?;
+
+        let (owner_username, owner_email) = owner_info.unwrap_or(("unknown".to_string(), None));
+
+        assets_with_owners.push(AssetWithOwner {
+            asset,
+            owner_username,
+            owner_email,
+        });
+    }
 
     Ok(assets_with_owners)
 }
@@ -1904,4 +1908,181 @@ pub struct AssetWithOwner {
     pub asset: models::Asset,
     pub owner_username: String,
     pub owner_email: Option<String>,
+}
+
+// ============================================================================
+// Engagement/Customer Asset Functions (Customer Portal Integration)
+// ============================================================================
+
+/// Get all assets for a specific engagement
+pub async fn get_assets_by_engagement(
+    pool: &SqlitePool,
+    engagement_id: &str,
+    status: Option<&str>,
+) -> Result<Vec<models::Asset>> {
+    let mut query = String::from("SELECT * FROM assets WHERE engagement_id = ?1");
+
+    if status.is_some() {
+        query.push_str(" AND status = ?2");
+    }
+
+    query.push_str(" ORDER BY last_seen DESC");
+
+    if let Some(s) = status {
+        let assets = sqlx::query_as::<_, models::Asset>(&query)
+            .bind(engagement_id)
+            .bind(s)
+            .fetch_all(pool)
+            .await?;
+        Ok(assets)
+    } else {
+        let assets = sqlx::query_as::<_, models::Asset>(&query)
+            .bind(engagement_id)
+            .fetch_all(pool)
+            .await?;
+        Ok(assets)
+    }
+}
+
+/// Get all assets for a specific customer (across all engagements)
+pub async fn get_assets_by_customer(
+    pool: &SqlitePool,
+    customer_id: &str,
+    status: Option<&str>,
+) -> Result<Vec<models::Asset>> {
+    let mut query = String::from("SELECT * FROM assets WHERE customer_id = ?1");
+
+    if status.is_some() {
+        query.push_str(" AND status = ?2");
+    }
+
+    query.push_str(" ORDER BY last_seen DESC");
+
+    if let Some(s) = status {
+        let assets = sqlx::query_as::<_, models::Asset>(&query)
+            .bind(customer_id)
+            .bind(s)
+            .fetch_all(pool)
+            .await?;
+        Ok(assets)
+    } else {
+        let assets = sqlx::query_as::<_, models::Asset>(&query)
+            .bind(customer_id)
+            .fetch_all(pool)
+            .await?;
+        Ok(assets)
+    }
+}
+
+/// Get asset statistics for a customer
+pub async fn get_customer_asset_stats(
+    pool: &SqlitePool,
+    customer_id: &str,
+) -> Result<CustomerAssetStats> {
+    let total: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM assets WHERE customer_id = ?1",
+    )
+    .bind(customer_id)
+    .fetch_one(pool)
+    .await?;
+
+    let active: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM assets WHERE customer_id = ?1 AND status = 'active'",
+    )
+    .bind(customer_id)
+    .fetch_one(pool)
+    .await?;
+
+    // Count unique ports across all customer assets
+    let open_ports: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(DISTINCT ap.port)
+        FROM asset_ports ap
+        JOIN assets a ON ap.asset_id = a.id
+        WHERE a.customer_id = ?1 AND ap.current_state = 'Open'
+        "#,
+    )
+    .bind(customer_id)
+    .fetch_one(pool)
+    .await?;
+
+    // Count by OS family
+    let os_breakdown: Vec<(Option<String>, i64)> = sqlx::query_as(
+        r#"
+        SELECT os_family, COUNT(*) as count
+        FROM assets
+        WHERE customer_id = ?1
+        GROUP BY os_family
+        ORDER BY count DESC
+        "#,
+    )
+    .bind(customer_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(CustomerAssetStats {
+        total,
+        active,
+        open_ports,
+        by_os_family: os_breakdown
+            .into_iter()
+            .map(|(os, count)| (os.unwrap_or_else(|| "Unknown".to_string()), count))
+            .collect(),
+    })
+}
+
+/// Statistics for customer assets
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct CustomerAssetStats {
+    pub total: i64,
+    pub active: i64,
+    pub open_ports: i64,
+    pub by_os_family: Vec<(String, i64)>,
+}
+
+/// Get asset statistics for an engagement
+pub async fn get_engagement_asset_stats(
+    pool: &SqlitePool,
+    engagement_id: &str,
+) -> Result<EngagementAssetStats> {
+    let total: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM assets WHERE engagement_id = ?1",
+    )
+    .bind(engagement_id)
+    .fetch_one(pool)
+    .await?;
+
+    let active: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM assets WHERE engagement_id = ?1 AND status = 'active'",
+    )
+    .bind(engagement_id)
+    .fetch_one(pool)
+    .await?;
+
+    // Count unique open ports across engagement assets
+    let open_ports: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(DISTINCT ap.port)
+        FROM asset_ports ap
+        JOIN assets a ON ap.asset_id = a.id
+        WHERE a.engagement_id = ?1 AND ap.current_state = 'Open'
+        "#,
+    )
+    .bind(engagement_id)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(EngagementAssetStats {
+        total,
+        active,
+        open_ports,
+    })
+}
+
+/// Statistics for engagement assets
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct EngagementAssetStats {
+    pub total: i64,
+    pub active: i64,
+    pub open_ports: i64,
 }

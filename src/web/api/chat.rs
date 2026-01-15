@@ -142,7 +142,7 @@ pub async fn chat(
     }
 
     // Create Claude client and stream response
-    let claude = ClaudeClient::new().map_err(|e| {
+    let mut claude = ClaudeClient::new().map_err(|e| {
         ApiError::new(
             ApiErrorKind::InternalError(e.to_string()),
             "Failed to initialize AI client".to_string(),

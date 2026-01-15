@@ -17,6 +17,9 @@ import {
   Panel,
   NodeTypes,
   BackgroundVariant,
+  useReactFlow,
+  ReactFlowProvider,
+  Viewport,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { toast } from 'react-toastify';
@@ -24,6 +27,9 @@ import api from '../services/api';
 import Layout from '../components/layout/Layout';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import Button from '../components/ui/Button';
+import ToolImportModal from '../components/topology/ToolImportModal';
+import RedTeamAdvisorPanel from '../components/ai/RedTeamAdvisorPanel';
+import type { TopologyForAnalysis, TopologyNodeForAnalysis, TopologyEdgeForAnalysis } from '../types';
 import {
   Shield,
   Router,
@@ -62,6 +68,8 @@ import {
   ZoomIn,
   ZoomOut,
   Maximize2,
+  Brain,
+  Sparkles,
 } from 'lucide-react';
 
 // ============================================================================
@@ -271,306 +279,498 @@ const nodeTypes: NodeTypes = {
 };
 
 // ============================================================================
-// Sample Network Topology Data
+// Sample Network Topology Data - Rural Georgia Hospital
 // ============================================================================
+// Typical 75-bed rural hospital in Georgia, USA
+// HIPAA-compliant network architecture with EHR, medical devices, and telehealth
 
 const generateSampleTopology = (): { nodes: Node<DeviceData>[]; edges: Edge<ConnectionData>[] } => {
   const nodes: Node<DeviceData>[] = [
-    // External Zone
+    // ========================================================================
+    // External Zone - Internet & Cloud Services
+    // ========================================================================
     {
       id: 'internet',
       type: 'networkDevice',
-      position: { x: 400, y: 0 },
+      position: { x: 450, y: 0 },
       data: {
         label: 'Internet',
         deviceType: 'internet',
         securityZone: 'external',
         complianceStatus: 'not_assessed',
+        description: 'AT&T Fiber 500Mbps',
+      },
+    },
+    {
+      id: 'cloud-ehr',
+      type: 'networkDevice',
+      position: { x: 150, y: 80 },
+      data: {
+        label: 'Epic MyChart Cloud',
+        deviceType: 'cloud',
+        securityZone: 'external',
+        complianceStatus: 'compliant',
+        controlsAssessed: 150,
+        controlsPassing: 148,
+        description: 'Epic Systems hosted EHR cloud services',
+      },
+    },
+    {
+      id: 'telehealth-cloud',
+      type: 'networkDevice',
+      position: { x: 750, y: 80 },
+      data: {
+        label: 'Teladoc Health',
+        deviceType: 'cloud',
+        securityZone: 'external',
+        complianceStatus: 'compliant',
+        controlsAssessed: 85,
+        controlsPassing: 82,
+        description: 'Telehealth platform for rural patients',
       },
     },
 
-    // DMZ Zone
+    // ========================================================================
+    // DMZ Zone - Public-Facing Services
+    // ========================================================================
     {
-      id: 'ext-firewall',
+      id: 'perimeter-fw',
       type: 'networkDevice',
-      position: { x: 400, y: 120 },
+      position: { x: 450, y: 180 },
       data: {
-        label: 'External Firewall',
+        label: 'Palo Alto PA-820',
         deviceType: 'firewall',
         securityZone: 'dmz',
         ipAddress: '10.0.0.1',
-        hostname: 'fw-ext-01',
+        hostname: 'fw-perimeter-01',
         complianceStatus: 'compliant',
-        controlsAssessed: 45,
-        controlsPassing: 43,
+        controlsAssessed: 65,
+        controlsPassing: 63,
+        description: 'Next-gen firewall with threat prevention',
       },
     },
     {
       id: 'dmz-switch',
       type: 'networkDevice',
-      position: { x: 400, y: 240 },
+      position: { x: 450, y: 280 },
       data: {
         label: 'DMZ Switch',
         deviceType: 'switch',
         securityZone: 'dmz',
         ipAddress: '10.0.1.1',
         hostname: 'sw-dmz-01',
-        complianceStatus: 'compliant',
-        controlsAssessed: 20,
-        controlsPassing: 20,
-      },
-    },
-    {
-      id: 'web-server',
-      type: 'networkDevice',
-      position: { x: 200, y: 350 },
-      data: {
-        label: 'Web Server',
-        deviceType: 'server',
-        securityZone: 'dmz',
-        ipAddress: '10.0.1.10',
-        hostname: 'web-01',
-        os: 'Ubuntu 22.04',
-        complianceStatus: 'partial',
-        controlsAssessed: 85,
-        controlsPassing: 72,
-        vulnerabilities: 3,
-      },
-    },
-    {
-      id: 'mail-server',
-      type: 'networkDevice',
-      position: { x: 400, y: 350 },
-      data: {
-        label: 'Mail Server',
-        deviceType: 'server',
-        securityZone: 'dmz',
-        ipAddress: '10.0.1.11',
-        hostname: 'mail-01',
-        os: 'RHEL 8',
-        complianceStatus: 'compliant',
-        controlsAssessed: 90,
-        controlsPassing: 88,
-      },
-    },
-    {
-      id: 'vpn-gateway',
-      type: 'networkDevice',
-      position: { x: 600, y: 350 },
-      data: {
-        label: 'VPN Gateway',
-        deviceType: 'vpn',
-        securityZone: 'dmz',
-        ipAddress: '10.0.1.12',
-        hostname: 'vpn-01',
-        complianceStatus: 'compliant',
-        controlsAssessed: 40,
-        controlsPassing: 40,
-      },
-    },
-
-    // Internal Firewall
-    {
-      id: 'int-firewall',
-      type: 'networkDevice',
-      position: { x: 400, y: 480 },
-      data: {
-        label: 'Internal Firewall',
-        deviceType: 'firewall',
-        securityZone: 'internal',
-        ipAddress: '10.1.0.1',
-        hostname: 'fw-int-01',
-        complianceStatus: 'compliant',
-        controlsAssessed: 45,
-        controlsPassing: 44,
-      },
-    },
-
-    // Internal Zone
-    {
-      id: 'core-switch',
-      type: 'networkDevice',
-      position: { x: 400, y: 600 },
-      data: {
-        label: 'Core Switch',
-        deviceType: 'switch',
-        securityZone: 'internal',
-        ipAddress: '10.1.1.1',
-        hostname: 'sw-core-01',
+        os: 'Cisco IOS',
         complianceStatus: 'compliant',
         controlsAssessed: 25,
         controlsPassing: 25,
       },
     },
     {
-      id: 'app-server-1',
+      id: 'patient-portal',
       type: 'networkDevice',
-      position: { x: 100, y: 720 },
+      position: { x: 250, y: 380 },
       data: {
-        label: 'App Server 1',
+        label: 'Patient Portal',
         deviceType: 'server',
-        securityZone: 'internal',
-        ipAddress: '10.1.2.10',
-        hostname: 'app-01',
-        os: 'Windows Server 2022',
-        complianceStatus: 'partial',
-        controlsAssessed: 95,
-        controlsPassing: 80,
-        vulnerabilities: 5,
-      },
-    },
-    {
-      id: 'app-server-2',
-      type: 'networkDevice',
-      position: { x: 300, y: 720 },
-      data: {
-        label: 'App Server 2',
-        deviceType: 'container',
-        securityZone: 'internal',
-        ipAddress: '10.1.2.11',
-        hostname: 'k8s-node-01',
-        os: 'Kubernetes',
+        securityZone: 'dmz',
+        ipAddress: '10.0.1.10',
+        hostname: 'portal-01',
+        os: 'Windows Server 2019',
         complianceStatus: 'compliant',
-        controlsAssessed: 100,
-        controlsPassing: 98,
+        controlsAssessed: 95,
+        controlsPassing: 92,
+        description: 'Patient records access & appointment scheduling',
       },
     },
     {
-      id: 'load-balancer',
+      id: 'vpn-gateway',
       type: 'networkDevice',
-      position: { x: 200, y: 600 },
+      position: { x: 450, y: 380 },
       data: {
-        label: 'Load Balancer',
-        deviceType: 'load_balancer',
+        label: 'Cisco ASA VPN',
+        deviceType: 'vpn',
+        securityZone: 'dmz',
+        ipAddress: '10.0.1.11',
+        hostname: 'vpn-01',
+        complianceStatus: 'compliant',
+        controlsAssessed: 45,
+        controlsPassing: 44,
+        description: 'Remote physician & staff access',
+      },
+    },
+    {
+      id: 'telehealth-server',
+      type: 'networkDevice',
+      position: { x: 650, y: 380 },
+      data: {
+        label: 'Telehealth Gateway',
+        deviceType: 'server',
+        securityZone: 'dmz',
+        ipAddress: '10.0.1.12',
+        hostname: 'telehealth-01',
+        os: 'Ubuntu 22.04',
+        complianceStatus: 'partial',
+        controlsAssessed: 70,
+        controlsPassing: 62,
+        vulnerabilities: 2,
+        description: 'Video conferencing for remote consultations',
+      },
+    },
+
+    // ========================================================================
+    // Internal Zone - Clinical Network
+    // ========================================================================
+    {
+      id: 'internal-fw',
+      type: 'networkDevice',
+      position: { x: 450, y: 500 },
+      data: {
+        label: 'Internal Firewall',
+        deviceType: 'firewall',
         securityZone: 'internal',
-        ipAddress: '10.1.2.1',
-        hostname: 'lb-01',
+        ipAddress: '10.1.0.1',
+        hostname: 'fw-internal-01',
+        complianceStatus: 'compliant',
+        controlsAssessed: 55,
+        controlsPassing: 54,
+      },
+    },
+    {
+      id: 'core-switch',
+      type: 'networkDevice',
+      position: { x: 450, y: 600 },
+      data: {
+        label: 'Core Switch Stack',
+        deviceType: 'switch',
+        securityZone: 'internal',
+        ipAddress: '10.1.1.1',
+        hostname: 'sw-core-01',
+        os: 'Cisco Catalyst 9300',
         complianceStatus: 'compliant',
         controlsAssessed: 30,
         controlsPassing: 30,
       },
     },
     {
-      id: 'wireless-ap',
+      id: 'ehr-server',
       type: 'networkDevice',
-      position: { x: 600, y: 720 },
+      position: { x: 200, y: 720 },
       data: {
-        label: 'Wireless AP',
-        deviceType: 'wireless_ap',
+        label: 'Epic EHR Server',
+        deviceType: 'server',
         securityZone: 'internal',
-        ipAddress: '10.1.3.1',
-        hostname: 'ap-01',
-        complianceStatus: 'partial',
-        controlsAssessed: 20,
-        controlsPassing: 16,
-        vulnerabilities: 2,
-      },
-    },
-    {
-      id: 'workstation-1',
-      type: 'networkDevice',
-      position: { x: 700, y: 820 },
-      data: {
-        label: 'Workstation',
-        deviceType: 'workstation',
-        securityZone: 'internal',
-        ipAddress: '10.1.4.100',
-        hostname: 'ws-001',
-        os: 'Windows 11',
+        ipAddress: '10.1.2.10',
+        hostname: 'ehr-prod-01',
+        os: 'Windows Server 2019',
         complianceStatus: 'compliant',
-        controlsAssessed: 50,
-        controlsPassing: 48,
+        controlsAssessed: 120,
+        controlsPassing: 118,
+        description: 'Primary Electronic Health Records system',
       },
     },
     {
-      id: 'laptop-1',
+      id: 'ad-server',
       type: 'networkDevice',
-      position: { x: 500, y: 820 },
+      position: { x: 350, y: 720 },
       data: {
-        label: 'Mobile Laptop',
-        deviceType: 'laptop',
+        label: 'Active Directory',
+        deviceType: 'server',
         securityZone: 'internal',
-        ipAddress: 'DHCP',
-        hostname: 'laptop-001',
-        os: 'macOS',
+        ipAddress: '10.1.2.11',
+        hostname: 'dc-01',
+        os: 'Windows Server 2022',
+        complianceStatus: 'compliant',
+        controlsAssessed: 85,
+        controlsPassing: 83,
+        description: 'Identity management & authentication',
+      },
+    },
+    {
+      id: 'pharmacy-server',
+      type: 'networkDevice',
+      position: { x: 500, y: 720 },
+      data: {
+        label: 'Pharmacy System',
+        deviceType: 'server',
+        securityZone: 'internal',
+        ipAddress: '10.1.2.12',
+        hostname: 'pharmacy-01',
+        os: 'Windows Server 2016',
         complianceStatus: 'partial',
-        controlsAssessed: 45,
-        controlsPassing: 38,
-        vulnerabilities: 1,
+        controlsAssessed: 75,
+        controlsPassing: 65,
+        vulnerabilities: 4,
+        description: 'McKesson Pharmacy - legacy system',
+      },
+    },
+    {
+      id: 'lab-server',
+      type: 'networkDevice',
+      position: { x: 650, y: 720 },
+      data: {
+        label: 'Lab Info System',
+        deviceType: 'server',
+        securityZone: 'internal',
+        ipAddress: '10.1.2.13',
+        hostname: 'lis-01',
+        os: 'Windows Server 2019',
+        complianceStatus: 'compliant',
+        controlsAssessed: 80,
+        controlsPassing: 77,
+        description: 'Sunquest LIS - Laboratory management',
       },
     },
 
-    // Restricted Zone (Data)
+    // Clinical Wireless Network
     {
-      id: 'db-firewall',
+      id: 'clinical-ap-1',
       type: 'networkDevice',
-      position: { x: 200, y: 850 },
+      position: { x: 100, y: 850 },
       data: {
-        label: 'DB Firewall',
+        label: 'Nurses Station AP',
+        deviceType: 'wireless_ap',
+        securityZone: 'internal',
+        ipAddress: '10.1.3.10',
+        hostname: 'ap-nurses-01',
+        complianceStatus: 'compliant',
+        controlsAssessed: 25,
+        controlsPassing: 24,
+        description: '2nd Floor Nurses Station',
+      },
+    },
+    {
+      id: 'clinical-ap-2',
+      type: 'networkDevice',
+      position: { x: 250, y: 850 },
+      data: {
+        label: 'ER AP',
+        deviceType: 'wireless_ap',
+        securityZone: 'internal',
+        ipAddress: '10.1.3.11',
+        hostname: 'ap-er-01',
+        complianceStatus: 'compliant',
+        controlsAssessed: 25,
+        controlsPassing: 25,
+        description: 'Emergency Room wireless',
+      },
+    },
+    {
+      id: 'nursing-cow',
+      type: 'networkDevice',
+      position: { x: 100, y: 960 },
+      data: {
+        label: 'Nursing COW',
+        deviceType: 'workstation',
+        securityZone: 'internal',
+        ipAddress: 'DHCP',
+        hostname: 'cow-nursing-01',
+        os: 'Windows 10 LTSC',
+        complianceStatus: 'compliant',
+        controlsAssessed: 55,
+        controlsPassing: 53,
+        description: 'Computer on Wheels - Patient bedside',
+      },
+    },
+    {
+      id: 'er-workstation',
+      type: 'networkDevice',
+      position: { x: 250, y: 960 },
+      data: {
+        label: 'ER Workstation',
+        deviceType: 'workstation',
+        securityZone: 'internal',
+        ipAddress: '10.1.4.50',
+        hostname: 'ws-er-01',
+        os: 'Windows 10',
+        complianceStatus: 'compliant',
+        controlsAssessed: 55,
+        controlsPassing: 52,
+      },
+    },
+
+    // ========================================================================
+    // Restricted Zone - Medical Devices (PHI/ePHI)
+    // ========================================================================
+    {
+      id: 'meddev-fw',
+      type: 'networkDevice',
+      position: { x: 800, y: 600 },
+      data: {
+        label: 'Medical Device FW',
         deviceType: 'firewall',
         securityZone: 'restricted',
         ipAddress: '10.2.0.1',
-        hostname: 'fw-db-01',
+        hostname: 'fw-meddev-01',
         complianceStatus: 'compliant',
         controlsAssessed: 50,
         controlsPassing: 50,
+        description: 'Isolates medical devices per FDA guidance',
       },
     },
     {
-      id: 'primary-db',
+      id: 'meddev-switch',
       type: 'networkDevice',
-      position: { x: 100, y: 970 },
+      position: { x: 900, y: 720 },
       data: {
-        label: 'Primary Database',
-        deviceType: 'database',
+        label: 'Med Device Switch',
+        deviceType: 'switch',
+        securityZone: 'restricted',
+        ipAddress: '10.2.1.1',
+        hostname: 'sw-meddev-01',
+        complianceStatus: 'compliant',
+        controlsAssessed: 25,
+        controlsPassing: 25,
+      },
+    },
+    {
+      id: 'ct-scanner',
+      type: 'networkDevice',
+      position: { x: 800, y: 850 },
+      data: {
+        label: 'GE CT Scanner',
+        deviceType: 'iot',
         securityZone: 'restricted',
         ipAddress: '10.2.1.10',
-        hostname: 'db-primary',
-        os: 'PostgreSQL 15',
-        complianceStatus: 'compliant',
-        controlsAssessed: 80,
-        controlsPassing: 78,
+        hostname: 'ct-radiology-01',
+        os: 'Windows Embedded',
+        complianceStatus: 'partial',
+        controlsAssessed: 40,
+        controlsPassing: 28,
+        vulnerabilities: 6,
+        description: 'GE Revolution CT - Legacy Windows',
       },
     },
     {
-      id: 'replica-db',
+      id: 'mri-scanner',
       type: 'networkDevice',
-      position: { x: 300, y: 970 },
+      position: { x: 950, y: 850 },
       data: {
-        label: 'Replica Database',
-        deviceType: 'database',
+        label: 'Siemens MRI',
+        deviceType: 'iot',
         securityZone: 'restricted',
         ipAddress: '10.2.1.11',
-        hostname: 'db-replica',
-        os: 'PostgreSQL 15',
+        hostname: 'mri-01',
+        os: 'Linux',
         complianceStatus: 'compliant',
-        controlsAssessed: 80,
-        controlsPassing: 80,
+        controlsAssessed: 45,
+        controlsPassing: 42,
+        description: 'Siemens MAGNETOM Aera 1.5T',
       },
     },
     {
-      id: 'storage-san',
+      id: 'patient-monitors',
       type: 'networkDevice',
-      position: { x: 200, y: 1080 },
+      position: { x: 1050, y: 720 },
       data: {
-        label: 'SAN Storage',
+        label: 'Patient Monitors',
+        deviceType: 'iot',
+        securityZone: 'restricted',
+        ipAddress: '10.2.1.20-30',
+        hostname: 'pmonitor-*',
+        complianceStatus: 'partial',
+        controlsAssessed: 35,
+        controlsPassing: 30,
+        vulnerabilities: 3,
+        description: 'Philips IntelliVue bedside monitors (12 units)',
+      },
+    },
+    {
+      id: 'infusion-pumps',
+      type: 'networkDevice',
+      position: { x: 1050, y: 850 },
+      data: {
+        label: 'Infusion Pumps',
+        deviceType: 'iot',
+        securityZone: 'restricted',
+        ipAddress: '10.2.1.40-60',
+        hostname: 'pump-*',
+        complianceStatus: 'non_compliant',
+        controlsAssessed: 30,
+        controlsPassing: 18,
+        vulnerabilities: 8,
+        description: 'BD Alaris pumps - Known vulnerabilities',
+      },
+    },
+    {
+      id: 'pacs-server',
+      type: 'networkDevice',
+      position: { x: 875, y: 960 },
+      data: {
+        label: 'PACS Server',
         deviceType: 'storage',
         securityZone: 'restricted',
-        ipAddress: '10.2.2.1',
-        hostname: 'san-01',
+        ipAddress: '10.2.2.10',
+        hostname: 'pacs-01',
+        os: 'Windows Server 2019',
         complianceStatus: 'compliant',
-        controlsAssessed: 40,
-        controlsPassing: 40,
+        controlsAssessed: 70,
+        controlsPassing: 68,
+        description: 'Hologic PACS - Medical imaging storage',
       },
     },
 
-    // Management Zone
+    // ========================================================================
+    // Restricted Zone - Database/PHI Storage
+    // ========================================================================
+    {
+      id: 'db-firewall',
+      type: 'networkDevice',
+      position: { x: 450, y: 850 },
+      data: {
+        label: 'Database Firewall',
+        deviceType: 'firewall',
+        securityZone: 'restricted',
+        ipAddress: '10.2.10.1',
+        hostname: 'fw-db-01',
+        complianceStatus: 'compliant',
+        controlsAssessed: 55,
+        controlsPassing: 55,
+      },
+    },
+    {
+      id: 'ehr-database',
+      type: 'networkDevice',
+      position: { x: 380, y: 980 },
+      data: {
+        label: 'EHR Database',
+        deviceType: 'database',
+        securityZone: 'restricted',
+        ipAddress: '10.2.10.10',
+        hostname: 'db-ehr-01',
+        os: 'SQL Server 2019',
+        complianceStatus: 'compliant',
+        controlsAssessed: 90,
+        controlsPassing: 88,
+        description: 'Primary patient data - Encrypted at rest',
+      },
+    },
+    {
+      id: 'backup-server',
+      type: 'networkDevice',
+      position: { x: 520, y: 980 },
+      data: {
+        label: 'Backup Server',
+        deviceType: 'storage',
+        securityZone: 'restricted',
+        ipAddress: '10.2.10.20',
+        hostname: 'backup-01',
+        os: 'Veeam B&R',
+        complianceStatus: 'compliant',
+        controlsAssessed: 50,
+        controlsPassing: 49,
+        description: 'Encrypted backups with off-site replication',
+      },
+    },
+
+    // ========================================================================
+    // Management Zone - IT Administration
+    // ========================================================================
     {
       id: 'mgmt-switch',
       type: 'networkDevice',
-      position: { x: 700, y: 600 },
+      position: { x: 50, y: 600 },
       data: {
-        label: 'Mgmt Switch',
+        label: 'IT Mgmt Switch',
         deviceType: 'switch',
         securityZone: 'management',
         ipAddress: '10.3.0.1',
@@ -581,60 +781,137 @@ const generateSampleTopology = (): { nodes: Node<DeviceData>[]; edges: Edge<Conn
       },
     },
     {
-      id: 'siem',
+      id: 'it-workstation',
       type: 'networkDevice',
-      position: { x: 850, y: 550 },
+      position: { x: -50, y: 720 },
       data: {
-        label: 'SIEM',
-        deviceType: 'server',
+        label: 'IT Admin PC',
+        deviceType: 'workstation',
         securityZone: 'management',
         ipAddress: '10.3.1.10',
-        hostname: 'siem-01',
+        hostname: 'it-admin-01',
+        os: 'Windows 11 Pro',
         complianceStatus: 'compliant',
         controlsAssessed: 60,
         controlsPassing: 58,
+        description: 'Hospital IT Administrator workstation',
       },
     },
     {
-      id: 'monitoring',
+      id: 'siem-server',
       type: 'networkDevice',
-      position: { x: 850, y: 670 },
+      position: { x: 50, y: 720 },
       data: {
-        label: 'Monitoring',
+        label: 'SIEM (LogRhythm)',
         deviceType: 'server',
         securityZone: 'management',
-        ipAddress: '10.3.1.11',
-        hostname: 'monitor-01',
+        ipAddress: '10.3.1.20',
+        hostname: 'siem-01',
+        os: 'CentOS 7',
+        complianceStatus: 'compliant',
+        controlsAssessed: 65,
+        controlsPassing: 62,
+        description: 'Security monitoring & HIPAA audit logging',
+      },
+    },
+    {
+      id: 'av-server',
+      type: 'networkDevice',
+      position: { x: 150, y: 720 },
+      data: {
+        label: 'Symantec EPP',
+        deviceType: 'server',
+        securityZone: 'management',
+        ipAddress: '10.3.1.21',
+        hostname: 'av-mgmt-01',
+        os: 'Windows Server 2019',
         complianceStatus: 'compliant',
         controlsAssessed: 45,
-        controlsPassing: 45,
+        controlsPassing: 44,
+        description: 'Endpoint protection management',
       },
     },
 
-    // Cloud Services
+    // ========================================================================
+    // Administrative Zone - Business Operations
+    // ========================================================================
     {
-      id: 'cloud-aws',
+      id: 'admin-switch',
       type: 'networkDevice',
-      position: { x: 50, y: 120 },
+      position: { x: 600, y: 600 },
       data: {
-        label: 'AWS Cloud',
-        deviceType: 'cloud',
-        securityZone: 'external',
+        label: 'Admin Switch',
+        deviceType: 'switch',
+        securityZone: 'internal',
+        ipAddress: '10.1.10.1',
+        hostname: 'sw-admin-01',
+        complianceStatus: 'compliant',
+        controlsAssessed: 20,
+        controlsPassing: 20,
+      },
+    },
+    {
+      id: 'billing-server',
+      type: 'networkDevice',
+      position: { x: 550, y: 500 },
+      data: {
+        label: 'Billing/Revenue',
+        deviceType: 'server',
+        securityZone: 'internal',
+        ipAddress: '10.1.10.10',
+        hostname: 'billing-01',
+        os: 'Windows Server 2019',
+        complianceStatus: 'compliant',
+        controlsAssessed: 75,
+        controlsPassing: 72,
+        description: 'Cerner Revenue Cycle Management',
+      },
+    },
+    {
+      id: 'hr-workstation',
+      type: 'networkDevice',
+      position: { x: 700, y: 500 },
+      data: {
+        label: 'HR/Payroll',
+        deviceType: 'workstation',
+        securityZone: 'internal',
+        ipAddress: '10.1.10.50',
+        hostname: 'ws-hr-01',
+        os: 'Windows 10',
+        complianceStatus: 'compliant',
+        controlsAssessed: 50,
+        controlsPassing: 48,
+        description: 'ADP Workforce access',
+      },
+    },
+    {
+      id: 'print-server',
+      type: 'networkDevice',
+      position: { x: 650, y: 850 },
+      data: {
+        label: 'Print Server',
+        deviceType: 'server',
+        securityZone: 'internal',
+        ipAddress: '10.1.10.30',
+        hostname: 'print-01',
+        os: 'Windows Server 2016',
         complianceStatus: 'partial',
-        controlsAssessed: 120,
-        controlsPassing: 100,
-        vulnerabilities: 8,
-        description: 'Cloud infrastructure',
+        controlsAssessed: 35,
+        controlsPassing: 28,
+        vulnerabilities: 3,
+        description: 'Manages 15 network printers',
       },
     },
   ];
 
   const edges: Edge<ConnectionData>[] = [
-    // Internet to DMZ
+    // ========================================================================
+    // External Connections
+    // ========================================================================
     {
       id: 'e-internet-fw',
       source: 'internet',
-      target: 'ext-firewall',
+      target: 'perimeter-fw',
       animated: true,
       style: { stroke: '#ef4444' },
       markerEnd: { type: MarkerType.ArrowClosed, color: '#ef4444' },
@@ -642,41 +919,44 @@ const generateSampleTopology = (): { nodes: Node<DeviceData>[]; edges: Edge<Conn
       data: { protocol: 'HTTPS', port: 443, encrypted: true, dataClassification: 'public' },
     },
     {
-      id: 'e-cloud-fw',
-      source: 'cloud-aws',
-      target: 'ext-firewall',
+      id: 'e-ehr-cloud',
+      source: 'cloud-ehr',
+      target: 'perimeter-fw',
       animated: true,
       style: { stroke: '#ef4444' },
       markerEnd: { type: MarkerType.ArrowClosed, color: '#ef4444' },
-      label: 'VPN/IPSec',
-      data: { protocol: 'IPSec', encrypted: true },
+      label: 'TLS/443',
+      data: { protocol: 'HTTPS', port: 443, encrypted: true, dataClassification: 'restricted' },
+    },
+    {
+      id: 'e-telehealth-cloud',
+      source: 'telehealth-cloud',
+      target: 'perimeter-fw',
+      animated: true,
+      style: { stroke: '#ef4444' },
+      markerEnd: { type: MarkerType.ArrowClosed, color: '#ef4444' },
+      label: 'WebRTC/HTTPS',
+      data: { protocol: 'WebRTC', encrypted: true, dataClassification: 'confidential' },
     },
 
-    // DMZ connections
+    // ========================================================================
+    // DMZ Connections
+    // ========================================================================
     {
-      id: 'e-fw-dmz-sw',
-      source: 'ext-firewall',
+      id: 'e-fw-dmz',
+      source: 'perimeter-fw',
       target: 'dmz-switch',
       style: { stroke: '#eab308' },
       markerEnd: { type: MarkerType.ArrowClosed, color: '#eab308' },
     },
     {
-      id: 'e-dmz-web',
+      id: 'e-dmz-portal',
       source: 'dmz-switch',
-      target: 'web-server',
+      target: 'patient-portal',
       style: { stroke: '#eab308' },
       markerEnd: { type: MarkerType.ArrowClosed, color: '#eab308' },
-      label: 'HTTP/80',
-      data: { protocol: 'HTTP', port: 80 },
-    },
-    {
-      id: 'e-dmz-mail',
-      source: 'dmz-switch',
-      target: 'mail-server',
-      style: { stroke: '#eab308' },
-      markerEnd: { type: MarkerType.ArrowClosed, color: '#eab308' },
-      label: 'SMTP/25',
-      data: { protocol: 'SMTP', port: 25, encrypted: true },
+      label: 'HTTPS/443',
+      data: { protocol: 'HTTPS', port: 443, encrypted: true, dataClassification: 'confidential' },
     },
     {
       id: 'e-dmz-vpn',
@@ -684,128 +964,225 @@ const generateSampleTopology = (): { nodes: Node<DeviceData>[]; edges: Edge<Conn
       target: 'vpn-gateway',
       style: { stroke: '#eab308' },
       markerEnd: { type: MarkerType.ArrowClosed, color: '#eab308' },
-      label: 'OpenVPN/1194',
-      data: { protocol: 'OpenVPN', port: 1194, encrypted: true },
+      label: 'IPSec/500',
+      data: { protocol: 'IPSec', port: 500, encrypted: true },
+    },
+    {
+      id: 'e-dmz-telehealth',
+      source: 'dmz-switch',
+      target: 'telehealth-server',
+      style: { stroke: '#eab308' },
+      markerEnd: { type: MarkerType.ArrowClosed, color: '#eab308' },
+      label: 'HTTPS/443',
+      data: { protocol: 'HTTPS', port: 443, encrypted: true, dataClassification: 'confidential' },
     },
 
+    // ========================================================================
     // DMZ to Internal
+    // ========================================================================
     {
-      id: 'e-dmz-int-fw',
+      id: 'e-dmz-internal',
       source: 'dmz-switch',
-      target: 'int-firewall',
+      target: 'internal-fw',
       style: { stroke: '#3b82f6', strokeWidth: 2 },
       markerEnd: { type: MarkerType.ArrowClosed, color: '#3b82f6' },
     },
 
-    // Internal Zone
+    // ========================================================================
+    // Internal/Clinical Network
+    // ========================================================================
     {
-      id: 'e-int-fw-core',
-      source: 'int-firewall',
+      id: 'e-intfw-core',
+      source: 'internal-fw',
       target: 'core-switch',
       style: { stroke: '#3b82f6' },
       markerEnd: { type: MarkerType.ArrowClosed, color: '#3b82f6' },
     },
     {
-      id: 'e-core-lb',
+      id: 'e-core-ehr',
       source: 'core-switch',
-      target: 'load-balancer',
+      target: 'ehr-server',
       style: { stroke: '#3b82f6' },
       markerEnd: { type: MarkerType.ArrowClosed, color: '#3b82f6' },
+      label: 'HL7/FHIR',
+      data: { protocol: 'HTTPS', port: 443, encrypted: true, dataClassification: 'restricted' },
     },
     {
-      id: 'e-lb-app1',
-      source: 'load-balancer',
-      target: 'app-server-1',
-      style: { stroke: '#3b82f6' },
-      markerEnd: { type: MarkerType.ArrowClosed, color: '#3b82f6' },
-      label: 'HTTP/8080',
-      data: { protocol: 'HTTP', port: 8080 },
-    },
-    {
-      id: 'e-lb-app2',
-      source: 'load-balancer',
-      target: 'app-server-2',
-      style: { stroke: '#3b82f6' },
-      markerEnd: { type: MarkerType.ArrowClosed, color: '#3b82f6' },
-      label: 'HTTP/8080',
-      data: { protocol: 'HTTP', port: 8080 },
-    },
-    {
-      id: 'e-core-ap',
+      id: 'e-core-ad',
       source: 'core-switch',
-      target: 'wireless-ap',
+      target: 'ad-server',
+      style: { stroke: '#3b82f6' },
+      markerEnd: { type: MarkerType.ArrowClosed, color: '#3b82f6' },
+      label: 'LDAP/636',
+      data: { protocol: 'LDAPS', port: 636, encrypted: true },
+    },
+    {
+      id: 'e-core-pharmacy',
+      source: 'core-switch',
+      target: 'pharmacy-server',
       style: { stroke: '#3b82f6' },
       markerEnd: { type: MarkerType.ArrowClosed, color: '#3b82f6' },
     },
     {
-      id: 'e-ap-ws',
-      source: 'wireless-ap',
-      target: 'workstation-1',
+      id: 'e-core-lab',
+      source: 'core-switch',
+      target: 'lab-server',
+      style: { stroke: '#3b82f6' },
+      markerEnd: { type: MarkerType.ArrowClosed, color: '#3b82f6' },
+      label: 'HL7/2575',
+      data: { protocol: 'HL7', port: 2575, dataClassification: 'confidential' },
+    },
+    {
+      id: 'e-core-ap1',
+      source: 'core-switch',
+      target: 'clinical-ap-1',
+      style: { stroke: '#3b82f6' },
+      markerEnd: { type: MarkerType.ArrowClosed, color: '#3b82f6' },
+    },
+    {
+      id: 'e-core-ap2',
+      source: 'core-switch',
+      target: 'clinical-ap-2',
+      style: { stroke: '#3b82f6' },
+      markerEnd: { type: MarkerType.ArrowClosed, color: '#3b82f6' },
+    },
+    {
+      id: 'e-ap1-cow',
+      source: 'clinical-ap-1',
+      target: 'nursing-cow',
       style: { stroke: '#3b82f6', strokeDasharray: '5,5' },
       markerEnd: { type: MarkerType.ArrowClosed, color: '#3b82f6' },
-      label: 'WiFi',
+      label: 'WPA3',
+      data: { protocol: 'WiFi', encrypted: true },
     },
     {
-      id: 'e-ap-laptop',
-      source: 'wireless-ap',
-      target: 'laptop-1',
+      id: 'e-ap2-er',
+      source: 'clinical-ap-2',
+      target: 'er-workstation',
       style: { stroke: '#3b82f6', strokeDasharray: '5,5' },
       markerEnd: { type: MarkerType.ArrowClosed, color: '#3b82f6' },
-      label: 'WiFi',
+      label: 'WPA3',
+      data: { protocol: 'WiFi', encrypted: true },
     },
 
-    // Restricted Zone
+    // ========================================================================
+    // Medical Device Zone
+    // ========================================================================
     {
-      id: 'e-app1-dbfw',
-      source: 'app-server-1',
-      target: 'db-firewall',
-      style: { stroke: '#a855f7' },
+      id: 'e-core-medfw',
+      source: 'core-switch',
+      target: 'meddev-fw',
+      style: { stroke: '#a855f7', strokeWidth: 2 },
       markerEnd: { type: MarkerType.ArrowClosed, color: '#a855f7' },
-      label: 'SQL/5432',
-      data: { protocol: 'PostgreSQL', port: 5432, encrypted: true, dataClassification: 'confidential' },
     },
     {
-      id: 'e-app2-dbfw',
-      source: 'app-server-2',
-      target: 'db-firewall',
-      style: { stroke: '#a855f7' },
-      markerEnd: { type: MarkerType.ArrowClosed, color: '#a855f7' },
-      label: 'SQL/5432',
-      data: { protocol: 'PostgreSQL', port: 5432, encrypted: true, dataClassification: 'confidential' },
-    },
-    {
-      id: 'e-dbfw-primary',
-      source: 'db-firewall',
-      target: 'primary-db',
+      id: 'e-medfw-sw',
+      source: 'meddev-fw',
+      target: 'meddev-switch',
       style: { stroke: '#a855f7' },
       markerEnd: { type: MarkerType.ArrowClosed, color: '#a855f7' },
     },
     {
-      id: 'e-dbfw-replica',
-      source: 'db-firewall',
-      target: 'replica-db',
+      id: 'e-medsw-ct',
+      source: 'meddev-switch',
+      target: 'ct-scanner',
       style: { stroke: '#a855f7' },
       markerEnd: { type: MarkerType.ArrowClosed, color: '#a855f7' },
+      label: 'DICOM/104',
+      data: { protocol: 'DICOM', port: 104, dataClassification: 'restricted' },
     },
     {
-      id: 'e-primary-replica',
-      source: 'primary-db',
-      target: 'replica-db',
+      id: 'e-medsw-mri',
+      source: 'meddev-switch',
+      target: 'mri-scanner',
+      style: { stroke: '#a855f7' },
+      markerEnd: { type: MarkerType.ArrowClosed, color: '#a855f7' },
+      label: 'DICOM/104',
+      data: { protocol: 'DICOM', port: 104, dataClassification: 'restricted' },
+    },
+    {
+      id: 'e-medsw-monitors',
+      source: 'meddev-switch',
+      target: 'patient-monitors',
+      style: { stroke: '#a855f7' },
+      markerEnd: { type: MarkerType.ArrowClosed, color: '#a855f7' },
+      label: 'HL7/2575',
+      data: { protocol: 'HL7', port: 2575, dataClassification: 'confidential' },
+    },
+    {
+      id: 'e-medsw-pumps',
+      source: 'meddev-switch',
+      target: 'infusion-pumps',
+      style: { stroke: '#a855f7' },
+      markerEnd: { type: MarkerType.ArrowClosed, color: '#a855f7' },
+      label: 'Proprietary',
+      data: { dataClassification: 'restricted' },
+    },
+    {
+      id: 'e-medsw-pacs',
+      source: 'meddev-switch',
+      target: 'pacs-server',
+      style: { stroke: '#a855f7' },
+      markerEnd: { type: MarkerType.ArrowClosed, color: '#a855f7' },
+      label: 'DICOM/104',
+      data: { protocol: 'DICOM', port: 104, dataClassification: 'restricted' },
+    },
+    {
+      id: 'e-ct-pacs',
+      source: 'ct-scanner',
+      target: 'pacs-server',
       style: { stroke: '#a855f7', strokeDasharray: '3,3' },
       markerEnd: { type: MarkerType.ArrowClosed, color: '#a855f7' },
-      label: 'Replication',
+      label: 'Image Transfer',
     },
     {
-      id: 'e-db-san',
-      source: 'primary-db',
-      target: 'storage-san',
-      style: { stroke: '#a855f7' },
+      id: 'e-mri-pacs',
+      source: 'mri-scanner',
+      target: 'pacs-server',
+      style: { stroke: '#a855f7', strokeDasharray: '3,3' },
       markerEnd: { type: MarkerType.ArrowClosed, color: '#a855f7' },
-      label: 'iSCSI',
-      data: { protocol: 'iSCSI', encrypted: true, dataClassification: 'restricted' },
+      label: 'Image Transfer',
     },
 
+    // ========================================================================
+    // Database Zone
+    // ========================================================================
+    {
+      id: 'e-ehr-dbfw',
+      source: 'ehr-server',
+      target: 'db-firewall',
+      style: { stroke: '#a855f7' },
+      markerEnd: { type: MarkerType.ArrowClosed, color: '#a855f7' },
+      label: 'TDS/1433',
+      data: { protocol: 'SQL Server', port: 1433, encrypted: true, dataClassification: 'restricted' },
+    },
+    {
+      id: 'e-dbfw-ehrdb',
+      source: 'db-firewall',
+      target: 'ehr-database',
+      style: { stroke: '#a855f7' },
+      markerEnd: { type: MarkerType.ArrowClosed, color: '#a855f7' },
+    },
+    {
+      id: 'e-dbfw-backup',
+      source: 'db-firewall',
+      target: 'backup-server',
+      style: { stroke: '#a855f7' },
+      markerEnd: { type: MarkerType.ArrowClosed, color: '#a855f7' },
+    },
+    {
+      id: 'e-ehrdb-backup',
+      source: 'ehr-database',
+      target: 'backup-server',
+      style: { stroke: '#a855f7', strokeDasharray: '3,3' },
+      markerEnd: { type: MarkerType.ArrowClosed, color: '#a855f7' },
+      label: 'Backup',
+      data: { encrypted: true, dataClassification: 'restricted' },
+    },
+
+    // ========================================================================
     // Management Zone
+    // ========================================================================
     {
       id: 'e-core-mgmt',
       source: 'core-switch',
@@ -814,22 +1191,83 @@ const generateSampleTopology = (): { nodes: Node<DeviceData>[]; edges: Edge<Conn
       markerEnd: { type: MarkerType.ArrowClosed, color: '#22c55e' },
     },
     {
+      id: 'e-mgmt-it',
+      source: 'mgmt-switch',
+      target: 'it-workstation',
+      style: { stroke: '#22c55e' },
+      markerEnd: { type: MarkerType.ArrowClosed, color: '#22c55e' },
+    },
+    {
       id: 'e-mgmt-siem',
       source: 'mgmt-switch',
-      target: 'siem',
+      target: 'siem-server',
       style: { stroke: '#22c55e' },
       markerEnd: { type: MarkerType.ArrowClosed, color: '#22c55e' },
       label: 'Syslog/514',
       data: { protocol: 'Syslog', port: 514 },
     },
     {
-      id: 'e-mgmt-monitor',
+      id: 'e-mgmt-av',
       source: 'mgmt-switch',
-      target: 'monitoring',
+      target: 'av-server',
       style: { stroke: '#22c55e' },
       markerEnd: { type: MarkerType.ArrowClosed, color: '#22c55e' },
-      label: 'SNMP/161',
-      data: { protocol: 'SNMP', port: 161 },
+    },
+
+    // ========================================================================
+    // Administrative Network
+    // ========================================================================
+    {
+      id: 'e-core-admin',
+      source: 'core-switch',
+      target: 'admin-switch',
+      style: { stroke: '#3b82f6' },
+      markerEnd: { type: MarkerType.ArrowClosed, color: '#3b82f6' },
+    },
+    {
+      id: 'e-admin-billing',
+      source: 'admin-switch',
+      target: 'billing-server',
+      style: { stroke: '#3b82f6' },
+      markerEnd: { type: MarkerType.ArrowClosed, color: '#3b82f6' },
+      label: 'HTTPS/443',
+      data: { protocol: 'HTTPS', port: 443, encrypted: true, dataClassification: 'confidential' },
+    },
+    {
+      id: 'e-admin-hr',
+      source: 'admin-switch',
+      target: 'hr-workstation',
+      style: { stroke: '#3b82f6' },
+      markerEnd: { type: MarkerType.ArrowClosed, color: '#3b82f6' },
+    },
+    {
+      id: 'e-admin-print',
+      source: 'admin-switch',
+      target: 'print-server',
+      style: { stroke: '#3b82f6' },
+      markerEnd: { type: MarkerType.ArrowClosed, color: '#3b82f6' },
+      label: 'IPP/631',
+      data: { protocol: 'IPP', port: 631 },
+    },
+
+    // Cross-zone clinical integrations
+    {
+      id: 'e-ehr-pharmacy',
+      source: 'ehr-server',
+      target: 'pharmacy-server',
+      style: { stroke: '#3b82f6', strokeDasharray: '3,3' },
+      markerEnd: { type: MarkerType.ArrowClosed, color: '#3b82f6' },
+      label: 'NCPDP/HL7',
+      data: { protocol: 'HL7', dataClassification: 'restricted' },
+    },
+    {
+      id: 'e-ehr-lab',
+      source: 'ehr-server',
+      target: 'lab-server',
+      style: { stroke: '#3b82f6', strokeDasharray: '3,3' },
+      markerEnd: { type: MarkerType.ArrowClosed, color: '#3b82f6' },
+      label: 'HL7 Orders/Results',
+      data: { protocol: 'HL7', dataClassification: 'restricted' },
     },
   ];
 
@@ -1120,11 +1558,71 @@ interface TopologyMetadata {
   dataSource: string;
 }
 
-const CatoNetworkMap: React.FC = () => {
+// LocalStorage keys for persisting topology state
+const TOPOLOGY_POSITIONS_KEY = 'heroforge_cato_topology_positions';
+const TOPOLOGY_VIEWPORT_KEY = 'heroforge_cato_topology_viewport';
+
+// Helper to save positions to localStorage (debounced)
+const savePositionsToStorage = (nodes: Node<DeviceData>[]) => {
+  const positions: Record<string, { x: number; y: number }> = {};
+  nodes.forEach((node) => {
+    positions[node.id] = { x: node.position.x, y: node.position.y };
+  });
+  localStorage.setItem(TOPOLOGY_POSITIONS_KEY, JSON.stringify(positions));
+};
+
+// Helper to load positions from localStorage
+const loadPositionsFromStorage = (): Record<string, { x: number; y: number }> | null => {
+  try {
+    const stored = localStorage.getItem(TOPOLOGY_POSITIONS_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (e) {
+    console.error('Failed to load topology positions:', e);
+  }
+  return null;
+};
+
+// Helper to save viewport to localStorage
+const saveViewportToStorage = (viewport: Viewport) => {
+  localStorage.setItem(TOPOLOGY_VIEWPORT_KEY, JSON.stringify(viewport));
+};
+
+// Helper to load viewport from localStorage
+const loadViewportFromStorage = (): Viewport | null => {
+  try {
+    const stored = localStorage.getItem(TOPOLOGY_VIEWPORT_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (e) {
+    console.error('Failed to load topology viewport:', e);
+  }
+  return null;
+};
+
+// Apply saved positions to nodes
+const applyStoredPositions = (
+  nodes: Node<DeviceData>[],
+  storedPositions: Record<string, { x: number; y: number }> | null
+): Node<DeviceData>[] => {
+  if (!storedPositions) return nodes;
+  return nodes.map((node) => {
+    const storedPos = storedPositions[node.id];
+    if (storedPos) {
+      return { ...node, position: storedPos };
+    }
+    return node;
+  });
+};
+
+const CatoNetworkMapInner: React.FC = () => {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<DeviceData>>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge<ConnectionData>>([]);
   const [selectedNode, setSelectedNode] = useState<Node<DeviceData> | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
   const [showLabels, setShowLabels] = useState(true);
   const [showZones, setShowZones] = useState(true);
   const [loading, setLoading] = useState(true);
@@ -1133,7 +1631,85 @@ const CatoNetworkMap: React.FC = () => {
   const [selectedEngagement, setSelectedEngagement] = useState<string>('');
   const [dataSource, setDataSource] = useState<'api' | 'sample'>('api');
   const [isSaving, setIsSaving] = useState(false);
+  const [showAiAdvisor, setShowAiAdvisor] = useState(false);
+  const [initialViewport, setInitialViewport] = useState<Viewport | undefined>(undefined);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
+  const positionSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { setViewport, getViewport } = useReactFlow();
+
+  // Load initial viewport from storage
+  useEffect(() => {
+    const storedViewport = loadViewportFromStorage();
+    if (storedViewport) {
+      setInitialViewport(storedViewport);
+      // Apply viewport after a short delay to ensure ReactFlow is ready
+      setTimeout(() => {
+        setViewport(storedViewport);
+      }, 100);
+    }
+  }, [setViewport]);
+
+  // Save positions when nodes change (debounced)
+  const handleNodesChange = useCallback(
+    (changes: Parameters<typeof onNodesChange>[0]) => {
+      onNodesChange(changes);
+
+      // Debounce saving positions to localStorage
+      if (positionSaveTimeoutRef.current) {
+        clearTimeout(positionSaveTimeoutRef.current);
+      }
+      positionSaveTimeoutRef.current = setTimeout(() => {
+        // Get current nodes from state after the change is applied
+        setNodes((currentNodes) => {
+          savePositionsToStorage(currentNodes);
+          return currentNodes;
+        });
+      }, 300);
+    },
+    [onNodesChange, setNodes]
+  );
+
+  // Save viewport when it changes
+  const handleMoveEnd = useCallback(() => {
+    const viewport = getViewport();
+    saveViewportToStorage(viewport);
+  }, [getViewport]);
+
+  // Convert internal topology to AI analysis format
+  const topologyForAnalysis = useMemo((): TopologyForAnalysis => {
+    const analysisNodes: TopologyNodeForAnalysis[] = nodes
+      .filter((n) => n.type === 'networkDevice')
+      .map((n) => ({
+        id: n.id,
+        label: n.data.label,
+        device_type: n.data.deviceType,
+        security_zone: n.data.securityZone,
+        ip_address: n.data.ipAddress,
+        hostname: n.data.hostname,
+        os: n.data.os,
+        compliance_status: n.data.complianceStatus,
+        vulnerabilities: n.data.vulnerabilities,
+      }));
+
+    const analysisEdges: TopologyEdgeForAnalysis[] = edges.map((e) => ({
+      source: e.source,
+      target: e.target,
+      protocol: e.data?.protocol,
+      port: e.data?.port,
+      encrypted: e.data?.encrypted,
+      data_classification: e.data?.dataClassification,
+    }));
+
+    return {
+      nodes: analysisNodes,
+      edges: analysisEdges,
+      metadata: {
+        name: metadata?.name,
+        industry: 'healthcare',
+        compliance_frameworks: ['HIPAA', 'NIST 800-53'],
+      },
+    };
+  }, [nodes, edges, metadata]);
 
   // Fetch engagements list
   useEffect(() => {
@@ -1152,10 +1728,14 @@ const CatoNetworkMap: React.FC = () => {
   useEffect(() => {
     const fetchTopology = async () => {
       setLoading(true);
+      const storedPositions = loadPositionsFromStorage();
+
       try {
         if (dataSource === 'sample') {
           const { nodes: sampleNodes, edges: sampleEdges } = generateSampleTopology();
-          setNodes(sampleNodes);
+          // Apply stored positions if available
+          const nodesWithPositions = applyStoredPositions(sampleNodes, storedPositions);
+          setNodes(nodesWithPositions);
           setEdges(sampleEdges);
           setMetadata({
             name: 'Sample Network Topology',
@@ -1171,7 +1751,9 @@ const CatoNetworkMap: React.FC = () => {
           const data = response.data;
 
           if (data.nodes && data.nodes.length > 0) {
-            setNodes(data.nodes);
+            // Apply stored positions if available
+            const nodesWithPositions = applyStoredPositions(data.nodes, storedPositions);
+            setNodes(nodesWithPositions);
             setEdges(data.edges || []);
             setMetadata(data.metadata);
           } else {
@@ -1193,7 +1775,9 @@ const CatoNetworkMap: React.FC = () => {
         console.error('Failed to fetch topology:', error);
         toast.error('Failed to load topology. Using sample data.');
         const { nodes: sampleNodes, edges: sampleEdges } = generateSampleTopology();
-        setNodes(sampleNodes);
+        // Apply stored positions even on error fallback
+        const nodesWithPositions = applyStoredPositions(sampleNodes, storedPositions);
+        setNodes(nodesWithPositions);
         setEdges(sampleEdges);
         setDataSource('sample');
       } finally {
@@ -1287,6 +1871,78 @@ const CatoNetworkMap: React.FC = () => {
     }
   };
 
+  // Handle import from external tools
+  // Accept the simpler types from ToolImportModal and convert to our internal types
+  const handleImportComplete = (
+    importedNodes: { id: string; type?: string; position: { x: number; y: number }; data: { label: string; deviceType: string; securityZone: string; ipAddress?: string; hostname?: string; ports?: Array<{ port: number; protocol: string; service?: string }> } }[],
+    importedEdges: { id: string; source: string; target: string }[],
+    stats: { hostsImported: number; portsDiscovered: number; sourceFormat: string }
+  ) => {
+    // Convert imported nodes to our Node<DeviceData> format with defaults
+    const convertedNodes: Node<DeviceData>[] = importedNodes.map(node => ({
+      ...node,
+      type: node.type || 'device',
+      data: {
+        ...node.data,
+        deviceType: (node.data.deviceType as DeviceType) || 'server',
+        securityZone: (node.data.securityZone as SecurityZone) || 'internal',
+        complianceStatus: 'not_assessed' as ComplianceStatus,
+      },
+    }));
+
+    const convertedEdges: Edge<ConnectionData>[] = importedEdges.map(edge => ({
+      ...edge,
+      data: {},
+    }));
+
+    // Add imported nodes and edges to the existing topology
+    setNodes((prevNodes) => {
+      // Create a map of existing nodes by IP for deduplication
+      const existingByIp = new Map(
+        prevNodes
+          .filter((n) => n.data.ipAddress)
+          .map((n) => [n.data.ipAddress, n])
+      );
+
+      // Merge or add new nodes
+      const newNodes: Node<DeviceData>[] = [];
+      for (const node of convertedNodes) {
+        const existingNode = node.data.ipAddress
+          ? existingByIp.get(node.data.ipAddress)
+          : undefined;
+
+        if (existingNode) {
+          // Update existing node with new data
+          existingNode.data = {
+            ...existingNode.data,
+            ...node.data,
+            label: existingNode.data.label || node.data.label,
+          };
+        } else {
+          newNodes.push(node);
+        }
+      }
+
+      return [...prevNodes, ...newNodes];
+    });
+
+    setEdges((prevEdges) => {
+      // Add new edges, avoiding duplicates
+      const existingEdgeIds = new Set(prevEdges.map((e) => e.id));
+      const newEdges = convertedEdges.filter((e) => !existingEdgeIds.has(e.id));
+      return [...prevEdges, ...newEdges];
+    });
+
+    // Update metadata
+    setMetadata((prev) => ({
+      ...prev!,
+      lastUpdated: new Date().toISOString(),
+      totalDevices: nodes.length + stats.hostsImported,
+      totalConnections: edges.length + convertedEdges.length,
+      dataSource: `Imported from ${stats.sourceFormat}`,
+    }));
+  };
+
   // Calculate compliance stats
   const complianceStats = useMemo(() => {
     const devices = nodes.filter((n) => n.type === 'networkDevice');
@@ -1333,6 +1989,15 @@ const CatoNetworkMap: React.FC = () => {
             </p>
           </div>
           <div className="flex gap-2">
+            <Button
+              variant={showAiAdvisor ? 'primary' : 'secondary'}
+              onClick={() => setShowAiAdvisor(!showAiAdvisor)}
+              className={showAiAdvisor ? 'bg-gradient-to-r from-cyan-600 to-purple-600' : ''}
+            >
+              <Brain className="w-4 h-4 mr-2" />
+              AI Advisor
+              {showAiAdvisor && <Sparkles className="w-3 h-3 ml-1" />}
+            </Button>
             <Button variant="secondary" onClick={handleSaveTopology} disabled={isSaving}>
               <Save className="w-4 h-4 mr-2" />
               {isSaving ? 'Saving...' : 'Save'}
@@ -1340,6 +2005,10 @@ const CatoNetworkMap: React.FC = () => {
             <Button variant="secondary" onClick={() => setShowAddModal(true)}>
               <Plus className="w-4 h-4 mr-2" />
               Add Device
+            </Button>
+            <Button variant="secondary" onClick={() => setShowImportModal(true)}>
+              <Upload className="w-4 h-4 mr-2" />
+              Import
             </Button>
             <div className="relative group">
               <Button variant="secondary">
@@ -1442,6 +2111,23 @@ const CatoNetworkMap: React.FC = () => {
           )}
           <div className="flex-1" />
           <button
+            onClick={() => {
+              localStorage.removeItem(TOPOLOGY_POSITIONS_KEY);
+              localStorage.removeItem(TOPOLOGY_VIEWPORT_KEY);
+              setInitialViewport(undefined);
+              // Re-fetch topology to reset positions
+              const { nodes: sampleNodes, edges: sampleEdges } = generateSampleTopology();
+              setNodes(sampleNodes);
+              setEdges(sampleEdges);
+              toast.success('Layout reset to default');
+            }}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-800 text-gray-400 hover:bg-gray-700"
+            title="Reset node positions and zoom to default"
+          >
+            <Maximize2 className="w-4 h-4" />
+            Reset Layout
+          </button>
+          <button
             onClick={() => setShowLabels(!showLabels)}
             className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${
               showLabels ? 'bg-cyan-500/20 text-cyan-400' : 'bg-gray-800 text-gray-400'
@@ -1468,13 +2154,15 @@ const CatoNetworkMap: React.FC = () => {
           <ReactFlow
             nodes={nodes}
             edges={edges}
-            onNodesChange={onNodesChange}
+            onNodesChange={handleNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
             onNodeClick={onNodeClick}
             onPaneClick={onPaneClick}
+            onMoveEnd={handleMoveEnd}
             nodeTypes={nodeTypes}
-            fitView
+            fitView={!initialViewport}
+            defaultViewport={initialViewport}
             snapToGrid
             snapGrid={[20, 20]}
             defaultEdgeOptions={{
@@ -1546,8 +2234,44 @@ const CatoNetworkMap: React.FC = () => {
         onClose={() => setShowAddModal(false)}
         onAdd={handleAddDevice}
       />
+
+      {/* Tool Import Modal */}
+      <ToolImportModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        onImportComplete={handleImportComplete}
+        engagementId={selectedEngagement || undefined}
+      />
+
+      {/* AI Red Team Advisor Panel */}
+      {showAiAdvisor && (
+        <div className="fixed right-0 top-0 h-screen w-[420px] bg-gray-900 border-l border-gray-700 shadow-2xl z-50 overflow-hidden flex flex-col">
+          <div className="flex-1 overflow-y-auto p-4">
+            <RedTeamAdvisorPanel
+              topology={topologyForAnalysis}
+              engagementId={selectedEngagement || undefined}
+              onClose={() => setShowAiAdvisor(false)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* AI Advisor backdrop */}
+      {showAiAdvisor && (
+        <div
+          className="fixed inset-0 bg-black/30 z-40"
+          onClick={() => setShowAiAdvisor(false)}
+        />
+      )}
     </Layout>
   );
 };
+
+// Wrapper component with ReactFlowProvider for useReactFlow hook
+const CatoNetworkMap: React.FC = () => (
+  <ReactFlowProvider>
+    <CatoNetworkMapInner />
+  </ReactFlowProvider>
+);
 
 export default CatoNetworkMap;

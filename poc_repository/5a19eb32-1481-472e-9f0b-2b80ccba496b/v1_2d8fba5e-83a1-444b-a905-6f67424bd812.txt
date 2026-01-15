@@ -1,0 +1,68 @@
+#!/usr/bin/env python3
+"""
+EternalBlue (MS17-010) SMBv1 Vulnerability Scanner
+For authorized security testing only
+"""
+import socket
+import struct
+import sys
+
+SMB_HEADER = b'\x00\x00\x00\x90'  # Simplified header
+
+def check_ms17_010(target_ip, target_port=445):
+    """Check if target is vulnerable to MS17-010"""
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(10)
+        sock.connect((target_ip, target_port))
+
+        # Send SMB negotiation
+        negotiate = (
+            b'\x00\x00\x00\x85'  # NetBIOS
+            b'\xff\x53\x4d\x42'  # SMB Header
+            b'\x72'              # Negotiate Protocol
+            b'\x00\x00\x00\x00'  # Status
+            b'\x18\x53\xc0'      # Flags
+            b'\x00\x00'          # Flags2
+            b'\x00\x00\x00\x00'  # PID High
+            b'\x00\x00\x00\x00\x00\x00\x00\x00'  # Signature
+            b'\x00\x00'          # Reserved
+            b'\xff\xff'          # TID
+            b'\xff\xfe'          # PID
+            b'\x00\x00'          # UID
+            b'\x00\x00'          # MID
+            b'\x00'              # Word Count
+            b'\x62\x00'          # Byte Count
+            b'\x02NT LM 0.12\x00'
+        )
+
+        sock.send(negotiate)
+        response = sock.recv(1024)
+
+        if b'\xff\x53\x4d\x42' in response:
+            print(f"[+] SMB service detected on {target_ip}:{target_port}")
+            # Additional checks would go here
+            return True
+
+        sock.close()
+        return False
+
+    except socket.timeout:
+        print(f"[-] Connection timeout to {target_ip}")
+        return False
+    except Exception as e:
+        print(f"[-] Error: {e}")
+        return False
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print(f"Usage: {sys.argv[0]} <target_ip>")
+        sys.exit(1)
+
+    target = sys.argv[1]
+    print(f"[*] Checking {target} for MS17-010 vulnerability...")
+
+    if check_ms17_010(target):
+        print("[!] Target may be vulnerable - further testing required")
+    else:
+        print("[-] Target does not appear vulnerable")

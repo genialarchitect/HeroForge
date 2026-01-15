@@ -22,6 +22,8 @@ import {
   Zap,
 } from 'lucide-react';
 import Layout from '../components/layout/Layout';
+import { EngagementRequiredBanner } from '../components/engagement';
+import { useRequireEngagement } from '../hooks/useRequireEngagement';
 import { crackingAPI } from '../services/api';
 import type {
   CrackingJob,
@@ -53,6 +55,7 @@ export default function CrackingPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedJob, setSelectedJob] = useState<CrackingJob | null>(null);
   const [showResultsModal, setShowResultsModal] = useState(false);
+  const { hasEngagement } = useRequireEngagement();
 
   // Fetch jobs
   const { data: jobs = [], isLoading: jobsLoading, refetch: refetchJobs } = useQuery({
@@ -219,13 +222,16 @@ export default function CrackingPage() {
             </button>
             <button
               onClick={() => setShowCreateModal(true)}
-              className="flex items-center space-x-2 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 rounded-lg transition-colors"
+              disabled={!hasEngagement}
+              className="flex items-center space-x-2 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Plus className="w-5 h-5" />
               <span>New Job</span>
             </button>
           </div>
         </div>
+
+        <EngagementRequiredBanner toolName="Password Cracking" className="mb-6" />
 
         {/* Stats Cards */}
         {stats && (

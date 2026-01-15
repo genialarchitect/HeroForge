@@ -72,3 +72,6 @@ export * from './exploitation';
 
 // Advanced types (AI, SSO, CI/CD, Container/K8s, IaC, workflows, Purple Team, SOAR, Fuzzing, UEBA)
 export * from './advanced';
+
+// AI Red Team Advisor types
+export * from './red-team-advisor';

@@ -741,3 +741,93 @@ pub async fn bulk_add_assets_to_group(
         "requested_count": request.asset_ids.len()
     })))
 }
+
+// ============================================================================
+// Engagement/Customer Assets (Customer Portal Integration)
+// ============================================================================
+
+/// Query parameters for listing engagement/customer assets
+#[derive(Debug, Deserialize)]
+pub struct EngagementAssetQuery {
+    pub status: Option<String>,
+}
+
+/// Get all assets for a specific engagement
+pub async fn get_assets_by_engagement(
+    pool: web::Data<SqlitePool>,
+    _claims: web::ReqData<auth::Claims>,
+    engagement_id: web::Path<String>,
+    query: web::Query<EngagementAssetQuery>,
+) -> Result<HttpResponse> {
+    let assets_list = assets::get_assets_by_engagement(
+        &pool,
+        &engagement_id,
+        query.status.as_deref(),
+    )
+    .await
+    .map_err(|e| {
+        log::error!("Failed to fetch engagement assets: {}", e);
+        actix_web::error::ErrorInternalServerError("An internal error occurred. Please try again later.")
+    })?;
+
+    Ok(HttpResponse::Ok().json(assets_list))
+}
+
+/// Get all assets for a specific customer (across all engagements)
+pub async fn get_assets_by_customer(
+    pool: web::Data<SqlitePool>,
+    _claims: web::ReqData<auth::Claims>,
+    customer_id: web::Path<String>,
+    query: web::Query<EngagementAssetQuery>,
+) -> Result<HttpResponse> {
+    let assets_list = assets::get_assets_by_customer(
+        &pool,
+        &customer_id,
+        query.status.as_deref(),
+    )
+    .await
+    .map_err(|e| {
+        log::error!("Failed to fetch customer assets: {}", e);
+        actix_web::error::ErrorInternalServerError("An internal error occurred. Please try again later.")
+    })?;
+
+    Ok(HttpResponse::Ok().json(assets_list))
+}
+
+/// Get asset statistics for a customer
+pub async fn get_customer_asset_stats(
+    pool: web::Data<SqlitePool>,
+    _claims: web::ReqData<auth::Claims>,
+    customer_id: web::Path<String>,
+) -> Result<HttpResponse> {
+    let stats = assets::get_customer_asset_stats(
+        &pool,
+        &customer_id,
+    )
+    .await
+    .map_err(|e| {
+        log::error!("Failed to fetch customer asset stats: {}", e);
+        actix_web::error::ErrorInternalServerError("An internal error occurred. Please try again later.")
+    })?;
+
+    Ok(HttpResponse::Ok().json(stats))
+}
+
+/// Get asset statistics for an engagement
+pub async fn get_engagement_asset_stats(
+    pool: web::Data<SqlitePool>,
+    _claims: web::ReqData<auth::Claims>,
+    engagement_id: web::Path<String>,
+) -> Result<HttpResponse> {
+    let stats = assets::get_engagement_asset_stats(
+        &pool,
+        &engagement_id,
+    )
+    .await
+    .map_err(|e| {
+        log::error!("Failed to fetch engagement asset stats: {}", e);
+        actix_web::error::ErrorInternalServerError("An internal error occurred. Please try again later.")
+    })?;
+
+    Ok(HttpResponse::Ok().json(stats))
+}

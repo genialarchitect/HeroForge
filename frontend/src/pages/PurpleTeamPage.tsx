@@ -114,23 +114,32 @@ function SeverityBadge({ severity }: { severity: GapSeverity }) {
   );
 }
 
-function DashboardStats({ dashboard }: { dashboard: PurpleTeamDashboard }) {
+function DashboardStats({ dashboard, onExercisesClick, onGapsClick }: {
+  dashboard: PurpleTeamDashboard;
+  onExercisesClick?: () => void;
+  onGapsClick?: () => void;
+}) {
   const stats = [
-    { label: 'Total Exercises', value: dashboard.total_exercises, icon: <Target className="h-5 w-5" /> },
-    { label: 'Running', value: dashboard.running_exercises, icon: <Activity className="h-5 w-5 text-cyan-400" /> },
-    { label: 'Overall Coverage', value: `${dashboard.overall_coverage.toFixed(1)}%`, icon: <TrendingUp className="h-5 w-5 text-green-400" /> },
-    { label: 'Open Gaps', value: dashboard.open_gaps, icon: <AlertTriangle className="h-5 w-5 text-red-400" /> },
+    { label: 'Total Exercises', value: dashboard.total_exercises, icon: <Target className="h-5 w-5" />, onClick: onExercisesClick },
+    { label: 'Running', value: dashboard.running_exercises, icon: <Activity className="h-5 w-5 text-cyan-400" />, onClick: onExercisesClick },
+    { label: 'Overall Coverage', value: `${dashboard.overall_coverage.toFixed(1)}%`, icon: <TrendingUp className="h-5 w-5 text-green-400" />, onClick: undefined },
+    { label: 'Open Gaps', value: dashboard.open_gaps, icon: <AlertTriangle className="h-5 w-5 text-red-400" />, onClick: onGapsClick },
   ];
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
       {stats.map((stat) => (
-        <div key={stat.label} className="bg-gray-800 rounded-lg p-4 flex items-center gap-4">
+        <div
+          key={stat.label}
+          onClick={stat.onClick}
+          className={`bg-gray-800 rounded-lg p-4 flex items-center gap-4 ${stat.onClick ? 'cursor-pointer hover:border hover:border-cyan-500/50 hover:bg-gray-750 transition-all group' : 'border border-transparent'}`}
+        >
           <div className="p-3 bg-gray-700 rounded-lg">{stat.icon}</div>
-          <div>
+          <div className="flex-1">
             <p className="text-gray-400 text-sm">{stat.label}</p>
             <p className="text-2xl font-bold text-white">{stat.value}</p>
           </div>
+          {stat.onClick && <ChevronRight className="w-5 h-5 text-gray-500 group-hover:text-cyan-400 transition-colors" />}
         </div>
       ))}
     </div>
@@ -177,9 +186,9 @@ function CoverageHeatmap({ coverage }: { coverage: DetectionCoverage }) {
 }
 
 function AttackMatrixView({ matrix }: { matrix: AttackMatrix }) {
-  if (!matrix || !matrix.cells) return null;
-
   const [hoveredTechnique, setHoveredTechnique] = useState<string | null>(null);
+
+  if (!matrix || !matrix.cells) return null;
 
   const getCellColor = (cell: MatrixCell) => {
     if (!cell.tested) return 'bg-gray-700 hover:bg-gray-600';
@@ -682,7 +691,16 @@ export default function PurpleTeamPage() {
         ) : (
           <div className="space-y-6">
             {/* Dashboard Stats */}
-            {dashboard && <DashboardStats dashboard={dashboard} />}
+            {dashboard && (
+              <DashboardStats
+                dashboard={dashboard}
+                onExercisesClick={() => document.getElementById('exercises-section')?.scrollIntoView({ behavior: 'smooth' })}
+                onGapsClick={() => {
+                  setGapFilter('open');
+                  document.getElementById('gaps-section')?.scrollIntoView({ behavior: 'smooth' });
+                }}
+              />
+            )}
 
             {/* MITRE ATT&CK Matrix */}
             {matrix && <AttackMatrixView matrix={matrix} />}
@@ -690,7 +708,7 @@ export default function PurpleTeamPage() {
             {/* Two Column Layout */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Exercises */}
-              <div>
+              <div id="exercises-section">
                 <h2 className="text-lg font-semibold text-white mb-4">Exercises</h2>
                 <div className="space-y-3">
                   {exercises?.length === 0 && (
@@ -718,7 +736,7 @@ export default function PurpleTeamPage() {
               </div>
 
               {/* Detection Gaps */}
-              <div>
+              <div id="gaps-section">
                 <div className="flex justify-between items-center mb-4">
                   <h2 className="text-lg font-semibold text-white">Detection Gaps</h2>
                   <div className="flex gap-2">

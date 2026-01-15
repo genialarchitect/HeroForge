@@ -3,10 +3,13 @@
 
 #![allow(dead_code)]
 
+use super::builtin_templates::{
+    are_builtin_templates_initialized, get_builtin_template_count, init_builtin_templates,
+};
 use super::runner::get_templates_path;
 use super::types::*;
 use anyhow::{anyhow, Result};
-use log::{debug, info};
+use log::{debug, info, warn};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::Path;
@@ -68,13 +71,41 @@ impl StringOrVec {
     }
 }
 
+/// Ensure templates are initialized (creates builtin templates if directory is empty)
+pub async fn ensure_templates_initialized() -> Result<()> {
+    let templates_path = get_templates_path();
+
+    // Create templates directory if it doesn't exist
+    if !templates_path.exists() {
+        info!("Templates directory not found, creating with builtin templates...");
+        init_builtin_templates(&templates_path).await?;
+        return Ok(());
+    }
+
+    // Check if builtin templates are already initialized
+    if !are_builtin_templates_initialized(&templates_path).await {
+        info!("Initializing {} builtin templates...", get_builtin_template_count());
+        let created = init_builtin_templates(&templates_path).await?;
+        if created > 0 {
+            info!("Created {} builtin templates", created);
+        }
+    }
+
+    Ok(())
+}
+
 /// List all available templates
 pub async fn list_templates() -> Result<Vec<NucleiTemplate>> {
     let templates_path = get_templates_path();
 
+    // Auto-initialize builtin templates if needed
+    if let Err(e) = ensure_templates_initialized().await {
+        warn!("Failed to initialize builtin templates: {}", e);
+    }
+
     if !templates_path.exists() {
         return Err(anyhow!(
-            "Templates directory not found at {:?}. Run 'nuclei -ut' to download templates.",
+            "Templates directory not found at {:?}. Run 'nuclei -ut' to download templates or check permissions.",
             templates_path
         ));
     }

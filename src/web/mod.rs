@@ -236,6 +236,12 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                             .route("/reports", web::get().to(api::portal::reports::list_reports))
                             .route("/reports/{id}", web::get().to(api::portal::reports::get_report))
                             .route("/reports/{id}/download", web::get().to(api::portal::reports::download_report))
+                            // Asset inventory from scans
+                            .route("/assets", web::get().to(api::portal::assets::get_customer_assets))
+                            .route("/assets/stats", web::get().to(api::portal::assets::get_customer_assets_stats))
+                            .route("/assets/{id}", web::get().to(api::portal::assets::get_asset_detail))
+                            .route("/engagements/{id}/assets", web::get().to(api::portal::assets::get_engagement_assets))
+                            .route("/engagements/{id}/assets/stats", web::get().to(api::portal::assets::get_engagement_assets_stats))
                     )
             )
             // Protected routes with moderate rate limiting (100 req/min per IP)
@@ -300,6 +306,11 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .route("/reports/{id}", web::get().to(api::reports::get_report))
                     .route("/reports/{id}/download", web::get().to(api::reports::download_report))
                     .route("/reports/{id}", web::delete().to(api::reports::delete_report))
+                    // Report operator notes endpoints
+                    .route("/reports/{id}/notes", web::get().to(api::reports::get_report_notes))
+                    .route("/reports/{id}/notes", web::put().to(api::reports::update_report_notes))
+                    .route("/reports/{id}/findings/{finding_id}/notes", web::put().to(api::reports::update_finding_note))
+                    .route("/reports/{id}/findings/{finding_id}/notes", web::delete().to(api::reports::delete_finding_note))
                     // Template endpoints
                     .route("/templates", web::post().to(api::templates::create_template))
                     .route("/templates", web::get().to(api::templates::get_templates))
@@ -393,6 +404,11 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .route("/asset-groups/{id}/members", web::post().to(api::assets::add_assets_to_group))
                     .route("/asset-groups/{id}/members/{asset_id}", web::delete().to(api::assets::remove_asset_from_group))
                     .route("/asset-groups/{id}/bulk-add", web::post().to(api::assets::bulk_add_assets_to_group))
+                    // Engagement/Customer Asset endpoints (Customer Portal integration)
+                    .route("/engagements/{id}/assets", web::get().to(api::assets::get_assets_by_engagement))
+                    .route("/engagements/{id}/assets/stats", web::get().to(api::assets::get_engagement_asset_stats))
+                    .route("/customers/{id}/assets", web::get().to(api::assets::get_assets_by_customer))
+                    .route("/customers/{id}/assets/stats", web::get().to(api::assets::get_customer_asset_stats))
                     // Vulnerability management endpoints
                     .route("/vulnerabilities", web::get().to(api::vulnerabilities::list_vulnerabilities))
                     .route("/vulnerabilities/stats", web::get().to(api::vulnerabilities::get_vulnerability_stats))
@@ -565,6 +581,10 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .configure(api::ai_ml::configure)
                     // AI Chat endpoints
                     .configure(api::chat::configure)
+                    // AI Red Team Advisor endpoints
+                    .configure(api::red_team_advisor::configure)
+                    // AI Configuration management endpoints
+                    .configure(api::ai_config::configure)
                     // CI/CD integration endpoints
                     .configure(api::cicd::configure)
                     // CI/CD Pipeline Security scanning endpoints
@@ -712,6 +732,11 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .configure(api::performance::configure)
                     .configure(api::analytics_engine::configure)
                     .configure(api::intelligence_platform::configure)
+                    // ACAS-inspired modules (SCAP, Windows Audit, eMASS, Audit Files)
+                    .configure(api::scap::configure)
+                    .configure(api::windows_audit::configure)
+                    .configure(api::emass::configure)
+                    .configure(api::audit_files::configure)
                     // Cross-Team Context API
                     .configure(api::context::configure)
                     // Start workflow from vulnerability

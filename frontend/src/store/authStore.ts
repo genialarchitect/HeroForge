@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { User, UserRole } from '../types';
+import { User, UserRole, TeamRole, isTeamRole } from '../types';
 
 interface AuthState {
   user: User | null;
@@ -20,6 +20,12 @@ interface AuthState {
   canManageScans: () => boolean;
   canViewAuditLogs: () => boolean;
   canManageSettings: () => boolean;
+
+  // Team role helper methods
+  getTeamRoles: () => TeamRole[];
+  getPrimaryTeam: () => TeamRole | null;
+  hasTeamRole: (team: TeamRole) => boolean;
+  hasAnyTeamRole: (teams: TeamRole[]) => boolean;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -77,6 +83,24 @@ export const useAuthStore = create<AuthState>()(
         get().user?.roles?.some(r => ['admin', 'auditor'].includes(r)) ?? false,
 
       canManageSettings: () => get().user?.roles?.includes('admin') ?? false,
+
+      // Team role helper methods
+      getTeamRoles: () => {
+        const roles = get().user?.roles ?? [];
+        return roles.filter(isTeamRole) as TeamRole[];
+      },
+
+      getPrimaryTeam: () => {
+        const teamRoles = get().getTeamRoles();
+        return teamRoles.length > 0 ? teamRoles[0] : null;
+      },
+
+      hasTeamRole: (team) => get().user?.roles?.includes(team) ?? false,
+
+      hasAnyTeamRole: (teams) => {
+        const userRoles = get().user?.roles ?? [];
+        return teams.some(team => userRoles.includes(team));
+      },
     }),
     {
       name: 'auth-storage',

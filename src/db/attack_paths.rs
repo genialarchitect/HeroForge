@@ -203,6 +203,54 @@ pub async fn get_attack_paths_by_scan(
     Ok(paths)
 }
 
+/// Get all attack paths for a user (across all scans)
+pub async fn get_attack_paths_by_user(
+    pool: &SqlitePool,
+    user_id: &str,
+    limit: Option<i64>,
+    offset: Option<i64>,
+) -> Result<Vec<AttackPathRecord>> {
+    let limit = limit.unwrap_or(50);
+    let offset = offset.unwrap_or(0);
+
+    let paths = sqlx::query_as::<_, AttackPathRecord>(
+        r#"
+        SELECT id, scan_id, user_id, name, risk_level, probability, total_cvss,
+               path_length, description, mitigation_steps, created_at
+        FROM attack_paths
+        WHERE user_id = ?
+        ORDER BY
+            CASE risk_level
+                WHEN 'critical' THEN 1
+                WHEN 'high' THEN 2
+                WHEN 'medium' THEN 3
+                WHEN 'low' THEN 4
+            END,
+            created_at DESC
+        LIMIT ? OFFSET ?
+        "#,
+    )
+    .bind(user_id)
+    .bind(limit)
+    .bind(offset)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(paths)
+}
+
+/// Count total attack paths for a user
+pub async fn count_attack_paths_by_user(pool: &SqlitePool, user_id: &str) -> Result<i64> {
+    let row: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM attack_paths WHERE user_id = ?"
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(row.0)
+}
+
 /// Get critical attack paths for a scan (high and critical risk)
 pub async fn get_critical_attack_paths(
     pool: &SqlitePool,

@@ -10,11 +10,30 @@
   /* Light mode (default when no .dark class) */
   :root {
     color-scheme: light;
+    /* Team accent color - dynamically set by JS based on user's primary team */
+    --team-accent: #06b6d4; /* Default: cyan */
   }
 
   /* Dark mode */
   :root.dark {
     color-scheme: dark;
+  }
+
+  /* Team accent color utilities */
+  .team-accent-text {
+    color: var(--team-accent);
+  }
+
+  .team-accent-bg {
+    background-color: var(--team-accent);
+  }
+
+  .team-accent-border {
+    border-color: var(--team-accent);
+  }
+
+  .team-accent-ring {
+    --tw-ring-color: var(--team-accent);
   }
 
   body {

@@ -26,6 +26,8 @@ import {
 } from 'lucide-react';
 import { binaryAnalysisAPI } from '../services/api';
 import Layout from '../components/layout/Layout';
+import { EngagementRequiredBanner } from '../components/engagement';
+import { useRequireEngagement } from '../hooks/useRequireEngagement';
 import type {
   BinarySampleSummary,
   BinarySampleDetail,
@@ -70,7 +72,7 @@ const StatsCard: React.FC<{ title: string; value: string | number; icon: React.R
 );
 
 // Upload Zone Component
-const UploadZone: React.FC<{ onUpload: (file: File) => void; isUploading: boolean }> = ({ onUpload, isUploading }) => {
+const UploadZone: React.FC<{ onUpload: (file: File) => void; isUploading: boolean; hasEngagement?: boolean }> = ({ onUpload, isUploading, hasEngagement = true }) => {
   const [isDragging, setIsDragging] = useState(false);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
@@ -91,10 +93,10 @@ const UploadZone: React.FC<{ onUpload: (file: File) => void; isUploading: boolea
         isDragging
           ? 'border-cyan-500 bg-cyan-500/10'
           : 'border-gray-600 hover:border-gray-500'
-      }`}
-      onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+      } ${!hasEngagement ? 'opacity-50 cursor-not-allowed' : ''}`}
+      onDragOver={(e) => { e.preventDefault(); if (hasEngagement) setIsDragging(true); }}
       onDragLeave={() => setIsDragging(false)}
-      onDrop={handleDrop}
+      onDrop={hasEngagement ? handleDrop : (e) => e.preventDefault()}
     >
       {isUploading ? (
         <div className="flex flex-col items-center">
@@ -106,8 +108,8 @@ const UploadZone: React.FC<{ onUpload: (file: File) => void; isUploading: boolea
           <Upload className="w-12 h-12 text-gray-500 mx-auto mb-4" />
           <p className="text-gray-300 mb-2">Drag and drop a binary file here</p>
           <p className="text-gray-500 text-sm mb-4">Supports PE (.exe, .dll) and ELF files</p>
-          <label className="cursor-pointer">
-            <span className="bg-cyan-600 hover:bg-cyan-700 text-white px-4 py-2 rounded-lg transition-colors">
+          <label className={hasEngagement ? "cursor-pointer" : "cursor-not-allowed"}>
+            <span className={`bg-cyan-600 text-white px-4 py-2 rounded-lg transition-colors ${hasEngagement ? 'hover:bg-cyan-700' : 'opacity-50'}`}>
               Browse Files
             </span>
             <input
@@ -115,6 +117,7 @@ const UploadZone: React.FC<{ onUpload: (file: File) => void; isUploading: boolea
               className="hidden"
               onChange={handleFileSelect}
               accept=".exe,.dll,.so,.elf,.bin"
+              disabled={!hasEngagement}
             />
           </label>
         </>
@@ -574,6 +577,7 @@ const BinaryAnalysisPage: React.FC = () => {
   const queryClient = useQueryClient();
   const [selectedSample, setSelectedSample] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+  const { hasEngagement } = useRequireEngagement();
 
   // Fetch samples
   const { data: samples, isLoading: samplesLoading, refetch } = useQuery({
@@ -634,6 +638,8 @@ const BinaryAnalysisPage: React.FC = () => {
           </button>
         </div>
 
+        <EngagementRequiredBanner toolName="Binary Analysis" className="mb-6" />
+
         {/* Stats */}
         {stats && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -668,6 +674,7 @@ const BinaryAnalysisPage: React.FC = () => {
         <UploadZone
           onUpload={(file) => uploadMutation.mutate(file)}
           isUploading={uploadMutation.isPending}
+          hasEngagement={hasEngagement}
         />
 
         {/* Samples List */}

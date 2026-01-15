@@ -71,17 +71,14 @@ interface YaraRule {
 
 interface YaraScan {
   id: string;
-  name: string;
+  name?: string;
   target_path: string;
   target_type: string;
   status: string;
-  rules_used: number;
+  matches_count: number;
   files_scanned: number;
-  matches_found: number;
   bytes_scanned: number;
-  started_at?: string;
   completed_at?: string;
-  error_message?: string;
   created_at: string;
 }
 
@@ -171,31 +168,33 @@ interface MemoryScan {
 
 // Rule Effectiveness Types
 interface RuleEffectiveness {
-  id: string;
   rule_id: string;
   rule_name: string;
-  category: string;
+  score: number;
+  grade: string;
+  total_matches: number;
   true_positives: number;
   false_positives: number;
-  total_matches: number;
-  effectiveness_score: number;
-  grade: 'A' | 'B' | 'C' | 'D' | 'F';
-  confidence: 'high' | 'medium' | 'low';
+  pending_verification: number;
+  false_positive_rate: number;
+  true_positive_rate: number;
+  avg_scan_time_ms: number;
+  trend: number;
+  confidence: number;
   last_match_at?: string;
-  needs_review: boolean;
-  review_reason?: string;
-  updated_at: string;
+  calculated_at: string;
 }
 
 interface EffectivenessSummary {
   total_rules: number;
   rules_with_data: number;
-  avg_effectiveness_score: number;
+  avg_effectiveness: number;
+  total_matches: number;
   total_true_positives: number;
   total_false_positives: number;
   rules_needing_review: number;
   grade_distribution: Record<string, number>;
-  confidence_distribution: Record<string, number>;
+  confidence_distribution?: Record<string, number>;
 }
 
 // Visual Builder Types
@@ -220,11 +219,11 @@ interface StringDefinition {
 const yaraAPI = {
   // Stats
   getStats: () => api.get<YaraStats>('/detection/yara/rules/stats').then(r => r.data),
-  getCategories: () => api.get<string[]>('/detection/yara/rules/categories').then(r => r.data),
+  getCategories: () => api.get<{ categories: string[] }>('/detection/yara/rules/categories').then(r => r.data.categories),
 
   // Rules CRUD
   listRules: (params?: Record<string, string>) =>
-    api.get<YaraRule[]>('/detection/yara/rules', { params }).then(r => r.data),
+    api.get<{ rules: YaraRule[]; total: number }>('/detection/yara/rules', { params }).then(r => r.data.rules),
   createRule: (data: { name: string; rule_text: string; category?: string }) =>
     api.post<YaraRule>('/detection/yara/rules', data).then(r => r.data),
   getRule: (id: string) => api.get<YaraRule>(`/detection/yara/rules/${id}`).then(r => r.data),
@@ -251,39 +250,39 @@ const yaraAPI = {
     api.post<YaraScan>('/detection/yara/scan', data).then(r => r.data),
   bulkScan: (data: { paths: string[]; recursive?: boolean; rule_ids?: string[]; categories?: string[] }) =>
     api.post<YaraScan>('/detection/yara/scan/bulk', data).then(r => r.data),
-  listScans: () => api.get<YaraScan[]>('/detection/yara/scans').then(r => r.data),
+  listScans: () => api.get<{ scans: YaraScan[]; total: number }>('/detection/yara/scans').then(r => r.data.scans),
   getScan: (id: string) => api.get<YaraScan & { matches: YaraMatch[] }>(`/detection/yara/scans/${id}`).then(r => r.data),
   deleteScan: (id: string) => api.delete(`/detection/yara/scans/${id}`),
 
   // Community Sources
-  getCommunitySourcesList: () => api.get<CommunitySource[]>('/detection/yara/community/sources').then(r => r.data),
+  getCommunitySourcesList: () => api.get<{ sources: CommunitySource[] }>('/detection/yara/community/sources').then(r => r.data.sources),
   fetchFromCommunity: (sourceId: string) =>
     api.post<{ rules_fetched: number }>(`/detection/yara/community/fetch/${sourceId}`).then(r => r.data),
   importRules: (data: { content: string; source?: string; category?: string; overwrite_existing: boolean }) =>
     api.post<{ imported: number; skipped: number; errors: string[] }>('/detection/yara/rules/import', data).then(r => r.data),
 
   // File Monitors (Sprint 1)
-  listMonitors: () => api.get<FileMonitor[]>('/detection/yara/monitors').then(r => r.data),
+  listMonitors: () => api.get<{ monitors: FileMonitor[] }>('/detection/yara/monitors').then(r => r.data.monitors),
   createMonitor: (data: { name: string; watch_path: string; recursive?: boolean; file_patterns?: string[]; rule_ids?: string[] }) =>
     api.post<FileMonitor>('/detection/yara/monitors', data).then(r => r.data),
   getMonitor: (id: string) => api.get<FileMonitor>(`/detection/yara/monitors/${id}`).then(r => r.data),
   updateMonitorStatus: (id: string, status: string) =>
     api.put(`/detection/yara/monitors/${id}/status`, { status }).then(r => r.data),
   deleteMonitor: (id: string) => api.delete(`/detection/yara/monitors/${id}`),
-  getMonitorAlerts: (monitorId: string) => api.get<MonitorAlert[]>(`/detection/yara/monitors/${monitorId}/alerts`).then(r => r.data),
+  getMonitorAlerts: (monitorId: string) => api.get<{ alerts: MonitorAlert[] }>(`/detection/yara/monitors/${monitorId}/alerts`).then(r => r.data.alerts),
   acknowledgeAlert: (alertId: string) => api.post(`/detection/yara/alerts/${alertId}/acknowledge`).then(r => r.data),
 
   // Memory Scanning (Sprint 1)
-  listMemoryScans: () => api.get<MemoryScan[]>('/detection/yara/memory/scans').then(r => r.data),
+  listMemoryScans: () => api.get<{ scans: MemoryScan[] }>('/detection/yara/memory/scans').then(r => r.data.scans),
   scanMemoryDump: (data: FormData) => api.post<MemoryScan>('/detection/yara/memory/scan', data, {
     headers: { 'Content-Type': 'multipart/form-data' }
   }).then(r => r.data),
   getMemoryScan: (id: string) => api.get<MemoryScan>(`/detection/yara/memory/scans/${id}`).then(r => r.data),
 
   // Rule Effectiveness (Sprint 1)
-  getEffectiveness: () => api.get<RuleEffectiveness[]>('/detection/yara/effectiveness').then(r => r.data),
+  getEffectiveness: () => api.get<{ scores: RuleEffectiveness[] }>('/detection/yara/effectiveness').then(r => r.data.scores),
   getEffectivenessSummary: () => api.get<EffectivenessSummary>('/detection/yara/effectiveness/summary').then(r => r.data),
-  getRulesNeedingReview: () => api.get<RuleEffectiveness[]>('/detection/yara/effectiveness/review').then(r => r.data),
+  getRulesNeedingReview: () => api.get<{ scores: RuleEffectiveness[] }>('/detection/yara/effectiveness/review').then(r => r.data.scores),
   getRuleEffectivenessDetail: (ruleId: string) => api.get<RuleEffectiveness>(`/detection/yara/effectiveness/${ruleId}`).then(r => r.data),
   verifyMatch: (matchId: string, data: { is_true_positive: boolean; notes?: string }) =>
     api.post(`/detection/yara/matches/${matchId}/verify`, data).then(r => r.data),
@@ -1184,8 +1183,8 @@ function ScansTab() {
                   </td>
                   <td className="px-4 py-3 text-gray-300">{scan.files_scanned}</td>
                   <td className="px-4 py-3">
-                    <span className={scan.matches_found > 0 ? 'text-red-400 font-semibold' : 'text-gray-400'}>
-                      {scan.matches_found}
+                    <span className={scan.matches_count > 0 ? 'text-red-400 font-semibold' : 'text-gray-400'}>
+                      {scan.matches_count}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-gray-400 text-sm">
@@ -1443,7 +1442,7 @@ function EffectivenessTab() {
               </div>
               <div>
                 <p className="text-2xl font-bold text-white">
-                  {Math.round(summary.avg_effectiveness_score)}%
+                  {Math.round(summary.avg_effectiveness)}%
                 </p>
                 <p className="text-sm text-gray-400">Avg Effectiveness</p>
               </div>
@@ -1510,31 +1509,33 @@ function EffectivenessTab() {
             </div>
           </div>
 
-          <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
-            <h3 className="text-lg font-semibold text-white mb-4">Confidence Distribution</h3>
-            <div className="space-y-3">
-              {['high', 'medium', 'low'].map(confidence => {
-                const count = summary.confidence_distribution[confidence] || 0;
-                const total = Object.values(summary.confidence_distribution).reduce((a, b) => a + b, 0) || 1;
-                const percentage = (count / total) * 100;
-                const colors = confidenceColors[confidence];
-                return (
-                  <div key={confidence}>
-                    <div className="flex justify-between text-sm mb-1">
-                      <span className={colors.text}>{confidence.charAt(0).toUpperCase() + confidence.slice(1)}</span>
-                      <span className="text-gray-400">{count} rules</span>
+          {summary.confidence_distribution && (
+            <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+              <h3 className="text-lg font-semibold text-white mb-4">Confidence Distribution</h3>
+              <div className="space-y-3">
+                {['high', 'medium', 'low'].map(confidence => {
+                  const count = summary.confidence_distribution![confidence] || 0;
+                  const total = Object.values(summary.confidence_distribution!).reduce((a, b) => a + b, 0) || 1;
+                  const percentage = (count / total) * 100;
+                  const colors = confidenceColors[confidence];
+                  return (
+                    <div key={confidence}>
+                      <div className="flex justify-between text-sm mb-1">
+                        <span className={colors.text}>{confidence.charAt(0).toUpperCase() + confidence.slice(1)}</span>
+                        <span className="text-gray-400">{count} rules</span>
+                      </div>
+                      <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full ${colors.bg} transition-all`}
+                          style={{ width: `${percentage}%` }}
+                        />
+                      </div>
                     </div>
-                    <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
-                      <div
-                        className={`h-full ${colors.bg} transition-all`}
-                        style={{ width: `${percentage}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
 
@@ -1571,53 +1572,61 @@ function EffectivenessTab() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-700">
-              {effectiveness.map(rule => (
-                <tr key={rule.id} className={`hover:bg-gray-750 ${rule.needs_review ? 'bg-yellow-500/5' : ''}`}>
-                  <td className="px-4 py-3">
-                    <p className="text-white font-medium">{rule.rule_name}</p>
-                    {rule.last_match_at && (
-                      <p className="text-gray-500 text-xs">
-                        Last match: {new Date(rule.last_match_at).toLocaleDateString()}
-                      </p>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <CategoryBadge category={rule.category || 'generic'} />
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <GradeBadge grade={rule.grade} />
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <span className={`text-lg font-semibold ${
-                      rule.effectiveness_score >= 80 ? 'text-green-400' :
-                      rule.effectiveness_score >= 60 ? 'text-yellow-400' : 'text-red-400'
-                    }`}>
-                      {Math.round(rule.effectiveness_score)}%
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <span className="text-green-400">{rule.true_positives}</span>
-                    <span className="text-gray-500 mx-1">/</span>
-                    <span className="text-red-400">{rule.false_positives}</span>
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <ConfidenceBadge confidence={rule.confidence} />
-                  </td>
-                  <td className="px-4 py-3">
-                    {rule.needs_review ? (
-                      <div className="flex items-center gap-1 text-yellow-400 text-sm">
-                        <AlertTriangle className="h-4 w-4" />
-                        <span>{rule.review_reason || 'Needs Review'}</span>
-                      </div>
-                    ) : (
-                      <span className="text-green-400 text-sm flex items-center gap-1">
-                        <CheckCircle className="h-4 w-4" />
-                        Good
+              {effectiveness.map(rule => {
+                const needsReview = rule.confidence < 0.5 || rule.trend < -0.1 || rule.false_positive_rate > 0.3;
+                return (
+                  <tr key={rule.rule_id} className={`hover:bg-gray-750 ${needsReview ? 'bg-yellow-500/5' : ''}`}>
+                    <td className="px-4 py-3">
+                      <p className="text-white font-medium">{rule.rule_name}</p>
+                      {rule.last_match_at && (
+                        <p className="text-gray-500 text-xs">
+                          Last match: {new Date(rule.last_match_at).toLocaleDateString()}
+                        </p>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-gray-400 text-sm">-</span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <GradeBadge grade={rule.grade as 'A' | 'B' | 'C' | 'D' | 'F'} />
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className={`text-lg font-semibold ${
+                        rule.score >= 80 ? 'text-green-400' :
+                        rule.score >= 60 ? 'text-yellow-400' : 'text-red-400'
+                      }`}>
+                        {Math.round(rule.score)}%
                       </span>
-                    )}
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className="text-green-400">{rule.true_positives}</span>
+                      <span className="text-gray-500 mx-1">/</span>
+                      <span className="text-red-400">{rule.false_positives}</span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className={`text-xs px-2 py-0.5 rounded ${
+                        rule.confidence >= 0.7 ? 'bg-green-500/20 text-green-400' :
+                        rule.confidence >= 0.4 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-red-500/20 text-red-400'
+                      }`}>
+                        {rule.confidence >= 0.7 ? 'High' : rule.confidence >= 0.4 ? 'Medium' : 'Low'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {needsReview ? (
+                        <div className="flex items-center gap-1 text-yellow-400 text-sm">
+                          <AlertTriangle className="h-4 w-4" />
+                          <span>Needs Review</span>
+                        </div>
+                      ) : (
+                        <span className="text-green-400 text-sm flex items-center gap-1">
+                          <CheckCircle className="h-4 w-4" />
+                          Good
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -1873,8 +1882,8 @@ function ScanDetailsModal({ scan, onClose }: { scan: YaraScan; onClose: () => vo
               <p className="text-white">{scan.target_path}</p>
             </div>
             <div>
-              <span className="text-gray-400">Rules Used:</span>
-              <p className="text-white">{scan.rules_used}</p>
+              <span className="text-gray-400">Type:</span>
+              <p className="text-white">{scan.target_type}</p>
             </div>
             <div>
               <span className="text-gray-400">Files Scanned:</span>
@@ -1882,15 +1891,9 @@ function ScanDetailsModal({ scan, onClose }: { scan: YaraScan; onClose: () => vo
             </div>
             <div>
               <span className="text-gray-400">Matches Found:</span>
-              <p className={scan.matches_found > 0 ? 'text-red-400 font-semibold' : 'text-white'}>{scan.matches_found}</p>
+              <p className={scan.matches_count > 0 ? 'text-red-400 font-semibold' : 'text-white'}>{scan.matches_count}</p>
             </div>
           </div>
-
-          {scan.error_message && (
-            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3">
-              <p className="text-red-400 text-sm">{scan.error_message}</p>
-            </div>
-          )}
 
           {isLoading ? (
             <div className="flex justify-center py-8">

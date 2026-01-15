@@ -98,19 +98,19 @@ pub async fn share_intelligence(
 fn is_tlp_compliant(indicator_tlp: &SharingLevel, target_level: &SharingLevel) -> bool {
     match (indicator_tlp, target_level) {
         // TLP:RED can only be shared with explicit permission (not implemented here)
-        (SharingLevel::TLP_RED, _) => false,
+        (SharingLevel::TlpRed, _) => false,
 
         // TLP:AMBER can be shared with limited disclosure networks
-        (SharingLevel::TLP_AMBER, SharingLevel::TLP_AMBER) => true,
-        (SharingLevel::TLP_AMBER, SharingLevel::TLP_RED) => true,
-        (SharingLevel::TLP_AMBER, _) => false,
+        (SharingLevel::TlpAmber, SharingLevel::TlpAmber) => true,
+        (SharingLevel::TlpAmber, SharingLevel::TlpRed) => true,
+        (SharingLevel::TlpAmber, _) => false,
 
         // TLP:GREEN can be shared with community
-        (SharingLevel::TLP_GREEN, SharingLevel::TLP_WHITE) => false,
-        (SharingLevel::TLP_GREEN, _) => true,
+        (SharingLevel::TlpGreen, SharingLevel::TlpWhite) => false,
+        (SharingLevel::TlpGreen, _) => true,
 
         // TLP:WHITE can be shared anywhere
-        (SharingLevel::TLP_WHITE, _) => true,
+        (SharingLevel::TlpWhite, _) => true,
     }
 }
 

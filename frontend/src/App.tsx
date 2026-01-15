@@ -127,6 +127,12 @@ const IotSecurityPage = lazy(() => import('./pages/IotSecurityPage'));
 const ScaPage = lazy(() => import('./pages/ScaPage'));
 const CicdIntegrationPage = lazy(() => import('./pages/CicdIntegrationPage'));
 
+// ACAS Integration Pages (SCAP, eMASS, Windows Audit, Audit Files)
+const ScapScannerPage = lazy(() => import('./pages/ScapPage'));
+const EmassPage = lazy(() => import('./pages/EmassPage'));
+const WindowsAuditPage = lazy(() => import('./pages/WindowsAuditPage'));
+const AuditFilesPage = lazy(() => import('./pages/AuditFilesPage'));
+
 // SOAR Playbooks (Sprint 11-12 - Priority 2)
 const SoarPlaybooksPage = lazy(() => import('./pages/SoarPlaybooksPage'));
 
@@ -858,6 +864,40 @@ function App() {
             element={
               <ProtectedRoute>
                 <MlModelsPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* ACAS Integration Routes */}
+          <Route
+            path="/scap"
+            element={
+              <ProtectedRoute>
+                <ScapScannerPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/emass"
+            element={
+              <ProtectedRoute>
+                <EmassPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/windows-audit"
+            element={
+              <ProtectedRoute>
+                <WindowsAuditPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/audit-files"
+            element={
+              <ProtectedRoute>
+                <AuditFilesPage />
               </ProtectedRoute>
             }
           />

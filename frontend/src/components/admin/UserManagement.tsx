@@ -20,7 +20,15 @@ import {
   Lock,
   ShieldCheck,
   ShieldOff,
-  Key
+  Key,
+  // Team role icons
+  Swords,
+  ShieldAlert,
+  Cpu,
+  Scale,
+  GraduationCap,
+  Workflow,
+  Eye,
 } from 'lucide-react';
 
 interface ExpandedUser {
@@ -140,6 +148,21 @@ const UserManagement: React.FC = () => {
         return <Shield className="h-4 w-4" />;
       case 'auditor':
         return <ShieldOff className="h-4 w-4" />;
+      // Team role icons
+      case 'red_team':
+        return <Swords className="h-4 w-4" />;
+      case 'blue_team':
+        return <ShieldAlert className="h-4 w-4" />;
+      case 'yellow_team':
+        return <Cpu className="h-4 w-4" />;
+      case 'white_team':
+        return <Scale className="h-4 w-4" />;
+      case 'orange_team':
+        return <GraduationCap className="h-4 w-4" />;
+      case 'green_team':
+        return <Workflow className="h-4 w-4" />;
+      case 'purple_team':
+        return <Eye className="h-4 w-4" />;
       default:
         return <Shield className="h-4 w-4" />;
     }
@@ -159,6 +182,21 @@ const UserManagement: React.FC = () => {
         return 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30';
       case 'viewer':
         return 'text-slate-400 bg-slate-500/10 border-slate-500/30';
+      // Team role colors
+      case 'red_team':
+        return 'text-red-400 bg-red-500/10 border-red-500/30';
+      case 'blue_team':
+        return 'text-blue-400 bg-blue-500/10 border-blue-500/30';
+      case 'yellow_team':
+        return 'text-yellow-400 bg-yellow-500/10 border-yellow-500/30';
+      case 'white_team':
+        return 'text-slate-300 bg-slate-500/10 border-slate-500/30';
+      case 'orange_team':
+        return 'text-orange-400 bg-orange-500/10 border-orange-500/30';
+      case 'green_team':
+        return 'text-green-400 bg-green-500/10 border-green-500/30';
+      case 'purple_team':
+        return 'text-purple-400 bg-purple-500/10 border-purple-500/30';
       default:
         return 'text-green-400 bg-green-500/10 border-green-500/30';
     }
@@ -528,7 +566,7 @@ const RoleAssignmentModal: React.FC<RoleAssignmentModalProps> = ({
                 {selectedTemplateInfo.description || 'No description available'}
               </div>
               <div className="text-xs text-slate-500">
-                {selectedTemplateInfo.permissions.length} permissions
+                {(selectedTemplateInfo.permissions?.length ?? 0)} permissions
               </div>
             </div>
           )}

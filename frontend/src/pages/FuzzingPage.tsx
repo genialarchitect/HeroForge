@@ -27,6 +27,8 @@ import {
 } from 'lucide-react';
 import { fuzzingAPI } from '../services/api';
 import Layout from '../components/layout/Layout';
+import { EngagementRequiredBanner } from '../components/engagement';
+import { useRequireEngagement } from '../hooks/useRequireEngagement';
 import type {
   FuzzingCampaign,
   FuzzingCrash,
@@ -816,6 +818,7 @@ const FuzzingPage: React.FC = () => {
   const queryClient = useQueryClient();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedCampaign, setSelectedCampaign] = useState<FuzzingCampaign | null>(null);
+  const { hasEngagement } = useRequireEngagement();
 
   // Fetch campaigns
   const { data: campaigns, isLoading: campaignsLoading, refetch } = useQuery({
@@ -901,13 +904,16 @@ const FuzzingPage: React.FC = () => {
             </button>
             <button
               onClick={() => setShowCreateModal(true)}
-              className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg transition-colors flex items-center"
+              disabled={!hasEngagement}
+              className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg transition-colors flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Plus className="w-5 h-5 mr-2" />
               New Campaign
             </button>
           </div>
         </div>
+
+        <EngagementRequiredBanner toolName="Fuzzing Framework" className="mb-6" />
 
         {/* Stats */}
         {stats && (

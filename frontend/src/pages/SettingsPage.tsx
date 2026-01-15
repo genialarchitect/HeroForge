@@ -20,9 +20,10 @@ import ScheduledReports from '../components/settings/ScheduledReports';
 import WebhookSettings from '../components/settings/WebhookSettings';
 import CiCdSettings from '../components/settings/CiCdSettings';
 import SsoSettings from '../components/settings/SsoSettings';
-import { Target, Clock, Bell, Settings, GitCompare, FileText, User, Shield, Lock, Key, ExternalLink, Database, Wifi, BookOpen, Ban, Mail, Webhook, Building2, Server, GitBranch, Users } from 'lucide-react';
+import AiConfiguration from '../components/settings/AiConfiguration';
+import { Target, Clock, Bell, Settings, GitCompare, FileText, User, Shield, Lock, Key, ExternalLink, Database, Wifi, BookOpen, Ban, Mail, Webhook, Building2, Server, GitBranch, Users, Bot } from 'lucide-react';
 
-type TabId = 'profile' | 'security' | 'api-keys' | 'administration' | 'sso' | 'target-groups' | 'exclusions' | 'scheduled-scans' | 'scheduled-reports' | 'templates' | 'finding-templates' | 'vpn' | 'agents' | 'notifications' | 'webhooks' | 'jira-integration' | 'servicenow-integration' | 'siem-integration' | 'cicd' | 'compare-scans';
+type TabId = 'profile' | 'security' | 'api-keys' | 'administration' | 'sso' | 'ai-configuration' | 'target-groups' | 'exclusions' | 'scheduled-scans' | 'scheduled-reports' | 'templates' | 'finding-templates' | 'vpn' | 'agents' | 'notifications' | 'webhooks' | 'jira-integration' | 'servicenow-integration' | 'siem-integration' | 'cicd' | 'compare-scans';
 
 interface Tab {
   id: TabId;
@@ -77,6 +78,12 @@ const SettingsPage: React.FC = () => {
           label: 'SSO',
           icon: <Users className="h-4 w-4" />,
           component: <SsoSettings />,
+        },
+        {
+          id: 'ai-configuration',
+          label: 'AI Settings',
+          icon: <Bot className="h-4 w-4" />,
+          component: <AiConfiguration />,
         },
       ],
     },

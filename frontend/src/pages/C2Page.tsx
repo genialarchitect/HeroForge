@@ -30,6 +30,8 @@ import {
 } from 'lucide-react';
 import Layout from '../components/layout/Layout';
 import Button from '../components/ui/Button';
+import { EngagementRequiredBanner } from '../components/engagement';
+import { useRequireEngagement } from '../hooks/useRequireEngagement';
 import api from '../services/api';
 
 // Types
@@ -303,6 +305,7 @@ const SessionRow: React.FC<{ session: SessionSummary }> = ({ session }) => {
 // Main page component
 const C2Page: React.FC = () => {
   const queryClient = useQueryClient();
+  const { hasEngagement } = useRequireEngagement();
   const [activeTab, setActiveTab] = useState<'servers' | 'sessions' | 'listeners' | 'implants' | 'credentials'>('servers');
   const [selectedServer, setSelectedServer] = useState<string | null>(null);
   const [showAddServer, setShowAddServer] = useState(false);
@@ -414,11 +417,13 @@ const C2Page: React.FC = () => {
               Manage Command & Control frameworks and sessions
             </p>
           </div>
-          <Button onClick={() => setShowAddServer(true)}>
+          <Button onClick={() => setShowAddServer(true)} disabled={!hasEngagement}>
             <Plus className="h-4 w-4 mr-2" />
             Add C2 Server
           </Button>
         </div>
+
+        <EngagementRequiredBanner toolName="C2 Framework Integration" />
 
         {/* Warning Banner */}
         <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4 flex items-start gap-3">

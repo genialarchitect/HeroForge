@@ -99,6 +99,65 @@ export interface SubmitAIFeedbackRequest {
 }
 
 // ============================================================================
+// AI Configuration Types (LLM Provider Settings)
+// ============================================================================
+
+export type LLMProviderType = 'anthropic' | 'ollama' | 'openai';
+
+export interface AiConfigurationResponse {
+  provider: string;
+  model: string;
+  ollama_base_url: string | null;
+  has_anthropic_key: boolean;
+  has_openai_key: boolean;
+  fallback_provider: string | null;
+  auto_reports: boolean;
+  auto_remediation: boolean;
+  updated_at: string | null;
+}
+
+export interface UpdateAiConfigurationRequest {
+  provider: string;
+  model?: string;
+  anthropic_api_key?: string;
+  openai_api_key?: string;
+  ollama_base_url?: string;
+  ollama_model?: string;
+  fallback_provider?: string;
+  auto_reports?: boolean;
+  auto_remediation?: boolean;
+}
+
+export interface ProviderStatusResponse {
+  provider: string;
+  name: string;
+  model: string;
+  available: boolean;
+  streaming: boolean;
+  max_context_tokens: number;
+}
+
+export interface TestConnectionResponse {
+  success: boolean;
+  message: string;
+  provider: string;
+  model: string;
+  response_time_ms: number | null;
+}
+
+export interface ModelInfo {
+  id: string;
+  name: string;
+  description: string | null;
+}
+
+export interface AvailableModelsResponse {
+  anthropic: ModelInfo[];
+  ollama: ModelInfo[];
+  openai: ModelInfo[];
+}
+
+// ============================================================================
 // SSO (SAML/OIDC) Types
 // ============================================================================
 

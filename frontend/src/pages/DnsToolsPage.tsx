@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import Layout from '../components/layout/Layout';
+import { EngagementRequiredBanner } from '../components/engagement';
+import { useRequireEngagement } from '../hooks/useRequireEngagement';
 import { DnsReconForm, DnsReconResults } from '../components/dns';
 import Card from '../components/ui/Card';
 import Badge from '../components/ui/Badge';
@@ -26,6 +28,7 @@ const DnsToolsPage: React.FC = () => {
   const [viewMode, setViewMode] = useState<'new' | 'result' | 'history'>('new');
   const [deleteConfirm, setDeleteConfirm] = useState<DnsReconListItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const { hasEngagement } = useRequireEngagement();
 
   useEffect(() => {
     loadRecentScans();
@@ -93,7 +96,11 @@ const DnsToolsPage: React.FC = () => {
               Enumerate DNS records, discover subdomains, and check security configuration
             </p>
           </div>
-          <div className="flex items-center gap-3">
+        </div>
+
+        <EngagementRequiredBanner toolName="DNS Reconnaissance Tools" className="mb-6" />
+
+        <div className="flex items-center justify-end gap-3 mb-6">
             <Button
               variant={viewMode === 'new' ? 'primary' : 'secondary'}
               onClick={() => setViewMode('new')}
@@ -106,7 +113,6 @@ const DnsToolsPage: React.FC = () => {
             >
               History ({recentScans.length})
             </Button>
-          </div>
         </div>
 
         {/* Content */}
