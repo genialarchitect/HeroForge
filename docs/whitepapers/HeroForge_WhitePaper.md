@@ -120,9 +120,11 @@ HeroForge implements a comprehensive "colored teams" architecture that organizes
 
 HeroForge's Red Team capabilities encompass the complete offensive security lifecycle across three primary domains.
 
-**Reconnaissance and Discovery.** The platform provides comprehensive reconnaissance capabilities including multi-protocol network scanning (TCP Connect, SYN, UDP), advanced service detection with version fingerprinting, DNS reconnaissance including zone transfers and subdomain enumeration, SSL/TLS analysis with JA3 fingerprinting, and attack surface management with continuous monitoring.
+**Reconnaissance and Discovery.** The platform provides comprehensive reconnaissance capabilities including multi-protocol network scanning (TCP Connect, SYN, UDP), advanced service detection with 100+ service signatures (including industrial protocols like Modbus, S7comm, DNP3, and modern services like Kafka, ClickHouse, and container runtimes), DNS reconnaissance including zone transfers, subdomain enumeration, SRV/CAA/DNSSEC validation, and subdomain mutation/permutation generation, SSL/TLS analysis with JA3 fingerprinting, and attack surface management with continuous monitoring at configurable intervals.
 
-**Vulnerability Assessment.** Assessment capabilities include CVE detection with three-tier lookup (offline database, cache, NVD API), Nuclei integration with over 10,000 community templates, container and Kubernetes vulnerability scanning, Infrastructure as Code (IaC) security analysis, and cloud security assessment across AWS, Azure, and GCP platforms.
+**Passive Reconnaissance.** Automated passive intelligence gathering from multiple sources including Certificate Transparency logs (crt.sh), Wayback Machine historical URLs, GitHub code search for leaked credentials, SecurityTrails DNS intelligence, and sensitive path detection from archived content.
+
+**Vulnerability Assessment.** Assessment capabilities include CVE detection with three-tier lookup (offline database, cache, NVD API), Nuclei integration with over 10,000 community templates, 50+ built-in misconfiguration checks (MongoDB no-auth, Redis exposed, Elasticsearch open, Jenkins, Docker API, Kubernetes API, etcd, and more), container and Kubernetes vulnerability scanning, Infrastructure as Code (IaC) security analysis, GraphQL security testing (introspection exposure, batch query attacks, query depth DoS, injection vectors), and cloud security assessment across AWS, Azure, and GCP platforms. Database credential testing supports MySQL, PostgreSQL, MSSQL, MongoDB, Redis, and Cassandra with default credential and password spray capabilities.
 
 **Exploitation and Post-Exploitation.** The platform supports password spraying and credential testing, Kerberos attacks (AS-REP roasting, Kerberoasting), privilege escalation detection through LinPEAS and WinPEAS integration, hash cracking with Hashcat and John the Ripper integration, and a custom C2 framework for authorized red team operations.
 
@@ -176,7 +178,13 @@ Security awareness addresses the human element through interactive training modu
 
 Comprehensive GRC capabilities ensure organizational compliance across three domains.
 
-**Compliance Frameworks.** Supported frameworks include PCI-DSS 4.0, HIPAA, SOC 2, NIST 800-53, NIST CSF, CIS Benchmarks, ISO 27001, GDPR, HITRUST CSF, and FERPA. The platform supports both automated and manual compliance assessment along with evidence collection and management.
+**Compliance Frameworks.** The platform supports 45 compliance frameworks organized into three categories:
+
+- *Core Frameworks:* PCI-DSS 4.0, HIPAA, SOC 2, NIST 800-53, NIST CSF, CIS Benchmarks, ISO 27001:2022, GDPR, HITRUST CSF, FERPA, DoD STIG, OWASP Top 10
+- *US Federal Frameworks:* FedRAMP, CMMC 2.0, FISMA, NIST 800-171, NIST 800-82, NIST 800-61, StateRAMP, ITAR, EAR, DFARS, ICD 503, CNSSI 1253, RMF, DISA Cloud SRG, DoD Zero Trust, NIST Privacy Framework
+- *Industry and International:* CSA CCM, NERC CIP, IEC 62443, TSA Pipeline Security, CISA CPGs, EO 14028, SOX IT Controls, GLBA, Cyber Essentials (UK), Australian ISM, IRAP, NIS2 Directive, ENS (Spain), BSI IT-Grundschutz, C5, SecNumCloud, NATO Cyber Defence
+
+The platform supports both automated and manual compliance assessment along with evidence collection and management.
 
 **Risk Management.** Risk capabilities include quantitative and qualitative risk analysis, vendor risk management, risk treatment tracking, and board-level reporting.
 
@@ -217,7 +225,7 @@ HeroForge's decision to build on Rust represents a strategic investment in long-
 
 **REST API.** The API layer provides over 160 endpoints covering all platform functions, JWT authentication with refresh token support, rate limiting to prevent abuse, and comprehensive Swagger documentation.
 
-**External Integrations.** Supported integrations include JIRA and ServiceNow for ticket management, Slack and Microsoft Teams for notifications, Splunk, Elasticsearch, and QRadar for SIEM, and GitHub, GitLab, and Bitbucket for DevSecOps.
+**External Integrations.** Supported integrations include JIRA and ServiceNow for ticket management with bi-directional synchronization (status updates, comment sync, auto-close on verification), Slack and Microsoft Teams for notifications, Splunk, Elasticsearch, and QRadar for SIEM, and GitHub, GitLab, and Bitbucket for DevSecOps. The bi-directional sync engine supports webhook receivers for real-time updates and conflict resolution for simultaneous edits.
 
 ---
 
@@ -239,6 +247,30 @@ Organizations implementing unified platforms like HeroForge can expect significa
 ### Mean Time to Remediate
 
 Unified platforms significantly reduce MTTR through automatic prioritization based on exploitability and business context, remediation workflows that route findings to appropriate teams, verification scanning to confirm fix effectiveness, and SLA tracking with escalation automation.
+
+### Finding Lifecycle Management
+
+HeroForge implements comprehensive finding lifecycle tracking with seven distinct states:
+
+1. **Discovered** → Initial detection from scanning
+2. **Triaged** → Analyst review and validation
+3. **Acknowledged** → Stakeholder acceptance
+4. **In Remediation** → Active fix in progress
+5. **Verification Pending** → Fix applied, awaiting verification
+6. **Verified** → Remediation confirmed effective
+7. **Closed** → Finding resolved and archived
+
+Each state transition is tracked with timestamps, user attribution, and optional notes. SLA policies can be configured per severity level with automatic breach detection and escalation. The Kanban-style interface enables drag-and-drop state transitions with bulk operations for efficient triage workflows.
+
+### Continuous Monitoring
+
+The continuous monitoring engine provides near real-time attack surface visibility:
+
+- **Lightweight scans** every 5 seconds for critical asset changes
+- **Full scans** at configurable intervals (minimum 60 seconds, default 4 hours)
+- **Change detection alerts** for new ports, closed ports, service changes, new vulnerabilities
+- **Baseline comparison** with deviation reporting
+- **Finding deduplication** across scans with fingerprint-based correlation
 
 
 ### Coverage and Visibility
@@ -294,6 +326,14 @@ HeroForge addresses security challenges beyond traditional IT across four emergi
 ### Multi-Tenancy and Customer Portal
 
 HeroForge supports managed security service providers (MSSPs) with complete multi-tenancy with data isolation, customer-facing portal for vulnerability visibility, white-label reporting capabilities, and CRM integration for engagement management.
+
+**Portal Collaboration Features.** The customer portal includes threaded discussions on findings for client-consultant communication, severity dispute workflow with escalation, bulk vulnerability acknowledgment for efficient triage, and file attachments for evidence sharing. Clients can track remediation progress, upload evidence of fixes, and participate in the verification workflow.
+
+**Engagement Templates.** One-click engagement creation with pre-configured templates for common assessment types (External Pentest, Web Application Assessment, Cloud Security Review, Compliance Audit). Templates auto-create workflows, scan configurations, portal users, default milestones, SLA definitions, and pre-select relevant compliance frameworks.
+
+### Custom Report Builder
+
+The drag-and-drop report builder enables custom report creation with reusable section templates, custom branding (logos, colors, fonts), template marketplace for sharing across organizations, and version control for template evolution. Reports can include AI-generated narratives, interactive charts, and evidence screenshots.
 
 ---
 
@@ -360,7 +400,14 @@ The cybersecurity industry is moving toward platform consolidation as evidenced 
 
 The future of security platforms will be increasingly AI-powered with capabilities expanding over time.
 
-**Current HeroForge AI Capabilities.** The platform provides LLM orchestration for multi-model support (Claude, GPT, local models), ML-based vulnerability prioritization, AI-generated reports and analysis, and predictive threat scoring.
+**Current HeroForge AI Capabilities.** The platform provides comprehensive AI-powered features:
+
+- *LLM Orchestration:* Multi-model support (Claude, GPT, local models) with model fingerprinting and security testing
+- *AI-Generated Report Narratives:* Executive summaries with business impact context, risk contextualization explaining "why this matters," remediation priority rationale, and plain-language technical explanations
+- *Intelligent Remediation Roadmapping:* AI-powered dependency analysis between findings, week-by-week remediation phases, critical path identification, resource allocation suggestions, and risk reduction projections
+- *Attack Path AI Interpretation:* Natural language attack chain narratives ("An attacker could..."), business impact context, MITRE ATT&CK chain mapping, and recommended blocking points
+- *ML-Based Prioritization:* False positive prediction with confidence scoring, exploitability assessment, and business context weighting
+- *Enhanced Chat Context:* Scan-aware conversations, finding explanations, and trend analysis through natural language
 
 **Roadmap Directions.** Future capabilities include autonomous threat hunting, AI-assisted incident response, automated detection engineering, and natural language security queries.
 
@@ -420,10 +467,12 @@ HeroForge is a unified cybersecurity platform designed for authorized penetratio
 
 | Metric | Value |
 |--------|-------|
-| Core Modules | 83 |
-| API Endpoints | 160+ |
-| Frontend Pages | 99 |
-| Compliance Frameworks | 10+ |
+| Core Modules | 86+ |
+| API Endpoints | 200+ |
+| Frontend Pages | 99+ |
+| Compliance Frameworks | 45 |
+| Service Signatures | 100+ |
+| Misconfiguration Checks | 50+ |
 | Cloud Platforms | AWS, Azure, GCP |
 | Integration Partners | JIRA, ServiceNow, Slack, Teams, Splunk, and more |
 
