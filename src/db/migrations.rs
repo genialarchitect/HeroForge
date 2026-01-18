@@ -342,8 +342,7 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     create_engagement_templates_table(pool).await?;
     // Portal Collaboration tables (discussions, disputes, acknowledgments, attachments)
     create_portal_collaboration_tables(pool).await?;
-    // Custom Report Templates table
-    create_custom_report_templates_table(pool).await?;
+    // Note: Custom report templates table already created by create_custom_report_templates_tables() above
     // Finding Lifecycle Management tables
     create_finding_lifecycle_tables(pool).await?;
     // Passive Reconnaissance Results tables
