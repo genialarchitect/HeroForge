@@ -10,7 +10,7 @@
 
 **Date:** January 2026
 
-**Version:** 1.0
+**Version:** 2.0
 
 **Document Classification:** Public Distribution
 
