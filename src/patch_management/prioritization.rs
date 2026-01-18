@@ -557,8 +557,8 @@ mod tests {
     #[test]
     fn test_analyze_dependencies() {
         let deps = analyze_dependencies("KB5001234").unwrap();
-        // May or may not have dependencies
-        assert!(deps.len() >= 0);
+        // Verify function returns a valid vector (may be empty)
+        let _ = deps.len();
     }
 
     #[test]

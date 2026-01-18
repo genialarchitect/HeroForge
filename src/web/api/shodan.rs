@@ -126,19 +126,20 @@ pub async fn get_status(
     _claims: web::ReqData<Claims>,
     pool: web::Data<SqlitePool>,
 ) -> Result<HttpResponse> {
-    let api_key = get_shodan_api_key();
+    let api_key = match get_shodan_api_key() {
+        Some(key) => key,
+        None => {
+            return Ok(HttpResponse::Ok().json(ShodanStatusResponse {
+                available: false,
+                query_credits: None,
+                scan_credits: None,
+                plan: None,
+                cache_stats: None,
+            }));
+        }
+    };
 
-    if api_key.is_none() {
-        return Ok(HttpResponse::Ok().json(ShodanStatusResponse {
-            available: false,
-            query_credits: None,
-            scan_credits: None,
-            plan: None,
-            cache_stats: None,
-        }));
-    }
-
-    let client = match ShodanClient::new(api_key.unwrap()) {
+    let client = match ShodanClient::new(api_key) {
         Ok(c) => c,
         Err(e) => {
             error!("Failed to create Shodan client: {}", e);

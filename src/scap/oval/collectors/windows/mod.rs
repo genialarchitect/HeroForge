@@ -27,6 +27,8 @@ use serde::{Deserialize, Serialize};
 use crate::scap::oval::types::{
     OvalItem, OvalObject, OvalValue, ItemStatus, ObjectType,
 };
+use crate::scanner::windows_audit::client::WinRmClient;
+use crate::scanner::windows_audit::types::WindowsCredentials;
 
 /// Trait for Windows OVAL collectors
 #[async_trait]
@@ -71,6 +73,62 @@ impl Default for CollectionContext {
             timeout_seconds: 30,
             skip_cert_verify: false,
         }
+    }
+}
+
+impl CollectionContext {
+    /// Create a new context with required connection parameters
+    pub fn new(target: &str, username: &str, password: &str) -> Self {
+        Self {
+            target: target.to_string(),
+            username: Some(username.to_string()),
+            password: Some(password.to_string()),
+            ..Default::default()
+        }
+    }
+
+    /// Set the domain for authentication
+    pub fn with_domain(mut self, domain: &str) -> Self {
+        self.domain = Some(domain.to_string());
+        self
+    }
+
+    /// Set SSL usage
+    pub fn with_ssl(mut self, use_ssl: bool) -> Self {
+        self.use_ssl = use_ssl;
+        self
+    }
+
+    /// Execute a PowerShell script on the target system via WinRM
+    pub async fn execute_script(&self, script: &str) -> Result<String> {
+        let username = self.username.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Username not configured for WinRM"))?;
+        let password = self.password.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Password not configured for WinRM"))?;
+
+        // Create Windows credentials
+        let credentials = WindowsCredentials {
+            username: username.clone(),
+            password: password.clone(),
+            domain: self.domain.clone(),
+            auth_type: crate::scanner::windows_audit::types::WindowsAuthType::Ntlm,
+        };
+
+        // Create WinRM client
+        let mut client = WinRmClient::new(&self.target, credentials);
+
+        // Configure SSL
+        if !self.use_ssl {
+            client = client.without_ssl();
+        }
+
+        // Execute the script
+        client.execute_powershell(script).await
+    }
+
+    /// Check if the context has valid credentials configured
+    pub fn has_credentials(&self) -> bool {
+        self.username.is_some() && self.password.is_some() && !self.target.is_empty()
     }
 }
 
@@ -290,8 +348,8 @@ mod tests {
             OvalValue::Int(i) => assert_eq!(i, 123),
             _ => panic!("Expected Int"),
         }
-        match parse_oval_value("3.14", "float") {
-            OvalValue::Float(f) => assert!((f - 3.14).abs() < 0.001),
+        match parse_oval_value("2.5", "float") {
+            OvalValue::Float(f) => assert!((f - 2.5_f64).abs() < 0.001),
             _ => panic!("Expected Float"),
         }
         match parse_oval_value("true", "boolean") {

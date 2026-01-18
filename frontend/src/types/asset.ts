@@ -481,6 +481,41 @@ export interface UpdateChecklistItemRequest {
 }
 
 // ============================================================================
+// Exploit/Scanner Types
+// ============================================================================
+
+export interface ExploitItemRequest {
+  target_url?: string;
+  target_ip?: string;
+  target_domain?: string;
+  target_port?: number;
+  safe_mode?: boolean;
+  timeout_secs?: number;
+}
+
+export interface ExploitItemResponse {
+  success: boolean;
+  item_code: string;
+  scanner_type: string;
+  findings_count: number;
+  recommended_status: string;
+  summary: string;
+  findings: unknown[];
+  evidence: string[];
+  duration_secs: number;
+  item_updated: boolean;
+}
+
+export interface ScannerMapping {
+  item_code: string;
+  scanner_type: string;
+  description: string;
+  requires_url: boolean;
+  requires_ip: boolean;
+  is_safe: boolean;
+}
+
+// ============================================================================
 // Executive Analytics Types
 // ============================================================================
 

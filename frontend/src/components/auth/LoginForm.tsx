@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import Button from '../ui/Button';
@@ -44,25 +44,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister }) => {
     fetchSsoProviders();
   }, []);
 
-  // Handle SSO callback tokens
-  useEffect(() => {
-    const token = searchParams.get('token');
-    const error = searchParams.get('sso_error');
-
-    if (error) {
-      toast.error(decodeURIComponent(error));
-      // Clear the URL params
-      window.history.replaceState({}, document.title, window.location.pathname);
-      return;
-    }
-
-    if (token) {
-      // SSO login successful - validate the token and log in
-      handleSsoCallback(token);
-    }
-  }, [searchParams]);
-
-  const handleSsoCallback = async (token: string) => {
+  const handleSsoCallback = useCallback(async (token: string) => {
     try {
       setSsoLoading(true);
       // Temporarily set the token in localStorage so the API can use it
@@ -89,7 +71,25 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister }) => {
     } finally {
       setSsoLoading(false);
     }
-  };
+  }, [navigate, setLogin]);
+
+  // Handle SSO callback tokens
+  useEffect(() => {
+    const token = searchParams.get('token');
+    const error = searchParams.get('sso_error');
+
+    if (error) {
+      toast.error(decodeURIComponent(error));
+      // Clear the URL params
+      window.history.replaceState({}, document.title, window.location.pathname);
+      return;
+    }
+
+    if (token) {
+      // SSO login successful - validate the token and log in
+      handleSsoCallback(token);
+    }
+  }, [searchParams, handleSsoCallback]);
 
   const handleSsoLogin = async (provider: SsoProviderForLogin) => {
     try {

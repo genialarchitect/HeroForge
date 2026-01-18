@@ -520,3 +520,205 @@ pub async fn delete_finding_note(
     info!("Deleted finding note for report {}, finding {}", report_id, finding_id);
     HttpResponse::NoContent().finish()
 }
+
+/// Get a preview of a report
+/// Returns a lightweight HTML preview suitable for embedding
+pub async fn preview_report(
+    req: HttpRequest,
+    pool: web::Data<SqlitePool>,
+    path: web::Path<String>,
+) -> HttpResponse {
+    let claims = match req.extensions().get::<Claims>() {
+        Some(claims) => claims.clone(),
+        None => return HttpResponse::Unauthorized().json(serde_json::json!({"error": "Unauthorized"})),
+    };
+
+    let report_id = path.into_inner();
+
+    let report = match db::get_report_by_id(&pool, &report_id).await {
+        Ok(Some(r)) => r,
+        Ok(None) => return HttpResponse::NotFound().json(serde_json::json!({"error": "Report not found"})),
+        Err(e) => {
+            error!("Database error: {}", e);
+            return HttpResponse::InternalServerError().json(serde_json::json!({"error": "Database error"}));
+        }
+    };
+
+    // Verify ownership (unless admin)
+    if report.user_id != claims.sub && !claims.roles.contains(&"admin".to_string()) {
+        return HttpResponse::Forbidden().json(serde_json::json!({"error": "Access denied"}));
+    }
+
+    // Check if report is completed
+    if report.status != "completed" {
+        return HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "Report not ready",
+            "status": report.status
+        }));
+    }
+
+    // Get scan data for the preview
+    let scan = match db::get_scan_by_id(&pool, &report.scan_id).await {
+        Ok(Some(s)) => s,
+        Ok(None) => return HttpResponse::InternalServerError().json(serde_json::json!({"error": "Scan not found"})),
+        Err(e) => {
+            error!("Database error: {}", e);
+            return HttpResponse::InternalServerError().json(serde_json::json!({"error": "Database error"}));
+        }
+    };
+
+    // Parse hosts from scan results for summary stats
+    let hosts: Vec<crate::types::HostInfo> = if let Some(ref results_json) = scan.results {
+        serde_json::from_str(results_json).unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+
+    // Calculate summary statistics
+    let total_hosts = hosts.len();
+    let total_ports: usize = hosts.iter().map(|h| h.ports.len()).sum();
+    let total_vulns: usize = hosts.iter().map(|h| h.vulnerabilities.len()).sum();
+    let critical_vulns = hosts.iter()
+        .flat_map(|h| h.vulnerabilities.iter())
+        .filter(|v| matches!(v.severity, crate::types::Severity::Critical))
+        .count();
+    let high_vulns = hosts.iter()
+        .flat_map(|h| h.vulnerabilities.iter())
+        .filter(|v| matches!(v.severity, crate::types::Severity::High))
+        .count();
+    let medium_vulns = hosts.iter()
+        .flat_map(|h| h.vulnerabilities.iter())
+        .filter(|v| matches!(v.severity, crate::types::Severity::Medium))
+        .count();
+    let low_vulns = hosts.iter()
+        .flat_map(|h| h.vulnerabilities.iter())
+        .filter(|v| matches!(v.severity, crate::types::Severity::Low))
+        .count();
+
+    // Generate preview HTML
+    let preview_html = format!(r#"
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Report Preview: {}</title>
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; padding: 2rem; }}
+        .header {{ margin-bottom: 2rem; }}
+        .title {{ font-size: 1.5rem; font-weight: 600; color: #fff; margin-bottom: 0.5rem; }}
+        .meta {{ color: #94a3b8; font-size: 0.875rem; }}
+        .card {{ background: #1e293b; border-radius: 0.5rem; padding: 1.5rem; margin-bottom: 1rem; }}
+        .card-title {{ font-size: 1rem; font-weight: 500; color: #fff; margin-bottom: 1rem; }}
+        .stats {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 1rem; }}
+        .stat {{ text-align: center; }}
+        .stat-value {{ font-size: 1.5rem; font-weight: 600; color: #22d3ee; }}
+        .stat-label {{ font-size: 0.75rem; color: #94a3b8; margin-top: 0.25rem; }}
+        .vuln-bar {{ display: flex; gap: 0.5rem; margin-top: 1rem; }}
+        .vuln-item {{ flex: 1; text-align: center; padding: 0.75rem; border-radius: 0.375rem; }}
+        .critical {{ background: rgba(239, 68, 68, 0.2); color: #fca5a5; }}
+        .high {{ background: rgba(249, 115, 22, 0.2); color: #fdba74; }}
+        .medium {{ background: rgba(234, 179, 8, 0.2); color: #fcd34d; }}
+        .low {{ background: rgba(34, 197, 94, 0.2); color: #86efac; }}
+        .badge {{ display: inline-block; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; }}
+        .badge-format {{ background: rgba(34, 211, 238, 0.2); color: #22d3ee; }}
+        .badge-template {{ background: rgba(168, 85, 247, 0.2); color: #c4b5fd; }}
+        .hosts-list {{ margin-top: 1rem; }}
+        .host-item {{ background: #334155; border-radius: 0.375rem; padding: 0.75rem; margin-bottom: 0.5rem; }}
+        .host-ip {{ font-weight: 500; color: #fff; }}
+        .host-details {{ font-size: 0.75rem; color: #94a3b8; margin-top: 0.25rem; }}
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1 class="title">{}</h1>
+        <p class="meta">
+            <span class="badge badge-format">{}</span>
+            <span class="badge badge-template">{}</span>
+            &nbsp;&bull;&nbsp; Generated: {}
+        </p>
+    </div>
+
+    <div class="card">
+        <h2 class="card-title">Summary</h2>
+        <div class="stats">
+            <div class="stat">
+                <div class="stat-value">{}</div>
+                <div class="stat-label">Hosts</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value">{}</div>
+                <div class="stat-label">Open Ports</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value">{}</div>
+                <div class="stat-label">Vulnerabilities</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2 class="card-title">Vulnerability Breakdown</h2>
+        <div class="vuln-bar">
+            <div class="vuln-item critical">
+                <div style="font-size: 1.25rem; font-weight: 600;">{}</div>
+                <div style="font-size: 0.75rem;">Critical</div>
+            </div>
+            <div class="vuln-item high">
+                <div style="font-size: 1.25rem; font-weight: 600;">{}</div>
+                <div style="font-size: 0.75rem;">High</div>
+            </div>
+            <div class="vuln-item medium">
+                <div style="font-size: 1.25rem; font-weight: 600;">{}</div>
+                <div style="font-size: 0.75rem;">Medium</div>
+            </div>
+            <div class="vuln-item low">
+                <div style="font-size: 1.25rem; font-weight: 600;">{}</div>
+                <div style="font-size: 0.75rem;">Low</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2 class="card-title">Hosts ({} discovered)</h2>
+        <div class="hosts-list">
+            {}
+        </div>
+    </div>
+
+    <p style="margin-top: 2rem; text-align: center; color: #64748b; font-size: 0.875rem;">
+        This is a preview. Download the full report for complete details.
+    </p>
+</body>
+</html>
+"#,
+        report.name,
+        report.name,
+        report.format.to_uppercase(),
+        report.template_id,
+        report.created_at,
+        total_hosts,
+        total_ports,
+        total_vulns,
+        critical_vulns,
+        high_vulns,
+        medium_vulns,
+        low_vulns,
+        total_hosts,
+        hosts.iter().take(10).map(|h| {
+            let ports_count = h.ports.len();
+            let vulns_count = h.vulnerabilities.len();
+            format!(
+                r#"<div class="host-item"><span class="host-ip">{}</span><div class="host-details">{} ports &bull; {} vulns</div></div>"#,
+                h.target.ip,
+                ports_count,
+                vulns_count
+            )
+        }).collect::<Vec<_>>().join("")
+    );
+
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(preview_html)
+}

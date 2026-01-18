@@ -35,6 +35,18 @@ pub enum WebhookEventType {
     /// Compliance check failed
     #[serde(rename = "compliance.violation")]
     ComplianceViolation,
+    /// STIG update available
+    #[serde(rename = "stig.update_available")]
+    StigUpdateAvailable,
+    /// STIG downloaded/updated
+    #[serde(rename = "stig.updated")]
+    StigUpdated,
+    /// STIG sync completed
+    #[serde(rename = "stig.sync_completed")]
+    StigSyncCompleted,
+    /// STIG sync failed
+    #[serde(rename = "stig.sync_failed")]
+    StigSyncFailed,
 }
 
 impl WebhookEventType {
@@ -49,6 +61,10 @@ impl WebhookEventType {
             Self::VulnerabilityResolved => "vulnerability.resolved",
             Self::AssetDiscovered => "asset.discovered",
             Self::ComplianceViolation => "compliance.violation",
+            Self::StigUpdateAvailable => "stig.update_available",
+            Self::StigUpdated => "stig.updated",
+            Self::StigSyncCompleted => "stig.sync_completed",
+            Self::StigSyncFailed => "stig.sync_failed",
         }
     }
 
@@ -63,6 +79,10 @@ impl WebhookEventType {
             "vulnerability.resolved" => Some(Self::VulnerabilityResolved),
             "asset.discovered" => Some(Self::AssetDiscovered),
             "compliance.violation" => Some(Self::ComplianceViolation),
+            "stig.update_available" => Some(Self::StigUpdateAvailable),
+            "stig.updated" => Some(Self::StigUpdated),
+            "stig.sync_completed" => Some(Self::StigSyncCompleted),
+            "stig.sync_failed" => Some(Self::StigSyncFailed),
             _ => None,
         }
     }
@@ -78,6 +98,10 @@ impl WebhookEventType {
             Self::VulnerabilityResolved,
             Self::AssetDiscovered,
             Self::ComplianceViolation,
+            Self::StigUpdateAvailable,
+            Self::StigUpdated,
+            Self::StigSyncCompleted,
+            Self::StigSyncFailed,
         ]
     }
 }
@@ -202,4 +226,101 @@ pub struct TestWebhookData {
     pub webhook_id: String,
     pub webhook_name: String,
     pub timestamp: DateTime<Utc>,
+}
+
+/// STIG update available event data
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StigUpdateAvailableData {
+    /// The STIG identifier
+    pub stig_id: String,
+    /// STIG name
+    pub stig_name: String,
+    /// Current local version
+    pub current_version: i32,
+    /// Current local release
+    pub current_release: i32,
+    /// Available version
+    pub available_version: i32,
+    /// Available release
+    pub available_release: i32,
+    /// Release date of the new version
+    pub release_date: Option<String>,
+    /// Download URL
+    pub download_url: Option<String>,
+    /// When the update was detected
+    pub detected_at: DateTime<Utc>,
+}
+
+/// STIG updated event data
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StigUpdatedData {
+    /// The STIG identifier
+    pub stig_id: String,
+    /// STIG name
+    pub stig_name: String,
+    /// Previous version
+    pub old_version: Option<i32>,
+    /// Previous release
+    pub old_release: Option<i32>,
+    /// New version
+    pub new_version: i32,
+    /// New release
+    pub new_release: i32,
+    /// Path to the downloaded file
+    pub local_path: Option<String>,
+    /// When the update was applied
+    pub updated_at: DateTime<Utc>,
+    /// Change summary (if diff available)
+    pub change_summary: Option<StigChangeSummary>,
+}
+
+/// Summary of changes in a STIG update
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StigChangeSummary {
+    pub rules_added: usize,
+    pub rules_removed: usize,
+    pub rules_modified: usize,
+    pub severity_upgrades: usize,
+    pub severity_downgrades: usize,
+}
+
+/// STIG sync completed event data
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StigSyncCompletedData {
+    /// Total STIGs checked
+    pub total_checked: usize,
+    /// Number with updates available
+    pub updates_available: usize,
+    /// Number automatically updated
+    pub auto_updated: usize,
+    /// STIGs with updates pending download
+    pub pending_downloads: Vec<StigUpdateInfo>,
+    /// When the sync completed
+    pub completed_at: DateTime<Utc>,
+    /// Duration of the sync in seconds
+    pub duration_seconds: u64,
+}
+
+/// Brief info about a STIG update
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StigUpdateInfo {
+    pub stig_id: String,
+    pub stig_name: String,
+    pub current_version: i32,
+    pub current_release: i32,
+    pub available_version: i32,
+    pub available_release: i32,
+}
+
+/// STIG sync failed event data
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StigSyncFailedData {
+    /// Error message
+    pub error: String,
+    /// Which operation failed
+    pub operation: String,
+    /// STIG ID if specific to one STIG
+    pub stig_id: Option<String>,
+    /// When the failure occurred
+    pub failed_at: DateTime<Utc>,
 }

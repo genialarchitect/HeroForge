@@ -7,6 +7,9 @@ use tokio::sync::Mutex;
 use std::collections::HashMap;
 
 use crate::scanner::webapp::{WebAppScanConfig, scan_webapp};
+use crate::scanner::webapp::graphql::{
+    self, types::{GraphQLScanConfig, GraphQLScanResult, GraphQLEndpoint},
+};
 use crate::types::WebAppScanResult;
 // Auth is extracted via web::ReqData
 
@@ -47,15 +50,54 @@ pub struct WebAppScanStatusResponse {
 // Simple in-memory storage for scan results
 // In a production system, this should be stored in the database
 type ScanStore = Arc<Mutex<HashMap<String, WebAppScanResult>>>;
+type GraphQLScanStore = Arc<Mutex<HashMap<String, GraphQLScanResult>>>;
+
+// GraphQL Scan Request/Response types
+#[derive(Debug, Serialize, Deserialize)]
+pub struct StartGraphQLScanRequest {
+    pub target_url: String,
+    pub check_introspection: Option<bool>,
+    pub check_injection: Option<bool>,
+    pub check_dos: Option<bool>,
+    pub check_authorization: Option<bool>,
+    pub max_query_depth: Option<usize>,
+    pub max_batch_size: Option<usize>,
+    pub auth_token: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct StartGraphQLScanResponse {
+    pub scan_id: String,
+    pub status: String,
+    pub endpoints_found: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct GraphQLScanStatusResponse {
+    pub scan_id: String,
+    pub status: String,
+    pub result: Option<GraphQLScanResult>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct DetectGraphQLResponse {
+    pub endpoints: Vec<GraphQLEndpoint>,
+}
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     let scan_store: ScanStore = Arc::new(Mutex::new(HashMap::new()));
+    let graphql_scan_store: GraphQLScanStore = Arc::new(Mutex::new(HashMap::new()));
 
     cfg.app_data(web::Data::new(scan_store))
+        .app_data(web::Data::new(graphql_scan_store))
         .service(
             web::scope("/api/webapp")
                 .route("/scan", web::post().to(start_webapp_scan))
-                .route("/scan/{scan_id}", web::get().to(get_webapp_scan)),
+                .route("/scan/{scan_id}", web::get().to(get_webapp_scan))
+                // GraphQL security scanning endpoints
+                .route("/graphql/detect", web::post().to(detect_graphql))
+                .route("/graphql/scan", web::post().to(start_graphql_scan))
+                .route("/graphql/scan/{scan_id}", web::get().to(get_graphql_scan)),
         );
 }
 
@@ -232,6 +274,218 @@ async fn get_webapp_scan(
     } else {
         // Scan might still be running or doesn't exist
         Ok(HttpResponse::Ok().json(WebAppScanStatusResponse {
+            scan_id: scan_id.to_string(),
+            status: "running".to_string(),
+            result: None,
+        }))
+    }
+}
+
+// ============================================================================
+// GraphQL Security Scanning Endpoints
+// ============================================================================
+
+/// POST /api/webapp/graphql/detect - Detect GraphQL endpoints at a URL
+async fn detect_graphql(
+    claims: web::ReqData<crate::web::auth::Claims>,
+    req: web::Json<serde_json::Value>,
+) -> Result<HttpResponse> {
+    let target_url = match req.get("target_url").and_then(|v| v.as_str()) {
+        Some(url) => url,
+        None => {
+            return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+                "error": "target_url is required"
+            })));
+        }
+    };
+
+    log::info!("User {} detecting GraphQL endpoints at {}", claims.sub, target_url);
+
+    // Validate URL
+    let base_url = match url::Url::parse(target_url) {
+        Ok(url) => url,
+        Err(e) => {
+            return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+                "error": format!("Invalid URL: {}", e)
+            })));
+        }
+    };
+
+    // Security check: prevent scanning localhost/private IPs
+    if let Some(host) = base_url.host_str() {
+        if host == "localhost" || host == "127.0.0.1" || host == "::1" {
+            return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+                "error": "Scanning localhost is not allowed"
+            })));
+        }
+    }
+
+    // Create HTTP client
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .user_agent("HeroForge GraphQL Scanner/1.0")
+        .build()
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+
+    // Detect endpoints
+    match graphql::detect_graphql_endpoints(&client, &base_url).await {
+        Ok(endpoints) => {
+            Ok(HttpResponse::Ok().json(DetectGraphQLResponse { endpoints }))
+        }
+        Err(e) => {
+            log::error!("GraphQL detection failed: {}", e);
+            Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": format!("Detection failed: {}", e)
+            })))
+        }
+    }
+}
+
+/// POST /api/webapp/graphql/scan - Start a GraphQL security scan
+async fn start_graphql_scan(
+    claims: web::ReqData<crate::web::auth::Claims>,
+    req: web::Json<StartGraphQLScanRequest>,
+    graphql_scan_store: web::Data<GraphQLScanStore>,
+) -> Result<HttpResponse> {
+    log::info!("User {} starting GraphQL scan for {}", claims.sub, req.target_url);
+
+    // Validate URL
+    if req.target_url.is_empty() {
+        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "target_url is required"
+        })));
+    }
+
+    let target_url = req.target_url.trim();
+
+    if !target_url.starts_with("http://") && !target_url.starts_with("https://") {
+        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "target_url must start with http:// or https://"
+        })));
+    }
+
+    let base_url = match url::Url::parse(target_url) {
+        Ok(url) => url,
+        Err(e) => {
+            return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+                "error": format!("Invalid URL: {}", e)
+            })));
+        }
+    };
+
+    // Security check: prevent scanning localhost/private IPs
+    if let Some(host) = base_url.host_str() {
+        if host == "localhost" || host == "127.0.0.1" || host == "::1" {
+            return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+                "error": "Scanning localhost is not allowed"
+            })));
+        }
+    }
+
+    // Generate scan ID
+    let scan_id = Uuid::new_v4().to_string();
+
+    // Build scan configuration
+    let mut config = GraphQLScanConfig::default();
+    if let Some(v) = req.check_introspection {
+        config.check_introspection = v;
+    }
+    if let Some(v) = req.check_injection {
+        config.check_injection = v;
+    }
+    if let Some(v) = req.check_dos {
+        config.check_dos = v;
+    }
+    if let Some(v) = req.check_authorization {
+        config.check_authorization = v;
+    }
+    if let Some(v) = req.max_query_depth {
+        config.max_query_depth = v;
+    }
+    if let Some(v) = req.max_batch_size {
+        config.max_batch_size = v;
+    }
+    config.auth_token = req.auth_token.clone();
+
+    // Clone for background task
+    let store = graphql_scan_store.get_ref().clone();
+    let scan_id_clone = scan_id.clone();
+
+    // Spawn background scan task
+    tokio::spawn(async move {
+        log::info!("Starting GraphQL scan task for {}", scan_id_clone);
+
+        // Create HTTP client
+        let client = match reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .user_agent("HeroForge GraphQL Scanner/1.0")
+            .build()
+        {
+            Ok(c) => c,
+            Err(e) => {
+                log::error!("Failed to create HTTP client: {}", e);
+                return;
+            }
+        };
+
+        // First detect endpoints
+        let endpoints = match graphql::detect_graphql_endpoints(&client, &base_url).await {
+            Ok(eps) => eps,
+            Err(e) => {
+                log::error!("Failed to detect GraphQL endpoints: {}", e);
+                return;
+            }
+        };
+
+        if endpoints.is_empty() {
+            log::warn!("No GraphQL endpoints found at {}", base_url);
+            return;
+        }
+
+        // Scan first endpoint
+        let endpoint = &endpoints[0];
+        let start_time = std::time::Instant::now();
+
+        match graphql::scan_graphql(&client, endpoint, &config).await {
+            Ok(mut result) => {
+                result.scan_duration_ms = start_time.elapsed().as_millis() as u64;
+                log::info!(
+                    "GraphQL scan {} completed with {} findings",
+                    scan_id_clone,
+                    result.findings.len()
+                );
+                let mut store = store.lock().await;
+                store.insert(scan_id_clone.clone(), result);
+            }
+            Err(e) => {
+                log::error!("GraphQL scan {} failed: {}", scan_id_clone, e);
+            }
+        }
+    });
+
+    Ok(HttpResponse::Ok().json(StartGraphQLScanResponse {
+        scan_id,
+        status: "running".to_string(),
+        endpoints_found: vec![target_url.to_string()],
+    }))
+}
+
+/// GET /api/webapp/graphql/scan/{scan_id} - Get GraphQL scan results
+async fn get_graphql_scan(
+    _claims: web::ReqData<crate::web::auth::Claims>,
+    scan_id: web::Path<String>,
+    graphql_scan_store: web::Data<GraphQLScanStore>,
+) -> Result<HttpResponse> {
+    let store = graphql_scan_store.lock().await;
+
+    if let Some(result) = store.get(scan_id.as_str()) {
+        Ok(HttpResponse::Ok().json(GraphQLScanStatusResponse {
+            scan_id: scan_id.to_string(),
+            status: "completed".to_string(),
+            result: Some(result.clone()),
+        }))
+    } else {
+        Ok(HttpResponse::Ok().json(GraphQLScanStatusResponse {
             scan_id: scan_id.to_string(),
             status: "running".to_string(),
             result: None,

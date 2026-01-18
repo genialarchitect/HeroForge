@@ -1,5 +1,5 @@
 import React from 'react';
-import { MessageCircle, X, Minus, Plus, Trash2, RotateCcw } from 'lucide-react';
+import { MessageCircle, X, Minus, RotateCcw } from 'lucide-react';
 import { useChatStore } from '../../store/chatStore';
 import { useAuthStore } from '../../store/authStore';
 import ChatWindow from './ChatWindow';
@@ -26,10 +26,6 @@ const ChatWidget: React.FC = () => {
 
   const handleMinimize = () => {
     setMinimized(true);
-  };
-
-  const handleMaximize = () => {
-    setMinimized(false);
   };
 
   const handleNewChat = () => {

@@ -127,7 +127,7 @@ async fn list_campaigns(
             messages_failed: r.6 as u32,
             links_clicked: r.7 as u32,
             launch_date: r.8.and_then(|d| chrono::DateTime::parse_from_rfc3339(&d).ok().map(|dt| dt.with_timezone(&Utc))),
-            created_at: chrono::DateTime::parse_from_rfc3339(&r.9).unwrap().with_timezone(&Utc),
+            created_at: chrono::DateTime::parse_from_rfc3339(&r.9).ok().map(|dt| dt.with_timezone(&Utc)).unwrap_or_else(Utc::now),
         }
     }).collect();
 
@@ -411,7 +411,7 @@ async fn list_campaign_targets(
         sent_at: r.11.and_then(|d| chrono::DateTime::parse_from_rfc3339(&d).ok().map(|dt| dt.with_timezone(&Utc))),
         delivered_at: r.12.and_then(|d| chrono::DateTime::parse_from_rfc3339(&d).ok().map(|dt| dt.with_timezone(&Utc))),
         clicked_at: r.13.and_then(|d| chrono::DateTime::parse_from_rfc3339(&d).ok().map(|dt| dt.with_timezone(&Utc))),
-        created_at: chrono::DateTime::parse_from_rfc3339(&r.14).unwrap().with_timezone(&Utc),
+        created_at: chrono::DateTime::parse_from_rfc3339(&r.14).ok().map(|dt| dt.with_timezone(&Utc)).unwrap_or_else(Utc::now),
     }).collect();
 
     Ok(HttpResponse::Ok().json(result))

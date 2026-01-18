@@ -15,7 +15,7 @@ import {
   EyeOff,
 } from 'lucide-react';
 import { basAPI } from '../../services/api';
-import type { SimulationDetails, TechniqueExecution, SimulationStats } from '../../types';
+import type { TechniqueExecution } from '../../types';
 import Button from '../ui/Button';
 
 interface SimulationResultsProps {

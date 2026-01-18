@@ -9,7 +9,6 @@ import {
   X,
   Download,
   Trash2,
-  AlertTriangle,
   FolderOpen,
   ZoomIn,
   ChevronLeft,
@@ -31,7 +30,7 @@ interface EvidenceGalleryProps {
 type ViewMode = 'grid' | 'list';
 
 const EvidenceGallery: React.FC<EvidenceGalleryProps> = ({
-  assessmentId,
+  assessmentId: _assessmentId,
   evidence,
   onDelete,
   readOnly = false,

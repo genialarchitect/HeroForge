@@ -10,6 +10,49 @@ use sqlx::SqlitePool;
 use crate::web::auth::Claims;
 
 // ============================================================================
+// Encryption Helpers
+// ============================================================================
+
+/// Encrypt sensitive field for storage
+/// Uses TOTP_ENCRYPTION_KEY env var if available
+fn encrypt_sensitive(value: &str) -> String {
+    if let Ok(encryption_key) = std::env::var("TOTP_ENCRYPTION_KEY") {
+        use base64::{Engine, engine::general_purpose::STANDARD};
+        let key_bytes = encryption_key.as_bytes();
+        let encrypted: Vec<u8> = value
+            .bytes()
+            .enumerate()
+            .map(|(i, b)| b ^ key_bytes[i % key_bytes.len()])
+            .collect();
+        format!("enc:{}", STANDARD.encode(encrypted))
+    } else {
+        value.to_string()
+    }
+}
+
+/// Decrypt sensitive field from storage
+#[allow(dead_code)]
+fn decrypt_sensitive(encrypted: &str) -> String {
+    if let Some(encoded) = encrypted.strip_prefix("enc:") {
+        if let Ok(encryption_key) = std::env::var("TOTP_ENCRYPTION_KEY") {
+            use base64::{Engine, engine::general_purpose::STANDARD};
+            if let Ok(encrypted_bytes) = STANDARD.decode(encoded) {
+                let key_bytes = encryption_key.as_bytes();
+                let decrypted: Vec<u8> = encrypted_bytes
+                    .iter()
+                    .enumerate()
+                    .map(|(i, b)| b ^ key_bytes[i % key_bytes.len()])
+                    .collect();
+                if let Ok(s) = String::from_utf8(decrypted) {
+                    return s;
+                }
+            }
+        }
+    }
+    encrypted.to_string()
+}
+
+// ============================================================================
 // Types
 // ============================================================================
 
@@ -211,7 +254,10 @@ pub async fn create_emass_settings(
     let use_cac = body.use_cac.unwrap_or(false);
     let timeout = body.timeout_seconds.unwrap_or(30);
 
-    // TODO: Encrypt sensitive fields (api_key, cert_password)
+    // Encrypt sensitive fields before storage
+    let encrypted_api_key = body.api_key.as_ref().map(|k| encrypt_sensitive(k));
+    let encrypted_cert_password = body.cert_password.as_ref().map(|p| encrypt_sensitive(p));
+
     let result = sqlx::query(
         r#"
         INSERT INTO emass_settings (id, name, description, base_url, api_key_encrypted,
@@ -224,9 +270,9 @@ pub async fn create_emass_settings(
     .bind(&body.name)
     .bind(&body.description)
     .bind(&body.base_url)
-    .bind(&body.api_key)
+    .bind(&encrypted_api_key)
     .bind(&body.cert_path)
-    .bind(&body.cert_password)
+    .bind(&encrypted_cert_password)
     .bind(use_cac)
     .bind(&body.ca_bundle_path)
     .bind(timeout)

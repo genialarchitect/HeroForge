@@ -148,6 +148,7 @@ fn send_rpc_request(host: &str, port: u16, use_https: bool, body: &str) -> Resul
 
     if use_https {
         // For HTTPS, use native-tls or rustls
+        #[allow(unexpected_cfgs)]
         #[cfg(feature = "native-tls")]
         {
             use native_tls::TlsConnector;
@@ -170,6 +171,7 @@ fn send_rpc_request(host: &str, port: u16, use_https: bool, body: &str) -> Resul
         }
 
         // Fallback: try without TLS for testing
+        #[allow(unexpected_cfgs)]
         #[cfg(not(feature = "native-tls"))]
         {
             // Return empty for non-TLS builds

@@ -356,6 +356,153 @@ impl ServiceNowClient {
     }
 }
 
+/// Full incident details
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Incident {
+    pub sys_id: String,
+    pub number: String,
+    pub state: String,
+    pub short_description: String,
+    pub description: Option<String>,
+    pub priority: Option<String>,
+    pub assigned_to: Option<String>,
+}
+
+/// Work note (comment) on a ticket
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WorkNote {
+    pub sys_id: String,
+    pub value: String,
+    pub sys_created_on: String,
+    pub sys_created_by: String,
+}
+
+impl ServiceNowClient {
+    /// Get incident by sys_id
+    pub async fn get_incident(&self, sys_id: &str) -> Result<Incident> {
+        let url = format!(
+            "{}/api/now/table/incident/{}?sysparm_fields=sys_id,number,state,short_description,description,priority,assigned_to",
+            self.instance_url, sys_id
+        );
+
+        let response = self.client.get(&url).send().await?;
+
+        if response.status().is_success() {
+            let result: ServiceNowResult<Incident> = response.json().await?;
+            Ok(result.result)
+        } else {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_default();
+            Err(anyhow!(
+                "Failed to get ServiceNow incident ({}): {}",
+                status,
+                error_text
+            ))
+        }
+    }
+
+    /// Update incident state
+    pub async fn update_incident_state(&self, sys_id: &str, state: &str) -> Result<()> {
+        let url = format!("{}/api/now/table/incident/{}", self.instance_url, sys_id);
+
+        // Map common state names to ServiceNow state codes
+        let state_code = match state.to_lowercase().as_str() {
+            "open" | "new" => "1",
+            "in progress" | "in_progress" | "active" => "2",
+            "on hold" | "pending" => "3",
+            "resolved" => "6",
+            "closed" | "complete" => "7",
+            "cancelled" => "8",
+            _ => state, // Use as-is if not recognized
+        };
+
+        let body = serde_json::json!({
+            "state": state_code
+        });
+
+        let response = self.client.patch(&url).json(&body).send().await?;
+
+        if response.status().is_success() {
+            Ok(())
+        } else {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_default();
+            Err(anyhow!(
+                "Failed to update ServiceNow incident state ({}): {}",
+                status,
+                error_text
+            ))
+        }
+    }
+
+    /// Get work notes for an incident
+    pub async fn get_work_notes(&self, sys_id: &str) -> Result<Vec<super::sync_engine::RemoteComment>> {
+        // ServiceNow stores work notes in sys_journal_field table
+        let url = format!(
+            "{}/api/now/table/sys_journal_field?sysparm_query=element_id={}&sysparm_fields=sys_id,value,sys_created_on,sys_created_by&sysparm_limit=50",
+            self.instance_url, sys_id
+        );
+
+        let response = self.client.get(&url).send().await?;
+
+        if response.status().is_success() {
+            let result: ServiceNowArrayResult<WorkNote> = response.json().await?;
+            let comments = result
+                .result
+                .into_iter()
+                .filter_map(|note| {
+                    // Parse ServiceNow datetime format
+                    let created_at = chrono::NaiveDateTime::parse_from_str(
+                        &note.sys_created_on,
+                        "%Y-%m-%d %H:%M:%S",
+                    )
+                    .map(|dt| dt.and_utc())
+                    .ok()?;
+
+                    Some(super::sync_engine::RemoteComment {
+                        id: note.sys_id,
+                        author: note.sys_created_by,
+                        body: note.value,
+                        created_at,
+                    })
+                })
+                .collect();
+            Ok(comments)
+        } else {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_default();
+            Err(anyhow!(
+                "Failed to get ServiceNow work notes ({}): {}",
+                status,
+                error_text
+            ))
+        }
+    }
+
+    /// Add a work note to an incident
+    pub async fn add_work_note(&self, sys_id: &str, note: &str) -> Result<()> {
+        let url = format!("{}/api/now/table/incident/{}", self.instance_url, sys_id);
+
+        let body = serde_json::json!({
+            "work_notes": note
+        });
+
+        let response = self.client.patch(&url).json(&body).send().await?;
+
+        if response.status().is_success() {
+            Ok(())
+        } else {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_default();
+            Err(anyhow!(
+                "Failed to add ServiceNow work note ({}): {}",
+                status,
+                error_text
+            ))
+        }
+    }
+}
+
 /// Map vulnerability severity to ServiceNow impact (1=High, 2=Medium, 3=Low)
 pub fn severity_to_impact(severity: &str) -> i32 {
     match severity.to_lowercase().as_str() {

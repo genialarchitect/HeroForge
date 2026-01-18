@@ -65,6 +65,8 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     create_cloud_scan_tables(pool).await?;
     create_api_security_scan_tables(pool).await?;
     create_methodology_tables(pool).await?;
+    // Seed CREST methodology template
+    seed_crest_methodology_template(pool).await?;
     // Portal user roles
     add_role_column_to_portal_users(pool).await?;
     // Enhanced audit logging
@@ -234,6 +236,7 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     create_sbom_tables(pool).await?;
     // SAST (Static Application Security Testing) tables (Yellow Team)
     create_sast_tables(pool).await?;
+    seed_builtin_semgrep_rules(pool).await?;
     // API Security tables (Yellow Team)
     create_api_security_tables(pool).await?;
     // Architecture Review tables (Yellow Team)
@@ -286,6 +289,8 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     // Sprint 15 (Priority 2): AI/ML Security Operations
     create_ai_security_tables(pool).await?;
     seed_builtin_llm_test_cases(pool).await?;
+    seed_builtin_conversation_tests(pool).await?;
+    seed_builtin_agent_test_cases(pool).await?;
     // Sprint 13-14 (Priority 2): OT/ICS and IoT Security
     create_ot_ics_tables(pool).await?;
     create_iot_tables(pool).await?;
@@ -323,6 +328,26 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     create_audit_file_tables(pool).await?;
     // AI Configuration table (per-user LLM provider settings)
     create_ai_config_table(pool).await?;
+    // Scan Evidence table (screenshots and evidence tied to specific findings)
+    create_scan_evidence_table(pool).await?;
+    // Finding Deduplication tables
+    create_finding_deduplication_tables(pool).await?;
+    // Remediation Roadmaps table
+    create_remediation_roadmaps_table(pool).await?;
+    // Attack Path Interpretations table
+    create_attack_path_interpretations_table(pool).await?;
+    // Integration Sync tables (bi-directional JIRA/ServiceNow sync)
+    create_integration_sync_tables(pool).await?;
+    // Engagement Templates table
+    create_engagement_templates_table(pool).await?;
+    // Portal Collaboration tables (discussions, disputes, acknowledgments, attachments)
+    create_portal_collaboration_tables(pool).await?;
+    // Custom Report Templates table
+    create_custom_report_templates_table(pool).await?;
+    // Finding Lifecycle Management tables
+    create_finding_lifecycle_tables(pool).await?;
+    // Passive Reconnaissance Results tables
+    create_passive_recon_tables(pool).await?;
     Ok(())
 }
 
@@ -3394,6 +3419,125 @@ async fn seed_methodology_templates(pool: &SqlitePool) -> Result<()> {
     }
 
     log::info!("Seeded PTES and OWASP WSTG methodology templates");
+    Ok(())
+}
+
+/// Seed CREST penetration testing methodology template
+/// CREST (Council of Registered Ethical Security Testers) standard methodology
+/// Based on CREST Penetration Testing Guide v2.4
+async fn seed_crest_methodology_template(pool: &SqlitePool) -> Result<()> {
+    // Check if CREST already exists
+    let exists: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM methodology_templates WHERE name = 'CREST' AND is_system = 1"
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if exists.0 > 0 {
+        log::info!("CREST methodology template already exists");
+        return Ok(());
+    }
+
+    let now = chrono::Utc::now().to_rfc3339();
+    let crest_id = uuid::Uuid::new_v4().to_string();
+
+    // Insert CREST template
+    sqlx::query(
+        r#"
+        INSERT INTO methodology_templates (id, name, version, description, categories, item_count, is_system, created_at, updated_at)
+        VALUES (?1, 'CREST', '2.4', 'CREST Penetration Testing Methodology - International standard for professional penetration testing aligned with CREST certification requirements',
+                '["Pre-Engagement", "Information Gathering", "Threat Modeling & Vulnerability Analysis", "Exploitation", "Post-Exploitation", "Reporting & Cleanup"]',
+                48, 1, ?2, ?2)
+        "#,
+    )
+    .bind(&crest_id)
+    .bind(&now)
+    .execute(pool)
+    .await?;
+
+    // CREST methodology items based on CREST Certified Penetration Tester (CCT) requirements
+    let crest_items = [
+        // Pre-Engagement Phase
+        ("Pre-Engagement", "CREST-PE-01", "Scoping and Authorization", "Define clear scope boundaries including IP ranges, domains, applications, and testing windows. Obtain written authorization (Rules of Engagement document)."),
+        ("Pre-Engagement", "CREST-PE-02", "Risk Assessment", "Identify and document risks associated with penetration testing activities. Establish rollback procedures and emergency contacts."),
+        ("Pre-Engagement", "CREST-PE-03", "Legal and Compliance Review", "Ensure testing complies with relevant laws and regulations (Computer Misuse Act, GDPR, etc.). Document legal authorization."),
+        ("Pre-Engagement", "CREST-PE-04", "Communication Plan", "Establish communication channels, escalation procedures, and reporting schedules with the client."),
+        ("Pre-Engagement", "CREST-PE-05", "Testing Environment Preparation", "Set up testing infrastructure, VPN connections, and verify access to target systems within authorized scope."),
+
+        // Information Gathering Phase
+        ("Information Gathering", "CREST-IG-01", "Passive Reconnaissance", "Gather open-source intelligence (OSINT) without direct interaction with target systems: DNS records, WHOIS, social media, job postings."),
+        ("Information Gathering", "CREST-IG-02", "Active Reconnaissance", "Perform active information gathering: port scanning, service enumeration, banner grabbing, and network mapping."),
+        ("Information Gathering", "CREST-IG-03", "DNS Enumeration", "Enumerate DNS records including zone transfers, subdomain discovery, and DNS security assessment."),
+        ("Information Gathering", "CREST-IG-04", "Web Application Mapping", "Map web application structure: directories, files, technologies, frameworks, and entry points."),
+        ("Information Gathering", "CREST-IG-05", "Email Infrastructure Analysis", "Analyze email infrastructure: MX records, SPF/DKIM/DMARC configuration, email harvesting."),
+        ("Information Gathering", "CREST-IG-06", "Network Infrastructure Mapping", "Map network topology, identify network devices, routing paths, and segmentation."),
+        ("Information Gathering", "CREST-IG-07", "User and Organization Enumeration", "Identify organizational structure, key personnel, email formats, and user accounts."),
+        ("Information Gathering", "CREST-IG-08", "Technology Stack Identification", "Identify technologies, frameworks, operating systems, and third-party components in use."),
+
+        // Threat Modeling & Vulnerability Analysis Phase
+        ("Threat Modeling & Vulnerability Analysis", "CREST-VA-01", "Automated Vulnerability Scanning", "Run automated vulnerability scanners (Nessus, OpenVAS, Qualys) against identified targets."),
+        ("Threat Modeling & Vulnerability Analysis", "CREST-VA-02", "Manual Vulnerability Discovery", "Perform manual vulnerability analysis to identify issues not found by automated tools."),
+        ("Threat Modeling & Vulnerability Analysis", "CREST-VA-03", "Web Application Vulnerability Testing", "Test for OWASP Top 10 vulnerabilities: injection, broken auth, XSS, insecure deserialization, etc."),
+        ("Threat Modeling & Vulnerability Analysis", "CREST-VA-04", "API Security Testing", "Assess API endpoints for authentication, authorization, injection, and rate limiting issues."),
+        ("Threat Modeling & Vulnerability Analysis", "CREST-VA-05", "Authentication and Session Testing", "Test authentication mechanisms, session management, password policies, and MFA implementation."),
+        ("Threat Modeling & Vulnerability Analysis", "CREST-VA-06", "Configuration Review", "Review system and application configurations for security misconfigurations."),
+        ("Threat Modeling & Vulnerability Analysis", "CREST-VA-07", "Cryptographic Assessment", "Assess cryptographic implementations, TLS configurations, and key management practices."),
+        ("Threat Modeling & Vulnerability Analysis", "CREST-VA-08", "Business Logic Testing", "Test for business logic flaws that could lead to unauthorized actions or data access."),
+        ("Threat Modeling & Vulnerability Analysis", "CREST-VA-09", "Vulnerability Prioritization", "Prioritize discovered vulnerabilities based on exploitability, impact, and business context."),
+
+        // Exploitation Phase
+        ("Exploitation", "CREST-EX-01", "Exploitation Planning", "Plan exploitation attempts based on vulnerability analysis. Document attack chains and potential impact."),
+        ("Exploitation", "CREST-EX-02", "External Network Exploitation", "Attempt exploitation of external-facing systems to gain initial access."),
+        ("Exploitation", "CREST-EX-03", "Web Application Exploitation", "Exploit web application vulnerabilities (SQLi, RCE, file upload, SSRF) with proper controls."),
+        ("Exploitation", "CREST-EX-04", "Credential Attacks", "Test for weak credentials, default passwords, and password spraying (with rate limiting awareness)."),
+        ("Exploitation", "CREST-EX-05", "Client-Side Attacks", "If in scope, test client-side attack vectors including phishing and malware delivery simulations."),
+        ("Exploitation", "CREST-EX-06", "Exploitation Documentation", "Document all successful and failed exploitation attempts with evidence and timestamps."),
+
+        // Post-Exploitation Phase
+        ("Post-Exploitation", "CREST-PX-01", "Privilege Escalation", "Attempt local privilege escalation on compromised systems (OS-level and application-level)."),
+        ("Post-Exploitation", "CREST-PX-02", "Lateral Movement", "Test ability to move laterally within the network from compromised systems."),
+        ("Post-Exploitation", "CREST-PX-03", "Persistence Mechanisms", "Identify and document potential persistence mechanisms (testing only, do not install)."),
+        ("Post-Exploitation", "CREST-PX-04", "Data Access Assessment", "Document accessible sensitive data (PII, credentials, business data) without exfiltration."),
+        ("Post-Exploitation", "CREST-PX-05", "Active Directory Attacks", "If in scope, test AD-specific attacks: Kerberoasting, AS-REP roasting, DCSync prerequisites."),
+        ("Post-Exploitation", "CREST-PX-06", "Cloud Environment Pivoting", "If applicable, attempt to pivot from on-premises to cloud or between cloud services."),
+        ("Post-Exploitation", "CREST-PX-07", "Network Segmentation Testing", "Verify network segmentation effectiveness between zones and VLANs."),
+        ("Post-Exploitation", "CREST-PX-08", "Credential Harvesting Documentation", "Document methods and locations where credentials could be harvested."),
+
+        // Reporting & Cleanup Phase
+        ("Reporting & Cleanup", "CREST-RC-01", "Finding Documentation", "Document all findings with CVSS scores, evidence (screenshots, PoCs), and affected systems."),
+        ("Reporting & Cleanup", "CREST-RC-02", "Executive Summary", "Prepare executive summary highlighting key risks, business impact, and strategic recommendations."),
+        ("Reporting & Cleanup", "CREST-RC-03", "Technical Report", "Create detailed technical report with vulnerability descriptions, reproduction steps, and evidence."),
+        ("Reporting & Cleanup", "CREST-RC-04", "Remediation Recommendations", "Provide prioritized remediation recommendations with short-term and long-term fixes."),
+        ("Reporting & Cleanup", "CREST-RC-05", "Attack Narrative", "Document the attack narrative showing the path from initial access to objectives."),
+        ("Reporting & Cleanup", "CREST-RC-06", "System Cleanup", "Remove all test accounts, backdoors, files, and artifacts created during testing."),
+        ("Reporting & Cleanup", "CREST-RC-07", "Tool Removal Verification", "Verify all testing tools and agents have been removed from target systems."),
+        ("Reporting & Cleanup", "CREST-RC-08", "Client Debrief", "Conduct debrief session with client to present findings and answer questions."),
+        ("Reporting & Cleanup", "CREST-RC-09", "Retest Recommendations", "Provide recommendations for retest timing and scope after remediation."),
+        ("Reporting & Cleanup", "CREST-RC-10", "Evidence Retention", "Securely store evidence per agreed retention policy and data handling requirements."),
+    ];
+
+    let mut sort_order = 0;
+    for (category, item_id, title, description) in crest_items {
+        let id = uuid::Uuid::new_v4().to_string();
+        sqlx::query(
+            r#"
+            INSERT INTO methodology_template_items (id, template_id, category, item_id, title, description, sort_order)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            "#,
+        )
+        .bind(&id)
+        .bind(&crest_id)
+        .bind(category)
+        .bind(item_id)
+        .bind(title)
+        .bind(description)
+        .bind(sort_order)
+        .execute(pool)
+        .await?;
+        sort_order += 1;
+    }
+
+    log::info!("Seeded CREST methodology template with {} items", crest_items.len());
     Ok(())
 }
 
@@ -24468,6 +24612,234 @@ async fn create_ai_security_tables(pool: &SqlitePool) -> Result<()> {
         .execute(pool)
         .await?;
 
+    // LLM Conversation Tests - stores multi-turn conversation test definitions
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS llm_conversation_tests (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            category TEXT NOT NULL,
+            turns TEXT NOT NULL,
+            success_criteria TEXT,
+            severity TEXT DEFAULT 'medium',
+            is_builtin INTEGER DEFAULT 0,
+            enabled INTEGER DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_llm_conv_tests_category ON llm_conversation_tests(category)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_llm_conv_tests_enabled ON llm_conversation_tests(enabled)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_llm_conv_tests_builtin ON llm_conversation_tests(is_builtin)")
+        .execute(pool)
+        .await?;
+
+    // LLM Conversation Results - stores conversation test execution results
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS llm_conversation_results (
+            id TEXT PRIMARY KEY,
+            test_run_id TEXT NOT NULL,
+            conversation_test_id TEXT NOT NULL,
+            target_id TEXT NOT NULL,
+            turns_executed TEXT NOT NULL,
+            final_status TEXT NOT NULL,
+            vulnerability_at_turn INTEGER,
+            full_transcript TEXT,
+            confidence_score REAL,
+            analysis_notes TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (test_run_id) REFERENCES llm_security_tests(id) ON DELETE CASCADE,
+            FOREIGN KEY (conversation_test_id) REFERENCES llm_conversation_tests(id) ON DELETE CASCADE,
+            FOREIGN KEY (target_id) REFERENCES llm_targets(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_llm_conv_results_test_run ON llm_conversation_results(test_run_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_llm_conv_results_conv_test ON llm_conversation_results(conversation_test_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_llm_conv_results_target ON llm_conversation_results(target_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_llm_conv_results_status ON llm_conversation_results(final_status)")
+        .execute(pool)
+        .await?;
+
+    // LLM Agent Configs - stores agent testing configurations for targets
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS llm_agent_configs (
+            id TEXT PRIMARY KEY,
+            target_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            tools TEXT DEFAULT '[]',
+            rag_endpoint TEXT,
+            function_format TEXT DEFAULT 'openai',
+            memory_enabled INTEGER DEFAULT 0,
+            max_tool_calls INTEGER DEFAULT 10,
+            enabled INTEGER DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (target_id) REFERENCES llm_targets(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_llm_agent_configs_target ON llm_agent_configs(target_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_llm_agent_configs_enabled ON llm_agent_configs(enabled)")
+        .execute(pool)
+        .await?;
+
+    // LLM Agent Test Cases - stores agent-specific test case definitions
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS llm_agent_test_cases (
+            id TEXT PRIMARY KEY,
+            category TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            payload TEXT NOT NULL,
+            target_tools TEXT DEFAULT '[]',
+            expected_behavior TEXT,
+            severity TEXT DEFAULT 'medium',
+            cwe_id TEXT,
+            is_builtin INTEGER DEFAULT 0,
+            enabled INTEGER DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_llm_agent_cases_category ON llm_agent_test_cases(category)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_llm_agent_cases_severity ON llm_agent_test_cases(severity)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_llm_agent_cases_enabled ON llm_agent_test_cases(enabled)")
+        .execute(pool)
+        .await?;
+
+    // LLM Agent Test Results - stores agent test execution results
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS llm_agent_test_results (
+            id TEXT PRIMARY KEY,
+            test_run_id TEXT NOT NULL,
+            agent_config_id TEXT NOT NULL,
+            test_case_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            tool_calls_detected TEXT DEFAULT '[]',
+            vulnerability_indicators TEXT DEFAULT '[]',
+            confidence_score REAL,
+            raw_response TEXT,
+            analysis_notes TEXT,
+            remediation_id TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (test_run_id) REFERENCES llm_security_tests(id) ON DELETE CASCADE,
+            FOREIGN KEY (agent_config_id) REFERENCES llm_agent_configs(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_llm_agent_results_run ON llm_agent_test_results(test_run_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_llm_agent_results_config ON llm_agent_test_results(agent_config_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_llm_agent_results_status ON llm_agent_test_results(status)")
+        .execute(pool)
+        .await?;
+
+    // LLM Model Fingerprints - caches model fingerprinting results
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS llm_model_fingerprints (
+            id TEXT PRIMARY KEY,
+            target_id TEXT NOT NULL,
+            model_family TEXT,
+            confidence REAL,
+            indicators TEXT DEFAULT '[]',
+            known_vulnerabilities TEXT DEFAULT '[]',
+            context_window_estimate INTEGER,
+            safety_mechanisms TEXT DEFAULT '{}',
+            raw_responses TEXT,
+            fingerprint_version TEXT DEFAULT '1.0',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            expires_at TEXT,
+            FOREIGN KEY (target_id) REFERENCES llm_targets(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_llm_fingerprints_target ON llm_model_fingerprints(target_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_llm_fingerprints_family ON llm_model_fingerprints(model_family)")
+        .execute(pool)
+        .await?;
+
+    // LLM Security Reports - stores generated LLM security assessment reports
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS llm_security_reports (
+            id TEXT PRIMARY KEY,
+            test_run_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            format TEXT NOT NULL DEFAULT 'markdown',
+            file_path TEXT,
+            file_size INTEGER,
+            executive_summary TEXT,
+            risk_score REAL,
+            findings_count INTEGER DEFAULT 0,
+            critical_count INTEGER DEFAULT 0,
+            high_count INTEGER DEFAULT 0,
+            medium_count INTEGER DEFAULT 0,
+            low_count INTEGER DEFAULT 0,
+            status TEXT DEFAULT 'pending',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            completed_at TEXT,
+            FOREIGN KEY (test_run_id) REFERENCES llm_security_tests(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_llm_reports_test_run ON llm_security_reports(test_run_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_llm_reports_status ON llm_security_reports(status)")
+        .execute(pool)
+        .await?;
+
     log::info!("Created AI/ML Security Operations tables (Sprint 15 - Priority 2 Features)");
     Ok(())
 }
@@ -24500,6 +24872,83 @@ async fn seed_builtin_llm_test_cases(pool: &SqlitePool) -> Result<()> {
     }
 
     log::info!("Seeded {} built-in LLM test cases", get_builtin_test_cases().len());
+    Ok(())
+}
+
+/// Seed built-in LLM conversation tests
+async fn seed_builtin_conversation_tests(pool: &SqlitePool) -> Result<()> {
+    use crate::ai_security::llm_testing::conversation_payloads::get_builtin_conversation_tests;
+
+    let tests = get_builtin_conversation_tests();
+    let now = chrono::Utc::now().to_rfc3339();
+
+    for test in tests {
+        let turns_json = serde_json::to_string(&test.turns).unwrap_or_else(|_| "[]".to_string());
+        let criteria_json = serde_json::to_string(&test.success_criteria).unwrap_or_else(|_| "{}".to_string());
+
+        let _ = sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO llm_conversation_tests (id, name, description, category, turns, success_criteria, severity, is_builtin, enabled, created_at, updated_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, 1, ?8, ?8)
+            "#,
+        )
+        .bind(&test.id)
+        .bind(&test.name)
+        .bind(&test.description)
+        .bind(test.category.to_string())
+        .bind(&turns_json)
+        .bind(&criteria_json)
+        .bind(test.severity.to_string())
+        .bind(&now)
+        .execute(pool)
+        .await;
+    }
+
+    log::info!("Seeded {} built-in LLM conversation tests", get_builtin_conversation_tests().len());
+    Ok(())
+}
+
+/// Seed built-in LLM agent test cases
+async fn seed_builtin_agent_test_cases(pool: &SqlitePool) -> Result<()> {
+    use crate::ai_security::llm_testing::agent_payloads::get_builtin_agent_tests;
+
+    let test_cases = get_builtin_agent_tests();
+    let now = chrono::Utc::now().to_rfc3339();
+
+    for tc in test_cases {
+        // Map expected_tool_calls to target_tools JSON
+        let target_tools_json = tc.expected_tool_calls
+            .as_ref()
+            .map(|calls| serde_json::to_string(calls).unwrap_or_else(|_| "[]".to_string()))
+            .unwrap_or_else(|| "[]".to_string());
+
+        // Derive expected_behavior from injected document or fake response if available
+        let expected_behavior = tc.injected_document.as_ref()
+            .map(|_| "Should detect and reject injected content")
+            .or_else(|| tc.fake_tool_response.as_ref().map(|_| "Should validate tool responses"))
+            .unwrap_or("Should resist attack vector");
+
+        let _ = sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO llm_agent_test_cases (id, category, name, description, payload, target_tools, expected_behavior, severity, cwe_id, is_builtin, enabled, created_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 1, 1, ?10)
+            "#,
+        )
+        .bind(&tc.id)
+        .bind(tc.category.to_string())
+        .bind(&tc.name)
+        .bind(&tc.description)
+        .bind(&tc.prompt)  // Use prompt field, not payload
+        .bind(&target_tools_json)
+        .bind(expected_behavior)
+        .bind(tc.severity.to_string())
+        .bind(&tc.cwe_id)
+        .bind(&now)
+        .execute(pool)
+        .await;
+    }
+
+    log::info!("Seeded {} built-in LLM agent test cases", get_builtin_agent_tests().len());
     Ok(())
 }
 
@@ -27429,5 +27878,1813 @@ async fn create_ai_config_table(pool: &SqlitePool) -> Result<()> {
     .await?;
 
     log::info!("Created AI configuration table");
+    Ok(())
+}
+
+/// Create scan evidence table for screenshots and evidence tied to specific findings
+async fn create_scan_evidence_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS scan_evidence (
+            id TEXT PRIMARY KEY,
+            scan_id TEXT NOT NULL,
+            finding_id TEXT,
+            evidence_type TEXT NOT NULL,
+            description TEXT,
+            file_path TEXT NOT NULL,
+            file_size INTEGER,
+            width INTEGER,
+            height INTEGER,
+            step_number INTEGER,
+            selector TEXT,
+            url TEXT,
+            captured_at TEXT NOT NULL,
+            FOREIGN KEY (scan_id) REFERENCES scan_results(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_scan_evidence_scan ON scan_evidence(scan_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_scan_evidence_finding ON scan_evidence(finding_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_scan_evidence_type ON scan_evidence(evidence_type)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created scan evidence table");
+    Ok(())
+}
+
+/// Seed built-in Semgrep rules for SAST scanning
+async fn seed_builtin_semgrep_rules(pool: &SqlitePool) -> Result<()> {
+    // Check if rules already exist
+    let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM semgrep_rules WHERE user_id = 'system'")
+        .fetch_one(pool)
+        .await?;
+
+    if count.0 > 0 {
+        log::info!("Built-in Semgrep rules already seeded ({} rules)", count.0);
+        return Ok(());
+    }
+
+    let rules = get_builtin_semgrep_rules();
+    let mut inserted = 0;
+
+    for rule in rules {
+        let id = uuid::Uuid::new_v4().to_string();
+        let result = sqlx::query(
+            r#"
+            INSERT INTO semgrep_rules (id, user_id, rule_id, name, message, severity, languages, pattern_yaml, metadata, source, source_url, enabled)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 1)
+            "#,
+        )
+        .bind(&id)
+        .bind("system")
+        .bind(&rule.rule_id)
+        .bind(&rule.name)
+        .bind(&rule.message)
+        .bind(&rule.severity)
+        .bind(&rule.languages)
+        .bind(&rule.pattern_yaml)
+        .bind(&rule.metadata)
+        .bind("built-in")
+        .bind(&rule.source_url)
+        .execute(pool)
+        .await;
+
+        if result.is_ok() {
+            inserted += 1;
+        }
+    }
+
+    log::info!("Seeded {} built-in Semgrep rules", inserted);
+    Ok(())
+}
+
+struct BuiltinSemgrepRule {
+    rule_id: &'static str,
+    name: &'static str,
+    message: &'static str,
+    severity: &'static str,
+    languages: &'static str,
+    pattern_yaml: &'static str,
+    metadata: &'static str,
+    source_url: &'static str,
+}
+
+fn get_builtin_semgrep_rules() -> Vec<BuiltinSemgrepRule> {
+    vec![
+        // ============================================================================
+        // Python Security Rules
+        // ============================================================================
+        BuiltinSemgrepRule {
+            rule_id: "python-sql-injection",
+            name: "SQL Injection",
+            message: "Possible SQL injection via string concatenation. Use parameterized queries instead.",
+            severity: "critical",
+            languages: r#"["python"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: $CURSOR.execute("..." + $VAR + "...")
+      - pattern: $CURSOR.execute(f"...{$VAR}...")
+      - pattern: $CURSOR.execute("...%s..." % $VAR)
+      - pattern: $CURSOR.execute("...{}...".format($VAR))"#,
+            metadata: r#"{"category":"security","cwe":["CWE-89"],"owasp":["A03:2021"],"confidence":"high"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/89.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "python-command-injection",
+            name: "Command Injection",
+            message: "Possible command injection. Avoid using shell=True with user input.",
+            severity: "critical",
+            languages: r#"["python"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: subprocess.call($CMD, shell=True, ...)
+      - pattern: subprocess.run($CMD, shell=True, ...)
+      - pattern: subprocess.Popen($CMD, shell=True, ...)
+      - pattern: os.system($CMD)
+      - pattern: os.popen($CMD)"#,
+            metadata: r#"{"category":"security","cwe":["CWE-78"],"owasp":["A03:2021"],"confidence":"high"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/78.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "python-ssrf",
+            name: "Server-Side Request Forgery (SSRF)",
+            message: "Potential SSRF vulnerability. Validate and sanitize user-controlled URLs.",
+            severity: "high",
+            languages: r#"["python"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: requests.get($URL, ...)
+      - pattern: requests.post($URL, ...)
+      - pattern: urllib.request.urlopen($URL)
+      - pattern: httpx.get($URL, ...)
+      - pattern: aiohttp.ClientSession().get($URL, ...)"#,
+            metadata: r#"{"category":"security","cwe":["CWE-918"],"owasp":["A10:2021"],"confidence":"medium"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/918.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "python-path-traversal",
+            name: "Path Traversal",
+            message: "Potential path traversal vulnerability. Validate file paths against a whitelist.",
+            severity: "high",
+            languages: r#"["python"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: open($PATH, ...)
+      - pattern: pathlib.Path($PATH).read_text()
+      - pattern: shutil.copy($PATH, ...)
+      - pattern: os.path.join(..., $USERPATH, ...)"#,
+            metadata: r#"{"category":"security","cwe":["CWE-22"],"owasp":["A01:2021"],"confidence":"medium"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/22.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "python-pickle-insecure",
+            name: "Insecure Deserialization (Pickle)",
+            message: "Pickle deserialization of untrusted data can lead to arbitrary code execution.",
+            severity: "critical",
+            languages: r#"["python"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: pickle.load(...)
+      - pattern: pickle.loads(...)
+      - pattern: cPickle.load(...)
+      - pattern: cPickle.loads(...)"#,
+            metadata: r#"{"category":"security","cwe":["CWE-502"],"owasp":["A08:2021"],"confidence":"high"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/502.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "python-eval-usage",
+            name: "Dangerous eval() Usage",
+            message: "eval() can execute arbitrary code. Avoid using with user input.",
+            severity: "critical",
+            languages: r#"["python"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: eval($X)
+      - pattern: exec($X)
+      - pattern: compile($X, ...)"#,
+            metadata: r#"{"category":"security","cwe":["CWE-95"],"owasp":["A03:2021"],"confidence":"high"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/95.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "python-weak-crypto-md5",
+            name: "Weak Cryptographic Hash (MD5)",
+            message: "MD5 is cryptographically broken. Use SHA-256 or stronger.",
+            severity: "medium",
+            languages: r#"["python"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: hashlib.md5(...)
+      - pattern: hashlib.new("md5", ...)"#,
+            metadata: r#"{"category":"security","cwe":["CWE-328"],"owasp":["A02:2021"],"confidence":"high"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/328.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "python-weak-crypto-sha1",
+            name: "Weak Cryptographic Hash (SHA1)",
+            message: "SHA1 is cryptographically weak. Use SHA-256 or stronger.",
+            severity: "medium",
+            languages: r#"["python"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: hashlib.sha1(...)
+      - pattern: hashlib.new("sha1", ...)"#,
+            metadata: r#"{"category":"security","cwe":["CWE-328"],"owasp":["A02:2021"],"confidence":"high"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/328.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "python-yaml-unsafe-load",
+            name: "Unsafe YAML Load",
+            message: "yaml.load() without Loader can execute arbitrary code. Use yaml.safe_load().",
+            severity: "critical",
+            languages: r#"["python"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern: yaml.load($X)
+  - pattern-not: yaml.load($X, Loader=...)"#,
+            metadata: r#"{"category":"security","cwe":["CWE-502"],"owasp":["A08:2021"],"confidence":"high"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/502.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "python-flask-debug",
+            name: "Flask Debug Mode Enabled",
+            message: "Flask debug mode should not be enabled in production.",
+            severity: "high",
+            languages: r#"["python"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: app.run(..., debug=True, ...)
+      - pattern: Flask(...).run(debug=True)"#,
+            metadata: r#"{"category":"security","cwe":["CWE-489"],"owasp":["A05:2021"],"confidence":"high"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/489.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "python-django-raw-sql",
+            name: "Django Raw SQL Query",
+            message: "Raw SQL queries may be vulnerable to SQL injection. Use parameterized queries.",
+            severity: "high",
+            languages: r#"["python"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: $MODEL.objects.raw($QUERY)
+      - pattern: connection.cursor().execute($QUERY)
+      - pattern: cursor.execute($QUERY)"#,
+            metadata: r#"{"category":"security","cwe":["CWE-89"],"owasp":["A03:2021"],"confidence":"medium"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/89.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "python-jwt-no-verify",
+            name: "JWT Without Verification",
+            message: "JWT tokens should always be verified. Disabling verification is insecure.",
+            severity: "critical",
+            languages: r#"["python"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: jwt.decode($TOKEN, ..., options={"verify_signature": False}, ...)
+      - pattern: jwt.decode($TOKEN, verify=False, ...)"#,
+            metadata: r#"{"category":"security","cwe":["CWE-347"],"owasp":["A02:2021"],"confidence":"high"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/347.html",
+        },
+        // ============================================================================
+        // JavaScript/TypeScript Security Rules
+        // ============================================================================
+        BuiltinSemgrepRule {
+            rule_id: "js-xss-innerhtml",
+            name: "Cross-Site Scripting (innerHTML)",
+            message: "Setting innerHTML with user input can lead to XSS. Use textContent or sanitize input.",
+            severity: "high",
+            languages: r#"["javascript","typescript"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: $EL.innerHTML = $VAR
+      - pattern: $EL.outerHTML = $VAR
+      - pattern: document.write($VAR)
+      - pattern: document.writeln($VAR)"#,
+            metadata: r#"{"category":"security","cwe":["CWE-79"],"owasp":["A03:2021"],"confidence":"medium"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/79.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "js-eval-usage",
+            name: "Dangerous eval() Usage",
+            message: "eval() can execute arbitrary code. Avoid using with user input.",
+            severity: "critical",
+            languages: r#"["javascript","typescript"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: eval($X)
+      - pattern: new Function($X)
+      - pattern: setTimeout($X, ...)
+      - pattern: setInterval($X, ...)"#,
+            metadata: r#"{"category":"security","cwe":["CWE-95"],"owasp":["A03:2021"],"confidence":"high"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/95.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "js-sql-injection",
+            name: "SQL Injection",
+            message: "Possible SQL injection. Use parameterized queries or an ORM.",
+            severity: "critical",
+            languages: r#"["javascript","typescript"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: $DB.query("..." + $VAR + "...")
+      - pattern: $DB.query(`...${$VAR}...`)
+      - pattern: $DB.raw("..." + $VAR + "...")
+      - pattern: $DB.raw(`...${$VAR}...`)"#,
+            metadata: r#"{"category":"security","cwe":["CWE-89"],"owasp":["A03:2021"],"confidence":"high"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/89.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "js-command-injection",
+            name: "Command Injection",
+            message: "Possible command injection. Avoid passing user input to shell commands.",
+            severity: "critical",
+            languages: r#"["javascript","typescript"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: child_process.exec($CMD, ...)
+      - pattern: child_process.execSync($CMD, ...)
+      - pattern: require("child_process").exec($CMD, ...)
+      - pattern: require("child_process").execSync($CMD, ...)"#,
+            metadata: r#"{"category":"security","cwe":["CWE-78"],"owasp":["A03:2021"],"confidence":"high"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/78.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "js-prototype-pollution",
+            name: "Prototype Pollution",
+            message: "Prototype pollution can lead to property injection attacks.",
+            severity: "high",
+            languages: r#"["javascript","typescript"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: $OBJ["__proto__"] = ...
+      - pattern: $OBJ.__proto__ = ...
+      - pattern: $OBJ["constructor"]["prototype"] = ...
+      - pattern: Object.assign({}, ..., $UNTRUSTED)"#,
+            metadata: r#"{"category":"security","cwe":["CWE-1321"],"owasp":["A03:2021"],"confidence":"medium"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/1321.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "js-insecure-randomness",
+            name: "Insecure Randomness",
+            message: "Math.random() is not cryptographically secure. Use crypto.randomBytes() instead.",
+            severity: "medium",
+            languages: r#"["javascript","typescript"]"#,
+            pattern_yaml: r#"pattern: Math.random()"#,
+            metadata: r#"{"category":"security","cwe":["CWE-330"],"owasp":["A02:2021"],"confidence":"medium"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/330.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "js-path-traversal",
+            name: "Path Traversal",
+            message: "Potential path traversal vulnerability. Validate and sanitize file paths.",
+            severity: "high",
+            languages: r#"["javascript","typescript"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: fs.readFile($PATH, ...)
+      - pattern: fs.readFileSync($PATH, ...)
+      - pattern: fs.writeFile($PATH, ...)
+      - pattern: fs.writeFileSync($PATH, ...)
+      - pattern: path.join(..., $USERPATH, ...)"#,
+            metadata: r#"{"category":"security","cwe":["CWE-22"],"owasp":["A01:2021"],"confidence":"medium"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/22.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "js-cors-wildcard",
+            name: "CORS Wildcard Origin",
+            message: "CORS with wildcard origin (*) allows any website to make requests.",
+            severity: "medium",
+            languages: r#"["javascript","typescript"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: "res.setHeader('Access-Control-Allow-Origin', '*')"
+      - pattern: 'cors({ origin: "*" })'
+      - pattern: "cors({ origin: '*' })""#,
+            metadata: r#"{"category":"security","cwe":["CWE-942"],"owasp":["A05:2021"],"confidence":"high"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/942.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "js-express-no-helmet",
+            name: "Express Without Security Headers",
+            message: "Express app should use helmet() for security headers.",
+            severity: "medium",
+            languages: r#"["javascript","typescript"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern: |
+      const app = express()
+      ...
+      app.listen(...)
+  - pattern-not: |
+      const app = express()
+      ...
+      app.use(helmet(...))
+      ...
+      app.listen(...)"#,
+            metadata: r#"{"category":"security","cwe":["CWE-693"],"owasp":["A05:2021"],"confidence":"medium"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/693.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "js-jwt-no-verify",
+            name: "JWT Without Verification",
+            message: "JWT tokens should always be verified. Using jwt.decode() does not verify signatures.",
+            severity: "critical",
+            languages: r#"["javascript","typescript"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: jwt.decode($TOKEN)
+      - pattern: jsonwebtoken.decode($TOKEN)"#,
+            metadata: r#"{"category":"security","cwe":["CWE-347"],"owasp":["A02:2021"],"confidence":"high"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/347.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "js-nosql-injection",
+            name: "NoSQL Injection",
+            message: "Possible NoSQL injection. Validate and sanitize user input.",
+            severity: "critical",
+            languages: r#"["javascript","typescript"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: $COLLECTION.find({ $WHERE: $FUNC })
+      - pattern: $COLLECTION.findOne({ $WHERE: $FUNC })
+      - pattern: $MODEL.find({ ...req.body })
+      - pattern: $MODEL.findOne({ ...req.query })"#,
+            metadata: r#"{"category":"security","cwe":["CWE-943"],"owasp":["A03:2021"],"confidence":"medium"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/943.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "react-dangerously-set-innerhtml",
+            name: "React dangerouslySetInnerHTML",
+            message: "dangerouslySetInnerHTML can lead to XSS. Sanitize content before rendering.",
+            severity: "high",
+            languages: r#"["javascript","typescript","tsx","jsx"]"#,
+            pattern_yaml: r#"pattern: <$EL dangerouslySetInnerHTML={...} />"#,
+            metadata: r#"{"category":"security","cwe":["CWE-79"],"owasp":["A03:2021"],"confidence":"medium"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/79.html",
+        },
+        // ============================================================================
+        // Java Security Rules
+        // ============================================================================
+        BuiltinSemgrepRule {
+            rule_id: "java-sql-injection",
+            name: "SQL Injection",
+            message: "Possible SQL injection. Use PreparedStatement with parameterized queries.",
+            severity: "critical",
+            languages: r#"["java"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: $STMT.executeQuery("..." + $VAR + "...")
+      - pattern: $STMT.execute("..." + $VAR + "...")
+      - pattern: $CONN.createStatement().executeQuery($QUERY)
+      - pattern: |
+          String $Q = "..." + $VAR + "...";
+          ...
+          $STMT.executeQuery($Q)"#,
+            metadata: r#"{"category":"security","cwe":["CWE-89"],"owasp":["A03:2021"],"confidence":"high"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/89.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "java-xxe-vulnerability",
+            name: "XML External Entity (XXE) Injection",
+            message: "XXE vulnerability. Disable external entity processing in XML parser.",
+            severity: "critical",
+            languages: r#"["java"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: DocumentBuilderFactory.newInstance().newDocumentBuilder().parse($INPUT)
+      - pattern: SAXParserFactory.newInstance().newSAXParser().parse($INPUT, ...)
+      - pattern: XMLInputFactory.newInstance().createXMLStreamReader($INPUT)"#,
+            metadata: r#"{"category":"security","cwe":["CWE-611"],"owasp":["A05:2021"],"confidence":"high"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/611.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "java-insecure-deserialization",
+            name: "Insecure Deserialization",
+            message: "ObjectInputStream.readObject() can execute arbitrary code with untrusted data.",
+            severity: "critical",
+            languages: r#"["java"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: new ObjectInputStream(...).readObject()
+      - pattern: (ObjectInputStream $OIS).readObject()"#,
+            metadata: r#"{"category":"security","cwe":["CWE-502"],"owasp":["A08:2021"],"confidence":"high"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/502.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "java-command-injection",
+            name: "Command Injection",
+            message: "Possible command injection. Avoid passing user input to Runtime.exec().",
+            severity: "critical",
+            languages: r#"["java"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: Runtime.getRuntime().exec($CMD)
+      - pattern: new ProcessBuilder($CMD).start()
+      - pattern: new ProcessBuilder(...).command($CMD).start()"#,
+            metadata: r#"{"category":"security","cwe":["CWE-78"],"owasp":["A03:2021"],"confidence":"high"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/78.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "java-path-traversal",
+            name: "Path Traversal",
+            message: "Potential path traversal. Validate and canonicalize file paths.",
+            severity: "high",
+            languages: r#"["java"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: new File($PATH)
+      - pattern: new FileInputStream($PATH)
+      - pattern: new FileOutputStream($PATH)
+      - pattern: Files.readAllBytes(Paths.get($PATH))"#,
+            metadata: r#"{"category":"security","cwe":["CWE-22"],"owasp":["A01:2021"],"confidence":"medium"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/22.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "java-ldap-injection",
+            name: "LDAP Injection",
+            message: "Possible LDAP injection. Sanitize user input in LDAP queries.",
+            severity: "high",
+            languages: r#"["java"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: $CTX.search($BASE, "..." + $VAR + "...", ...)
+      - pattern: new InitialDirContext(...).search($BASE, $FILTER, ...)"#,
+            metadata: r#"{"category":"security","cwe":["CWE-90"],"owasp":["A03:2021"],"confidence":"high"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/90.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "java-weak-crypto",
+            name: "Weak Cryptographic Algorithm",
+            message: "Weak cryptographic algorithm detected. Use AES-256 or stronger.",
+            severity: "high",
+            languages: r#"["java"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: Cipher.getInstance("DES")
+      - pattern: Cipher.getInstance("DESede")
+      - pattern: Cipher.getInstance("RC4")
+      - pattern: Cipher.getInstance("RC2")
+      - pattern: MessageDigest.getInstance("MD5")
+      - pattern: MessageDigest.getInstance("SHA1")"#,
+            metadata: r#"{"category":"security","cwe":["CWE-327"],"owasp":["A02:2021"],"confidence":"high"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/327.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "java-ssrf",
+            name: "Server-Side Request Forgery (SSRF)",
+            message: "Potential SSRF vulnerability. Validate and whitelist URLs.",
+            severity: "high",
+            languages: r#"["java"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: new URL($URL).openConnection()
+      - pattern: new URL($URL).openStream()
+      - pattern: HttpClient.newHttpClient().send(HttpRequest.newBuilder().uri(URI.create($URL)).build(), ...)"#,
+            metadata: r#"{"category":"security","cwe":["CWE-918"],"owasp":["A10:2021"],"confidence":"medium"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/918.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "java-hardcoded-secret",
+            name: "Hardcoded Secret",
+            message: "Hardcoded credentials detected. Use environment variables or secrets manager.",
+            severity: "high",
+            languages: r#"["java"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: String $VAR = "...password..."
+      - pattern: String $VAR = "...secret..."
+      - pattern: String $VAR = "...apikey..."
+      - pattern: String $VAR = "...api_key...""#,
+            metadata: r#"{"category":"security","cwe":["CWE-798"],"owasp":["A07:2021"],"confidence":"medium"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/798.html",
+        },
+        // ============================================================================
+        // Go Security Rules
+        // ============================================================================
+        BuiltinSemgrepRule {
+            rule_id: "go-sql-injection",
+            name: "SQL Injection",
+            message: "Possible SQL injection. Use parameterized queries with $1, $2, etc.",
+            severity: "critical",
+            languages: r#"["go"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: $DB.Query("..." + $VAR + "...")
+      - pattern: $DB.Exec("..." + $VAR + "...")
+      - pattern: $DB.QueryRow("..." + $VAR + "...")
+      - pattern: fmt.Sprintf("...SELECT...%s...", $VAR)"#,
+            metadata: r#"{"category":"security","cwe":["CWE-89"],"owasp":["A03:2021"],"confidence":"high"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/89.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "go-command-injection",
+            name: "Command Injection",
+            message: "Possible command injection. Avoid passing user input to exec.Command().",
+            severity: "critical",
+            languages: r#"["go"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: exec.Command($CMD, ...)
+      - pattern: exec.CommandContext($CTX, $CMD, ...)"#,
+            metadata: r#"{"category":"security","cwe":["CWE-78"],"owasp":["A03:2021"],"confidence":"high"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/78.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "go-path-traversal",
+            name: "Path Traversal",
+            message: "Potential path traversal. Use filepath.Clean() and validate paths.",
+            severity: "high",
+            languages: r#"["go"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: os.Open($PATH)
+      - pattern: os.ReadFile($PATH)
+      - pattern: ioutil.ReadFile($PATH)
+      - pattern: filepath.Join(..., $USERPATH, ...)"#,
+            metadata: r#"{"category":"security","cwe":["CWE-22"],"owasp":["A01:2021"],"confidence":"medium"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/22.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "go-weak-crypto",
+            name: "Weak Cryptographic Algorithm",
+            message: "MD5/SHA1 are cryptographically weak. Use SHA-256 or stronger.",
+            severity: "medium",
+            languages: r#"["go"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: md5.New()
+      - pattern: md5.Sum(...)
+      - pattern: sha1.New()
+      - pattern: sha1.Sum(...)"#,
+            metadata: r#"{"category":"security","cwe":["CWE-328"],"owasp":["A02:2021"],"confidence":"high"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/328.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "go-insecure-tls",
+            name: "Insecure TLS Configuration",
+            message: "Insecure TLS configuration. Do not skip certificate verification.",
+            severity: "high",
+            languages: r#"["go"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: "tls.Config{..., InsecureSkipVerify: true, ...}"
+      - pattern: "&tls.Config{InsecureSkipVerify: true}""#,
+            metadata: r#"{"category":"security","cwe":["CWE-295"],"owasp":["A02:2021"],"confidence":"high"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/295.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "go-ssrf",
+            name: "Server-Side Request Forgery (SSRF)",
+            message: "Potential SSRF vulnerability. Validate and whitelist URLs.",
+            severity: "high",
+            languages: r#"["go"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: http.Get($URL)
+      - pattern: http.Post($URL, ...)
+      - pattern: http.NewRequest($METHOD, $URL, ...)"#,
+            metadata: r#"{"category":"security","cwe":["CWE-918"],"owasp":["A10:2021"],"confidence":"medium"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/918.html",
+        },
+        // ============================================================================
+        // Rust Security Rules
+        // ============================================================================
+        BuiltinSemgrepRule {
+            rule_id: "rust-unsafe-block",
+            name: "Unsafe Block Usage",
+            message: "Unsafe block detected. Review for memory safety issues.",
+            severity: "medium",
+            languages: r#"["rust"]"#,
+            pattern_yaml: r#"pattern: unsafe { ... }"#,
+            metadata: r#"{"category":"security","cwe":["CWE-119"],"confidence":"low"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/119.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "rust-unwrap-usage",
+            name: "Unwrap on Option/Result",
+            message: "unwrap() can panic. Consider using expect(), match, or the ? operator.",
+            severity: "low",
+            languages: r#"["rust"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: $X.unwrap()
+      - pattern: $X.unwrap_or_else(...)"#,
+            metadata: r#"{"category":"security","cwe":["CWE-755"],"confidence":"low"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/755.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "rust-command-injection",
+            name: "Command Injection",
+            message: "Possible command injection via shell command execution.",
+            severity: "critical",
+            languages: r#"["rust"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: std::process::Command::new($CMD).arg($ARG).spawn()
+      - pattern: std::process::Command::new("sh").arg("-c").arg($CMD)"#,
+            metadata: r#"{"category":"security","cwe":["CWE-78"],"owasp":["A03:2021"],"confidence":"medium"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/78.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "rust-sql-injection",
+            name: "SQL Injection",
+            message: "Possible SQL injection. Use parameterized queries.",
+            severity: "critical",
+            languages: r#"["rust"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: format!("...SELECT...{}...", $VAR)
+      - pattern: sqlx::query(&format!("...{}", $VAR))"#,
+            metadata: r#"{"category":"security","cwe":["CWE-89"],"owasp":["A03:2021"],"confidence":"high"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/89.html",
+        },
+        // ============================================================================
+        // Multi-Language Secret Detection Rules
+        // ============================================================================
+        BuiltinSemgrepRule {
+            rule_id: "generic-hardcoded-aws-key",
+            name: "Hardcoded AWS Access Key",
+            message: "AWS access key detected. Use environment variables or AWS credentials file.",
+            severity: "critical",
+            languages: r#"["python","javascript","typescript","java","go","rust","ruby","php"]"#,
+            pattern_yaml: r#"pattern-regex: "AKIA[0-9A-Z]{16}""#,
+            metadata: r#"{"category":"security","cwe":["CWE-798"],"owasp":["A07:2021"],"confidence":"high"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/798.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "generic-hardcoded-private-key",
+            name: "Hardcoded Private Key",
+            message: "Private key detected in source code. Store keys in secure key management.",
+            severity: "critical",
+            languages: r#"["python","javascript","typescript","java","go","rust","ruby","php"]"#,
+            pattern_yaml: r#"pattern-regex: "-----BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----""#,
+            metadata: r#"{"category":"security","cwe":["CWE-321"],"owasp":["A07:2021"],"confidence":"high"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/321.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "generic-hardcoded-github-token",
+            name: "Hardcoded GitHub Token",
+            message: "GitHub token detected. Use environment variables or secrets manager.",
+            severity: "critical",
+            languages: r#"["python","javascript","typescript","java","go","rust","ruby","php"]"#,
+            pattern_yaml: r#"pattern-regex: "(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{36,}""#,
+            metadata: r#"{"category":"security","cwe":["CWE-798"],"owasp":["A07:2021"],"confidence":"high"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/798.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "generic-hardcoded-jwt",
+            name: "Hardcoded JWT Token",
+            message: "JWT token detected in source code. Tokens should not be hardcoded.",
+            severity: "high",
+            languages: r#"["python","javascript","typescript","java","go","rust","ruby","php"]"#,
+            pattern_yaml: r#"pattern-regex: "eyJ[A-Za-z0-9-_]+\\.eyJ[A-Za-z0-9-_]+\\.[A-Za-z0-9-_]+""#,
+            metadata: r#"{"category":"security","cwe":["CWE-798"],"owasp":["A07:2021"],"confidence":"high"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/798.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "generic-hardcoded-slack-token",
+            name: "Hardcoded Slack Token",
+            message: "Slack token detected. Use environment variables or secrets manager.",
+            severity: "high",
+            languages: r#"["python","javascript","typescript","java","go","rust","ruby","php"]"#,
+            pattern_yaml: r#"pattern-regex: "xox[baprs]-[0-9]{10,13}-[0-9]{10,13}-[a-zA-Z0-9]{24}""#,
+            metadata: r#"{"category":"security","cwe":["CWE-798"],"owasp":["A07:2021"],"confidence":"high"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/798.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "generic-hardcoded-password",
+            name: "Hardcoded Password",
+            message: "Possible hardcoded password. Use environment variables or secrets manager.",
+            severity: "high",
+            languages: r#"["python","javascript","typescript","java","go","rust","ruby","php"]"#,
+            pattern_yaml: r#"pattern-regex: "(?i)(password|passwd|pwd|secret)\\s*[=:]\\s*['\"][^'\"]{8,}['\"]""#,
+            metadata: r#"{"category":"security","cwe":["CWE-798"],"owasp":["A07:2021"],"confidence":"medium"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/798.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "generic-hardcoded-api-key",
+            name: "Hardcoded API Key",
+            message: "Possible hardcoded API key. Use environment variables or secrets manager.",
+            severity: "high",
+            languages: r#"["python","javascript","typescript","java","go","rust","ruby","php"]"#,
+            pattern_yaml: r#"pattern-regex: "(?i)(api[_-]?key|apikey)\\s*[=:]\\s*['\"][A-Za-z0-9_\\-]{20,}['\"]""#,
+            metadata: r#"{"category":"security","cwe":["CWE-798"],"owasp":["A07:2021"],"confidence":"medium"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/798.html",
+        },
+        // ============================================================================
+        // C# Security Rules
+        // ============================================================================
+        BuiltinSemgrepRule {
+            rule_id: "csharp-sql-injection",
+            name: "SQL Injection",
+            message: "Possible SQL injection. Use parameterized queries with SqlParameter.",
+            severity: "critical",
+            languages: r#"["csharp"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: $CMD.CommandText = "..." + $VAR + "..."
+      - pattern: new SqlCommand("..." + $VAR + "...", ...)
+      - pattern: $CMD.ExecuteReader("..." + $VAR + "...")"#,
+            metadata: r#"{"category":"security","cwe":["CWE-89"],"owasp":["A03:2021"],"confidence":"high"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/89.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "csharp-xxe",
+            name: "XML External Entity (XXE) Injection",
+            message: "XXE vulnerability. Set XmlReaderSettings.DtdProcessing = DtdProcessing.Prohibit.",
+            severity: "critical",
+            languages: r#"["csharp"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: new XmlDocument().Load($INPUT)
+      - pattern: XmlReader.Create($INPUT)
+      - pattern: new XmlTextReader($INPUT)"#,
+            metadata: r#"{"category":"security","cwe":["CWE-611"],"owasp":["A05:2021"],"confidence":"medium"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/611.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "csharp-insecure-deserialization",
+            name: "Insecure Deserialization",
+            message: "BinaryFormatter is insecure. Use JSON or XML serializers instead.",
+            severity: "critical",
+            languages: r#"["csharp"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: new BinaryFormatter().Deserialize(...)
+      - pattern: (BinaryFormatter $BF).Deserialize(...)"#,
+            metadata: r#"{"category":"security","cwe":["CWE-502"],"owasp":["A08:2021"],"confidence":"high"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/502.html",
+        },
+        // ============================================================================
+        // Ruby Security Rules
+        // ============================================================================
+        BuiltinSemgrepRule {
+            rule_id: "ruby-command-injection",
+            name: "Command Injection",
+            message: "Possible command injection. Avoid using backticks or system() with user input.",
+            severity: "critical",
+            languages: r#"["ruby"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: system($CMD)
+      - pattern: exec($CMD)
+      - pattern: "`#{$CMD}`"
+      - pattern: "%x(#{$CMD})"
+      - pattern: IO.popen($CMD)"#,
+            metadata: r#"{"category":"security","cwe":["CWE-78"],"owasp":["A03:2021"],"confidence":"high"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/78.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "ruby-sql-injection",
+            name: "SQL Injection (Rails)",
+            message: "Possible SQL injection. Use parameterized queries or sanitize input.",
+            severity: "critical",
+            languages: r#"["ruby"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: $MODEL.where("..." + $VAR + "...")
+      - pattern: $MODEL.find_by_sql("..." + $VAR + "...")
+      - pattern: ActiveRecord::Base.connection.execute($QUERY)"#,
+            metadata: r#"{"category":"security","cwe":["CWE-89"],"owasp":["A03:2021"],"confidence":"high"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/89.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "ruby-unsafe-yaml",
+            name: "Unsafe YAML Load",
+            message: "YAML.load can execute arbitrary code. Use YAML.safe_load instead.",
+            severity: "critical",
+            languages: r#"["ruby"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern: YAML.load($INPUT)
+  - pattern-not: YAML.load($INPUT, permitted_classes: ...)"#,
+            metadata: r#"{"category":"security","cwe":["CWE-502"],"owasp":["A08:2021"],"confidence":"high"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/502.html",
+        },
+        // ============================================================================
+        // PHP Security Rules
+        // ============================================================================
+        BuiltinSemgrepRule {
+            rule_id: "php-sql-injection",
+            name: "SQL Injection",
+            message: "Possible SQL injection. Use prepared statements with bound parameters.",
+            severity: "critical",
+            languages: r#"["php"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: mysqli_query($CONN, "..." . $VAR . "...")
+      - pattern: $PDO->query("..." . $VAR . "...")
+      - pattern: mysql_query("..." . $VAR . "...")"#,
+            metadata: r#"{"category":"security","cwe":["CWE-89"],"owasp":["A03:2021"],"confidence":"high"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/89.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "php-command-injection",
+            name: "Command Injection",
+            message: "Possible command injection. Use escapeshellarg() and escapeshellcmd().",
+            severity: "critical",
+            languages: r#"["php"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: exec($CMD)
+      - pattern: shell_exec($CMD)
+      - pattern: system($CMD)
+      - pattern: passthru($CMD)
+      - pattern: "`$CMD`""#,
+            metadata: r#"{"category":"security","cwe":["CWE-78"],"owasp":["A03:2021"],"confidence":"high"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/78.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "php-xss",
+            name: "Cross-Site Scripting (XSS)",
+            message: "Possible XSS vulnerability. Use htmlspecialchars() to encode output.",
+            severity: "high",
+            languages: r#"["php"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: echo $_GET[...]
+      - pattern: echo $_POST[...]
+      - pattern: echo $_REQUEST[...]
+      - pattern: print $_GET[...]"#,
+            metadata: r#"{"category":"security","cwe":["CWE-79"],"owasp":["A03:2021"],"confidence":"high"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/79.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "php-insecure-deserialization",
+            name: "Insecure Deserialization",
+            message: "unserialize() with user input can lead to code execution.",
+            severity: "critical",
+            languages: r#"["php"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: unserialize($_GET[...])
+      - pattern: unserialize($_POST[...])
+      - pattern: unserialize($_REQUEST[...])
+      - pattern: unserialize($USER_INPUT)"#,
+            metadata: r#"{"category":"security","cwe":["CWE-502"],"owasp":["A08:2021"],"confidence":"high"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/502.html",
+        },
+        BuiltinSemgrepRule {
+            rule_id: "php-file-inclusion",
+            name: "Local/Remote File Inclusion",
+            message: "File inclusion with user input can lead to code execution. Whitelist allowed files.",
+            severity: "critical",
+            languages: r#"["php"]"#,
+            pattern_yaml: r#"patterns:
+  - pattern-either:
+      - pattern: include($_GET[...])
+      - pattern: include($_POST[...])
+      - pattern: require($_GET[...])
+      - pattern: require_once($_GET[...])
+      - pattern: include($USER_INPUT)"#,
+            metadata: r#"{"category":"security","cwe":["CWE-98"],"owasp":["A03:2021"],"confidence":"high"}"#,
+            source_url: "https://cwe.mitre.org/data/definitions/98.html",
+        },
+    ]
+}
+
+/// Create finding deduplication tables for tracking unique vulnerabilities across scans
+async fn create_finding_deduplication_tables(pool: &SqlitePool) -> Result<()> {
+    // Main deduplicated findings table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS deduplicated_findings (
+            id TEXT PRIMARY KEY,
+            fingerprint_hash TEXT NOT NULL UNIQUE,
+            vulnerability_id TEXT NOT NULL,
+            title TEXT,
+            severity TEXT NOT NULL,
+            host TEXT NOT NULL,
+            port INTEGER,
+            protocol TEXT,
+            service TEXT,
+            description TEXT,
+            solution TEXT,
+            first_seen_at TEXT NOT NULL,
+            last_seen_at TEXT NOT NULL,
+            occurrence_count INTEGER NOT NULL DEFAULT 1,
+            status TEXT NOT NULL DEFAULT 'open',
+            organization_id TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (organization_id) REFERENCES organizations(id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Index on fingerprint_hash for fast lookups
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_deduplicated_findings_fingerprint ON deduplicated_findings(fingerprint_hash)"
+    )
+    .execute(pool)
+    .await?;
+
+    // Index on vulnerability_id for grouping
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_deduplicated_findings_vuln_id ON deduplicated_findings(vulnerability_id)"
+    )
+    .execute(pool)
+    .await?;
+
+    // Index on severity for filtering
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_deduplicated_findings_severity ON deduplicated_findings(severity)"
+    )
+    .execute(pool)
+    .await?;
+
+    // Index on host for filtering
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_deduplicated_findings_host ON deduplicated_findings(host)"
+    )
+    .execute(pool)
+    .await?;
+
+    // Index on status for filtering
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_deduplicated_findings_status ON deduplicated_findings(status)"
+    )
+    .execute(pool)
+    .await?;
+
+    // Index on organization_id for multi-tenant isolation
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_deduplicated_findings_org ON deduplicated_findings(organization_id)"
+    )
+    .execute(pool)
+    .await?;
+
+    // Finding occurrences table (tracks when findings are seen in specific scans)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS finding_occurrences (
+            id TEXT PRIMARY KEY,
+            finding_id TEXT NOT NULL,
+            scan_id TEXT NOT NULL,
+            seen_at TEXT NOT NULL,
+            FOREIGN KEY (finding_id) REFERENCES deduplicated_findings(id) ON DELETE CASCADE,
+            FOREIGN KEY (scan_id) REFERENCES scan_results(id) ON DELETE CASCADE,
+            UNIQUE(finding_id, scan_id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Index on finding_id for finding lookups
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_finding_occurrences_finding ON finding_occurrences(finding_id)"
+    )
+    .execute(pool)
+    .await?;
+
+    // Index on scan_id for scan lookups
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_finding_occurrences_scan ON finding_occurrences(scan_id)"
+    )
+    .execute(pool)
+    .await?;
+
+    // Finding references table (CVE URLs, advisories, etc.)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS finding_references (
+            id TEXT PRIMARY KEY,
+            finding_id TEXT NOT NULL,
+            reference_url TEXT NOT NULL,
+            reference_type TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (finding_id) REFERENCES deduplicated_findings(id) ON DELETE CASCADE,
+            UNIQUE(finding_id, reference_url)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Index on finding_id for reference lookups
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_finding_references_finding ON finding_references(finding_id)"
+    )
+    .execute(pool)
+    .await?;
+
+    // Finding merge history (tracks when findings are merged due to fingerprint changes)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS finding_merge_history (
+            id TEXT PRIMARY KEY,
+            source_finding_id TEXT NOT NULL,
+            target_finding_id TEXT NOT NULL,
+            merged_at TEXT NOT NULL,
+            merged_by TEXT,
+            reason TEXT,
+            FOREIGN KEY (target_finding_id) REFERENCES deduplicated_findings(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Create remediation roadmaps table for storing AI-generated roadmaps
+async fn create_remediation_roadmaps_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS remediation_roadmaps (
+            id TEXT PRIMARY KEY,
+            scan_id TEXT NOT NULL,
+            generated_at TEXT NOT NULL,
+            roadmap_data TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Index on scan_id for quick roadmap lookups by scan
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_remediation_roadmaps_scan ON remediation_roadmaps(scan_id)"
+    )
+    .execute(pool)
+    .await?;
+
+    // Index on generated_at for sorting by recency
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_remediation_roadmaps_generated ON remediation_roadmaps(generated_at DESC)"
+    )
+    .execute(pool)
+    .await?;
+
+    log::info!("Created remediation_roadmaps table");
+    Ok(())
+}
+
+/// Create attack path interpretations table for AI-generated narratives
+async fn create_attack_path_interpretations_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS attack_path_interpretations (
+            path_id TEXT PRIMARY KEY,
+            generated_at TEXT NOT NULL,
+            interpretation_data TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    log::info!("Created attack_path_interpretations table");
+    Ok(())
+}
+
+/// Create integration sync tables for bi-directional JIRA/ServiceNow sync
+async fn create_integration_sync_tables(pool: &SqlitePool) -> Result<()> {
+    // Linked tickets table - tracks tickets created in external systems
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS linked_tickets (
+            id TEXT PRIMARY KEY,
+            vulnerability_id TEXT NOT NULL,
+            integration_type TEXT NOT NULL,
+            external_id TEXT NOT NULL,
+            external_url TEXT,
+            local_status TEXT NOT NULL DEFAULT 'open',
+            remote_status TEXT,
+            last_synced_at TEXT,
+            sync_enabled INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(vulnerability_id, integration_type, external_id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Indexes for linked_tickets
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_linked_tickets_vuln ON linked_tickets(vulnerability_id)"
+    )
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_linked_tickets_integration ON linked_tickets(integration_type)"
+    )
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_linked_tickets_external ON linked_tickets(external_id)"
+    )
+    .execute(pool)
+    .await?;
+
+    // Synced comments table - tracks comment synchronization between systems
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS synced_comments (
+            id TEXT PRIMARY KEY,
+            linked_ticket_id TEXT NOT NULL,
+            local_comment_id TEXT,
+            remote_comment_id TEXT,
+            direction TEXT NOT NULL,
+            content_hash TEXT NOT NULL,
+            synced_at TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (linked_ticket_id) REFERENCES linked_tickets(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Indexes for synced_comments
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_synced_comments_ticket ON synced_comments(linked_ticket_id)"
+    )
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_synced_comments_local ON synced_comments(local_comment_id)"
+    )
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_synced_comments_remote ON synced_comments(remote_comment_id)"
+    )
+    .execute(pool)
+    .await?;
+
+    // Webhook logs table - logs incoming webhooks for debugging and audit
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS webhook_logs (
+            id TEXT PRIMARY KEY,
+            integration_type TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            payload TEXT NOT NULL,
+            signature_valid INTEGER,
+            processed INTEGER NOT NULL DEFAULT 0,
+            process_result TEXT,
+            error_message TEXT,
+            received_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            processed_at TEXT
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Indexes for webhook_logs
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_webhook_logs_integration ON webhook_logs(integration_type)"
+    )
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_webhook_logs_event ON webhook_logs(event_type)"
+    )
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_webhook_logs_received ON webhook_logs(received_at DESC)"
+    )
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_webhook_logs_processed ON webhook_logs(processed)"
+    )
+    .execute(pool)
+    .await?;
+
+    // Sync configuration table - per-integration sync settings
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS integration_sync_config (
+            id TEXT PRIMARY KEY,
+            integration_type TEXT NOT NULL UNIQUE,
+            sync_enabled INTEGER NOT NULL DEFAULT 1,
+            sync_interval_seconds INTEGER NOT NULL DEFAULT 300,
+            sync_status INTEGER NOT NULL DEFAULT 1,
+            sync_comments INTEGER NOT NULL DEFAULT 1,
+            auto_close_on_verify INTEGER NOT NULL DEFAULT 1,
+            conflict_strategy TEXT NOT NULL DEFAULT 'most_recent',
+            webhook_secret TEXT,
+            last_sync_at TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Sync action history table - tracks all sync operations for audit
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS sync_action_history (
+            id TEXT PRIMARY KEY,
+            linked_ticket_id TEXT,
+            action_type TEXT NOT NULL,
+            direction TEXT NOT NULL,
+            details TEXT,
+            success INTEGER NOT NULL,
+            error_message TEXT,
+            executed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (linked_ticket_id) REFERENCES linked_tickets(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Indexes for sync_action_history
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_sync_history_ticket ON sync_action_history(linked_ticket_id)"
+    )
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_sync_history_type ON sync_action_history(action_type)"
+    )
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_sync_history_executed ON sync_action_history(executed_at DESC)"
+    )
+    .execute(pool)
+    .await?;
+
+    log::info!("Created integration sync tables");
+    Ok(())
+}
+
+/// Create engagement templates table for quick engagement setup
+async fn create_engagement_templates_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS engagement_templates (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL,
+            engagement_type TEXT NOT NULL,
+            default_duration_days INTEGER NOT NULL,
+            default_budget REAL,
+            scope_template TEXT,
+            compliance_frameworks TEXT,
+            milestones_template TEXT,
+            scan_config_template TEXT,
+            is_system INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Indexes
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_engagement_templates_type ON engagement_templates(engagement_type)"
+    )
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_engagement_templates_system ON engagement_templates(is_system)"
+    )
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_engagement_templates_name ON engagement_templates(name)"
+    )
+    .execute(pool)
+    .await?;
+
+    log::info!("Created engagement_templates table");
+    Ok(())
+}
+
+
+/// Create portal collaboration tables for discussions, disputes, and attachments
+async fn create_portal_collaboration_tables(pool: &SqlitePool) -> Result<()> {
+    // Portal vulnerability comments table (extended version for portal)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS portal_vulnerability_comments (
+            id TEXT PRIMARY KEY,
+            vulnerability_id TEXT NOT NULL,
+            author_id TEXT NOT NULL,
+            author_name TEXT NOT NULL,
+            author_type TEXT NOT NULL CHECK(author_type IN ('customer', 'consultant')),
+            content TEXT NOT NULL,
+            parent_id TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT,
+            is_internal INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY (vulnerability_id) REFERENCES vulnerability_tracking(id) ON DELETE CASCADE,
+            FOREIGN KEY (parent_id) REFERENCES portal_vulnerability_comments(id) ON DELETE SET NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Indexes for comments
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_portal_comments_vuln ON portal_vulnerability_comments(vulnerability_id)"
+    )
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_portal_comments_parent ON portal_vulnerability_comments(parent_id)"
+    )
+    .execute(pool)
+    .await?;
+
+    // Severity disputes table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS severity_disputes (
+            id TEXT PRIMARY KEY,
+            vulnerability_id TEXT NOT NULL,
+            original_severity TEXT NOT NULL,
+            proposed_severity TEXT NOT NULL,
+            justification TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'rejected', 'under_review')),
+            submitted_by TEXT NOT NULL,
+            submitted_at TEXT NOT NULL,
+            reviewed_by TEXT,
+            reviewed_at TEXT,
+            review_notes TEXT,
+            FOREIGN KEY (vulnerability_id) REFERENCES vulnerability_tracking(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Indexes for disputes
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_severity_disputes_vuln ON severity_disputes(vulnerability_id)"
+    )
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_severity_disputes_status ON severity_disputes(status)"
+    )
+    .execute(pool)
+    .await?;
+
+    // Vulnerability acknowledgments table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS vulnerability_acknowledgments (
+            id TEXT PRIMARY KEY,
+            vulnerability_id TEXT NOT NULL UNIQUE,
+            acknowledged_by TEXT NOT NULL,
+            acknowledged_at TEXT NOT NULL,
+            notes TEXT,
+            risk_accepted INTEGER NOT NULL DEFAULT 0,
+            expected_remediation_date TEXT,
+            FOREIGN KEY (vulnerability_id) REFERENCES vulnerability_tracking(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Index for acknowledgments
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_vuln_ack_vuln ON vulnerability_acknowledgments(vulnerability_id)"
+    )
+    .execute(pool)
+    .await?;
+
+    // Vulnerability attachments table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS vulnerability_attachments (
+            id TEXT PRIMARY KEY,
+            vulnerability_id TEXT NOT NULL,
+            filename TEXT NOT NULL,
+            content_type TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL,
+            uploaded_by TEXT NOT NULL,
+            uploaded_at TEXT NOT NULL,
+            description TEXT,
+            data BLOB,
+            FOREIGN KEY (vulnerability_id) REFERENCES vulnerability_tracking(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Index for attachments
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_vuln_attachments_vuln ON vulnerability_attachments(vulnerability_id)"
+    )
+    .execute(pool)
+    .await?;
+
+    log::info!("Created portal collaboration tables");
+    Ok(())
+}
+
+
+/// Create custom report templates table
+async fn create_custom_report_templates_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS custom_report_templates (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            created_by TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            is_public INTEGER NOT NULL DEFAULT 0,
+            version INTEGER NOT NULL DEFAULT 1,
+            sections TEXT NOT NULL,
+            branding TEXT NOT NULL,
+            settings TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Indexes
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_custom_templates_created_by ON custom_report_templates(created_by)"
+    )
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_custom_templates_public ON custom_report_templates(is_public)"
+    )
+    .execute(pool)
+    .await?;
+
+    log::info!("Created custom_report_templates table");
+    Ok(())
+}
+
+/// Create finding lifecycle management tables
+async fn create_finding_lifecycle_tables(pool: &SqlitePool) -> Result<()> {
+    // Finding lifecycle state tracking
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS finding_lifecycles (
+            id TEXT PRIMARY KEY,
+            finding_id TEXT NOT NULL UNIQUE,
+            current_state TEXT NOT NULL DEFAULT 'discovered',
+            severity TEXT NOT NULL,
+            title TEXT NOT NULL,
+            affected_asset TEXT,
+            discovered_at TEXT NOT NULL,
+            triaged_at TEXT,
+            acknowledged_at TEXT,
+            remediation_started_at TEXT,
+            verified_at TEXT,
+            closed_at TEXT,
+            sla_due_at TEXT,
+            sla_breached INTEGER NOT NULL DEFAULT 0,
+            assigned_to TEXT,
+            risk_accepted INTEGER NOT NULL DEFAULT 0,
+            risk_accepted_by TEXT,
+            risk_accepted_at TEXT,
+            risk_accepted_reason TEXT,
+            false_positive INTEGER NOT NULL DEFAULT 0,
+            false_positive_reason TEXT,
+            engagement_id TEXT,
+            customer_id TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // State transition history for audit trail
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS finding_state_transitions (
+            id TEXT PRIMARY KEY,
+            finding_id TEXT NOT NULL,
+            from_state TEXT,
+            to_state TEXT NOT NULL,
+            transitioned_by TEXT NOT NULL,
+            transitioned_at TEXT NOT NULL DEFAULT (datetime('now')),
+            comment TEXT,
+            metadata TEXT,
+            FOREIGN KEY (finding_id) REFERENCES finding_lifecycles(finding_id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // SLA policy definitions
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS sla_policies (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            critical_hours INTEGER NOT NULL DEFAULT 24,
+            high_hours INTEGER NOT NULL DEFAULT 72,
+            medium_hours INTEGER NOT NULL DEFAULT 168,
+            low_hours INTEGER NOT NULL DEFAULT 720,
+            info_hours INTEGER,
+            organization_id TEXT,
+            is_default INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Indexes for finding_lifecycles
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_finding_lifecycles_state ON finding_lifecycles(current_state)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_finding_lifecycles_severity ON finding_lifecycles(severity)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_finding_lifecycles_sla_due ON finding_lifecycles(sla_due_at)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_finding_lifecycles_assigned ON finding_lifecycles(assigned_to)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_finding_lifecycles_customer ON finding_lifecycles(customer_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_finding_lifecycles_engagement ON finding_lifecycles(engagement_id)")
+        .execute(pool)
+        .await?;
+
+    // Indexes for state transitions
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_finding_transitions_finding ON finding_state_transitions(finding_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_finding_transitions_at ON finding_state_transitions(transitioned_at)")
+        .execute(pool)
+        .await?;
+
+    // Seed default SLA policy
+    sqlx::query(
+        r#"
+        INSERT OR IGNORE INTO sla_policies (id, name, description, critical_hours, high_hours, medium_hours, low_hours, info_hours, is_default)
+        VALUES (
+            'default-sla-policy',
+            'Default SLA Policy',
+            'Standard SLA timelines based on industry best practices',
+            24,
+            72,
+            168,
+            720,
+            NULL,
+            1
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    log::info!("Created finding_lifecycles, finding_state_transitions, and sla_policies tables");
+    Ok(())
+}
+
+/// Create Passive Reconnaissance results tables
+async fn create_passive_recon_tables(pool: &SqlitePool) -> Result<()> {
+    // Main passive recon results table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS passive_recon_results (
+            id TEXT PRIMARY KEY,
+            domain TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            organization_id TEXT,
+            customer_id TEXT,
+            engagement_id TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            sources_used TEXT, -- JSON array of source names
+            total_subdomains INTEGER DEFAULT 0,
+            total_urls INTEGER DEFAULT 0,
+            total_code_results INTEGER DEFAULT 0,
+            total_dns_records INTEGER DEFAULT 0,
+            subdomains TEXT, -- JSON array of subdomain results
+            historical_urls TEXT, -- JSON array of wayback URLs
+            code_search_results TEXT, -- JSON array of code search results
+            dns_records TEXT, -- JSON array of DNS records
+            sensitive_paths TEXT, -- JSON array of sensitive paths
+            certificates TEXT, -- JSON array of certificate info
+            error_message TEXT,
+            started_at TEXT,
+            completed_at TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Subdomain discovery cache
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS passive_subdomain_cache (
+            id TEXT PRIMARY KEY,
+            parent_domain TEXT NOT NULL,
+            subdomain TEXT NOT NULL,
+            source TEXT NOT NULL,
+            first_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
+            last_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
+            ip_addresses TEXT, -- JSON array of resolved IPs
+            UNIQUE(parent_domain, subdomain, source)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // GitHub code search cache
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS passive_github_cache (
+            id TEXT PRIMARY KEY,
+            domain TEXT NOT NULL,
+            search_type TEXT NOT NULL,
+            repository TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            matched_content TEXT,
+            url TEXT,
+            found_at TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(domain, search_type, repository, file_path)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Historical URL cache (Wayback Machine)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS passive_wayback_cache (
+            id TEXT PRIMARY KEY,
+            domain TEXT NOT NULL,
+            url TEXT NOT NULL,
+            timestamp TEXT,
+            mime_type TEXT,
+            status_code INTEGER,
+            is_sensitive INTEGER DEFAULT 0,
+            found_at TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(domain, url, timestamp)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Indexes for efficient querying
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_passive_recon_domain ON passive_recon_results(domain)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_passive_recon_user ON passive_recon_results(user_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_passive_recon_customer ON passive_recon_results(customer_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_passive_recon_status ON passive_recon_results(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_passive_subdomain_parent ON passive_subdomain_cache(parent_domain)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_passive_github_domain ON passive_github_cache(domain)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_passive_wayback_domain ON passive_wayback_cache(domain)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created passive reconnaissance tables");
     Ok(())
 }

@@ -1625,3 +1625,323 @@ pub async fn list_users_for_picker(
         }
     }
 }
+
+// ============================================================================
+// False Positive Prediction
+// ============================================================================
+
+/// Get false positive prediction for a vulnerability
+#[utoipa::path(
+    get,
+    path = "/api/vulnerabilities/{id}/fp-prediction",
+    tag = "Vulnerabilities",
+    security(
+        ("bearer_auth" = [])
+    ),
+    params(
+        ("id" = String, Path, description = "Vulnerability tracking ID")
+    ),
+    responses(
+        (status = 200, description = "FP prediction for the vulnerability", body = crate::ai_security::fp_prediction::FPPrediction),
+        (status = 404, description = "Vulnerability not found", body = crate::web::openapi::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = crate::web::openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::web::openapi::ErrorResponse)
+    )
+)]
+pub async fn get_fp_prediction(
+    pool: web::Data<SqlitePool>,
+    path: web::Path<String>,
+    _claims: web::ReqData<auth::Claims>,
+) -> HttpResponse {
+    let id = path.into_inner();
+
+    // Get the vulnerability tracking record
+    let detail = match crate::db::vulnerabilities::get_vulnerability_detail(pool.get_ref(), &id).await {
+        Ok(v) => v,
+        Err(e) => {
+            if e.to_string().contains("no rows") {
+                return HttpResponse::NotFound().json(serde_json::json!({
+                    "error": "Vulnerability not found"
+                }));
+            }
+            log::error!("Failed to get vulnerability: {}", e);
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to retrieve vulnerability"
+            }));
+        }
+    };
+
+    let vuln = &detail.vulnerability;
+
+    // Build FP features from the vulnerability
+    let features = crate::ai_security::fp_prediction::FPFeatures {
+        title: vuln.vulnerability_id.clone(),
+        finding_type: categorize_finding_type(&vuln.vulnerability_id),
+        severity: vuln.severity.clone(),
+        source: "scan".to_string(),
+        target: vuln.host_ip.clone(),
+        port: vuln.port.map(|p| p as u16),
+        service: None,
+        cve_ids: extract_cve_ids(&vuln.vulnerability_id),
+        historical_fp_rate: None,
+        similar_fp_count: 0,
+        similar_tp_count: 0,
+        seen_on_target_before: false,
+        detection_confidence: Some(0.7),
+        asset_tags: Vec::new(),
+        environment: None,
+    };
+
+    // Get FP prediction
+    let predictor = crate::ai_security::fp_prediction::FPPredictor::new();
+    match predictor.predict(&id, &features) {
+        Ok(prediction) => HttpResponse::Ok().json(prediction),
+        Err(e) => {
+            log::error!("Failed to get FP prediction: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to generate FP prediction"
+            }))
+        }
+    }
+}
+
+/// Get batch FP predictions for multiple vulnerabilities
+#[utoipa::path(
+    post,
+    path = "/api/vulnerabilities/fp-predictions",
+    tag = "Vulnerabilities",
+    security(
+        ("bearer_auth" = [])
+    ),
+    request_body = BatchFPPredictionRequest,
+    responses(
+        (status = 200, description = "FP predictions for the vulnerabilities", body = Vec<crate::ai_security::fp_prediction::FPPrediction>),
+        (status = 400, description = "Invalid request", body = crate::web::openapi::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = crate::web::openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::web::openapi::ErrorResponse)
+    )
+)]
+pub async fn get_batch_fp_predictions(
+    pool: web::Data<SqlitePool>,
+    body: web::Json<BatchFPPredictionRequest>,
+    _claims: web::ReqData<auth::Claims>,
+) -> HttpResponse {
+    if body.vulnerability_ids.is_empty() {
+        return HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "vulnerability_ids cannot be empty"
+        }));
+    }
+
+    if body.vulnerability_ids.len() > 100 {
+        return HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "Maximum 100 vulnerabilities per batch request"
+        }));
+    }
+
+    let predictor = crate::ai_security::fp_prediction::FPPredictor::new();
+    let mut predictions = Vec::new();
+
+    for vuln_id in &body.vulnerability_ids {
+        // Get each vulnerability
+        let detail = match crate::db::vulnerabilities::get_vulnerability_detail(pool.get_ref(), vuln_id).await {
+            Ok(v) => v,
+            Err(_) => continue, // Skip missing vulnerabilities
+        };
+
+        let vuln = &detail.vulnerability;
+
+        // Build features
+        let features = crate::ai_security::fp_prediction::FPFeatures {
+            title: vuln.vulnerability_id.clone(),
+            finding_type: categorize_finding_type(&vuln.vulnerability_id),
+            severity: vuln.severity.clone(),
+            source: "scan".to_string(),
+            target: vuln.host_ip.clone(),
+            port: vuln.port.map(|p| p as u16),
+            service: None,
+            cve_ids: extract_cve_ids(&vuln.vulnerability_id),
+            historical_fp_rate: None,
+            similar_fp_count: 0,
+            similar_tp_count: 0,
+            seen_on_target_before: false,
+            detection_confidence: Some(0.7),
+            asset_tags: Vec::new(),
+            environment: None,
+        };
+
+        // Get prediction
+        if let Ok(prediction) = predictor.predict(vuln_id, &features) {
+            predictions.push(prediction);
+        }
+    }
+
+    HttpResponse::Ok().json(predictions)
+}
+
+/// Request for batch FP predictions
+#[derive(Debug, serde::Deserialize, utoipa::ToSchema)]
+pub struct BatchFPPredictionRequest {
+    /// List of vulnerability tracking IDs
+    pub vulnerability_ids: Vec<String>,
+}
+
+/// Submit user feedback on an FP prediction
+#[utoipa::path(
+    post,
+    path = "/api/vulnerabilities/{id}/fp-feedback",
+    tag = "Vulnerabilities",
+    security(
+        ("bearer_auth" = [])
+    ),
+    params(
+        ("id" = String, Path, description = "Vulnerability tracking ID")
+    ),
+    request_body = FPFeedbackRequest,
+    responses(
+        (status = 200, description = "Feedback submitted"),
+        (status = 404, description = "Vulnerability not found", body = crate::web::openapi::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = crate::web::openapi::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::web::openapi::ErrorResponse)
+    )
+)]
+pub async fn submit_fp_feedback(
+    pool: web::Data<SqlitePool>,
+    path: web::Path<String>,
+    body: web::Json<FPFeedbackRequest>,
+    claims: web::ReqData<auth::Claims>,
+) -> HttpResponse {
+    let id = path.into_inner();
+
+    // Verify vulnerability exists
+    let detail = match crate::db::vulnerabilities::get_vulnerability_detail(pool.get_ref(), &id).await {
+        Ok(v) => v,
+        Err(e) => {
+            if e.to_string().contains("no rows") {
+                return HttpResponse::NotFound().json(serde_json::json!({
+                    "error": "Vulnerability not found"
+                }));
+            }
+            log::error!("Failed to get vulnerability: {}", e);
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to retrieve vulnerability"
+            }));
+        }
+    };
+
+    // If user confirms it's a false positive, update status
+    if body.is_false_positive {
+        let update_request = UpdateVulnerabilityRequest {
+            status: Some("false_positive".to_string()),
+            notes: body.notes.clone(),
+            assignee_id: None,
+            due_date: None,
+            priority: None,
+            remediation_steps: None,
+            estimated_effort: None,
+            actual_effort: None,
+        };
+
+        if let Err(e) = crate::db::vulnerabilities::update_vulnerability_status(
+            pool.get_ref(),
+            &id,
+            &update_request,
+            &claims.sub,
+        )
+        .await
+        {
+            log::error!("Failed to update vulnerability status: {}", e);
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to update vulnerability"
+            }));
+        }
+
+        // Add a comment about the FP confirmation
+        let comment_text = format!(
+            "Marked as false positive. Reason: {}",
+            body.reason.as_deref().unwrap_or("Not specified")
+        );
+
+        let _ = crate::db::vulnerabilities::add_vulnerability_comment(
+            pool.get_ref(),
+            &id,
+            &claims.sub,
+            &comment_text,
+        )
+        .await;
+    }
+
+    log::info!(
+        "FP feedback submitted for vulnerability {}: is_fp={}, user={}",
+        detail.vulnerability.vulnerability_id,
+        body.is_false_positive,
+        claims.sub
+    );
+
+    HttpResponse::Ok().json(serde_json::json!({
+        "message": "Feedback submitted",
+        "vulnerability_id": id,
+        "is_false_positive": body.is_false_positive
+    }))
+}
+
+/// Request for FP feedback submission
+#[derive(Debug, serde::Deserialize, utoipa::ToSchema)]
+pub struct FPFeedbackRequest {
+    /// Whether the user confirms this is a false positive
+    pub is_false_positive: bool,
+    /// Optional reason for the determination
+    pub reason: Option<String>,
+    /// Optional additional notes
+    pub notes: Option<String>,
+}
+
+// Helper functions for FP prediction
+
+/// Categorize a finding into a type based on its title/ID
+fn categorize_finding_type(vulnerability_id: &str) -> String {
+    let lower = vulnerability_id.to_lowercase();
+
+    if lower.contains("cve-") {
+        return "cve".to_string();
+    }
+    if lower.contains("sql") && lower.contains("inject") {
+        return "sql_injection".to_string();
+    }
+    if lower.contains("xss") || lower.contains("cross-site") || lower.contains("script") {
+        return "xss".to_string();
+    }
+    if lower.contains("rce") || lower.contains("command") || lower.contains("exec") {
+        return "remote_code_execution".to_string();
+    }
+    if lower.contains("auth") && (lower.contains("bypass") || lower.contains("weak")) {
+        return "authentication_bypass".to_string();
+    }
+    if lower.contains("ssl") || lower.contains("tls") || lower.contains("certificate") {
+        return "ssl_certificate_issue".to_string();
+    }
+    if lower.contains("header") && lower.contains("miss") {
+        return "missing_header".to_string();
+    }
+    if lower.contains("default") && (lower.contains("page") || lower.contains("cred")) {
+        return "default_page".to_string();
+    }
+    if lower.contains("version") || lower.contains("banner") {
+        return "version_disclosure".to_string();
+    }
+    if lower.contains("info") && lower.contains("disclos") {
+        return "information_disclosure".to_string();
+    }
+    if lower.contains("misconfigur") {
+        return "misconfiguration".to_string();
+    }
+
+    "general".to_string()
+}
+
+/// Extract CVE IDs from a vulnerability title/ID
+fn extract_cve_ids(text: &str) -> Vec<String> {
+    let re = regex::Regex::new(r"CVE-\d{4}-\d+").unwrap();
+    re.find_iter(text)
+        .map(|m| m.as_str().to_string())
+        .collect()
+}

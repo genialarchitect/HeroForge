@@ -5,6 +5,7 @@ pub mod sqli;
 pub mod xss;
 pub mod info_disclosure;
 pub mod secrets;
+pub mod graphql;
 
 use anyhow::Result;
 use log::info;

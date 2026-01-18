@@ -18,7 +18,6 @@ import {
   CheckCircle,
   XCircle,
   Terminal,
-  Info,
 } from 'lucide-react';
 import { redTeamAdvisorAPI } from '../../services/api';
 import type {
@@ -105,11 +104,11 @@ const RedTeamAdvisorPanel: React.FC<RedTeamAdvisorPanelProps> = ({
 }) => {
   const queryClient = useQueryClient();
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [hasAnalyzed, setHasAnalyzed] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   // Fetch existing recommendations
-  const { data: recommendations, isLoading, refetch } = useQuery({
+  const { data: recommendations, isLoading } = useQuery({
     queryKey: ['red-team-recommendations', topologyId, scanId],
     queryFn: () => redTeamAdvisorAPI.getRecommendations({
       topology_id: topologyId,

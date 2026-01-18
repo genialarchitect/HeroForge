@@ -8,8 +8,9 @@ use tokio::sync::RwLock;
 use crate::db::asset_discovery;
 use crate::db::crm_asset_sync::{self, AssetType, DiscoveredAsset as CrmDiscoveredAsset};
 use crate::scanner::asset_discovery::{
-    run_asset_discovery, AssetDiscoveryConfig, AssetDiscoveryStatus,
+    run_asset_discovery, AssetDiscoveryConfig, AssetDiscoveryStatus, DiscoveredPort,
 };
+use std::net::IpAddr;
 use crate::web::auth::jwt::Claims;
 use crate::web::error::ApiError;
 
@@ -150,6 +151,7 @@ pub async fn start_discovery(
     let customer_id_clone = req.customer_id.clone();
     let engagement_id_clone = req.engagement_id.clone();
     let domain_clone = req.domain.clone();
+    let user_id_clone = claims.sub.clone();
 
     tokio::spawn(async move {
         // Update status to running
@@ -173,6 +175,55 @@ pub async fn start_discovery(
                     asset_discovery::save_discovery_results(&pool_clone, &discovery_result).await
                 {
                     error!("Failed to save discovery results: {}", e);
+                }
+
+                // Update main asset inventory from discovered assets
+                let mut assets_imported = 0;
+                for discovered in &discovery_result.assets {
+                    // Use first IP address as primary
+                    if let Some(ip_addr) = discovered.ip_addresses.first() {
+                        let ip_str = ip_addr.to_string();
+
+                        match crate::db::assets::upsert_asset(
+                            &pool_clone,
+                            &user_id_clone,
+                            &ip_str,
+                            Some(&discovered.hostname),
+                            None, // mac_address not available
+                            None, // os_family not available from discovery
+                            None, // os_version not available from discovery
+                            &scan_id_clone,
+                            engagement_id_clone.as_deref(),
+                            customer_id_clone.as_deref(),
+                        ).await {
+                            Ok(asset) => {
+                                assets_imported += 1;
+
+                                // Upsert discovered ports
+                                for port_info in &discovered.ports {
+                                    let _ = crate::db::assets::upsert_asset_port(
+                                        &pool_clone,
+                                        &asset.id,
+                                        port_info.port as i32,
+                                        &port_info.protocol,
+                                        port_info.service.as_deref(),
+                                        port_info.version.as_deref(),
+                                        "Open", // Assume open if discovered
+                                    ).await;
+                                }
+                            }
+                            Err(e) => {
+                                error!("Failed to upsert asset {}: {}", ip_str, e);
+                            }
+                        }
+                    }
+                }
+
+                if assets_imported > 0 {
+                    info!(
+                        "Imported {} discovered assets to inventory for scan {}",
+                        assets_imported, scan_id_clone
+                    );
                 }
 
                 // Sync discovered assets to CRM if customer_id is set
@@ -420,6 +471,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/scans/{id}/assets", web::get().to(get_scan_assets))
             .route("/scans/{id}/cancel", web::post().to(cancel_scan))
             .route("/scans/{id}", web::delete().to(delete_scan))
+            .route("/scans/{id}/promote-to-inventory", web::post().to(promote_to_inventory))
             .route("/assets/search", web::get().to(search_assets)),
     );
 }
@@ -552,4 +604,116 @@ fn convert_to_crm_assets(
     }
 
     crm_assets
+}
+
+/// Response for promote to inventory endpoint
+#[derive(Serialize)]
+pub struct PromoteToInventoryResponse {
+    pub scan_id: String,
+    pub assets_imported: usize,
+    pub ports_imported: usize,
+    pub message: String,
+}
+
+/// Promote discovered assets from a scan to the main asset inventory
+///
+/// POST /api/discovery/scans/{id}/promote-to-inventory
+pub async fn promote_to_inventory(
+    pool: web::Data<SqlitePool>,
+    claims: Claims,
+    path: web::Path<String>,
+) -> Result<HttpResponse, ApiError> {
+    let scan_id = path.into_inner();
+
+    // Verify scan exists and user has access
+    let scan = asset_discovery::get_scan_by_id(pool.get_ref(), &scan_id)
+        .await?
+        .ok_or_else(|| ApiError::not_found("Scan not found"))?;
+
+    if scan.user_id != claims.sub {
+        return Err(ApiError::forbidden("Access denied"));
+    }
+
+    // Get discovered assets for this scan
+    let discovered_assets = asset_discovery::get_scan_assets(pool.get_ref(), &scan_id).await?;
+
+    if discovered_assets.is_empty() {
+        return Ok(HttpResponse::Ok().json(PromoteToInventoryResponse {
+            scan_id: scan_id.clone(),
+            assets_imported: 0,
+            ports_imported: 0,
+            message: "No assets to import".to_string(),
+        }));
+    }
+
+    let mut assets_imported = 0;
+    let mut ports_imported = 0;
+
+    // Get optional engagement and customer IDs from the scan
+    let engagement_id = scan.engagement_id.as_deref();
+    let customer_id = scan.customer_id.as_deref();
+
+    for discovered in &discovered_assets {
+        // Deserialize IP addresses from JSON string
+        let ip_addresses: Vec<IpAddr> = serde_json::from_str(&discovered.ip_addresses)
+            .unwrap_or_default();
+
+        // Use first IP address as primary
+        if let Some(ip_addr) = ip_addresses.first() {
+            let ip_str = ip_addr.to_string();
+
+            match crate::db::assets::upsert_asset(
+                pool.get_ref(),
+                &claims.sub,
+                &ip_str,
+                Some(&discovered.hostname),
+                None, // mac_address not available
+                None, // os_family not available from discovery
+                None, // os_version not available from discovery
+                &scan_id,
+                engagement_id,
+                customer_id,
+            ).await {
+                Ok(asset) => {
+                    assets_imported += 1;
+
+                    // Deserialize ports from JSON string and upsert them
+                    let ports: Vec<DiscoveredPort> = serde_json::from_str(&discovered.ports)
+                        .unwrap_or_default();
+
+                    for port_info in &ports {
+                        if crate::db::assets::upsert_asset_port(
+                            pool.get_ref(),
+                            &asset.id,
+                            port_info.port as i32,
+                            &port_info.protocol,
+                            port_info.service.as_deref(),
+                            port_info.version.as_deref(),
+                            "Open",
+                        ).await.is_ok() {
+                            ports_imported += 1;
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to upsert asset {}: {}", ip_str, e);
+                }
+            }
+        }
+    }
+
+    info!(
+        "User {} promoted {} assets ({} ports) from discovery scan {} to inventory",
+        claims.sub, assets_imported, ports_imported, scan_id
+    );
+
+    Ok(HttpResponse::Ok().json(PromoteToInventoryResponse {
+        scan_id,
+        assets_imported,
+        ports_imported,
+        message: format!(
+            "Successfully imported {} assets with {} ports to inventory",
+            assets_imported, ports_imported
+        ),
+    }))
 }

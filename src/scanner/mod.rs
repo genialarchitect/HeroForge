@@ -18,6 +18,7 @@ pub mod domain_intel;
 pub mod dorks;
 pub mod email_security;
 pub mod enumeration;
+pub mod evidence;
 pub mod git_recon;
 pub mod google_dorking;
 pub mod exploitation;

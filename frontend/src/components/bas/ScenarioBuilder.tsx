@@ -14,7 +14,6 @@ import {
 import { toast } from 'react-toastify';
 import { basAPI } from '../../services/api';
 import type {
-  AttackTechnique,
   BasExecutionMode,
   CreateScenarioRequest,
 } from '../../types';

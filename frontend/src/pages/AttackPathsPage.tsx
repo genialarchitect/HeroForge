@@ -12,6 +12,7 @@ import {
   Network,
   Zap,
   Info,
+  Brain,
 } from 'lucide-react';
 import Layout from '../components/layout/Layout';
 import { EngagementRequiredBanner } from '../components/engagement';
@@ -20,6 +21,7 @@ import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import Badge from '../components/ui/Badge';
+import { AttackPathInterpretationPanel } from '../components/ai';
 import { attackPathsAPI, scanAPI } from '../services/api';
 import type {
   AttackPath,
@@ -286,6 +288,7 @@ const AttackPathsPage: React.FC = () => {
   const [selectedNode, setSelectedNode] = useState<AttackNode | null>(null);
   const [showCriticalOnly, setShowCriticalOnly] = useState(false);
   const [hasAnalyzed, setHasAnalyzed] = useState(false);
+  const [showInterpretation, setShowInterpretation] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -660,6 +663,7 @@ const AttackPathsPage: React.FC = () => {
             {/* Path Visualization */}
             <div className="lg:col-span-2">
               {selectedPath ? (
+                <>
                 <Card>
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-lg font-semibold text-white">
@@ -769,7 +773,30 @@ const AttackPathsPage: React.FC = () => {
                       </ul>
                     </div>
                   )}
+
+                  {/* AI Interpretation Toggle */}
+                  <div className="mt-4 pt-4 border-t border-dark-border">
+                    <Button
+                      variant={showInterpretation ? 'primary' : 'secondary'}
+                      onClick={() => setShowInterpretation(!showInterpretation)}
+                      className="w-full justify-center"
+                    >
+                      <Brain className="h-4 w-4 mr-2" />
+                      {showInterpretation ? 'Hide AI Interpretation' : 'View AI Interpretation'}
+                    </Button>
+                  </div>
                 </Card>
+
+                {/* AI Interpretation Panel */}
+                {showInterpretation && (
+                  <div className="mt-4">
+                    <AttackPathInterpretationPanel
+                      pathId={selectedPath.id}
+                      pathName={selectedPath.name}
+                    />
+                  </div>
+                )}
+              </>
               ) : (
                 <Card className="p-8 text-center">
                   <p className="text-slate-400">

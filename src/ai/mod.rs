@@ -24,6 +24,7 @@
 
 pub mod chat;
 pub mod context;
+pub mod context_builder;
 pub mod features;
 pub mod llm_orchestrator;
 pub mod ml_pipeline;
@@ -31,6 +32,24 @@ pub mod models;
 pub mod prioritization;
 pub mod providers;
 pub mod red_team_advisor;
+pub mod remediation_planner;
+pub mod attack_path_interpreter;
+
+pub use remediation_planner::{
+    RemediationPlanner, RemediationRoadmap, RemediationPhase, RemediationTask,
+    RoadmapSummary, RiskProjection, CriticalPathItem, ResourceSuggestion,
+    GenerateRoadmapRequest,
+};
+
+pub use attack_path_interpreter::{
+    AttackPathInterpreter, AttackPathInterpretation, AttackNarrative,
+    MitreMapping, BusinessImpact, BlockingPoint, RiskAssessment,
+};
+
+pub use context_builder::{
+    ContextBuilder, ChatContext, ContextType, TrendData, TrendDirection,
+    RelatedEntity,
+};
 
 use anyhow::Result;
 use chrono::Utc;

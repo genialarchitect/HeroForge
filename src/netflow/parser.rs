@@ -791,6 +791,7 @@ fn parse_sflow_sample(data: &[u8], sample_type: u32) -> Result<ParsedFlow, Parse
         return Err(ParseError::InsufficientData);
     }
 
+    #[allow(unused_assignments)]
     let mut offset = 0;
 
     // Parse sample header

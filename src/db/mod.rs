@@ -48,6 +48,7 @@ pub mod data_lake;
 pub mod deception;
 pub mod dlp;
 pub mod dorking;
+pub mod engagement_templates;
 pub mod evidence;
 pub mod exclusions;
 pub mod exploits;
@@ -117,6 +118,8 @@ pub mod scap;
 pub mod windows_audit;
 pub mod emass;
 pub mod audit_files;
+// Legal documents module
+pub mod legal_documents;
 
 // Core imports used by this module
 use sqlx::sqlite::SqlitePool;
@@ -323,6 +326,9 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     // Note: ACAS tables (scap, windows_audit, emass, audit_files) are already
     // created by migrations::run_migrations(), so we don't call their init_tables
     // here to avoid schema conflicts.
+
+    // Initialize legal documents tables
+    legal_documents::init_tables(pool).await?;
 
     Ok(())
 }
@@ -594,6 +600,7 @@ pub use methodology::{
     list_methodology_templates,
     get_methodology_template,
     get_methodology_template_with_items,
+    get_methodology_template_item,
     create_checklist,
     get_user_checklists,
     get_checklist,

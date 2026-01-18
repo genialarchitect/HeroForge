@@ -119,9 +119,9 @@ pub async fn scan_syn_ports(config: &ScanConfig) -> Result<HashMap<IpAddr, Vec<P
                 }
             }
             Err(_) => {
-                // Try to resolve hostname
-                if let Ok(addrs) = tokio::net::lookup_host(format!("{}:0", target_str)).await {
-                    for addr in addrs {
+                // Try to resolve hostname - only scan first resolved IP
+                if let Ok(mut addrs) = tokio::net::lookup_host(format!("{}:0", target_str)).await {
+                    if let Some(addr) = addrs.next() {
                         let target = ScanTarget {
                             ip: addr.ip(),
                             hostname: Some(target_str.clone()),
@@ -134,7 +134,6 @@ pub async fn scan_syn_ports(config: &ScanConfig) -> Result<HashMap<IpAddr, Vec<P
                                 warn!("Failed to SYN scan {}: {}", addr.ip(), e);
                             }
                         }
-                        break; // Only scan first resolved IP
                     }
                 }
             }

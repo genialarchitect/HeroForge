@@ -226,9 +226,15 @@ impl Default for AuditPolicyCollector {
 
 #[async_trait]
 impl WindowsCollector for AuditPolicyCollector {
-    async fn collect(&self, object: &OvalObject, _context: &CollectionContext) -> Result<Vec<OvalItem>> {
+    async fn collect(&self, object: &OvalObject, context: &CollectionContext) -> Result<Vec<OvalItem>> {
+        // Check if we have credentials configured
+        if !context.has_credentials() {
+            log::warn!("No WinRM credentials configured, skipping audit policy collection");
+            return Ok(vec![]);
+        }
+
         // Check if a specific subcategory is requested
-        let _script = if let Some(subcategory) = object.data.get("auditeventpolicy")
+        let script = if let Some(subcategory) = object.data.get("auditeventpolicy")
             .and_then(|v| v.as_str())
         {
             self.build_subcategory_script(subcategory)
@@ -236,8 +242,33 @@ impl WindowsCollector for AuditPolicyCollector {
             self.build_audit_policy_script()
         };
 
-        // TODO: Execute via WinRM
-        Ok(vec![])
+        // Execute via WinRM
+        let output = match context.execute_script(&script).await {
+            Ok(out) => out,
+            Err(e) => {
+                log::warn!("Failed to execute audit policy collection script: {}", e);
+                return Ok(vec![]);
+            }
+        };
+
+        // Parse the JSON output
+        let json: serde_json::Value = match serde_json::from_str(&output) {
+            Ok(j) => j,
+            Err(e) => {
+                log::warn!("Failed to parse audit policy collection output: {}", e);
+                return Ok(vec![]);
+            }
+        };
+
+        // Build items from the result
+        if json.get("policies").is_some() {
+            // Multiple policies returned
+            Ok(self.build_items_from_policies(&json))
+        } else if let Some(item) = self.build_item(&json) {
+            Ok(vec![item])
+        } else {
+            Ok(vec![])
+        }
     }
 
     fn supported_types(&self) -> Vec<ObjectType> {

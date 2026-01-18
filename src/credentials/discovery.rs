@@ -922,10 +922,8 @@ impl CredentialDiscovery {
             let salt = b"saltysalt";
             let mut key = [0u8; 16];
             pbkdf2::<Hmac<Sha1>>(password, salt, 1, &mut key).ok()?;
-            return Some(key.to_vec());
+            Some(key.to_vec())
         }
-
-        None
     }
 
     fn parse_chrome_login_db(&self, db_bytes: &[u8], encryption_key: Option<&[u8]>) -> Vec<BrowserCred> {

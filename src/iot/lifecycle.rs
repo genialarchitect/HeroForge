@@ -544,8 +544,8 @@ mod tests {
     #[tokio::test]
     async fn test_discover_shadow_iot() {
         let devices = discover_shadow_iot().await.unwrap();
-        // May or may not find shadow devices depending on risk calculation
-        assert!(devices.len() >= 0);
+        // Verify function returns a valid vector (may be empty)
+        let _ = devices.len();
     }
 
     #[tokio::test]

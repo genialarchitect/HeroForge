@@ -88,21 +88,19 @@ impl FrameworkFormatter for Nist80053Formatter {
                 .find(|c| c.category.starts_with(family_id));
 
             if let Some(cat) = matching_cat {
-                if cat.non_compliant > 0 || 0 > 0 {
+                if cat.non_compliant > 0 {
                     let priority = if cat.percentage < 50.0 { "High" } else if cat.percentage < 75.0 { "Medium" } else { "Low" };
                     html.push_str(&format!(
                         r#"        <li>
             <span class="priority-{}">[{}]</span>
-            <strong>{} ({}):</strong> {} controls require attention ({} non-compliant, {} partial). Current score: {:.1}%
+            <strong>{} ({}):</strong> {} controls require attention. Current score: {:.1}%
         </li>
 "#,
                         priority.to_lowercase(),
                         priority,
                         html_escape(family_name),
                         family_id,
-                        cat.non_compliant + 0,
                         cat.non_compliant,
-                        0,
                         cat.percentage
                     ));
                 }
@@ -266,7 +264,7 @@ impl FrameworkFormatter for NistCsfFormatter {
                 .find(|c| c.category.starts_with(func_id) || c.category.contains(func_name));
 
             if let Some(cat) = matching_cat {
-                if cat.non_compliant > 0 || 0 > 0 {
+                if cat.non_compliant > 0 {
                     let priority = if cat.percentage < 50.0 { "High" } else if cat.percentage < 75.0 { "Medium" } else { "Low" };
                     html.push_str(&format!(
                         r#"        <li>
@@ -278,7 +276,7 @@ impl FrameworkFormatter for NistCsfFormatter {
                         priority,
                         html_escape(func_name),
                         func_id,
-                        cat.non_compliant + 0,
+                        cat.non_compliant,
                         cat.percentage
                     ));
                 }

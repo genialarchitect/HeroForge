@@ -203,6 +203,10 @@ pub enum DnsRecordType {
     SOA,
     PTR,
     SRV,
+    CAA,
+    DNSKEY,
+    DS,
+    RRSIG,
 }
 
 impl std::fmt::Display for ServiceType {

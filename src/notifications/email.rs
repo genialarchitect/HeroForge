@@ -818,8 +818,7 @@ mod tests {
     fn test_email_config_is_configured() {
         // This test will return false unless env vars are set
         // In a real test environment, you might mock env vars
-        let result = EmailConfig::is_configured();
-        // Just verify it doesn't panic
-        assert!(result || !result);
+        let _result = EmailConfig::is_configured();
+        // Just verify it doesn't panic - no assertion needed
     }
 }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { toast } from 'react-toastify';
 import { complianceAPI } from '../../services/api';
 import type { ComplianceControl } from '../../types';
@@ -6,9 +6,6 @@ import LoadingSpinner from '../ui/LoadingSpinner';
 import Badge from '../ui/Badge';
 import {
   CheckCircle2,
-  XCircle,
-  AlertTriangle,
-  Circle,
   Shield,
   ChevronDown,
   ChevronRight,
@@ -21,18 +18,14 @@ interface ControlListProps {
   scanId: string;
 }
 
-const ControlList: React.FC<ControlListProps> = ({ framework, scanId }) => {
+const ControlList: React.FC<ControlListProps> = ({ framework, scanId: _scanId }) => {
   const [controls, setControls] = useState<ComplianceControl[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedControl, setExpandedControl] = useState<string | null>(null);
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [filterPriority, setFilterPriority] = useState<string>('all');
 
-  useEffect(() => {
-    loadControls();
-  }, [framework]);
-
-  const loadControls = async () => {
+  const loadControls = useCallback(async () => {
     setLoading(true);
     try {
       // Convert framework name to ID format (e.g., "NIST 800-53" -> "nist_800_53")
@@ -45,7 +38,11 @@ const ControlList: React.FC<ControlListProps> = ({ framework, scanId }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [framework]);
+
+  useEffect(() => {
+    loadControls();
+  }, [loadControls]);
 
   const getPriorityIcon = (priority: string) => {
     switch (priority) {

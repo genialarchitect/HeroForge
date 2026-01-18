@@ -270,47 +270,74 @@ impl ContentLoader {
         let mut benchmarks = Vec::new();
         let mut all_oval_defs = OvalDefinitions::new();
 
-        // Simple extraction - look for component elements
-        // In a full implementation, we'd use proper XML parsing
+        // Extract XCCDF components - handle both namespaced and non-namespaced
+        // Patterns: <Benchmark, <xccdf:Benchmark, <cdf:Benchmark
+        for start_tag in &["<Benchmark", "<xccdf:Benchmark", "<cdf:Benchmark"] {
+            let end_tag = if *start_tag == "<Benchmark" {
+                "</Benchmark>"
+            } else if *start_tag == "<xccdf:Benchmark" {
+                "</xccdf:Benchmark>"
+            } else {
+                "</cdf:Benchmark>"
+            };
 
-        // Extract XCCDF components
-        let xccdf_pattern = "<component id=";
-        let mut pos = 0;
-        while let Some(start) = content[pos..].find("<Benchmark") {
-            let absolute_start = pos + start;
-            if let Some(end) = content[absolute_start..].find("</Benchmark>") {
-                let xccdf_xml = &content[absolute_start..absolute_start + end + "</Benchmark>".len()];
-                if let Ok(benchmark) = XccdfParser::parse(xccdf_xml) {
-                    benchmarks.push(benchmark);
-                }
-            }
-            pos = absolute_start + 1;
-        }
-
-        // Extract OVAL components
-        pos = 0;
-        while let Some(start) = content[pos..].find("<oval_definitions") {
-            let absolute_start = pos + start;
-            if let Some(end) = content[absolute_start..].find("</oval_definitions>") {
-                let oval_xml = &content[absolute_start..absolute_start + end + "</oval_definitions>".len()];
-                if let Ok(oval_defs) = OvalParser::parse(oval_xml) {
-                    // Merge definitions
-                    for (id, def) in oval_defs.definitions {
-                        all_oval_defs.definitions.insert(id, def);
-                    }
-                    for (id, test) in oval_defs.tests {
-                        all_oval_defs.tests.insert(id, test);
-                    }
-                    for (id, obj) in oval_defs.objects {
-                        all_oval_defs.objects.insert(id, obj);
-                    }
-                    for (id, state) in oval_defs.states {
-                        all_oval_defs.states.insert(id, state);
+            let mut pos = 0;
+            while let Some(start) = content[pos..].find(*start_tag) {
+                let absolute_start = pos + start;
+                if let Some(end) = content[absolute_start..].find(end_tag) {
+                    let xccdf_xml = &content[absolute_start..absolute_start + end + end_tag.len()];
+                    if let Ok(benchmark) = XccdfParser::parse(xccdf_xml) {
+                        // Avoid duplicates by checking ID
+                        if !benchmarks.iter().any(|b: &XccdfBenchmark| b.id == benchmark.id) {
+                            log::debug!("Extracted XCCDF benchmark from DataStream: {}", benchmark.id);
+                            benchmarks.push(benchmark);
+                        }
                     }
                 }
+                pos = absolute_start + 1;
             }
-            pos = absolute_start + 1;
         }
+
+        // Extract OVAL components - handle both namespaced and non-namespaced
+        // Patterns: <oval_definitions, <oval-def:oval_definitions
+        for start_tag in &["<oval_definitions", "<oval-def:oval_definitions"] {
+            let end_tag = if *start_tag == "<oval_definitions" {
+                "</oval_definitions>"
+            } else {
+                "</oval-def:oval_definitions>"
+            };
+
+            let mut pos = 0;
+            while let Some(start) = content[pos..].find(*start_tag) {
+                let absolute_start = pos + start;
+                if let Some(end) = content[absolute_start..].find(end_tag) {
+                    let oval_xml = &content[absolute_start..absolute_start + end + end_tag.len()];
+                    if let Ok(oval_defs) = OvalParser::parse(oval_xml) {
+                        log::debug!("Extracted {} OVAL definitions from DataStream", oval_defs.definitions.len());
+                        // Merge definitions
+                        for (id, def) in oval_defs.definitions {
+                            all_oval_defs.definitions.insert(id, def);
+                        }
+                        for (id, test) in oval_defs.tests {
+                            all_oval_defs.tests.insert(id, test);
+                        }
+                        for (id, obj) in oval_defs.objects {
+                            all_oval_defs.objects.insert(id, obj);
+                        }
+                        for (id, state) in oval_defs.states {
+                            all_oval_defs.states.insert(id, state);
+                        }
+                        for (id, var) in oval_defs.variables {
+                            all_oval_defs.variables.insert(id, var);
+                        }
+                    }
+                }
+                pos = absolute_start + 1;
+            }
+        }
+
+        log::info!("Parsed DataStream: {} benchmarks, {} OVAL definitions",
+            benchmarks.len(), all_oval_defs.definitions.len());
 
         Ok((benchmarks, all_oval_defs))
     }

@@ -312,6 +312,7 @@ impl ScaAnalyzer {
     pub async fn analyze_directory(&self, path: &Path, ecosystem: Ecosystem) -> Result<ScaAnalysisResult> {
         let start = std::time::Instant::now();
         let mut errors = Vec::new();
+        #[allow(unused_assignments)]
         let mut dependencies_found = 0;
         let mut vulnerabilities_found = 0;
         let mut license_issues_found = 0;

@@ -185,3 +185,120 @@ export interface GetAttackPathsResponse {
   paths: AttackPath[];
   stats: AttackPathStats;
 }
+
+// ============================================================================
+// Attack Path AI Interpretation Types
+// ============================================================================
+
+export interface InterpretAttackPathRequest {
+  force?: boolean;
+}
+
+export interface InterpNarrativeStep {
+  step: number;
+  action: string;
+  rationale: string;
+  technical_detail: string;
+  vulnerabilities: string[];
+}
+
+export interface InterpAttackNarrative {
+  summary: string;
+  attack_steps: InterpNarrativeStep[];
+  attacker_perspective: string;
+  consequence_description: string;
+  complexity: string;
+}
+
+export interface InterpMitreTactic {
+  id: string;
+  name: string;
+  description: string;
+  url: string;
+}
+
+export interface InterpMitreTechnique {
+  id: string;
+  name: string;
+  tactic: string;
+  description: string;
+  relevance: string;
+  url: string;
+}
+
+export interface InterpKillChainStage {
+  stage: number;
+  name: string;
+  description: string;
+  techniques: string[];
+}
+
+export interface InterpMitreMapping {
+  tactics: InterpMitreTactic[];
+  techniques: InterpMitreTechnique[];
+  kill_chain_stages: InterpKillChainStage[];
+}
+
+export interface InterpDataRiskItem {
+  data_type: string;
+  classification: string;
+  risk: string;
+}
+
+export interface InterpFinancialImpact {
+  min_estimate_usd: number;
+  max_estimate_usd: number;
+  cost_factors: string[];
+  confidence: string;
+}
+
+export interface InterpReputationalRisk {
+  level: string;
+  description: string;
+  potential_headlines: string[];
+}
+
+export interface InterpBusinessImpact {
+  level: string;
+  description: string;
+  affected_functions: string[];
+  data_at_risk: InterpDataRiskItem[];
+  financial_impact?: InterpFinancialImpact;
+  regulatory_implications: string[];
+  reputational_risk: InterpReputationalRisk;
+}
+
+export interface InterpBlockingPoint {
+  step: number;
+  action: string;
+  effectiveness: string;
+  implementation_effort: string;
+  priority: number;
+  controls: string[];
+}
+
+export interface InterpRiskFactor {
+  name: string;
+  weight: number;
+  score: number;
+  description: string;
+}
+
+export interface InterpRiskAssessment {
+  risk_score: number;
+  exploitation_probability: number;
+  impact_score: number;
+  estimated_time_to_exploit: string;
+  risk_factors: InterpRiskFactor[];
+  recommendation: string;
+}
+
+export interface AttackPathInterpretation {
+  path_id: string;
+  generated_at: string;
+  narrative: InterpAttackNarrative;
+  mitre_mapping: InterpMitreMapping;
+  business_impact: InterpBusinessImpact;
+  blocking_points: InterpBlockingPoint[];
+  risk_assessment: InterpRiskAssessment;
+}

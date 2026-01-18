@@ -32,6 +32,12 @@ const ScaPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [expandedDeps, setExpandedDeps] = useState<Set<string>>(new Set());
+  const [newProject, setNewProject] = useState({
+    name: '',
+    repository_url: '',
+    ecosystem: 'npm'
+  });
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -40,11 +46,14 @@ const ScaPage: React.FC = () => {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [statsData, projectsData] = await Promise.all([
+      const [statsResponse, projectsData] = await Promise.all([
         scaAPI.getStats().then(res => res.data),
         scaAPI.getProjects().then(res => res.data)
       ]);
-      setStats(statsData);
+      // Backend returns { stats: {...}, vulns_by_ecosystem: [...], top_vulnerable_packages: [...] }
+      // Extract the stats object from the wrapper
+      const statsData = (statsResponse as { stats?: ScaStats })?.stats || statsResponse;
+      setStats(statsData as ScaStats);
       setProjects(projectsData);
       if (projectsData.length > 0) {
         await selectProject(projectsData[0]);
@@ -108,6 +117,44 @@ const ScaPage: React.FC = () => {
     } catch (error) {
       console.error('Failed to export SBOM:', error);
       toast.error('Failed to export SBOM');
+    }
+  };
+
+  const handleCreateProject = async () => {
+    if (!newProject.name.trim()) {
+      toast.error('Project name is required');
+      return;
+    }
+
+    try {
+      setCreating(true);
+      await scaAPI.createProject({
+        name: newProject.name.trim(),
+        repository_url: newProject.repository_url.trim() || undefined,
+        ecosystem: newProject.ecosystem
+      });
+      toast.success('Project created successfully');
+      setShowCreateModal(false);
+      setNewProject({ name: '', repository_url: '', ecosystem: 'npm' });
+      await loadData();
+    } catch (error) {
+      console.error('Failed to create project:', error);
+      toast.error('Failed to create project');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleDeleteProject = async (project: ScaProject) => {
+    if (!confirm(`Are you sure you want to delete "${project.name}"?`)) return;
+
+    try {
+      await scaAPI.deleteProject(project.id);
+      toast.success('Project deleted');
+      await loadData();
+    } catch (error) {
+      console.error('Failed to delete project:', error);
+      toast.error('Failed to delete project');
     }
   };
 
@@ -283,13 +330,35 @@ const ScaPage: React.FC = () => {
                         <button
                           onClick={(e) => { e.stopPropagation(); handleAnalyze(project); }}
                           className="p-2 bg-cyan-600 rounded-lg hover:bg-cyan-500"
+                          title="Analyze"
                         >
                           <Play className="h-4 w-4 text-white" />
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDeleteProject(project); }}
+                          className="p-2 bg-red-600 rounded-lg hover:bg-red-500"
+                          title="Delete"
+                        >
+                          <Trash2 className="h-4 w-4 text-white" />
                         </button>
                       </div>
                     </div>
                   </div>
                 ))}
+                {projects.length === 0 && (
+                  <div className="bg-gray-800 rounded-lg p-8 text-center">
+                    <Package className="h-12 w-12 text-gray-600 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-white mb-2">No Projects Yet</h3>
+                    <p className="text-gray-400 mb-4">Create your first SCA project to start analyzing dependencies</p>
+                    <button
+                      onClick={() => setShowCreateModal(true)}
+                      className="px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-500"
+                    >
+                      <Plus className="h-4 w-4 inline mr-2" />
+                      Add Project
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
@@ -463,6 +532,82 @@ const ScaPage: React.FC = () => {
           </>
         )}
       </div>
+
+      {/* Create Project Modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md mx-4">
+            <h2 className="text-xl font-bold text-white mb-4">Add SCA Project</h2>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">
+                  Project Name *
+                </label>
+                <input
+                  type="text"
+                  value={newProject.name}
+                  onChange={(e) => setNewProject({ ...newProject, name: e.target.value })}
+                  placeholder="e.g., my-web-app"
+                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">
+                  Repository URL
+                </label>
+                <input
+                  type="url"
+                  value={newProject.repository_url}
+                  onChange={(e) => setNewProject({ ...newProject, repository_url: e.target.value })}
+                  placeholder="https://github.com/user/repo"
+                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">
+                  Ecosystem
+                </label>
+                <select
+                  value={newProject.ecosystem}
+                  onChange={(e) => setNewProject({ ...newProject, ecosystem: e.target.value })}
+                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                >
+                  <option value="npm">📦 npm (JavaScript/Node.js)</option>
+                  <option value="cargo">🦀 Cargo (Rust)</option>
+                  <option value="pypi">🐍 PyPI (Python)</option>
+                  <option value="go">🐹 Go Modules</option>
+                  <option value="maven">☕ Maven (Java)</option>
+                  <option value="nuget">🔷 NuGet (.NET)</option>
+                  <option value="composer">🐘 Composer (PHP)</option>
+                  <option value="rubygems">💎 RubyGems</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => {
+                  setShowCreateModal(false);
+                  setNewProject({ name: '', repository_url: '', ecosystem: 'npm' });
+                }}
+                className="flex-1 px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateProject}
+                disabled={creating || !newProject.name.trim()}
+                className="flex-1 px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {creating ? 'Creating...' : 'Create Project'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 };

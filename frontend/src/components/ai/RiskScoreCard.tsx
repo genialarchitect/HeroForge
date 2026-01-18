@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertTriangle, TrendingUp, Clock, Shield } from 'lucide-react';
+import { TrendingUp, Clock, Shield } from 'lucide-react';
 
 interface RiskScoreCardProps {
   score: number;

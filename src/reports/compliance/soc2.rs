@@ -86,7 +86,7 @@ impl FrameworkFormatter for Soc2Formatter {
 
         // Analyze by Trust Services category
         for cat in &summary.by_category {
-            if cat.non_compliant > 0 || 0 > 0 {
+            if cat.non_compliant > 0 {
                 let tsc_category = if cat.category.contains("Security") || cat.category.contains("CC") {
                     "Security (Common Criteria)"
                 } else if cat.category.contains("Availability") || cat.category.starts_with("A") {
@@ -107,7 +107,7 @@ impl FrameworkFormatter for Soc2Formatter {
                     criteria: cat.category.clone(),
                     recommendation: format!(
                         "Address {} criteria exceptions to achieve full {} compliance (current: {:.1}%)",
-                        cat.non_compliant + 0,
+                        cat.non_compliant,
                         tsc_category.to_lowercase(),
                         cat.percentage
                     ),

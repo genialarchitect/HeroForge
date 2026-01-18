@@ -231,7 +231,13 @@ impl Default for RegistryCollector {
 
 #[async_trait]
 impl WindowsCollector for RegistryCollector {
-    async fn collect(&self, object: &OvalObject, _context: &CollectionContext) -> Result<Vec<OvalItem>> {
+    async fn collect(&self, object: &OvalObject, context: &CollectionContext) -> Result<Vec<OvalItem>> {
+        // Check if we have credentials configured
+        if !context.has_credentials() {
+            log::warn!("No WinRM credentials configured, skipping registry collection");
+            return Ok(vec![]);
+        }
+
         // Extract registry object parameters
         let hive = object.data.get("hive")
             .and_then(|v| v.as_str())
@@ -245,13 +251,35 @@ impl WindowsCollector for RegistryCollector {
             .and_then(|v| v.as_str());
 
         // Build the PowerShell script
-        let _script = self.build_registry_script(hive, key, name);
+        let script = self.build_registry_script(hive, key, name);
 
-        // In a real implementation, we would execute this script via WinRM
-        // For now, return empty result as placeholder
-        // TODO: Integrate with WinRM client from scanner/windows_audit
+        // Execute via WinRM
+        let output = match context.execute_script(&script).await {
+            Ok(out) => out,
+            Err(e) => {
+                log::warn!("Failed to execute registry collection script: {}", e);
+                return Ok(vec![]);
+            }
+        };
 
-        Ok(vec![])
+        // Parse the JSON output
+        let json: serde_json::Value = match serde_json::from_str(&output) {
+            Ok(j) => j,
+            Err(e) => {
+                log::warn!("Failed to parse registry collection output: {}", e);
+                return Ok(vec![]);
+            }
+        };
+
+        // Build items from the result
+        if json.get("values").is_some() {
+            // Multiple values returned
+            Ok(self.build_items_from_values(&json))
+        } else if let Some(item) = self.build_item(&json) {
+            Ok(vec![item])
+        } else {
+            Ok(vec![])
+        }
     }
 
     fn supported_types(&self) -> Vec<ObjectType> {

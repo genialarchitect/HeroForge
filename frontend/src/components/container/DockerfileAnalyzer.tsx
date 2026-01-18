@@ -8,7 +8,6 @@ import {
   AlertCircle,
   Info,
   CheckCircle,
-  XCircle,
   Copy,
   Check,
 } from 'lucide-react';
@@ -16,7 +15,7 @@ import { toast } from 'react-toastify';
 import { containerAPI } from '../../services/api';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
-import type { DockerfileAnalysis, DockerfileIssue, ContainerFindingSeverity } from '../../types';
+import type { DockerfileAnalysis, ContainerFindingSeverity } from '../../types';
 
 const severityColors: Record<ContainerFindingSeverity, { bg: string; text: string; border: string }> = {
   critical: { bg: 'bg-red-500/20', text: 'text-red-400', border: 'border-red-500' },

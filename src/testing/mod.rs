@@ -88,7 +88,8 @@ impl TestScan {
 }
 
 /// HTTP test client helper
-#[cfg(feature = "test-client")]
+#[cfg(any(test, feature = "test-client"))]
+#[allow(unexpected_cfgs)]
 pub mod http_client {
     use reqwest::Client;
     use serde::Serialize;

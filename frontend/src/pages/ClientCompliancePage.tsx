@@ -44,6 +44,7 @@ import {
 } from '../services/api';
 import { type ComplianceFramework } from '../types/compliance';
 import { type Customer } from '../types/crm';
+import Layout from '../components/layout/Layout';
 
 // Status badge component
 const StatusBadge: React.FC<{ status: string; type?: 'checklist' | 'item' }> = ({ status, type = 'item' }) => {
@@ -720,18 +721,18 @@ const ClientCompliancePage: React.FC = () => {
   const checklists = checklistsData?.checklists || [];
 
   return (
-    <div className="min-h-screen bg-gray-900 text-gray-100">
-      <div className="p-6">
-        <div className="flex items-center justify-between mb-6">
+    <Layout>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold">Client Compliance Checklists</h1>
-            <p className="text-gray-400 text-sm">
+            <h1 className="text-2xl font-bold text-white">Client Compliance Checklists</h1>
+            <p className="text-slate-400 text-sm">
               Manage compliance assessments with checkboxes and evidence for each client
             </p>
           </div>
           <button
             onClick={() => setShowCreateModal(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded"
+            className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg transition-colors"
           >
             <Plus className="w-4 h-4" />
             New Checklist
@@ -958,7 +959,7 @@ const ClientCompliancePage: React.FC = () => {
         onClose={() => setSelectedItem(null)}
         onSave={(id, data) => updateItemMutation.mutate({ id, data })}
       />
-    </div>
+    </Layout>
   );
 };
 

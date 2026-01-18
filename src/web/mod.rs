@@ -201,6 +201,9 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
             .service(
                 web::scope("/api/webhooks")
                     .route("/stripe", web::post().to(api::subscriptions::handle_stripe_webhook))
+                    // Integration sync webhooks (JIRA/ServiceNow)
+                    .route("/jira", web::post().to(api::integration_sync::jira_webhook))
+                    .route("/servicenow", web::post().to(api::integration_sync::servicenow_webhook))
             )
             // Phishing tracking routes (public, no auth required)
             .configure(api::phishing::configure_tracking)
@@ -243,6 +246,15 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                             .route("/engagements/{id}/assets", web::get().to(api::portal::assets::get_engagement_assets))
                             .route("/engagements/{id}/assets/stats", web::get().to(api::portal::assets::get_engagement_assets_stats))
                     )
+            )
+            // Public legal document signing routes (no auth required)
+            .service(
+                web::scope("/api/legal/sign")
+                    .wrap(rate_limit::RateLimitStatsMiddleware::api())
+                    .wrap(rate_limit::api_rate_limiter())
+                    .route("/{token}", web::get().to(api::legal_documents::get_signing_document))
+                    .route("/{token}", web::post().to(api::legal_documents::submit_signature))
+                    .route("/{token}/decline", web::post().to(api::legal_documents::decline_signature))
             )
             // Protected routes with moderate rate limiting (100 req/min per IP)
             .service(
@@ -297,7 +309,10 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .route("/scans/{id}/tags/{tag_id}", web::delete().to(api::scans::remove_tag_from_scan))
                     // Duplicate scan endpoint
                     .route("/scans/{id}/duplicate", web::post().to(api::scans::duplicate_scan))
+                    .route("/scans/{id}/evidence", web::get().to(api::scans::get_scan_evidence))
+                    .route("/scans/{id}/findings/{finding_id}/evidence", web::get().to(api::scans::get_finding_evidence))
                     .route("/ws/scans/{id}", web::get().to(websocket::ws_handler))
+                    .route("/ws/reports/{id}", web::get().to(websocket::report_ws_handler))
                     .route("/ws/exploitation/{id}", web::get().to(websocket::exploitation::ws_handler))
                     // Report endpoints
                     .route("/reports", web::post().to(api::reports::create_report))
@@ -306,6 +321,7 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .route("/reports/{id}", web::get().to(api::reports::get_report))
                     .route("/reports/{id}/download", web::get().to(api::reports::download_report))
                     .route("/reports/{id}", web::delete().to(api::reports::delete_report))
+                    .route("/reports/{id}/preview", web::get().to(api::reports::preview_report))
                     // Report operator notes endpoints
                     .route("/reports/{id}/notes", web::get().to(api::reports::get_report_notes))
                     .route("/reports/{id}/notes", web::put().to(api::reports::update_report_notes))
@@ -347,6 +363,7 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .route("/scheduled-reports/{id}", web::put().to(api::scheduled_reports::update_scheduled_report))
                     .route("/scheduled-reports/{id}", web::delete().to(api::scheduled_reports::delete_scheduled_report))
                     .route("/scheduled-reports/{id}/run-now", web::post().to(api::scheduled_reports::run_scheduled_report_now))
+                    .route("/scheduled-reports/{id}/history", web::get().to(api::scheduled_reports::get_report_history))
                     // Notification settings endpoints
                     .route("/notifications/settings", web::get().to(api::notifications::get_notification_settings))
                     .route("/notifications/settings", web::put().to(api::notifications::update_notification_settings))
@@ -440,6 +457,10 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .route("/vulnerabilities/{id}/request-retest", web::post().to(api::vulnerabilities::request_retest))
                     .route("/vulnerabilities/{id}/complete-retest", web::post().to(api::vulnerabilities::complete_retest))
                     .route("/vulnerabilities/{id}/retest-history", web::get().to(api::vulnerabilities::get_retest_history))
+                    // False positive prediction endpoints
+                    .route("/vulnerabilities/fp-predictions", web::post().to(api::vulnerabilities::get_batch_fp_predictions))
+                    .route("/vulnerabilities/{id}/fp-prediction", web::get().to(api::vulnerabilities::get_fp_prediction))
+                    .route("/vulnerabilities/{id}/fp-feedback", web::post().to(api::vulnerabilities::submit_fp_feedback))
                     // Compliance endpoints
                     .route("/compliance/frameworks", web::get().to(api::compliance::list_frameworks))
                     .route("/compliance/frameworks/{id}", web::get().to(api::compliance::get_framework))
@@ -452,6 +473,25 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .configure(api::manual_compliance::configure)
                     // CRM endpoints
                     .configure(api::crm::configure)
+                    // Legal documents endpoints
+                    .route("/legal/templates", web::get().to(api::legal_documents::list_templates))
+                    .route("/legal/templates", web::post().to(api::legal_documents::create_template))
+                    .route("/legal/templates/{id}", web::get().to(api::legal_documents::get_template))
+                    .route("/legal/templates/{id}", web::put().to(api::legal_documents::update_template))
+                    .route("/legal/templates/{id}", web::delete().to(api::legal_documents::delete_template))
+                    .route("/legal/placeholders", web::get().to(api::legal_documents::get_placeholders))
+                    .route("/legal/documents", web::get().to(api::legal_documents::list_documents))
+                    .route("/legal/documents", web::post().to(api::legal_documents::create_document))
+                    .route("/legal/documents/stats", web::get().to(api::legal_documents::get_document_stats))
+                    .route("/legal/documents/{id}", web::get().to(api::legal_documents::get_document))
+                    .route("/legal/documents/{id}", web::put().to(api::legal_documents::update_document))
+                    .route("/legal/documents/{id}", web::delete().to(api::legal_documents::delete_document))
+                    .route("/legal/documents/{id}/void", web::post().to(api::legal_documents::void_document))
+                    .route("/legal/documents/{id}/signatures", web::post().to(api::legal_documents::add_signature))
+                    .route("/legal/documents/{id}/signatures/{sig_id}", web::delete().to(api::legal_documents::delete_signature))
+                    .route("/legal/documents/{id}/send", web::post().to(api::legal_documents::send_for_signature))
+                    .route("/legal/documents/{id}/remind", web::post().to(api::legal_documents::send_reminder))
+                    .route("/legal/documents/{id}/pdf", web::get().to(api::legal_documents::download_pdf))
                     // Client compliance checklists
                     .configure(api::client_compliance::configure)
                     // ATO (Authority to Operate) Map endpoints
@@ -526,6 +566,15 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .route("/finding-templates/{id}", web::delete().to(api::finding_templates::delete_template))
                     .route("/finding-templates/{id}/clone", web::post().to(api::finding_templates::clone_template))
                     .route("/finding-templates/{id}/apply", web::post().to(api::finding_templates::apply_template))
+                    // Finding deduplication endpoints
+                    .route("/findings", web::get().to(api::findings::list_findings))
+                    .route("/findings", web::post().to(api::findings::register_finding))
+                    .route("/findings/stats", web::get().to(api::findings::get_stats))
+                    .route("/findings/merge", web::post().to(api::findings::merge_findings))
+                    .route("/findings/by-fingerprint/{hash}", web::get().to(api::findings::find_by_fingerprint))
+                    .route("/findings/by-scan/{scan_id}", web::get().to(api::findings::get_findings_for_scan))
+                    .route("/findings/{id}", web::get().to(api::findings::get_finding))
+                    .route("/findings/{id}/status", web::put().to(api::findings::update_finding_status))
                     // Methodology checklists endpoints
                     .route("/methodology/templates", web::get().to(api::methodology::list_templates))
                     .route("/methodology/templates/{id}", web::get().to(api::methodology::get_template))
@@ -537,6 +586,9 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .route("/methodology/checklists/{id}/progress", web::get().to(api::methodology::get_progress))
                     .route("/methodology/checklists/{checklist_id}/items/{item_id}", web::get().to(api::methodology::get_item))
                     .route("/methodology/checklists/{checklist_id}/items/{item_id}", web::put().to(api::methodology::update_item))
+                    .route("/methodology/checklists/{checklist_id}/items/{item_id}/exploit", web::post().to(api::methodology::exploit_checklist_item))
+                    .route("/methodology/items/{item_code}/scanner-info", web::get().to(api::methodology::get_scanner_info))
+                    .route("/methodology/scanner-mappings", web::get().to(api::methodology::list_scanner_mappings))
                     // VPN integration endpoints
                     .route("/vpn/configs", web::post().to(api::vpn::upload_vpn_config))
                     .route("/vpn/configs", web::get().to(api::vpn::list_vpn_configs))
@@ -737,8 +789,18 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .configure(api::windows_audit::configure)
                     .configure(api::emass::configure)
                     .configure(api::audit_files::configure)
+                    // Bi-directional Integration Sync API
+                    .configure(api::integration_sync::configure)
+                    // Engagement Templates API (Quick Setup)
+                    .configure(api::engagement_templates::configure)
+                    // Continuous Monitoring API (Attack Surface Visibility)
+                    .configure(api::continuous_monitoring::configure)
                     // Cross-Team Context API
                     .configure(api::context::configure)
+                    // Finding Lifecycle Management API
+                    .service(api::finding_lifecycle::configure())
+                    // Passive Reconnaissance API
+                    .service(api::passive_recon::configure())
                     // Start workflow from vulnerability
                     .route("/vulnerabilities/{id}/workflow", web::post().to(api::workflows::start_workflow))
                     // SSO Admin endpoints

@@ -13,6 +13,7 @@ pub mod ssl_enum;
 pub mod rdp_enum;
 pub mod vnc_enum;
 pub mod telnet_enum;
+pub mod subdomain_generator;
 
 use crate::types::{HostInfo, ScanConfig, ScanProgressMessage, ScanTarget};
 use anyhow::Result;

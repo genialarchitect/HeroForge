@@ -892,6 +892,7 @@ pub fn convert_to_all_backends(rule: &SigmaRule, compiled: &CompiledSigmaRule) -
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::blue_team::security_monitoring::SigmaParser;
 
     fn parse_and_compile(yaml: &str) -> (SigmaRule, CompiledSigmaRule) {
         let rule = SigmaParser::parse(yaml).unwrap();

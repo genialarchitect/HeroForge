@@ -249,9 +249,14 @@ pub struct ReportOptions {
     pub include_charts: bool,
     #[serde(default)]
     pub include_screenshots: bool,
+    /// Enable AI-generated narrative sections (executive summary, risk insights, etc.)
+    #[serde(default)]
+    pub include_ai_narrative: bool,
     pub company_name: Option<String>,
     pub assessor_name: Option<String>,
     pub classification: Option<String>,
+    /// Industry context for AI narrative generation (e.g., "healthcare", "finance")
+    pub industry: Option<String>,
 }
 
 /// Screenshot evidence for reports
@@ -296,6 +301,9 @@ pub struct ReportData {
     pub operator_notes: Option<String>,
     /// Per-finding operator notes (finding_id -> notes)
     pub finding_notes: HashMap<String, String>,
+    /// AI-generated narrative sections
+    #[serde(default)]
+    pub ai_narrative: Option<super::ai_narrative::AINarrative>,
 }
 
 /// Summary statistics for the report

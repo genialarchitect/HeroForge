@@ -7,7 +7,6 @@ import {
   ChevronRight,
   AlertTriangle,
   Target,
-  Clock,
   TrendingUp,
   BarChart3,
 } from 'lucide-react';

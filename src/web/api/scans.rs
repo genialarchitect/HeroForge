@@ -1475,6 +1475,7 @@ pub async fn bulk_export_scans(
                         screenshots: Vec::new(),
                         operator_notes: None,
                         finding_notes: std::collections::HashMap::new(),
+                        ai_narrative: None,
                     };
 
                     // Generate HTML content first (same as single PDF generation)
@@ -2313,6 +2314,88 @@ pub async fn duplicate_scan(
             );
 
             Ok(HttpResponse::Created().json(new_scan))
+        }
+        None => Ok(HttpResponse::NotFound().json(serde_json::json!({
+            "error": "Scan not found"
+        }))),
+    }
+}
+
+/// Get all evidence for a scan
+///
+/// GET /api/scans/{id}/evidence
+pub async fn get_scan_evidence(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    path: web::Path<String>,
+) -> Result<HttpResponse> {
+    let scan_id = path.into_inner();
+
+    // Verify the scan exists and belongs to user
+    let scan = db::scans::get_scan_by_id(&pool, &scan_id)
+        .await
+        .map_err(|e| {
+            log::error!("Database error: {}", e);
+            actix_web::error::ErrorInternalServerError("Database error")
+        })?;
+
+    match scan {
+        Some(s) => {
+            if s.user_id != claims.sub && !claims.roles.contains(&"admin".to_string()) {
+                return Ok(HttpResponse::Forbidden().json(serde_json::json!({
+                    "error": "Access denied"
+                })));
+            }
+
+            let evidence = crate::scanner::evidence::get_scan_evidence(&pool, &scan_id)
+                .await
+                .map_err(|e| {
+                    log::error!("Failed to get scan evidence: {}", e);
+                    actix_web::error::ErrorInternalServerError("Failed to get evidence")
+                })?;
+
+            Ok(HttpResponse::Ok().json(evidence))
+        }
+        None => Ok(HttpResponse::NotFound().json(serde_json::json!({
+            "error": "Scan not found"
+        }))),
+    }
+}
+
+/// Get evidence for a specific finding
+///
+/// GET /api/scans/{id}/findings/{finding_id}/evidence
+pub async fn get_finding_evidence(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    path: web::Path<(String, String)>,
+) -> Result<HttpResponse> {
+    let (scan_id, finding_id) = path.into_inner();
+
+    // Verify the scan exists and belongs to user
+    let scan = db::scans::get_scan_by_id(&pool, &scan_id)
+        .await
+        .map_err(|e| {
+            log::error!("Database error: {}", e);
+            actix_web::error::ErrorInternalServerError("Database error")
+        })?;
+
+    match scan {
+        Some(s) => {
+            if s.user_id != claims.sub && !claims.roles.contains(&"admin".to_string()) {
+                return Ok(HttpResponse::Forbidden().json(serde_json::json!({
+                    "error": "Access denied"
+                })));
+            }
+
+            let evidence = crate::scanner::evidence::get_finding_evidence(&pool, &finding_id)
+                .await
+                .map_err(|e| {
+                    log::error!("Failed to get finding evidence: {}", e);
+                    actix_web::error::ErrorInternalServerError("Failed to get evidence")
+                })?;
+
+            Ok(HttpResponse::Ok().json(evidence))
         }
         None => Ok(HttpResponse::NotFound().json(serde_json::json!({
             "error": "Scan not found"

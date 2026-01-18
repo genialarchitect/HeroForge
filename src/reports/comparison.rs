@@ -875,11 +875,11 @@ mod tests {
                 live_hosts: 4,
                 total_ports: 50,
                 open_ports: 20,
-                total_vulnerabilities: findings.len() as u32,
-                critical_count: findings.iter().filter(|f| f.severity == Severity::Critical).count() as u32,
-                high_count: findings.iter().filter(|f| f.severity == Severity::High).count() as u32,
-                medium_count: findings.iter().filter(|f| f.severity == Severity::Medium).count() as u32,
-                low_count: findings.iter().filter(|f| f.severity == Severity::Low).count() as u32,
+                total_vulnerabilities: findings.len(),
+                critical_count: findings.iter().filter(|f| f.severity == Severity::Critical).count(),
+                high_count: findings.iter().filter(|f| f.severity == Severity::High).count(),
+                medium_count: findings.iter().filter(|f| f.severity == Severity::Medium).count(),
+                low_count: findings.iter().filter(|f| f.severity == Severity::Low).count(),
                 overall_risk_score: 65,
                 overall_risk_level: "High".to_string(),
                 top_findings: vec![],
@@ -891,29 +891,40 @@ mod tests {
             screenshots: vec![],
             operator_notes: None,
             finding_notes: std::collections::HashMap::new(),
+            ai_narrative: None,
         }
     }
 
     #[test]
     fn test_compare_reports_new_findings() {
         let finding_a = FindingDetail {
+            id: "finding-001".to_string(),
             title: "Existing Vuln".to_string(),
             cve_id: Some("CVE-2023-0001".to_string()),
+            cvss_score: Some(7.5),
             severity: Severity::High,
             description: "Test description".to_string(),
             impact: "Test impact".to_string(),
             affected_hosts: vec!["192.168.1.1".to_string()],
+            affected_service: Some("http".to_string()),
             remediation: "Fix it".to_string(),
+            references: vec![],
+            evidence: None,
         };
 
         let finding_b = FindingDetail {
+            id: "finding-002".to_string(),
             title: "New Vuln".to_string(),
             cve_id: Some("CVE-2023-0002".to_string()),
+            cvss_score: Some(9.8),
             severity: Severity::Critical,
             description: "New vulnerability".to_string(),
             impact: "Severe impact".to_string(),
             affected_hosts: vec!["192.168.1.2".to_string()],
+            affected_service: Some("ssh".to_string()),
             remediation: "Patch immediately".to_string(),
+            references: vec![],
+            evidence: None,
         };
 
         let report_a = create_test_report("a", vec![finding_a.clone()]);
@@ -929,13 +940,18 @@ mod tests {
     #[test]
     fn test_compare_reports_resolved_findings() {
         let finding_a = FindingDetail {
+            id: "finding-001".to_string(),
             title: "Old Vuln".to_string(),
             cve_id: Some("CVE-2023-0001".to_string()),
+            cvss_score: Some(7.5),
             severity: Severity::High,
             description: "Test description".to_string(),
             impact: "Test impact".to_string(),
             affected_hosts: vec!["192.168.1.1".to_string()],
+            affected_service: Some("http".to_string()),
             remediation: "Fix it".to_string(),
+            references: vec![],
+            evidence: None,
         };
 
         let report_a = create_test_report("a", vec![finding_a]);

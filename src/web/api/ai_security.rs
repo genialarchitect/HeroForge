@@ -62,6 +62,25 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/llm-security/targets/{id}", web::get().to(get_llm_target))
             .route("/llm-security/targets/{id}", web::put().to(update_llm_target))
             .route("/llm-security/targets/{id}", web::delete().to(delete_llm_target))
+            // Multi-turn Conversation Tests
+            .route("/llm-security/conversation-tests", web::get().to(list_conversation_tests))
+            .route("/llm-security/conversation-test", web::post().to(start_conversation_test))
+            // Agent Testing
+            .route("/llm-security/agent-configs", web::get().to(list_agent_configs))
+            .route("/llm-security/agent-configs", web::post().to(create_agent_config))
+            .route("/llm-security/agent-configs/{id}", web::get().to(get_agent_config))
+            .route("/llm-security/agent-configs/{id}", web::put().to(update_agent_config))
+            .route("/llm-security/agent-configs/{id}", web::delete().to(delete_agent_config))
+            .route("/llm-security/agent-test-cases", web::get().to(list_agent_test_cases))
+            .route("/llm-security/agent-test", web::post().to(start_agent_test))
+            // Model Fingerprinting
+            .route("/llm-security/fingerprint/{target_id}", web::post().to(fingerprint_model))
+            .route("/llm-security/fingerprints/{target_id}", web::get().to(get_fingerprint))
+            // Reports
+            .route("/llm-security/tests/{id}/report", web::post().to(generate_llm_report))
+            .route("/llm-security/reports/{id}", web::get().to(get_llm_report))
+            // Remediation Guidance
+            .route("/llm-security/remediation/{category}", web::get().to(get_remediation))
             // Dashboard
             .route("/dashboard", web::get().to(get_dashboard))
             .route("/recommendations", web::get().to(get_recommendations)),
@@ -993,6 +1012,977 @@ pub async fn delete_llm_target(
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "message": "Target deleted successfully"
+    })))
+}
+
+// ============================================================================
+// Multi-turn Conversation Tests
+// ============================================================================
+
+/// Request to start a conversation test
+#[derive(Debug, serde::Deserialize)]
+pub struct StartConversationTestRequest {
+    pub target_id: String,
+    pub conversation_test_ids: Option<Vec<String>>,  // If None, run all
+    pub categories: Option<Vec<String>>,  // Filter by category
+    pub customer_id: Option<String>,
+    pub engagement_id: Option<String>,
+}
+
+/// GET /api/ai-security/llm-security/conversation-tests
+pub async fn list_conversation_tests(
+    pool: web::Data<SqlitePool>,
+    _claims: web::ReqData<auth::Claims>,
+    query: web::Query<TestCaseQuery>,
+) -> Result<HttpResponse, ApiError> {
+    // Get tests from database
+    let mut tests = sqlx::query_as::<_, ConversationTestRow>(
+        r#"
+        SELECT id, name, description, category, turns, success_criteria, severity, is_builtin, enabled, created_at
+        FROM llm_conversation_tests
+        WHERE enabled = 1
+        ORDER BY category, name
+        "#,
+    )
+    .fetch_all(pool.get_ref())
+    .await
+    .map_err(|e| ApiError::new(ApiErrorKind::InternalError(e.to_string()), "Failed to fetch conversation tests".to_string()))?;
+
+    // Filter by category if specified
+    if let Some(ref category) = query.category {
+        tests.retain(|t| t.category.eq_ignore_ascii_case(category));
+    }
+
+    Ok(HttpResponse::Ok().json(tests))
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
+pub struct ConversationTestRow {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub category: String,
+    pub turns: String,  // JSON
+    pub success_criteria: Option<String>,  // JSON
+    pub severity: String,
+    pub is_builtin: bool,
+    pub enabled: bool,
+    pub created_at: String,
+}
+
+/// POST /api/ai-security/llm-security/conversation-test
+pub async fn start_conversation_test(
+    pool: web::Data<SqlitePool>,
+    body: web::Json<StartConversationTestRequest>,
+    claims: web::ReqData<auth::Claims>,
+) -> Result<HttpResponse, ApiError> {
+    let user_id = &claims.sub;
+    let test_run_id = uuid::Uuid::new_v4().to_string();
+    let now = Utc::now();
+
+    // Verify target exists
+    let target = sqlx::query_as::<_, LLMTarget>(
+        "SELECT * FROM llm_targets WHERE id = ?1 AND user_id = ?2"
+    )
+    .bind(&body.target_id)
+    .bind(user_id)
+    .fetch_optional(pool.get_ref())
+    .await
+    .map_err(|e| ApiError::new(ApiErrorKind::InternalError(e.to_string()), "Failed to fetch target".to_string()))?
+    .ok_or_else(|| ApiError::new(ApiErrorKind::NotFound(String::new()), "Target not found".to_string()))?;
+
+    // Create test run record
+    let test = LLMSecurityTest {
+        id: test_run_id.clone(),
+        user_id: user_id.clone(),
+        target_name: target.name.clone(),
+        target_type: crate::ai_security::types::LLMTargetType::Api,
+        target_config: Some(crate::ai_security::types::LLMTargetConfig {
+            endpoint: target.endpoint.clone(),
+            auth_type: Some("api_key".to_string()),
+            api_key: target.api_key_encrypted.clone(),
+            headers: target.headers.as_ref().and_then(|h| serde_json::from_str(h).ok()),
+            request_template: None,
+            response_path: None,
+            rate_limit: None,
+            timeout: Some(30),
+        }),
+        test_type: crate::ai_security::types::LLMTestType::All,
+        status: LLMTestStatus::Running,
+        tests_run: 0,
+        vulnerabilities_found: 0,
+        results: None,
+        started_at: Some(now),
+        completed_at: None,
+        customer_id: body.customer_id.clone(),
+        engagement_id: body.engagement_id.clone(),
+        created_at: now,
+    };
+
+    crate::db::ai_security::create_llm_test(&pool, &test).await?;
+
+    crate::db::log_audit(
+        &pool,
+        user_id,
+        "llm_conversation_test_start",
+        Some("llm_test"),
+        Some(&test_run_id),
+        Some(&format!("Started conversation test against {}", target.name)),
+        None,
+    )
+    .await?;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "test_run_id": test_run_id,
+        "status": "running",
+        "message": "Conversation test started"
+    })))
+}
+
+// ============================================================================
+// Agent Testing
+// ============================================================================
+
+/// Agent config stored in database
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
+pub struct AgentConfigRow {
+    pub id: String,
+    pub target_id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub tools: String,  // JSON array
+    pub rag_endpoint: Option<String>,
+    pub function_format: String,
+    pub memory_enabled: bool,
+    pub max_tool_calls: i32,
+    pub enabled: bool,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// Request to create an agent config
+#[derive(Debug, serde::Deserialize)]
+pub struct CreateAgentConfigRequest {
+    pub target_id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub tools: Vec<serde_json::Value>,
+    pub rag_endpoint: Option<String>,
+    pub function_format: Option<String>,
+    pub memory_enabled: Option<bool>,
+    pub max_tool_calls: Option<i32>,
+}
+
+/// Request to update an agent config
+#[derive(Debug, serde::Deserialize)]
+pub struct UpdateAgentConfigRequest {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub tools: Option<Vec<serde_json::Value>>,
+    pub rag_endpoint: Option<String>,
+    pub function_format: Option<String>,
+    pub memory_enabled: Option<bool>,
+    pub max_tool_calls: Option<i32>,
+    pub enabled: Option<bool>,
+}
+
+/// Request to start an agent test
+#[derive(Debug, serde::Deserialize)]
+pub struct StartAgentTestRequest {
+    pub agent_config_id: String,
+    pub test_case_ids: Option<Vec<String>>,  // If None, run all
+    pub categories: Option<Vec<String>>,  // Filter by category
+    pub customer_id: Option<String>,
+    pub engagement_id: Option<String>,
+}
+
+/// GET /api/ai-security/llm-security/agent-configs
+pub async fn list_agent_configs(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    query: web::Query<PaginationQuery>,
+) -> Result<HttpResponse, ApiError> {
+    let user_id = &claims.sub;
+    let limit = query.limit.unwrap_or(50);
+    let offset = query.offset.unwrap_or(0);
+
+    let configs = sqlx::query_as::<_, AgentConfigRow>(
+        r#"
+        SELECT ac.id, ac.target_id, ac.name, ac.description, ac.tools, ac.rag_endpoint,
+               ac.function_format, ac.memory_enabled, ac.max_tool_calls, ac.enabled,
+               ac.created_at, ac.updated_at
+        FROM llm_agent_configs ac
+        INNER JOIN llm_targets t ON ac.target_id = t.id
+        WHERE t.user_id = ?1
+        ORDER BY ac.created_at DESC
+        LIMIT ?2 OFFSET ?3
+        "#,
+    )
+    .bind(user_id)
+    .bind(limit)
+    .bind(offset)
+    .fetch_all(pool.get_ref())
+    .await
+    .map_err(|e| ApiError::new(ApiErrorKind::InternalError(e.to_string()), "Failed to fetch agent configs".to_string()))?;
+
+    Ok(HttpResponse::Ok().json(configs))
+}
+
+/// POST /api/ai-security/llm-security/agent-configs
+pub async fn create_agent_config(
+    pool: web::Data<SqlitePool>,
+    body: web::Json<CreateAgentConfigRequest>,
+    claims: web::ReqData<auth::Claims>,
+) -> Result<HttpResponse, ApiError> {
+    let user_id = &claims.sub;
+    let config_id = uuid::Uuid::new_v4().to_string();
+    let now = Utc::now().to_rfc3339();
+
+    // Verify target belongs to user
+    let _target = sqlx::query_as::<_, LLMTarget>(
+        "SELECT * FROM llm_targets WHERE id = ?1 AND user_id = ?2"
+    )
+    .bind(&body.target_id)
+    .bind(user_id)
+    .fetch_optional(pool.get_ref())
+    .await
+    .map_err(|e| ApiError::new(ApiErrorKind::InternalError(e.to_string()), "Failed to verify target".to_string()))?
+    .ok_or_else(|| ApiError::new(ApiErrorKind::NotFound(String::new()), "Target not found".to_string()))?;
+
+    let tools_json = serde_json::to_string(&body.tools).unwrap_or_else(|_| "[]".to_string());
+
+    sqlx::query(
+        r#"
+        INSERT INTO llm_agent_configs (id, target_id, name, description, tools, rag_endpoint,
+            function_format, memory_enabled, max_tool_calls, enabled, created_at, updated_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 1, ?10, ?10)
+        "#
+    )
+    .bind(&config_id)
+    .bind(&body.target_id)
+    .bind(&body.name)
+    .bind(&body.description)
+    .bind(&tools_json)
+    .bind(&body.rag_endpoint)
+    .bind(body.function_format.as_deref().unwrap_or("openai"))
+    .bind(body.memory_enabled.unwrap_or(false))
+    .bind(body.max_tool_calls.unwrap_or(10))
+    .bind(&now)
+    .execute(pool.get_ref())
+    .await
+    .map_err(|e| ApiError::new(ApiErrorKind::InternalError(e.to_string()), "Failed to create agent config".to_string()))?;
+
+    crate::db::log_audit(&pool, user_id, "llm_agent_config_create", Some("llm_agent_config"), Some(&config_id), Some(&format!("Created agent config: {}", body.name)), None).await?;
+
+    Ok(HttpResponse::Created().json(serde_json::json!({
+        "id": config_id,
+        "message": "Agent config created successfully"
+    })))
+}
+
+/// GET /api/ai-security/llm-security/agent-configs/{id}
+pub async fn get_agent_config(
+    pool: web::Data<SqlitePool>,
+    path: web::Path<String>,
+    claims: web::ReqData<auth::Claims>,
+) -> Result<HttpResponse, ApiError> {
+    let config_id = path.into_inner();
+    let user_id = &claims.sub;
+
+    let config = sqlx::query_as::<_, AgentConfigRow>(
+        r#"
+        SELECT ac.id, ac.target_id, ac.name, ac.description, ac.tools, ac.rag_endpoint,
+               ac.function_format, ac.memory_enabled, ac.max_tool_calls, ac.enabled,
+               ac.created_at, ac.updated_at
+        FROM llm_agent_configs ac
+        INNER JOIN llm_targets t ON ac.target_id = t.id
+        WHERE ac.id = ?1 AND t.user_id = ?2
+        "#,
+    )
+    .bind(&config_id)
+    .bind(user_id)
+    .fetch_optional(pool.get_ref())
+    .await
+    .map_err(|e| ApiError::new(ApiErrorKind::InternalError(e.to_string()), "Failed to fetch agent config".to_string()))?
+    .ok_or_else(|| ApiError::new(ApiErrorKind::NotFound(String::new()), "Agent config not found".to_string()))?;
+
+    Ok(HttpResponse::Ok().json(config))
+}
+
+/// PUT /api/ai-security/llm-security/agent-configs/{id}
+pub async fn update_agent_config(
+    pool: web::Data<SqlitePool>,
+    path: web::Path<String>,
+    body: web::Json<UpdateAgentConfigRequest>,
+    claims: web::ReqData<auth::Claims>,
+) -> Result<HttpResponse, ApiError> {
+    let config_id = path.into_inner();
+    let user_id = &claims.sub;
+    let now = Utc::now().to_rfc3339();
+
+    // Verify config exists and belongs to user's target
+    let existing = sqlx::query_as::<_, AgentConfigRow>(
+        r#"
+        SELECT ac.* FROM llm_agent_configs ac
+        INNER JOIN llm_targets t ON ac.target_id = t.id
+        WHERE ac.id = ?1 AND t.user_id = ?2
+        "#,
+    )
+    .bind(&config_id)
+    .bind(user_id)
+    .fetch_optional(pool.get_ref())
+    .await
+    .map_err(|e| ApiError::new(ApiErrorKind::InternalError(e.to_string()), "Failed to fetch agent config".to_string()))?
+    .ok_or_else(|| ApiError::new(ApiErrorKind::NotFound(String::new()), "Agent config not found".to_string()))?;
+
+    // Update fields
+    if let Some(ref name) = body.name {
+        sqlx::query("UPDATE llm_agent_configs SET name = ?1, updated_at = ?2 WHERE id = ?3")
+            .bind(name).bind(&now).bind(&existing.id).execute(pool.get_ref()).await?;
+    }
+    if let Some(ref description) = body.description {
+        sqlx::query("UPDATE llm_agent_configs SET description = ?1, updated_at = ?2 WHERE id = ?3")
+            .bind(description).bind(&now).bind(&existing.id).execute(pool.get_ref()).await?;
+    }
+    if let Some(ref tools) = body.tools {
+        let tools_json = serde_json::to_string(tools).unwrap_or_else(|_| "[]".to_string());
+        sqlx::query("UPDATE llm_agent_configs SET tools = ?1, updated_at = ?2 WHERE id = ?3")
+            .bind(&tools_json).bind(&now).bind(&existing.id).execute(pool.get_ref()).await?;
+    }
+    if let Some(ref rag_endpoint) = body.rag_endpoint {
+        sqlx::query("UPDATE llm_agent_configs SET rag_endpoint = ?1, updated_at = ?2 WHERE id = ?3")
+            .bind(rag_endpoint).bind(&now).bind(&existing.id).execute(pool.get_ref()).await?;
+    }
+    if let Some(ref function_format) = body.function_format {
+        sqlx::query("UPDATE llm_agent_configs SET function_format = ?1, updated_at = ?2 WHERE id = ?3")
+            .bind(function_format).bind(&now).bind(&existing.id).execute(pool.get_ref()).await?;
+    }
+    if let Some(memory_enabled) = body.memory_enabled {
+        sqlx::query("UPDATE llm_agent_configs SET memory_enabled = ?1, updated_at = ?2 WHERE id = ?3")
+            .bind(memory_enabled).bind(&now).bind(&existing.id).execute(pool.get_ref()).await?;
+    }
+    if let Some(max_tool_calls) = body.max_tool_calls {
+        sqlx::query("UPDATE llm_agent_configs SET max_tool_calls = ?1, updated_at = ?2 WHERE id = ?3")
+            .bind(max_tool_calls).bind(&now).bind(&existing.id).execute(pool.get_ref()).await?;
+    }
+    if let Some(enabled) = body.enabled {
+        sqlx::query("UPDATE llm_agent_configs SET enabled = ?1, updated_at = ?2 WHERE id = ?3")
+            .bind(enabled).bind(&now).bind(&existing.id).execute(pool.get_ref()).await?;
+    }
+
+    crate::db::log_audit(&pool, user_id, "llm_agent_config_update", Some("llm_agent_config"), Some(&config_id), Some("Updated agent config"), None).await?;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "id": config_id,
+        "message": "Agent config updated successfully"
+    })))
+}
+
+/// DELETE /api/ai-security/llm-security/agent-configs/{id}
+pub async fn delete_agent_config(
+    pool: web::Data<SqlitePool>,
+    path: web::Path<String>,
+    claims: web::ReqData<auth::Claims>,
+) -> Result<HttpResponse, ApiError> {
+    let config_id = path.into_inner();
+    let user_id = &claims.sub;
+
+    // Verify config belongs to user's target before deleting
+    let result = sqlx::query(
+        r#"
+        DELETE FROM llm_agent_configs WHERE id = ?1 AND target_id IN (
+            SELECT id FROM llm_targets WHERE user_id = ?2
+        )
+        "#
+    )
+    .bind(&config_id)
+    .bind(user_id)
+    .execute(pool.get_ref())
+    .await
+    .map_err(|e| ApiError::new(ApiErrorKind::InternalError(e.to_string()), "Failed to delete agent config".to_string()))?;
+
+    if result.rows_affected() == 0 {
+        return Err(ApiError::new(ApiErrorKind::NotFound(String::new()), "Agent config not found".to_string()));
+    }
+
+    crate::db::log_audit(&pool, user_id, "llm_agent_config_delete", Some("llm_agent_config"), Some(&config_id), Some("Deleted agent config"), None).await?;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "message": "Agent config deleted successfully"
+    })))
+}
+
+/// GET /api/ai-security/llm-security/agent-test-cases
+pub async fn list_agent_test_cases(
+    pool: web::Data<SqlitePool>,
+    _claims: web::ReqData<auth::Claims>,
+    query: web::Query<TestCaseQuery>,
+) -> Result<HttpResponse, ApiError> {
+    let mut test_cases = sqlx::query_as::<_, AgentTestCaseRow>(
+        r#"
+        SELECT id, category, name, description, payload, target_tools, expected_behavior,
+               severity, cwe_id, is_builtin, enabled, created_at
+        FROM llm_agent_test_cases
+        WHERE enabled = 1
+        ORDER BY category, name
+        "#,
+    )
+    .fetch_all(pool.get_ref())
+    .await
+    .map_err(|e| ApiError::new(ApiErrorKind::InternalError(e.to_string()), "Failed to fetch agent test cases".to_string()))?;
+
+    if let Some(ref category) = query.category {
+        test_cases.retain(|t| t.category.eq_ignore_ascii_case(category));
+    }
+
+    Ok(HttpResponse::Ok().json(test_cases))
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
+pub struct AgentTestCaseRow {
+    pub id: String,
+    pub category: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub payload: String,
+    pub target_tools: String,  // JSON array
+    pub expected_behavior: Option<String>,
+    pub severity: String,
+    pub cwe_id: Option<String>,
+    pub is_builtin: bool,
+    pub enabled: bool,
+    pub created_at: String,
+}
+
+/// POST /api/ai-security/llm-security/agent-test
+pub async fn start_agent_test(
+    pool: web::Data<SqlitePool>,
+    body: web::Json<StartAgentTestRequest>,
+    claims: web::ReqData<auth::Claims>,
+) -> Result<HttpResponse, ApiError> {
+    let user_id = &claims.sub;
+    let test_run_id = uuid::Uuid::new_v4().to_string();
+    let now = Utc::now();
+
+    // Verify agent config exists and belongs to user
+    let config = sqlx::query_as::<_, AgentConfigRow>(
+        r#"
+        SELECT ac.* FROM llm_agent_configs ac
+        INNER JOIN llm_targets t ON ac.target_id = t.id
+        WHERE ac.id = ?1 AND t.user_id = ?2
+        "#,
+    )
+    .bind(&body.agent_config_id)
+    .bind(user_id)
+    .fetch_optional(pool.get_ref())
+    .await
+    .map_err(|e| ApiError::new(ApiErrorKind::InternalError(e.to_string()), "Failed to fetch agent config".to_string()))?
+    .ok_or_else(|| ApiError::new(ApiErrorKind::NotFound(String::new()), "Agent config not found".to_string()))?;
+
+    // Get target info
+    let target = sqlx::query_as::<_, LLMTarget>(
+        "SELECT * FROM llm_targets WHERE id = ?1"
+    )
+    .bind(&config.target_id)
+    .fetch_one(pool.get_ref())
+    .await
+    .map_err(|e| ApiError::new(ApiErrorKind::InternalError(e.to_string()), "Failed to fetch target".to_string()))?;
+
+    // Create test run record
+    let test = LLMSecurityTest {
+        id: test_run_id.clone(),
+        user_id: user_id.clone(),
+        target_name: format!("{} ({})", target.name, config.name),
+        target_type: crate::ai_security::types::LLMTargetType::AgentSystem,
+        target_config: Some(crate::ai_security::types::LLMTargetConfig {
+            endpoint: target.endpoint.clone(),
+            auth_type: Some("api_key".to_string()),
+            api_key: target.api_key_encrypted.clone(),
+            headers: target.headers.as_ref().and_then(|h| serde_json::from_str(h).ok()),
+            request_template: None,
+            response_path: None,
+            rate_limit: None,
+            timeout: Some(30),
+        }),
+        test_type: crate::ai_security::types::LLMTestType::All,
+        status: LLMTestStatus::Running,
+        tests_run: 0,
+        vulnerabilities_found: 0,
+        results: None,
+        started_at: Some(now),
+        completed_at: None,
+        customer_id: body.customer_id.clone(),
+        engagement_id: body.engagement_id.clone(),
+        created_at: now,
+    };
+
+    crate::db::ai_security::create_llm_test(&pool, &test).await?;
+
+    crate::db::log_audit(
+        &pool,
+        user_id,
+        "llm_agent_test_start",
+        Some("llm_test"),
+        Some(&test_run_id),
+        Some(&format!("Started agent test against {}", target.name)),
+        None,
+    )
+    .await?;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "test_run_id": test_run_id,
+        "status": "running",
+        "message": "Agent test started"
+    })))
+}
+
+// ============================================================================
+// Model Fingerprinting
+// ============================================================================
+
+/// POST /api/ai-security/llm-security/fingerprint/{target_id}
+pub async fn fingerprint_model(
+    pool: web::Data<SqlitePool>,
+    path: web::Path<String>,
+    claims: web::ReqData<auth::Claims>,
+) -> Result<HttpResponse, ApiError> {
+    let target_id = path.into_inner();
+    let user_id = &claims.sub;
+
+    // Verify target belongs to user
+    let target = sqlx::query_as::<_, LLMTarget>(
+        "SELECT * FROM llm_targets WHERE id = ?1 AND user_id = ?2"
+    )
+    .bind(&target_id)
+    .bind(user_id)
+    .fetch_optional(pool.get_ref())
+    .await
+    .map_err(|e| ApiError::new(ApiErrorKind::InternalError(e.to_string()), "Failed to fetch target".to_string()))?
+    .ok_or_else(|| ApiError::new(ApiErrorKind::NotFound(String::new()), "Target not found".to_string()))?;
+
+    // Run fingerprinting
+    use crate::ai_security::llm_testing::fingerprinting::ModelFingerprinter;
+
+    let fingerprinter = ModelFingerprinter::new();
+    let config = crate::ai_security::types::LLMTargetConfig {
+        endpoint: target.endpoint.clone(),
+        auth_type: Some("api_key".to_string()),
+        api_key: target.api_key_encrypted.clone(),
+        headers: target.headers.as_ref().and_then(|h| serde_json::from_str(h).ok()),
+        request_template: None,
+        response_path: None,
+        rate_limit: Some(10),
+        timeout: Some(60),
+    };
+
+    let fingerprint = fingerprinter.fingerprint_model(&config).await
+        .map_err(|e| ApiError::new(ApiErrorKind::InternalError(e.to_string()), "Fingerprinting failed".to_string()))?;
+
+    // Store fingerprint in database
+    let fingerprint_id = uuid::Uuid::new_v4().to_string();
+    let now = Utc::now().to_rfc3339();
+    let expires = (Utc::now() + chrono::Duration::days(7)).to_rfc3339();
+
+    let indicators_json = serde_json::to_string(&fingerprint.indicators).unwrap_or_else(|_| "[]".to_string());
+    let vulns_json = serde_json::to_string(&fingerprint.known_vulnerabilities).unwrap_or_else(|_| "[]".to_string());
+    let safety_json = serde_json::to_string(&fingerprint.safety_mechanisms).unwrap_or_else(|_| "{}".to_string());
+
+    sqlx::query(
+        r#"
+        INSERT INTO llm_model_fingerprints (id, target_id, model_family, confidence, indicators,
+            known_vulnerabilities, context_window_estimate, safety_mechanisms, fingerprint_version,
+            created_at, expires_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, '1.0', ?9, ?10)
+        "#
+    )
+    .bind(&fingerprint_id)
+    .bind(&target_id)
+    .bind(&fingerprint.likely_model_family)
+    .bind(fingerprint.confidence)
+    .bind(&indicators_json)
+    .bind(&vulns_json)
+    .bind(fingerprint.estimated_context_window.map(|c| c as i64))
+    .bind(&safety_json)
+    .bind(&now)
+    .bind(&expires)
+    .execute(pool.get_ref())
+    .await
+    .map_err(|e| ApiError::new(ApiErrorKind::InternalError(e.to_string()), "Failed to store fingerprint".to_string()))?;
+
+    crate::db::log_audit(&pool, user_id, "llm_fingerprint", Some("llm_fingerprint"), Some(&fingerprint_id), Some(&format!("Fingerprinted model: {}", fingerprint.likely_model_family)), None).await?;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "id": fingerprint_id,
+        "fingerprint": fingerprint
+    })))
+}
+
+/// GET /api/ai-security/llm-security/fingerprints/{target_id}
+pub async fn get_fingerprint(
+    pool: web::Data<SqlitePool>,
+    path: web::Path<String>,
+    claims: web::ReqData<auth::Claims>,
+) -> Result<HttpResponse, ApiError> {
+    let target_id = path.into_inner();
+    let user_id = &claims.sub;
+
+    // Verify target belongs to user
+    let _target = sqlx::query_as::<_, LLMTarget>(
+        "SELECT * FROM llm_targets WHERE id = ?1 AND user_id = ?2"
+    )
+    .bind(&target_id)
+    .bind(user_id)
+    .fetch_optional(pool.get_ref())
+    .await
+    .map_err(|e| ApiError::new(ApiErrorKind::InternalError(e.to_string()), "Failed to fetch target".to_string()))?
+    .ok_or_else(|| ApiError::new(ApiErrorKind::NotFound(String::new()), "Target not found".to_string()))?;
+
+    // Get latest fingerprint
+    let fingerprint = sqlx::query_as::<_, FingerprintRow>(
+        r#"
+        SELECT id, target_id, model_family, confidence, indicators, known_vulnerabilities,
+               context_window_estimate, safety_mechanisms, fingerprint_version, created_at, expires_at
+        FROM llm_model_fingerprints
+        WHERE target_id = ?1
+        ORDER BY created_at DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(&target_id)
+    .fetch_optional(pool.get_ref())
+    .await
+    .map_err(|e| ApiError::new(ApiErrorKind::InternalError(e.to_string()), "Failed to fetch fingerprint".to_string()))?;
+
+    match fingerprint {
+        Some(fp) => Ok(HttpResponse::Ok().json(fp)),
+        None => Ok(HttpResponse::Ok().json(serde_json::json!({
+            "message": "No fingerprint found. Run fingerprinting first."
+        }))),
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
+pub struct FingerprintRow {
+    pub id: String,
+    pub target_id: String,
+    pub model_family: Option<String>,
+    pub confidence: Option<f64>,
+    pub indicators: String,  // JSON
+    pub known_vulnerabilities: String,  // JSON
+    pub context_window_estimate: Option<i64>,
+    pub safety_mechanisms: String,  // JSON
+    pub fingerprint_version: String,
+    pub created_at: String,
+    pub expires_at: Option<String>,
+}
+
+// ============================================================================
+// LLM Security Reports
+// ============================================================================
+
+/// Request to generate an LLM security report
+#[derive(Debug, serde::Deserialize)]
+pub struct GenerateReportRequest {
+    pub name: Option<String>,
+    pub format: Option<String>,  // "markdown", "html", "pdf"
+    pub include_transcripts: Option<bool>,
+    pub include_remediation: Option<bool>,
+}
+
+/// POST /api/ai-security/llm-security/tests/{id}/report
+pub async fn generate_llm_report(
+    pool: web::Data<SqlitePool>,
+    path: web::Path<String>,
+    body: web::Json<GenerateReportRequest>,
+    claims: web::ReqData<auth::Claims>,
+) -> Result<HttpResponse, ApiError> {
+    let test_id = path.into_inner();
+    let user_id = &claims.sub;
+
+    // Verify test exists and belongs to user
+    let test = crate::db::ai_security::get_llm_test(&pool, &test_id).await?
+        .ok_or_else(|| ApiError::new(ApiErrorKind::NotFound(String::new()), "Test not found".to_string()))?;
+
+    let is_admin = crate::db::has_permission(&pool, user_id, "can_view_all_scans").await?;
+    if test.user_id != *user_id && !is_admin {
+        return Err(ApiError::new(ApiErrorKind::Forbidden(String::new()), "Access denied".to_string()));
+    }
+
+    let report_id = uuid::Uuid::new_v4().to_string();
+    let now = Utc::now().to_rfc3339();
+    let report_name = body.name.clone().unwrap_or_else(|| format!("LLM Security Report - {}", test.target_name));
+    let format = body.format.clone().unwrap_or_else(|| "markdown".to_string());
+
+    // Create report record
+    sqlx::query(
+        r#"
+        INSERT INTO llm_security_reports (id, test_run_id, name, format, status, created_at)
+        VALUES (?1, ?2, ?3, ?4, 'generating', ?5)
+        "#
+    )
+    .bind(&report_id)
+    .bind(&test_id)
+    .bind(&report_name)
+    .bind(&format)
+    .bind(&now)
+    .execute(pool.get_ref())
+    .await
+    .map_err(|e| ApiError::new(ApiErrorKind::InternalError(e.to_string()), "Failed to create report".to_string()))?;
+
+    // Generate report content using LLMReportGenerator
+    use crate::reports::llm_security::LLMReportGenerator;
+    use crate::ai_security::types::LLMReportFormat;
+
+    let report_format = match format.as_str() {
+        "html" => LLMReportFormat::Html,
+        "pdf" => LLMReportFormat::Pdf,
+        "json" => LLMReportFormat::Json,
+        _ => LLMReportFormat::Markdown,
+    };
+
+    let generator = LLMReportGenerator::new();
+
+    // Get test results for the report
+    let single_turn_results: Vec<crate::ai_security::types::LLMTestResult> = test.results
+        .as_ref()
+        .and_then(|r| serde_json::from_value(r.clone()).ok())
+        .unwrap_or_default();
+
+    let report_data = generator.generate_report(
+        &test,
+        single_turn_results,
+        Vec::new(),  // conversation_results
+        Vec::new(),  // agent_results
+        None,        // fingerprint
+        None,        // customer_name
+    );
+
+    let content = generator.generate_formatted(&report_data, report_format)
+        .map_err(|e| ApiError::new(ApiErrorKind::InternalError(e.to_string()), "Failed to generate report".to_string()))?;
+
+    // Save report file
+    let reports_dir = std::env::var("REPORTS_DIR").unwrap_or_else(|_| "./reports".to_string());
+    let extension = match format.as_str() {
+        "html" => "html",
+        "json" => "json",
+        "pdf" => "md",  // PDF generation would need additional processing
+        _ => "md",
+    };
+    let file_path = format!("{}/llm_security_{}_{}.{}", reports_dir, test_id, report_id, extension);
+
+    // Create reports directory if needed
+    let _ = std::fs::create_dir_all(&reports_dir);
+    std::fs::write(&file_path, &content)
+        .map_err(|e| ApiError::new(ApiErrorKind::InternalError(e.to_string()), "Failed to write report".to_string()))?;
+
+    let file_size = content.len() as i64;
+
+    // Calculate summary statistics
+    let total_tests = report_data.test_summary.total_tests;
+    let risk_score = report_data.executive_summary.overall_risk_score;
+    let critical_count = report_data.executive_summary.critical_count;
+    let high_count = report_data.executive_summary.high_count;
+    let medium_count = report_data.executive_summary.medium_count;
+    let low_count = report_data.executive_summary.low_count;
+
+    // Update report record
+    let completed_at = Utc::now().to_rfc3339();
+    let exec_summary = format!(
+        "Risk Level: {:?} | {} tests run, {} vulnerabilities found",
+        report_data.executive_summary.overall_risk_level,
+        total_tests,
+        report_data.executive_summary.vulnerabilities_found
+    );
+    sqlx::query(
+        r#"
+        UPDATE llm_security_reports
+        SET status = 'completed', file_path = ?1, file_size = ?2, risk_score = ?3,
+            findings_count = ?4, critical_count = ?5, high_count = ?6, medium_count = ?7, low_count = ?8,
+            executive_summary = ?9, completed_at = ?10
+        WHERE id = ?11
+        "#
+    )
+    .bind(&file_path)
+    .bind(file_size)
+    .bind(risk_score)
+    .bind(total_tests as i32)
+    .bind(critical_count as i32)
+    .bind(high_count as i32)
+    .bind(medium_count as i32)
+    .bind(low_count as i32)
+    .bind(&exec_summary)
+    .bind(&completed_at)
+    .bind(&report_id)
+    .execute(pool.get_ref())
+    .await
+    .map_err(|e| ApiError::new(ApiErrorKind::InternalError(e.to_string()), "Failed to update report".to_string()))?;
+
+    crate::db::log_audit(&pool, user_id, "llm_report_generate", Some("llm_report"), Some(&report_id), Some(&format!("Generated LLM security report: {}", report_name)), None).await?;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "report_id": report_id,
+        "file_path": file_path,
+        "format": format,
+        "risk_score": risk_score,
+        "findings_count": total_tests,
+        "status": "completed"
+    })))
+}
+
+/// GET /api/ai-security/llm-security/reports/{id}
+pub async fn get_llm_report(
+    pool: web::Data<SqlitePool>,
+    path: web::Path<String>,
+    claims: web::ReqData<auth::Claims>,
+) -> Result<HttpResponse, ApiError> {
+    let report_id = path.into_inner();
+    let user_id = &claims.sub;
+
+    let report = sqlx::query_as::<_, LLMReportRow>(
+        r#"
+        SELECT r.id, r.test_run_id, r.name, r.format, r.file_path, r.file_size,
+               r.executive_summary, r.risk_score, r.findings_count, r.critical_count,
+               r.high_count, r.medium_count, r.low_count, r.status, r.created_at, r.completed_at
+        FROM llm_security_reports r
+        INNER JOIN llm_security_tests t ON r.test_run_id = t.id
+        WHERE r.id = ?1 AND t.user_id = ?2
+        "#,
+    )
+    .bind(&report_id)
+    .bind(user_id)
+    .fetch_optional(pool.get_ref())
+    .await
+    .map_err(|e| ApiError::new(ApiErrorKind::InternalError(e.to_string()), "Failed to fetch report".to_string()))?;
+
+    match report {
+        Some(r) => Ok(HttpResponse::Ok().json(r)),
+        None => {
+            // Check if user is admin
+            let is_admin = crate::db::has_permission(&pool, user_id, "can_view_all_scans").await?;
+            if is_admin {
+                let report = sqlx::query_as::<_, LLMReportRow>(
+                    r#"
+                    SELECT id, test_run_id, name, format, file_path, file_size,
+                           executive_summary, risk_score, findings_count, critical_count,
+                           high_count, medium_count, low_count, status, created_at, completed_at
+                    FROM llm_security_reports
+                    WHERE id = ?1
+                    "#,
+                )
+                .bind(&report_id)
+                .fetch_optional(pool.get_ref())
+                .await
+                .map_err(|e| ApiError::new(ApiErrorKind::InternalError(e.to_string()), "Failed to fetch report".to_string()))?
+                .ok_or_else(|| ApiError::new(ApiErrorKind::NotFound(String::new()), "Report not found".to_string()))?;
+                Ok(HttpResponse::Ok().json(report))
+            } else {
+                Err(ApiError::new(ApiErrorKind::NotFound(String::new()), "Report not found".to_string()))
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
+pub struct LLMReportRow {
+    pub id: String,
+    pub test_run_id: String,
+    pub name: String,
+    pub format: String,
+    pub file_path: Option<String>,
+    pub file_size: Option<i64>,
+    pub executive_summary: Option<String>,
+    pub risk_score: Option<f64>,
+    pub findings_count: Option<i32>,
+    pub critical_count: Option<i32>,
+    pub high_count: Option<i32>,
+    pub medium_count: Option<i32>,
+    pub low_count: Option<i32>,
+    pub status: String,
+    pub created_at: String,
+    pub completed_at: Option<String>,
+}
+
+// ============================================================================
+// Remediation Guidance
+// ============================================================================
+
+/// GET /api/ai-security/llm-security/remediation/{category}
+pub async fn get_remediation(
+    _pool: web::Data<SqlitePool>,
+    path: web::Path<String>,
+    _claims: web::ReqData<auth::Claims>,
+) -> Result<HttpResponse, ApiError> {
+    let category = path.into_inner().to_lowercase();
+
+    use crate::ai_security::llm_testing::remediation::{get_llm_remediation, get_agent_remediation};
+    use crate::ai_security::types::{LLMTestCategory, AgentTestCategory, TestCaseSeverity};
+
+    // Match LLM categories
+    let llm_cat = match category.as_str() {
+        "prompt_injection" | "promptinjection" => Some(LLMTestCategory::PromptInjection),
+        "jailbreak" => Some(LLMTestCategory::Jailbreak),
+        "data_extraction" | "dataextraction" => Some(LLMTestCategory::DataExtraction),
+        "encoding" => Some(LLMTestCategory::Encoding),
+        "context_manipulation" | "contextmanipulation" => Some(LLMTestCategory::ContextManipulation),
+        "role_confusion" | "roleconfusion" => Some(LLMTestCategory::RoleConfusion),
+        "indirect_injection" | "indirectinjection" => Some(LLMTestCategory::IndirectInjection),
+        "chain_of_thought" | "chainofthought" => Some(LLMTestCategory::ChainOfThought),
+        _ => None,
+    };
+
+    if let Some(cat) = llm_cat {
+        let remediation = get_llm_remediation(&cat, &TestCaseSeverity::High);
+        return Ok(HttpResponse::Ok().json(remediation));
+    }
+
+    // Match agent categories
+    let agent_cat = match category.as_str() {
+        "tool_parameter_injection" | "toolparameterinjection" => Some(AgentTestCategory::ToolParameterInjection),
+        "tool_chaining" | "toolchaining" => Some(AgentTestCategory::ToolChaining),
+        "rag_poisoning" | "ragpoisoning" => Some(AgentTestCategory::RagPoisoning),
+        "function_call_hijacking" | "functioncallhijacking" => Some(AgentTestCategory::FunctionCallHijacking),
+        "memory_poisoning" | "memorypoisoning" => Some(AgentTestCategory::MemoryPoisoning),
+        "tool_output_injection" | "tooloutputinjection" => Some(AgentTestCategory::ToolOutputInjection),
+        "privilege_escalation" | "privilegeescalation" => Some(AgentTestCategory::PrivilegeEscalation),
+        "data_exfiltration" | "dataexfiltration" => Some(AgentTestCategory::DataExfiltration),
+        "system_tool_invocation" | "systemtoolinvocation" => Some(AgentTestCategory::SystemToolInvocation),
+        "indirect_prompt_injection" | "indirectpromptinjection" => Some(AgentTestCategory::IndirectPromptInjection),
+        _ => None,
+    };
+
+    if let Some(cat) = agent_cat {
+        let remediation = get_agent_remediation(&cat, &TestCaseSeverity::High);
+        return Ok(HttpResponse::Ok().json(remediation));
+    }
+
+    // Return all remediation guidance if category not found or "all" requested
+    let all_llm: Vec<_> = [
+        LLMTestCategory::PromptInjection,
+        LLMTestCategory::Jailbreak,
+        LLMTestCategory::DataExtraction,
+        LLMTestCategory::Encoding,
+        LLMTestCategory::ContextManipulation,
+        LLMTestCategory::RoleConfusion,
+        LLMTestCategory::IndirectInjection,
+        LLMTestCategory::ChainOfThought,
+    ].iter().map(|c| get_llm_remediation(c, &TestCaseSeverity::High)).collect();
+
+    let all_agent: Vec<_> = [
+        AgentTestCategory::ToolParameterInjection,
+        AgentTestCategory::ToolChaining,
+        AgentTestCategory::RagPoisoning,
+        AgentTestCategory::FunctionCallHijacking,
+        AgentTestCategory::MemoryPoisoning,
+        AgentTestCategory::ToolOutputInjection,
+        AgentTestCategory::PrivilegeEscalation,
+        AgentTestCategory::DataExfiltration,
+        AgentTestCategory::SystemToolInvocation,
+        AgentTestCategory::IndirectPromptInjection,
+    ].iter().map(|c| get_agent_remediation(c, &TestCaseSeverity::High)).collect();
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "llm_categories": all_llm,
+        "agent_categories": all_agent
     })))
 }
 

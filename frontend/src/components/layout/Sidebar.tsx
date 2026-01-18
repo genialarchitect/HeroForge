@@ -597,6 +597,7 @@ const Sidebar: React.FC = () => {
             { to: '/white-team', icon: ShieldCheck, label: 'GRC Dashboard' },
             { to: '/compliance', icon: ShieldCheck, label: 'Compliance' },
             { to: '/client-compliance', icon: ClipboardCheck, label: 'Client Checklists' },
+            { to: '/legal/documents', icon: Gavel, label: 'Legal Documents' },
             { to: '/evidence', icon: FileStack, label: 'Evidence' },
             { to: '/manual-assessments', icon: ClipboardCheck, label: 'Assessments' },
           ],

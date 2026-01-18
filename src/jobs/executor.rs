@@ -1006,9 +1006,11 @@ impl JobExecutor {
             crate::reports::types::ReportOptions {
                 include_charts: true,
                 include_screenshots: false,
+                include_ai_narrative: false,
                 company_name: None,
                 assessor_name: None,
                 classification: Some("Compliance Assessment".to_string()),
+                industry: None,
             },
         ).await {
             Ok(report_path) => {

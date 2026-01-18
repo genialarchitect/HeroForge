@@ -59,6 +59,19 @@ import type {
   MyAssignmentsResponse,
   AssignVulnerabilityRequest,
   UpdateAssignmentRequest,
+  // False Positive Prediction types
+  FPPrediction,
+  FPFeedbackRequest,
+  BatchFPPredictionRequest,
+  // Finding Deduplication types
+  DeduplicatedFinding,
+  DeduplicationStats,
+  RegisterFindingRequest,
+  RegisterFindingResult,
+  ListFindingsQuery,
+  ListFindingsResponse,
+  MergeFindingsRequest,
+  UpdateFindingStatusRequest,
   ComplianceFramework,
   ComplianceControlList,
   ComplianceAnalyzeRequest,
@@ -141,6 +154,9 @@ import type {
   CreateChecklistRequest,
   UpdateChecklistRequest,
   UpdateChecklistItemRequest,
+  ScannerMapping,
+  ExploitItemRequest,
+  ExploitItemResponse,
   // Executive Analytics types
   CustomerSecurityTrends,
   ExecutiveSummary,
@@ -1014,6 +1030,64 @@ export const vulnerabilityAPI = {
 
   getRetestHistory: (id: string) =>
     api.get<RemediationTimelineEvent[]>(`/vulnerabilities/${id}/retest-history`),
+
+  // False positive prediction methods
+  getFPPrediction: (id: string) =>
+    api.get<FPPrediction>(`/vulnerabilities/${id}/fp-prediction`),
+
+  getBatchFPPredictions: (vulnerability_ids: string[]) =>
+    api.post<FPPrediction[]>('/vulnerabilities/fp-predictions', { vulnerability_ids }),
+
+  submitFPFeedback: (id: string, data: FPFeedbackRequest) =>
+    api.post<{ message: string; vulnerability_id: string; is_false_positive: boolean }>(
+      `/vulnerabilities/${id}/fp-feedback`,
+      data
+    ),
+};
+
+// ============================================================================
+// Findings Deduplication API
+// ============================================================================
+export const findingsAPI = {
+  // List deduplicated findings with optional filters
+  list: (query?: ListFindingsQuery) =>
+    api.get<ListFindingsResponse>('/findings', { params: query }),
+
+  // Get a specific finding by ID
+  get: (id: string) =>
+    api.get<{ finding: DeduplicatedFinding }>(`/findings/${id}`),
+
+  // Get findings for a specific scan
+  getByScan: (scanId: string) =>
+    api.get<{ findings: DeduplicatedFinding[]; scan_id: string; count: number }>(
+      `/findings/by-scan/${scanId}`
+    ),
+
+  // Find finding by fingerprint hash
+  getByFingerprint: (hash: string) =>
+    api.get<{ finding: DeduplicatedFinding }>(`/findings/by-fingerprint/${hash}`),
+
+  // Register a new finding occurrence
+  register: (data: RegisterFindingRequest) =>
+    api.post<RegisterFindingResult>('/findings', data),
+
+  // Update finding status
+  updateStatus: (id: string, data: UpdateFindingStatusRequest) =>
+    api.put<{ message: string; finding_id: string; status: string }>(
+      `/findings/${id}/status`,
+      data
+    ),
+
+  // Merge two findings
+  merge: (data: MergeFindingsRequest) =>
+    api.post<{ message: string; source_id: string; target_id: string; merged_occurrence_count: number }>(
+      '/findings/merge',
+      data
+    ),
+
+  // Get deduplication statistics
+  getStats: () =>
+    api.get<{ stats: DeduplicationStats }>('/findings/stats'),
 };
 
 export const complianceAPI = {
@@ -1261,6 +1335,206 @@ export const webappAPI = {
   // Get scan status and results
   getScan: (scanId: string) =>
     api.get(`/webapp/scan/${scanId}`),
+};
+
+// ============================================================================
+// GraphQL Security Scanning API
+// ============================================================================
+
+export interface GraphQLEndpoint {
+  url: string;
+  introspection_enabled: boolean;
+  supports_batching: boolean | null;
+  has_mutations: boolean | null;
+  has_subscriptions: boolean | null;
+  framework: string | null;
+}
+
+export interface GraphQLFinding {
+  finding_type: string;
+  severity: 'Low' | 'Medium' | 'High' | 'Critical';
+  title: string;
+  description: string;
+  evidence: string;
+  remediation: string;
+  field: string | null;
+  cwe_id: number | null;
+}
+
+export interface GraphQLScanResult {
+  endpoint: GraphQLEndpoint;
+  findings: GraphQLFinding[];
+  schema_discovered: boolean;
+  scan_duration_ms: number;
+}
+
+export interface GraphQLScanConfig {
+  target_url: string;
+  check_introspection?: boolean;
+  check_injection?: boolean;
+  check_dos?: boolean;
+  check_authorization?: boolean;
+  max_query_depth?: number;
+  max_batch_size?: number;
+  auth_token?: string;
+}
+
+export const graphqlAPI = {
+  // Detect GraphQL endpoints at a URL
+  detectEndpoints: (targetUrl: string) =>
+    api.post<{ endpoints: GraphQLEndpoint[] }>('/webapp/graphql/detect', { target_url: targetUrl }),
+
+  // Start a GraphQL security scan
+  startScan: (config: GraphQLScanConfig) =>
+    api.post<{ scan_id: string; status: string; endpoints_found: string[] }>('/webapp/graphql/scan', config),
+
+  // Get GraphQL scan status and results
+  getScan: (scanId: string) =>
+    api.get<{ scan_id: string; status: string; result: GraphQLScanResult | null }>(`/webapp/graphql/scan/${scanId}`),
+};
+
+// ============================================================================
+// Continuous Monitoring API
+// ============================================================================
+
+export interface MonitoringStatus {
+  is_running: boolean;
+  targets_count: number;
+  last_light_scan: string | null;
+  last_full_scan: string | null;
+  changes_detected_today: number;
+  alerts_sent_today: number;
+  uptime_seconds: number;
+}
+
+export interface AlertTriggers {
+  new_port: boolean;
+  closed_port: boolean;
+  service_change: boolean;
+  new_vulnerability: boolean;
+  host_up: boolean;
+  host_down: boolean;
+  version_change: boolean;
+}
+
+export interface AlertDestination {
+  type: 'Email' | 'Webhook' | 'Slack' | 'Teams' | 'Syslog';
+  address?: string;
+  url?: string;
+  webhook_url?: string;
+  secret?: string;
+  channel?: string;
+  host?: string;
+  port?: number;
+}
+
+export interface PortState {
+  port: number;
+  protocol: string;
+  service: string | null;
+  version: string | null;
+  banner: string | null;
+  first_seen: string;
+  last_seen: string;
+}
+
+export interface TargetState {
+  target: string;
+  ip: string | null;
+  is_up: boolean;
+  last_seen: string | null;
+  open_ports: Record<number, PortState>;
+  last_full_scan: string | null;
+  last_light_scan: string | null;
+}
+
+export interface DetectedChange {
+  id: string;
+  change_type: string;
+  severity: 'Low' | 'Medium' | 'High' | 'Critical';
+  target: string;
+  port: number | null;
+  description: string;
+  previous_value: string | null;
+  current_value: string | null;
+  detected_at: string;
+  acknowledged: boolean;
+  acknowledged_by: string | null;
+  acknowledged_at: string | null;
+}
+
+export interface MonitoringBaseline {
+  id: string;
+  name: string;
+  created_at: string;
+  targets: TargetState[];
+  description: string | null;
+}
+
+export interface MonitoringConfig {
+  targets: string[];
+  light_scan_interval_secs: number;
+  full_scan_interval_secs: number;
+  light_scan_port_count: number;
+  alerting_enabled: boolean;
+  alert_destinations: AlertDestination[];
+  alert_on: AlertTriggers;
+}
+
+export const monitoringAPI = {
+  // Get monitoring status
+  getStatus: () =>
+    api.get<{ success: boolean; data: MonitoringStatus }>('/monitoring/status'),
+
+  // Start monitoring
+  start: (config: {
+    targets: string[];
+    light_scan_interval_secs?: number;
+    full_scan_interval_secs?: number;
+    alert_destinations?: AlertDestination[];
+    alert_triggers?: AlertTriggers;
+  }) =>
+    api.post<{ success: boolean; data: { message: string; targets_count: number } }>('/monitoring/start', config),
+
+  // Stop monitoring
+  stop: () =>
+    api.post<{ success: boolean; data: { message: string } }>('/monitoring/stop'),
+
+  // Get configuration
+  getConfig: () =>
+    api.get<{ success: boolean; data: MonitoringConfig }>('/monitoring/config'),
+
+  // Update configuration
+  updateConfig: (config: MonitoringConfig) =>
+    api.put<{ success: boolean; data: { message: string } }>('/monitoring/config', config),
+
+  // Get all targets
+  getTargets: () =>
+    api.get<{ success: boolean; data: TargetState[] }>('/monitoring/targets'),
+
+  // Add target
+  addTarget: (target: string) =>
+    api.post<{ success: boolean; data: { message: string } }>('/monitoring/targets', { target }),
+
+  // Remove target
+  removeTarget: (target: string) =>
+    api.delete<{ success: boolean; data: { message: string } }>(`/monitoring/targets/${encodeURIComponent(target)}`),
+
+  // Get recent changes
+  getChanges: (limit?: number) =>
+    api.get<{ success: boolean; data: DetectedChange[] }>(`/monitoring/changes${limit ? `?limit=${limit}` : ''}`),
+
+  // Acknowledge a change
+  acknowledgeChange: (changeId: string) =>
+    api.post<{ success: boolean; data: { message: string } }>(`/monitoring/changes/${changeId}/acknowledge`),
+
+  // Create baseline
+  createBaseline: (name: string, description?: string) =>
+    api.post<{ success: boolean; data: MonitoringBaseline }>('/monitoring/baseline', { name, description }),
+
+  // Set baseline
+  setBaseline: (baseline: MonitoringBaseline) =>
+    api.post<{ success: boolean; data: { message: string } }>('/monitoring/baseline/set', baseline),
 };
 
 // ============================================================================
@@ -1717,6 +1991,25 @@ export const methodologyAPI = {
       `/methodology/checklists/${checklistId}/items/${itemId}`,
       data
     ),
+
+  // Get scanner info for a methodology item
+  getScannerInfo: (itemCode: string) =>
+    api.get<ScannerMapping>(`/methodology/items/${itemCode}/scanner-info`),
+
+  // Exploit a checklist item (run automated test)
+  exploitItem: (
+    checklistId: string,
+    itemId: string,
+    data: ExploitItemRequest
+  ) =>
+    api.post<ExploitItemResponse>(
+      `/methodology/checklists/${checklistId}/items/${itemId}/exploit`,
+      data
+    ),
+
+  // List all scanner mappings
+  listScannerMappings: () =>
+    api.get<ScannerMapping[]>('/methodology/scanner-mappings'),
 };
 
 // ============================================================================
@@ -1807,6 +2100,8 @@ import type {
   AnalyzeAttackPathsResponse,
   GetAttackPathsResponse,
   AttackPath,
+  InterpretAttackPathRequest,
+  AttackPathInterpretation,
 } from '../types';
 
 export const attackPathsAPI = {
@@ -1828,6 +2123,17 @@ export const attackPathsAPI = {
   // Get a single attack path with full details
   getPath: (pathId: string) =>
     api.get<AttackPath>(`/attack-paths/path/${pathId}`),
+
+  // Generate AI interpretation for an attack path
+  interpretPath: (pathId: string, options?: InterpretAttackPathRequest) =>
+    api.post<AttackPathInterpretation>(
+      `/attack-paths/path/${pathId}/interpret`,
+      options || {}
+    ),
+
+  // Get existing AI interpretation for an attack path
+  getInterpretation: (pathId: string) =>
+    api.get<AttackPathInterpretation>(`/attack-paths/path/${pathId}/interpretation`),
 };
 
 // ============================================================================
@@ -6298,6 +6604,146 @@ export interface AIDashboard {
   false_positive_rate: number;
 }
 
+// Conversation Test Types
+export interface ConversationTurn {
+  turn_number: number;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  wait_for_response: boolean;
+  analyze_response: boolean;
+  success_indicators: string[];
+  abort_indicators: string[];
+}
+
+export interface SuccessCriteria {
+  min_successful_turns: number;
+  require_all_turns: boolean;
+  critical_turn?: number;
+  final_success_patterns: string[];
+}
+
+export interface ConversationTest {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  turns: ConversationTurn[];
+  success_criteria: SuccessCriteria;
+  severity: string;
+  is_builtin: boolean;
+  created_at: string;
+}
+
+export interface TurnResult {
+  turn_number: number;
+  prompt_sent: string;
+  response_received: string;
+  success_indicators_matched: string[];
+  abort_triggered: boolean;
+  analysis_result?: string;
+}
+
+export interface ConversationTestResult {
+  test_id: string;
+  test_name: string;
+  category: string;
+  turns_executed: TurnResult[];
+  final_status: 'passed' | 'failed' | 'aborted' | 'error';
+  vulnerability_detected_at_turn?: number;
+  conversation_history: [string, string][];
+  overall_confidence: number;
+  severity: string;
+  remediation?: string;
+  duration_ms: number;
+}
+
+// Agent Test Types
+export interface ToolDefinition {
+  name: string;
+  description: string;
+  parameters: Record<string, any>;
+  dangerous: boolean;
+}
+
+export interface AgentTestConfig {
+  id: string;
+  target_id: string;
+  tools: ToolDefinition[];
+  rag_endpoint?: string;
+  function_format: 'openai' | 'anthropic' | 'gemini' | 'custom';
+  memory_enabled: boolean;
+  created_at: string;
+}
+
+export interface AgentTestCase {
+  id: string;
+  category: string;
+  name: string;
+  description: string;
+  prompt: string;
+  expected_tool_calls?: { tool_name: string; malicious_parameters: string[] }[];
+  severity: string;
+  cwe_id?: string;
+  is_builtin: boolean;
+  enabled: boolean;
+}
+
+export interface AgentTestResult {
+  test_id: string;
+  test_name: string;
+  category: string;
+  status: 'passed' | 'failed' | 'error';
+  tool_calls_detected: { tool_name: string; arguments: Record<string, any> }[];
+  vulnerability_indicators: string[];
+  confidence: number;
+  severity: string;
+  remediation: string;
+  duration_ms: number;
+}
+
+// Model Fingerprint Types
+export interface ModelFingerprint {
+  likely_model_family: string;
+  confidence: number;
+  indicators: string[];
+  estimated_context_window?: number;
+  detected_safety_mechanisms: string[];
+  known_vulnerabilities: string[];
+  fingerprinted_at: string;
+}
+
+// LLM Security Report Types
+export interface LLMSecurityReport {
+  id: string;
+  test_run_id: string;
+  report_type: string;
+  format: 'pdf' | 'html' | 'markdown' | 'json';
+  executive_summary: {
+    overall_risk_level: string;
+    critical_count: number;
+    high_count: number;
+    medium_count: number;
+    low_count: number;
+    key_findings: string[];
+    recommendations: string[];
+  };
+  created_at: string;
+  file_path?: string;
+}
+
+// Remediation Types
+export interface RemediationGuidance {
+  category: string;
+  severity: string;
+  description: string;
+  impact: string;
+  steps: string[];
+  code_examples: string[];
+  references: { title: string; url: string }[];
+  owasp_mapping?: string;
+  cwe_mapping?: string;
+}
+
 export const aiSecurityAPI = {
   // Dashboard
   getDashboard: () => api.get<AIDashboard>('/ai-security/dashboard'),
@@ -6340,6 +6786,44 @@ export const aiSecurityAPI = {
   updateLLMTarget: (id: string, data: { name?: string; endpoint?: string; model_type?: string; description?: string; api_key?: string; headers?: Record<string, string>; enabled?: boolean }) =>
     api.put<{ id: string; message: string }>(`/ai-security/llm-security/targets/${id}`, data),
   deleteLLMTarget: (id: string) => api.delete(`/ai-security/llm-security/targets/${id}`),
+
+  // Multi-Turn Conversation Tests
+  getConversationTests: (params?: { category?: string; builtin_only?: boolean }) =>
+    api.get<ConversationTest[]>('/ai-security/llm-security/conversation-tests', { params }),
+  startConversationTest: (data: { target_id: string; test_id: string }) =>
+    api.post<ConversationTestResult>('/ai-security/llm-security/conversation-test', data),
+
+  // Agent/Tool Testing
+  getAgentConfigs: (params?: { target_id?: string }) =>
+    api.get<AgentTestConfig[]>('/ai-security/llm-security/agent-configs', { params }),
+  getAgentConfig: (id: string) => api.get<AgentTestConfig>(`/ai-security/llm-security/agent-configs/${id}`),
+  createAgentConfig: (data: { target_id: string; tools: ToolDefinition[]; rag_endpoint?: string; function_format: string; memory_enabled: boolean }) =>
+    api.post<{ id: string; message: string }>('/ai-security/llm-security/agent-configs', data),
+  updateAgentConfig: (id: string, data: Partial<{ tools: ToolDefinition[]; rag_endpoint?: string; function_format: string; memory_enabled: boolean }>) =>
+    api.put<{ message: string }>(`/ai-security/llm-security/agent-configs/${id}`, data),
+  deleteAgentConfig: (id: string) => api.delete(`/ai-security/llm-security/agent-configs/${id}`),
+  getAgentTestCases: (params?: { category?: string; builtin_only?: boolean }) =>
+    api.get<AgentTestCase[]>('/ai-security/llm-security/agent-test-cases', { params }),
+  startAgentTest: (data: { target_id: string; agent_config_id: string; test_ids?: string[] }) =>
+    api.post<AgentTestResult[]>('/ai-security/llm-security/agent-test', data),
+
+  // Model Fingerprinting
+  fingerprintModel: (targetId: string) =>
+    api.post<ModelFingerprint>(`/ai-security/llm-security/fingerprint/${targetId}`),
+  getFingerprint: (targetId: string) =>
+    api.get<ModelFingerprint>(`/ai-security/llm-security/fingerprint/${targetId}`),
+
+  // Reports
+  generateLLMReport: (testRunId: string, data: { format: 'pdf' | 'html' | 'markdown' | 'json'; include_remediation?: boolean }) =>
+    api.post<LLMSecurityReport>(`/ai-security/llm-security/tests/${testRunId}/report`, data),
+  getLLMReport: (reportId: string) =>
+    api.get<LLMSecurityReport>(`/ai-security/llm-security/reports/${reportId}`),
+  downloadLLMReport: (reportId: string) =>
+    api.get(`/ai-security/llm-security/reports/${reportId}/download`, { responseType: 'blob' }),
+
+  // Remediation Guidance
+  getRemediation: (category: string) =>
+    api.get<RemediationGuidance>(`/ai-security/llm-security/remediation/${category}`),
 };
 
 // ============================================================================
@@ -6569,4 +7053,526 @@ export const clientComplianceAPI = {
   // History
   getHistory: (checklistId: string, params?: { item_id?: string; limit?: number; offset?: number }) =>
     api.get(`/client-compliance/checklists/${checklistId}/history`, { params }),
+};
+
+// ============================================================================
+// Remediation Roadmap API
+// ============================================================================
+
+export interface RemediationTask {
+  id: string;
+  vulnerability_id: string;
+  title: string;
+  description: string;
+  severity: string;
+  host: string;
+  port: number | null;
+  effort_hours: number;
+  priority_score: number;
+  dependencies: string[];
+  suggested_assignee: string;
+  required_skills: string[];
+  requires_downtime: boolean;
+  requires_testing: boolean;
+  remediation_steps: string[];
+  risk_before: number;
+  risk_after: number;
+}
+
+export interface ParallelGroup {
+  name: string;
+  task_ids: string[];
+  parallel_effort_hours: number;
+}
+
+export interface RemediationPhase {
+  phase_number: number;
+  name: string;
+  start_date: string;
+  end_date: string;
+  tasks: RemediationTask[];
+  total_effort_hours: number;
+  expected_risk_reduction: number;
+  parallel_groups: ParallelGroup[];
+}
+
+export interface CriticalPathItem {
+  task_id: string;
+  sequence: number;
+  reason: string;
+  delay_risk: string;
+}
+
+export interface WeeklyRisk {
+  week: number;
+  date: string;
+  risk_score: number;
+  reduction: number;
+  completed_items: string[];
+}
+
+export interface RiskProjection {
+  initial_risk: number;
+  weekly_risk: WeeklyRisk[];
+  final_risk: number;
+  total_reduction_percent: number;
+}
+
+export interface ResourceSuggestion {
+  resource_type: string;
+  recommended_fte: number;
+  total_hours: number;
+  peak_week: number;
+  peak_hours: number;
+  skills_needed: string[];
+}
+
+export interface RoadmapSummary {
+  total_tasks: number;
+  total_effort_hours: number;
+  total_phases: number;
+  critical_count: number;
+  high_count: number;
+  medium_count: number;
+  low_count: number;
+  projected_completion: string;
+  initial_risk_score: number;
+  final_risk_score: number;
+  risk_reduction_percent: number;
+}
+
+export interface RemediationRoadmap {
+  id: string;
+  scan_id: string;
+  generated_at: string;
+  phases: RemediationPhase[];
+  summary: RoadmapSummary;
+  critical_path: CriticalPathItem[];
+  risk_projection: RiskProjection;
+  resource_suggestions: ResourceSuggestion[];
+}
+
+export interface CreateRoadmapRequest {
+  scan_id: string;
+  hours_per_week?: number;
+  available_resources?: number;
+  include_low_severity?: boolean;
+  max_weeks?: number;
+}
+
+export const remediationRoadmapAPI = {
+  // Generate a new roadmap
+  generate: (data: CreateRoadmapRequest) =>
+    api.post<{ roadmap: RemediationRoadmap; message: string }>('/remediation/roadmaps', data),
+
+  // Get a specific roadmap
+  get: (id: string) =>
+    api.get<{ roadmap: RemediationRoadmap }>(`/remediation/roadmaps/${id}`),
+
+  // Get all roadmaps for a scan
+  getByScan: (scanId: string) =>
+    api.get<{ roadmaps: RemediationRoadmap[]; count: number; scan_id: string }>(
+      `/remediation/roadmaps/scan/${scanId}`
+    ),
+
+  // Delete a roadmap
+  delete: (id: string) =>
+    api.delete<{ message: string; roadmap_id: string }>(`/remediation/roadmaps/${id}`),
+};
+
+// ============================================================================
+// Integration Sync API (Bi-Directional JIRA/ServiceNow Sync)
+// ============================================================================
+
+import type {
+  LinkTicketRequest,
+  LinkedTicket,
+  SyncAction,
+  SyncStats,
+  SyncConfig,
+  UpdateSyncConfigRequest,
+  SyncHistoryEntry,
+  WebhookLogEntry,
+  SyncResult,
+  VerificationResult,
+} from '../types/integration-sync';
+
+export const integrationSyncAPI = {
+  // Link a vulnerability to an external ticket
+  linkTicket: (data: LinkTicketRequest) =>
+    api.post<LinkedTicket>('/integration-sync/tickets', data),
+
+  // Unlink a ticket
+  unlinkTicket: (ticketId: string) =>
+    api.delete<{ message: string }>(`/integration-sync/tickets/${ticketId}`),
+
+  // Get linked tickets for a vulnerability
+  getLinkedTickets: (vulnerabilityId: string) =>
+    api.get<LinkedTicket[]>(`/integration-sync/vulnerabilities/${vulnerabilityId}/tickets`),
+
+  // Sync a specific ticket
+  syncTicket: (ticketId: string) =>
+    api.post<SyncResult>(`/integration-sync/tickets/${ticketId}/sync`),
+
+  // Sync all linked tickets
+  syncAll: () =>
+    api.post<SyncResult>('/integration-sync/sync'),
+
+  // Get sync statistics
+  getStats: () =>
+    api.get<SyncStats>('/integration-sync/stats'),
+
+  // Handle vulnerability verification (auto-close tickets)
+  onVulnerabilityVerified: (vulnerabilityId: string) =>
+    api.post<VerificationResult>(`/integration-sync/vulnerabilities/${vulnerabilityId}/verified`),
+
+  // Get sync configuration for an integration
+  getConfig: (integration: string) =>
+    api.get<SyncConfig>(`/integration-sync/config/${integration}`),
+
+  // Update sync configuration
+  updateConfig: (integration: string, data: UpdateSyncConfigRequest) =>
+    api.put<{ message: string }>(`/integration-sync/config/${integration}`, data),
+
+  // Get sync action history
+  getHistory: (params?: { limit?: number; offset?: number }) =>
+    api.get<SyncHistoryEntry[]>('/integration-sync/history', { params }),
+
+  // Get webhook logs
+  getWebhookLogs: (params?: { limit?: number; integration?: string }) =>
+    api.get<WebhookLogEntry[]>('/integration-sync/webhooks/logs', { params }),
+};
+
+// ============================================================================
+// Engagement Templates API (Quick Setup)
+// ============================================================================
+
+import type {
+  EngagementTemplate,
+  CreateTemplateRequest,
+  CreateFromTemplateRequest,
+  EngagementSetupResult,
+  EngagementType,
+} from '../types/engagement-templates';
+
+export const engagementTemplatesAPI = {
+  // List all templates
+  list: () =>
+    api.get<EngagementTemplate[]>('/engagement-templates'),
+
+  // Get template by ID
+  get: (id: string) =>
+    api.get<EngagementTemplate>(`/engagement-templates/${id}`),
+
+  // Get templates by engagement type
+  getByType: (type: string) =>
+    api.get<EngagementTemplate[]>(`/engagement-templates/type/${type}`),
+
+  // Get available engagement types
+  getTypes: () =>
+    api.get<EngagementType[]>('/engagement-templates/types'),
+
+  // Create custom template
+  create: (data: CreateTemplateRequest) =>
+    api.post<EngagementTemplate>('/engagement-templates', data),
+
+  // Delete custom template
+  delete: (id: string) =>
+    api.delete<{ message: string }>(`/engagement-templates/${id}`),
+
+  // Initialize built-in templates (admin)
+  initialize: () =>
+    api.post<{ message: string }>('/engagement-templates/initialize'),
+
+  // Create engagement from template (Quick Setup)
+  createFromTemplate: (data: CreateFromTemplateRequest) =>
+    api.post<{ message: string; result: EngagementSetupResult }>(
+      '/engagement-templates/setup',
+      data
+    ),
+};
+
+// ============================================================================
+// Finding Lifecycle Management API
+// ============================================================================
+
+export interface FindingLifecycle {
+  id: string;
+  finding_id: string;
+  current_state: FindingState;
+  severity: string;
+  title: string;
+  affected_asset: string;
+  discovered_at: string;
+  sla_due_at: string | null;
+  sla_breached: boolean;
+  assigned_to: string | null;
+  customer_id: string | null;
+  engagement_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type FindingState =
+  | 'discovered'
+  | 'triaged'
+  | 'acknowledged'
+  | 'in_remediation'
+  | 'verification_pending'
+  | 'verified'
+  | 'closed';
+
+export interface StateTransition {
+  id: string;
+  finding_id: string;
+  from_state: FindingState;
+  to_state: FindingState;
+  transitioned_by: string;
+  reason: string | null;
+  transitioned_at: string;
+}
+
+export interface LifecycleMetrics {
+  total_findings: number;
+  by_state: Record<FindingState, number>;
+  by_severity: Record<string, number>;
+  sla_breached_count: number;
+  average_time_to_close_hours: number | null;
+  average_time_to_remediation_hours: number | null;
+}
+
+export interface SlaPolicy {
+  id: string;
+  name: string;
+  description: string | null;
+  critical_hours: number;
+  high_hours: number;
+  medium_hours: number;
+  low_hours: number;
+  info_hours: number | null;
+  organization_id: string | null;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InitLifecycleRequest {
+  severity: string;
+  title: string;
+  affected_asset: string;
+  customer_id?: string;
+  engagement_id?: string;
+  sla_policy_id?: string;
+}
+
+export interface TransitionStateRequest {
+  to_state: FindingState;
+  reason?: string;
+}
+
+export interface BulkTransitionRequest {
+  finding_ids: string[];
+  to_state: FindingState;
+  reason?: string;
+}
+
+export interface CreateSlaPolicyRequest {
+  name: string;
+  description?: string;
+  critical_hours: number;
+  high_hours: number;
+  medium_hours: number;
+  low_hours: number;
+  info_hours?: number;
+}
+
+export const findingLifecycleAPI = {
+  // List all lifecycles with filters
+  list: (params?: {
+    state?: FindingState;
+    severity?: string;
+    sla_breached?: boolean;
+    assigned_to?: string;
+    limit?: number;
+    offset?: number;
+  }) => api.get<{ lifecycles: FindingLifecycle[]; total: number }>('/finding-lifecycle', { params }),
+
+  // Get lifecycle metrics
+  getMetrics: () =>
+    api.get<LifecycleMetrics>('/finding-lifecycle/metrics'),
+
+  // Get SLA breached findings
+  getSlaBreached: () =>
+    api.get<{ lifecycles: FindingLifecycle[] }>('/finding-lifecycle/sla-breached'),
+
+  // Get findings by state
+  getByState: (state: FindingState) =>
+    api.get<{ lifecycles: FindingLifecycle[] }>(`/finding-lifecycle/by-state/${state}`),
+
+  // Get lifecycle for a specific finding
+  get: (findingId: string) =>
+    api.get<FindingLifecycle>(`/finding-lifecycle/${findingId}`),
+
+  // Initialize lifecycle for a finding
+  init: (findingId: string, data: InitLifecycleRequest) =>
+    api.post<FindingLifecycle>(`/finding-lifecycle/${findingId}`, data),
+
+  // Transition finding to new state
+  transition: (findingId: string, data: TransitionStateRequest) =>
+    api.post<FindingLifecycle>(`/finding-lifecycle/${findingId}/transition`, data),
+
+  // Get state transition history for a finding
+  getHistory: (findingId: string) =>
+    api.get<{ transitions: StateTransition[] }>(`/finding-lifecycle/${findingId}/history`),
+
+  // Bulk transition multiple findings
+  bulkTransition: (data: BulkTransitionRequest) =>
+    api.post<{ success_count: number; failed_count: number; results: Array<{ finding_id: string; success: boolean; error?: string }> }>(
+      '/finding-lifecycle/bulk-transition',
+      data
+    ),
+
+  // SLA Policies
+  listSlaPolicies: () =>
+    api.get<{ policies: SlaPolicy[] }>('/finding-lifecycle/sla-policies'),
+
+  createSlaPolicy: (data: CreateSlaPolicyRequest) =>
+    api.post<SlaPolicy>('/finding-lifecycle/sla-policies', data),
+
+  // Update SLA status for all findings (check for breaches)
+  updateSlaStatus: () =>
+    api.post<{ updated_count: number }>('/finding-lifecycle/update-sla-status'),
+};
+
+// ============================================================================
+// Passive Reconnaissance API
+// ============================================================================
+
+export interface SubdomainResult {
+  subdomain: string;
+  sources: string[];
+  first_seen: string;
+  ip_addresses?: string[];
+}
+
+export interface HistoricalUrl {
+  url: string;
+  timestamp: string | null;
+  mime_type: string | null;
+  status_code: number | null;
+}
+
+export interface CodeSearchResult {
+  repository: string;
+  file_path: string;
+  matched_content: string;
+  url: string;
+  search_type: string;
+}
+
+export interface PassiveDnsRecord {
+  record_type: string;
+  name: string;
+  value: string;
+  first_seen: string | null;
+  last_seen: string | null;
+}
+
+export interface CertificateInfo {
+  serial_number: string;
+  subject: string;
+  issuer: string;
+  not_before: string;
+  not_after: string;
+  names: string[];
+}
+
+export interface PassiveReconResult {
+  id: string;
+  domain: string;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  sources_used: string[];
+  total_subdomains: number;
+  total_urls: number;
+  total_code_results: number;
+  total_dns_records: number;
+  subdomains: SubdomainResult[];
+  historical_urls: HistoricalUrl[];
+  code_search_results: CodeSearchResult[];
+  dns_records: PassiveDnsRecord[];
+  sensitive_paths: string[];
+  certificates: CertificateInfo[];
+  error_message: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+}
+
+export interface RunPassiveReconRequest {
+  domain: string;
+  sources?: string[];
+  github_token?: string;
+  securitytrails_key?: string;
+  wayback_url_limit?: number;
+}
+
+export interface DomainRequest {
+  domain: string;
+}
+
+export interface GitHubSearchRequest {
+  domain: string;
+  token?: string;
+}
+
+export interface SecurityTrailsRequest {
+  domain: string;
+  api_key?: string;
+}
+
+export interface WaybackRequest {
+  domain: string;
+  limit?: number;
+}
+
+export const passiveReconAPI = {
+  // Run full passive reconnaissance
+  run: (data: RunPassiveReconRequest) =>
+    api.post<PassiveReconResult>('/passive-recon/run', data),
+
+  // Discover subdomains only
+  discoverSubdomains: (data: DomainRequest) =>
+    api.post<{ subdomains: SubdomainResult[] }>('/passive-recon/subdomains', data),
+
+  // Query crt.sh for certificates
+  queryCrtsh: (data: DomainRequest) =>
+    api.post<{ subdomains: string[]; certificates: CertificateInfo[] }>('/passive-recon/crtsh', data),
+
+  // Query Wayback Machine for historical URLs
+  queryWayback: (data: WaybackRequest) =>
+    api.post<{ urls: HistoricalUrl[]; subdomains: string[] }>('/passive-recon/wayback', data),
+
+  // Find sensitive paths from Wayback
+  findSensitivePaths: (data: DomainRequest) =>
+    api.post<{ sensitive_paths: string[] }>('/passive-recon/wayback/sensitive', data),
+
+  // Search GitHub for domain references
+  searchGithub: (data: GitHubSearchRequest) =>
+    api.post<{ results: CodeSearchResult[] }>('/passive-recon/github', data),
+
+  // Search GitHub for exposed secrets
+  searchGithubSecrets: (data: GitHubSearchRequest) =>
+    api.post<{ results: CodeSearchResult[] }>('/passive-recon/github/secrets', data),
+
+  // Query SecurityTrails
+  querySecurityTrails: (data: SecurityTrailsRequest) =>
+    api.post<{ subdomains: string[]; dns_records: PassiveDnsRecord[] }>('/passive-recon/securitytrails', data),
+
+  // Get a specific result
+  getResult: (id: string) =>
+    api.get<PassiveReconResult>(`/passive-recon/results/${id}`),
+
+  // List all results
+  listResults: (params?: { domain?: string; limit?: number; offset?: number }) =>
+    api.get<{ results: PassiveReconResult[]; total: number }>('/passive-recon/results', { params }),
 };

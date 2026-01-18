@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
-import type { ClusterWithDetails, ClusterHealth, ClusterConfig } from '../../types/agents';
+import type { ClusterWithDetails } from '../../types/agents';
 
 interface ClusterStatusProps {
   cluster: ClusterWithDetails;

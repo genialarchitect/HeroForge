@@ -202,7 +202,7 @@ async fn query_rootdse(target_ip: &str, port: u16, timeout: Duration) -> Result<
         stream.flush()?;
 
         let mut response = vec![0u8; 512];
-        stream.read(&mut response)?;
+        let _ = stream.read(&mut response)?;
 
         // Search RootDSE
         let search_request = build_ldap_search_request(2, "", "(objectClass=*)");

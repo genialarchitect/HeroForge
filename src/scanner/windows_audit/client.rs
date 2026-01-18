@@ -8,6 +8,30 @@ use std::process::Stdio;
 
 use super::types::WindowsCredentials;
 
+/// Escape special characters in a PowerShell string literal
+///
+/// This handles characters that have special meaning in PowerShell:
+/// - Single quotes (') - doubled to escape within single-quoted strings
+/// - Backtick (`) - PowerShell escape character
+/// - Dollar sign ($) - Variable expansion
+/// - Null bytes - Removed as they can break string handling
+fn escape_powershell_string(s: &str) -> String {
+    let mut result = String::with_capacity(s.len() * 2);
+    for c in s.chars() {
+        match c {
+            '\'' => result.push_str("''"),  // Double single quotes
+            '`' => result.push_str("``"),   // Escape backtick
+            '$' => result.push_str("`$"),   // Escape dollar sign
+            '\0' => {},                      // Remove null bytes
+            '\n' => result.push_str("`n"),  // Escape newline
+            '\r' => result.push_str("`r"),  // Escape carriage return
+            '\t' => result.push_str("`t"),  // Escape tab
+            _ => result.push(c),
+        }
+    }
+    result
+}
+
 /// WinRM client for remote Windows management
 pub struct WinRmClient {
     target: String,
@@ -75,7 +99,7 @@ $session = New-PSSession -ComputerName '{}' -Credential $credential -UseSSL:${}
 Invoke-Command -Session $session -ScriptBlock {{ {} }}
 Remove-PSSession $session
 "#,
-            self.credentials.password.replace("'", "''"),
+            escape_powershell_string(&self.credentials.password),
             user,
             self.target,
             self.use_ssl,

@@ -1,6 +1,6 @@
 import React from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import type { AIVulnerabilityScore, FactorScore } from '../../types';
+import type { AIVulnerabilityScore } from '../../types';
 
 interface ScoreBreakdownProps {
   score: AIVulnerabilityScore;

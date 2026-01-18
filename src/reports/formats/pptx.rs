@@ -996,6 +996,7 @@ mod tests {
             screenshots: vec![],
             operator_notes: None,
             finding_notes: std::collections::HashMap::new(),
+            ai_narrative: None,
         };
 
         let result = generate_pptx(&data);

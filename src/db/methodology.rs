@@ -64,6 +64,21 @@ pub async fn get_methodology_template_with_items(
     Ok(MethodologyTemplateWithItems { template, items })
 }
 
+/// Get a single methodology template item by ID
+pub async fn get_methodology_template_item(
+    pool: &SqlitePool,
+    id: &str,
+) -> Result<MethodologyTemplateItem> {
+    let item = sqlx::query_as::<_, MethodologyTemplateItem>(
+        "SELECT * FROM methodology_template_items WHERE id = ?1"
+    )
+    .bind(id)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(item)
+}
+
 // ============================================================================
 // Checklist Operations
 // ============================================================================

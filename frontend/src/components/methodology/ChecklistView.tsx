@@ -3,11 +3,14 @@ import type {
   ChecklistWithItems,
   ChecklistItemWithTemplate,
   ChecklistItemStatus,
+  ScannerMapping,
+  ExploitItemRequest,
 } from '../../types';
 import { methodologyAPI } from '../../services/api';
 import { toast } from 'react-toastify';
 import ProgressBar from './ProgressBar';
 import ItemCard from './ItemCard';
+import ExploitTargetModal from './ExploitTargetModal';
 import {
   CheckCircle2,
   XCircle,
@@ -35,6 +38,12 @@ const ChecklistView: React.FC<ChecklistViewProps> = ({ checklist, onUpdate }) =>
     )
   );
   const [isUpdating, setIsUpdating] = useState<string | null>(null);
+
+  // Exploit modal state
+  const [exploitModalOpen, setExploitModalOpen] = useState(false);
+  const [exploitingItem, setExploitingItem] = useState<ChecklistItemWithTemplate | null>(null);
+  const [scannerMapping, setScannerMapping] = useState<ScannerMapping | null>(null);
+  const [isExploiting, setIsExploiting] = useState(false);
 
   // Group items by category
   const itemsByCategory = useMemo(() => {
@@ -99,6 +108,57 @@ const ChecklistView: React.FC<ChecklistViewProps> = ({ checklist, onUpdate }) =>
       toast.error('Failed to update item');
     } finally {
       setIsUpdating(null);
+    }
+  };
+
+  // Handle exploit button click - fetch scanner info and open modal
+  const handleExploitClick = async (item: ChecklistItemWithTemplate) => {
+    const itemCode = item.template_item_code;
+    if (!itemCode) {
+      toast.error('No item code available for this test');
+      return;
+    }
+
+    try {
+      const response = await methodologyAPI.getScannerInfo(itemCode);
+      setScannerMapping(response.data);
+      setExploitingItem(item);
+      setExploitModalOpen(true);
+    } catch (error) {
+      console.error('Failed to get scanner info:', error);
+      toast.error('No automated scanner available for this item');
+    }
+  };
+
+  // Handle exploit submission
+  const handleExploitSubmit = async (request: ExploitItemRequest) => {
+    if (!exploitingItem) return;
+
+    setIsExploiting(true);
+    try {
+      const response = await methodologyAPI.exploitItem(
+        checklist.checklist.id,
+        exploitingItem.template_item_id,
+        request
+      );
+
+      toast.success(`${response.data.summary}`);
+
+      // Refresh the checklist to get updated item status
+      const updated = await methodologyAPI.getChecklist(checklist.checklist.id);
+      onUpdate(updated.data);
+      setExploitModalOpen(false);
+      setExploitingItem(null);
+      setScannerMapping(null);
+    } catch (error: unknown) {
+      console.error('Exploit test failed:', error);
+      const errorMessage =
+        error instanceof Error && 'response' in error
+          ? (error as { response?: { data?: { error?: string } } }).response?.data?.error
+          : 'Exploit test failed';
+      toast.error(errorMessage || 'Exploit test failed');
+    } finally {
+      setIsExploiting(false);
     }
   };
 
@@ -238,6 +298,8 @@ const ChecklistView: React.FC<ChecklistViewProps> = ({ checklist, onUpdate }) =>
                     onNotesChange={(notes) =>
                       handleItemUpdate(item, item.status, notes)
                     }
+                    onExploit={handleExploitClick}
+                    canExploit={!!item.template_item_code}
                   />
                 ))}
               </div>
@@ -255,6 +317,21 @@ const ChecklistView: React.FC<ChecklistViewProps> = ({ checklist, onUpdate }) =>
           </div>
         )}
       </div>
+
+      {/* Exploit Target Modal */}
+      <ExploitTargetModal
+        isOpen={exploitModalOpen}
+        onClose={() => {
+          setExploitModalOpen(false);
+          setExploitingItem(null);
+          setScannerMapping(null);
+        }}
+        onSubmit={handleExploitSubmit}
+        itemCode={exploitingItem?.template_item_code || ''}
+        itemTitle={exploitingItem?.title || ''}
+        scannerMapping={scannerMapping}
+        isLoading={isExploiting}
+      />
     </div>
   );
 };

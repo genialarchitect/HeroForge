@@ -280,24 +280,72 @@ impl Default for UserCollector {
 
 #[async_trait]
 impl WindowsCollector for UserCollector {
-    async fn collect(&self, object: &OvalObject, _context: &CollectionContext) -> Result<Vec<OvalItem>> {
-        match object.object_type {
+    async fn collect(&self, object: &OvalObject, context: &CollectionContext) -> Result<Vec<OvalItem>> {
+        // Check if we have credentials configured
+        if !context.has_credentials() {
+            log::warn!("No WinRM credentials configured, skipping user/group collection");
+            return Ok(vec![]);
+        }
+
+        let script = match object.object_type {
             ObjectType::WinUser => {
                 let username = object.data.get("user")
                     .and_then(|v| v.as_str());
-                let _script = self.build_user_script(username);
-                // TODO: Execute via WinRM
+                self.build_user_script(username)
             }
             ObjectType::WinGroup => {
                 let group_name = object.data.get("group")
                     .and_then(|v| v.as_str());
-                let _script = self.build_group_script(group_name);
-                // TODO: Execute via WinRM
+                self.build_group_script(group_name)
             }
-            _ => {}
+            _ => return Ok(vec![]),
+        };
+
+        // Execute via WinRM
+        let output = match context.execute_script(&script).await {
+            Ok(out) => out,
+            Err(e) => {
+                log::warn!("Failed to execute user/group collection script: {}", e);
+                return Ok(vec![]);
+            }
+        };
+
+        // Parse the JSON output
+        let json: serde_json::Value = match serde_json::from_str(&output) {
+            Ok(j) => j,
+            Err(e) => {
+                log::warn!("Failed to parse user/group collection output: {}", e);
+                return Ok(vec![]);
+            }
+        };
+
+        // Build items based on object type
+        let mut items = Vec::new();
+        let is_user = object.object_type == ObjectType::WinUser;
+
+        if let Some(arr) = json.as_array() {
+            for item in arr {
+                let oval_item = if is_user {
+                    self.build_user_item(item)
+                } else {
+                    self.build_group_item(item)
+                };
+                if let Some(i) = oval_item {
+                    items.push(i);
+                }
+            }
+        } else {
+            let oval_item = if is_user {
+                self.build_user_item(&json)
+            } else {
+                self.build_group_item(&json)
+            };
+            if let Some(i) = oval_item {
+                items.push(i);
+            }
         }
 
-        Ok(vec![])
+        Ok(items)
     }
 
     fn supported_types(&self) -> Vec<ObjectType> {

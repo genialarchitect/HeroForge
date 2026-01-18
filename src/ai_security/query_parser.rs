@@ -303,7 +303,7 @@ impl QueryParser {
             for cap in regex.captures_iter(query) {
                 if let Some(port_match) = cap.get(1).or_else(|| cap.get(2)) {
                     if let Ok(port) = port_match.as_str().parse::<u16>() {
-                        if port > 0 && port <= 65535 {
+                        if port > 0 { // u16 already guarantees <= 65535
                             entities.push(ExtractedEntity {
                                 entity_type: EntityType::Port.as_str().to_string(),
                                 value: port.to_string(),

@@ -314,6 +314,43 @@ pub enum ScanProgressMessage {
     },
 }
 
+/// Progress messages for report generation (used via WebSocket)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum ReportProgressMessage {
+    /// Report generation has started
+    ReportStarted {
+        report_id: String,
+        name: String,
+        format: String,
+    },
+    /// Report generation phase update
+    ReportPhase {
+        report_id: String,
+        phase: String,
+        progress: f32,
+        message: String,
+    },
+    /// A screenshot was captured during report generation
+    ScreenshotCaptured {
+        report_id: String,
+        url: String,
+        index: usize,
+        total: usize,
+    },
+    /// Report generation completed successfully
+    ReportCompleted {
+        report_id: String,
+        file_path: String,
+        file_size: u64,
+    },
+    /// Report generation failed
+    ReportFailed {
+        report_id: String,
+        error: String,
+    },
+}
+
 // Web Application Scanning types
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WebAppScanResult {

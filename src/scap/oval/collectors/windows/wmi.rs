@@ -170,7 +170,13 @@ impl Default for WmiCollector {
 
 #[async_trait]
 impl WindowsCollector for WmiCollector {
-    async fn collect(&self, object: &OvalObject, _context: &CollectionContext) -> Result<Vec<OvalItem>> {
+    async fn collect(&self, object: &OvalObject, context: &CollectionContext) -> Result<Vec<OvalItem>> {
+        // Check if we have credentials configured
+        if !context.has_credentials() {
+            log::warn!("No WinRM credentials configured, skipping WMI collection");
+            return Ok(vec![]);
+        }
+
         // Extract WMI object parameters
         let namespace = object.data.get("namespace")
             .and_then(|v| v.as_str())
@@ -181,13 +187,39 @@ impl WindowsCollector for WmiCollector {
             .unwrap_or("");
 
         // Build the PowerShell script
-        let _script = self.build_wmi_script(namespace, wql);
+        let script = self.build_wmi_script(namespace, wql);
 
-        // In a real implementation, we would execute this script via WinRM
-        // For now, return empty result as placeholder
-        // TODO: Integrate with WinRM client from scanner/windows_audit
+        // Execute via WinRM
+        let output = match context.execute_script(&script).await {
+            Ok(out) => out,
+            Err(e) => {
+                log::warn!("Failed to execute WMI collection script: {}", e);
+                return Ok(vec![]);
+            }
+        };
 
-        Ok(vec![])
+        // Parse the JSON output
+        let json: serde_json::Value = match serde_json::from_str(&output) {
+            Ok(j) => j,
+            Err(e) => {
+                log::warn!("Failed to parse WMI collection output: {}", e);
+                return Ok(vec![]);
+            }
+        };
+
+        // Handle single result vs array
+        let mut items = Vec::new();
+        if let Some(arr) = json.as_array() {
+            for item in arr {
+                if let Some(oval_item) = self.build_item(item) {
+                    items.push(oval_item);
+                }
+            }
+        } else if let Some(item) = self.build_item(&json) {
+            items.push(item);
+        }
+
+        Ok(items)
     }
 
     fn supported_types(&self) -> Vec<ObjectType> {

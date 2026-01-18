@@ -821,3 +821,582 @@ pub struct LLMTestSummary {
     pub vulnerabilities_by_severity: std::collections::HashMap<String, i64>,
     pub overall_risk_score: f64,
 }
+
+// ============================================================================
+// Multi-Turn Conversation Testing
+// ============================================================================
+
+/// Message role in a conversation
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum MessageRole {
+    User,
+    Assistant,
+    System,
+}
+
+impl std::fmt::Display for MessageRole {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MessageRole::User => write!(f, "user"),
+            MessageRole::Assistant => write!(f, "assistant"),
+            MessageRole::System => write!(f, "system"),
+        }
+    }
+}
+
+/// A single turn in a multi-turn conversation test
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct ConversationTurn {
+    /// Turn number (0-indexed)
+    pub turn_number: usize,
+    /// Role of the message sender
+    pub role: MessageRole,
+    /// Content of the message
+    pub content: String,
+    /// Whether to wait for a response before continuing
+    pub wait_for_response: bool,
+    /// Whether to analyze the response for vulnerabilities
+    pub analyze_response: bool,
+    /// Patterns indicating successful attack at this turn
+    pub success_indicators: Vec<String>,
+    /// Patterns that indicate the attack should be aborted
+    pub abort_indicators: Vec<String>,
+}
+
+/// Success criteria for a conversation test
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct SuccessCriteria {
+    /// Minimum number of turns that must succeed
+    pub min_successful_turns: usize,
+    /// Whether all turns must succeed
+    pub require_all_turns: bool,
+    /// Specific turn that must succeed for the test to pass
+    pub critical_turn: Option<usize>,
+    /// Patterns in final response indicating overall success
+    pub final_success_patterns: Vec<String>,
+}
+
+/// Multi-turn conversation test definition
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct ConversationTest {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub category: LLMTestCategory,
+    pub turns: Vec<ConversationTurn>,
+    pub success_criteria: SuccessCriteria,
+    pub severity: TestCaseSeverity,
+    /// Whether this is a built-in test
+    pub is_builtin: bool,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Result of a single turn in a conversation test
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct TurnResult {
+    pub turn_number: usize,
+    pub prompt_sent: String,
+    pub response_received: String,
+    pub success_indicators_matched: Vec<String>,
+    pub abort_indicators_matched: Vec<String>,
+    pub analysis: Option<TurnAnalysis>,
+    pub duration_ms: u64,
+}
+
+/// Analysis results for a single turn
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct TurnAnalysis {
+    pub vulnerable: bool,
+    pub confidence: f64,
+    pub indicators: Vec<String>,
+    pub risk_score: f64,
+}
+
+/// Result of a multi-turn conversation test
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct ConversationTestResult {
+    pub test_id: String,
+    pub test_name: String,
+    pub category: LLMTestCategory,
+    pub turns_executed: Vec<TurnResult>,
+    pub final_status: ConversationTestStatus,
+    pub vulnerability_detected_at_turn: Option<usize>,
+    pub conversation_history: Vec<(String, String)>,
+    pub overall_confidence: f64,
+    pub severity: TestCaseSeverity,
+    pub remediation: Option<String>,
+    pub duration_ms: u64,
+}
+
+/// Status of a conversation test
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ConversationTestStatus {
+    Passed,
+    Failed,
+    Aborted,
+    Error,
+    Timeout,
+}
+
+impl std::fmt::Display for ConversationTestStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConversationTestStatus::Passed => write!(f, "passed"),
+            ConversationTestStatus::Failed => write!(f, "failed"),
+            ConversationTestStatus::Aborted => write!(f, "aborted"),
+            ConversationTestStatus::Error => write!(f, "error"),
+            ConversationTestStatus::Timeout => write!(f, "timeout"),
+        }
+    }
+}
+
+// ============================================================================
+// Agent/Tool Exploitation Testing
+// ============================================================================
+
+/// Tool definition for agent testing
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct ToolDefinition {
+    pub name: String,
+    pub description: String,
+    /// JSON Schema for tool parameters
+    pub parameters: serde_json::Value,
+    /// Whether this tool is potentially dangerous
+    pub dangerous: bool,
+    /// Expected tool behaviors to test
+    pub test_behaviors: Option<Vec<String>>,
+}
+
+/// Function calling format used by the LLM
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum FunctionCallingFormat {
+    /// OpenAI format: {"name": "...", "arguments": "..."}
+    OpenAI,
+    /// Anthropic format: <tool_use>...</tool_use>
+    Anthropic,
+    /// Google Gemini format
+    Gemini,
+    /// Custom format (defined in agent config)
+    Custom,
+}
+
+impl Default for FunctionCallingFormat {
+    fn default() -> Self {
+        FunctionCallingFormat::OpenAI
+    }
+}
+
+impl std::fmt::Display for FunctionCallingFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FunctionCallingFormat::OpenAI => write!(f, "openai"),
+            FunctionCallingFormat::Anthropic => write!(f, "anthropic"),
+            FunctionCallingFormat::Gemini => write!(f, "gemini"),
+            FunctionCallingFormat::Custom => write!(f, "custom"),
+        }
+    }
+}
+
+/// Configuration for testing LLM agents
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct AgentTestConfig {
+    /// Target ID this config is associated with
+    pub target_id: String,
+    /// Tools available to the agent
+    pub tools: Vec<ToolDefinition>,
+    /// RAG endpoint for testing document injection
+    pub rag_endpoint: Option<String>,
+    /// Format used for function calling
+    pub function_calling_format: FunctionCallingFormat,
+    /// Custom function calling template (for Custom format)
+    pub custom_function_template: Option<String>,
+    /// Whether the agent has memory/state
+    pub memory_enabled: bool,
+    /// Endpoint for memory operations (if applicable)
+    pub memory_endpoint: Option<String>,
+    /// System prompt used by the agent (if known)
+    pub system_prompt: Option<String>,
+}
+
+/// Agent test case category
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentTestCategory {
+    /// Tool parameter injection attacks
+    ToolParameterInjection,
+    /// Forcing unintended tool sequences
+    ToolChaining,
+    /// RAG context poisoning
+    RagPoisoning,
+    /// Hijacking function call outputs
+    FunctionCallHijacking,
+    /// Corrupting agent memory/state
+    MemoryPoisoning,
+    /// Injecting via tool responses
+    ToolOutputInjection,
+    /// Using tools to escalate privileges
+    PrivilegeEscalation,
+    /// Chaining tools to exfiltrate data
+    DataExfiltration,
+    /// Attempting to invoke system tools
+    SystemToolInvocation,
+    /// Injecting prompts via RAG documents
+    IndirectPromptInjection,
+}
+
+impl std::fmt::Display for AgentTestCategory {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AgentTestCategory::ToolParameterInjection => write!(f, "tool_parameter_injection"),
+            AgentTestCategory::ToolChaining => write!(f, "tool_chaining"),
+            AgentTestCategory::RagPoisoning => write!(f, "rag_poisoning"),
+            AgentTestCategory::FunctionCallHijacking => write!(f, "function_call_hijacking"),
+            AgentTestCategory::MemoryPoisoning => write!(f, "memory_poisoning"),
+            AgentTestCategory::ToolOutputInjection => write!(f, "tool_output_injection"),
+            AgentTestCategory::PrivilegeEscalation => write!(f, "privilege_escalation"),
+            AgentTestCategory::DataExfiltration => write!(f, "data_exfiltration"),
+            AgentTestCategory::SystemToolInvocation => write!(f, "system_tool_invocation"),
+            AgentTestCategory::IndirectPromptInjection => write!(f, "indirect_prompt_injection"),
+        }
+    }
+}
+
+/// Agent-specific test case
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct AgentTestCase {
+    pub id: String,
+    pub category: AgentTestCategory,
+    pub name: String,
+    pub description: String,
+    /// Prompt to send to the agent
+    pub prompt: String,
+    /// Expected tool calls (for verification)
+    pub expected_tool_calls: Option<Vec<ExpectedToolCall>>,
+    /// Injected document content (for RAG tests)
+    pub injected_document: Option<String>,
+    /// Fake tool response to inject
+    pub fake_tool_response: Option<String>,
+    pub severity: TestCaseSeverity,
+    pub cwe_id: Option<String>,
+}
+
+/// Expected tool call for verification
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct ExpectedToolCall {
+    pub tool_name: String,
+    /// Parameters that indicate a successful attack
+    pub malicious_parameters: Vec<String>,
+    /// Whether this call should have been blocked
+    pub should_be_blocked: bool,
+}
+
+/// Result of an agent exploitation test
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct AgentTestResult {
+    pub test_case_id: String,
+    pub test_case_name: String,
+    pub category: AgentTestCategory,
+    pub prompt_sent: String,
+    pub response_received: String,
+    /// Tool calls made by the agent
+    pub tool_calls: Vec<DetectedToolCall>,
+    pub vulnerable: bool,
+    pub severity: TestCaseSeverity,
+    pub confidence: f64,
+    pub indicators: Vec<String>,
+    pub cwe_id: Option<String>,
+    pub remediation: Option<String>,
+}
+
+/// Tool call detected in agent response
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct DetectedToolCall {
+    pub tool_name: String,
+    pub arguments: serde_json::Value,
+    /// Whether this call appears malicious
+    pub is_malicious: bool,
+    /// Reason for malicious classification
+    pub malicious_reason: Option<String>,
+}
+
+// ============================================================================
+// Model Fingerprinting
+// ============================================================================
+
+/// Model fingerprint information
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct ModelFingerprint {
+    /// Most likely model family (GPT, Claude, Llama, etc.)
+    pub likely_model_family: String,
+    /// Specific model version if detectable
+    pub likely_model_version: Option<String>,
+    /// Confidence in the identification
+    pub confidence: f64,
+    /// Indicators that led to this identification
+    pub indicators: Vec<String>,
+    /// Known vulnerabilities for this model family
+    pub known_vulnerabilities: Vec<String>,
+    /// Estimated context window size
+    pub estimated_context_window: Option<usize>,
+    /// Detected safety mechanisms
+    pub safety_mechanisms: Vec<SafetyMechanism>,
+}
+
+/// Safety mechanism detected in a model
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct SafetyMechanism {
+    pub mechanism_type: String,
+    pub description: String,
+    pub strength: SafetyStrength,
+    /// Test cases that were blocked by this mechanism
+    pub blocked_test_count: usize,
+}
+
+/// Strength of a safety mechanism
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SafetyStrength {
+    Weak,
+    Moderate,
+    Strong,
+    VeryStrong,
+}
+
+impl std::fmt::Display for SafetyStrength {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SafetyStrength::Weak => write!(f, "weak"),
+            SafetyStrength::Moderate => write!(f, "moderate"),
+            SafetyStrength::Strong => write!(f, "strong"),
+            SafetyStrength::VeryStrong => write!(f, "very_strong"),
+        }
+    }
+}
+
+// ============================================================================
+// Remediation
+// ============================================================================
+
+/// Detailed remediation guidance
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct Remediation {
+    pub category: String,
+    pub severity: TestCaseSeverity,
+    /// Brief description of the vulnerability
+    pub vulnerability_description: String,
+    /// Impact assessment
+    pub impact: String,
+    /// Step-by-step remediation instructions
+    pub remediation_steps: Vec<String>,
+    /// Code examples for remediation
+    pub code_examples: Vec<CodeExample>,
+    /// OWASP LLM Top 10 mapping
+    pub owasp_llm_mapping: Option<String>,
+    /// CWE ID mapping
+    pub cwe_mapping: Option<String>,
+    /// Priority level (1-5, 1 being highest)
+    pub priority: u8,
+    /// Estimated effort to remediate
+    pub effort_estimate: EffortEstimate,
+    /// References and resources
+    pub references: Vec<String>,
+}
+
+/// Code example for remediation
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct CodeExample {
+    pub language: String,
+    pub description: String,
+    pub code: String,
+}
+
+/// Estimated effort to remediate
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum EffortEstimate {
+    Low,
+    Medium,
+    High,
+    VeryHigh,
+}
+
+impl std::fmt::Display for EffortEstimate {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EffortEstimate::Low => write!(f, "low"),
+            EffortEstimate::Medium => write!(f, "medium"),
+            EffortEstimate::High => write!(f, "high"),
+            EffortEstimate::VeryHigh => write!(f, "very_high"),
+        }
+    }
+}
+
+// ============================================================================
+// API Request Types for New Features
+// ============================================================================
+
+/// Request to start a conversation test
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct StartConversationTestRequest {
+    pub target_id: String,
+    pub test_ids: Option<Vec<String>>,
+    pub categories: Option<Vec<LLMTestCategory>>,
+    pub customer_id: Option<String>,
+    pub engagement_id: Option<String>,
+}
+
+/// Request to configure agent testing
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct ConfigureAgentTestRequest {
+    pub target_id: String,
+    pub tools: Vec<ToolDefinition>,
+    pub rag_endpoint: Option<String>,
+    pub function_calling_format: FunctionCallingFormat,
+    pub custom_function_template: Option<String>,
+    pub memory_enabled: bool,
+    pub memory_endpoint: Option<String>,
+    pub system_prompt: Option<String>,
+}
+
+/// Request to run agent exploitation tests
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct StartAgentTestRequest {
+    pub target_id: String,
+    pub categories: Option<Vec<AgentTestCategory>>,
+    pub customer_id: Option<String>,
+    pub engagement_id: Option<String>,
+}
+
+/// Request to run model fingerprinting
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct FingerprintRequest {
+    pub target_id: String,
+}
+
+/// Request to generate an LLM security report
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct GenerateLLMReportRequest {
+    pub test_id: String,
+    pub format: LLMReportFormat,
+    pub include_conversation_transcripts: bool,
+    pub include_remediation: bool,
+}
+
+/// Report format for LLM security reports
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum LLMReportFormat {
+    Pdf,
+    Html,
+    Markdown,
+    Json,
+}
+
+impl std::fmt::Display for LLMReportFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LLMReportFormat::Pdf => write!(f, "pdf"),
+            LLMReportFormat::Html => write!(f, "html"),
+            LLMReportFormat::Markdown => write!(f, "markdown"),
+            LLMReportFormat::Json => write!(f, "json"),
+        }
+    }
+}
+
+// ============================================================================
+// Database Record Types for New Features
+// ============================================================================
+
+/// Database record for conversation test
+#[derive(Debug, Clone, FromRow)]
+pub struct ConversationTestRecord {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub category: String,
+    pub turns: String,
+    pub success_criteria: String,
+    pub severity: String,
+    pub is_builtin: bool,
+    pub created_at: DateTime<Utc>,
+}
+
+impl From<ConversationTestRecord> for ConversationTest {
+    fn from(r: ConversationTestRecord) -> Self {
+        let category = match r.category.as_str() {
+            "prompt_injection" => LLMTestCategory::PromptInjection,
+            "jailbreak" => LLMTestCategory::Jailbreak,
+            "encoding" => LLMTestCategory::Encoding,
+            "context_manipulation" => LLMTestCategory::ContextManipulation,
+            "data_extraction" => LLMTestCategory::DataExtraction,
+            "role_confusion" => LLMTestCategory::RoleConfusion,
+            "chain_of_thought" => LLMTestCategory::ChainOfThought,
+            "indirect_injection" => LLMTestCategory::IndirectInjection,
+            _ => LLMTestCategory::PromptInjection,
+        };
+        let severity = match r.severity.as_str() {
+            "critical" => TestCaseSeverity::Critical,
+            "high" => TestCaseSeverity::High,
+            "medium" => TestCaseSeverity::Medium,
+            "low" => TestCaseSeverity::Low,
+            "info" => TestCaseSeverity::Info,
+            _ => TestCaseSeverity::Medium,
+        };
+        Self {
+            id: r.id,
+            name: r.name,
+            description: r.description,
+            category,
+            turns: serde_json::from_str(&r.turns).unwrap_or_default(),
+            success_criteria: serde_json::from_str(&r.success_criteria).unwrap_or(SuccessCriteria {
+                min_successful_turns: 1,
+                require_all_turns: false,
+                critical_turn: None,
+                final_success_patterns: vec![],
+            }),
+            severity,
+            is_builtin: r.is_builtin,
+            created_at: r.created_at,
+        }
+    }
+}
+
+/// Database record for conversation test result
+#[derive(Debug, Clone, FromRow)]
+pub struct ConversationResultRecord {
+    pub id: String,
+    pub test_run_id: String,
+    pub conversation_test_id: String,
+    pub turns_executed: String,
+    pub final_status: String,
+    pub vulnerability_at_turn: Option<i64>,
+    pub full_transcript: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Database record for agent test config
+#[derive(Debug, Clone, FromRow)]
+pub struct AgentConfigRecord {
+    pub id: String,
+    pub target_id: String,
+    pub tools: Option<String>,
+    pub rag_endpoint: Option<String>,
+    pub function_format: String,
+    pub custom_function_template: Option<String>,
+    pub memory_enabled: bool,
+    pub memory_endpoint: Option<String>,
+    pub system_prompt: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Database record for model fingerprint
+#[derive(Debug, Clone, FromRow)]
+pub struct ModelFingerprintRecord {
+    pub id: String,
+    pub target_id: String,
+    pub fingerprint: String,
+    pub created_at: DateTime<Utc>,
+}

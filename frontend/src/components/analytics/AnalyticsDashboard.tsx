@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   LineChart,
   Line,
@@ -120,13 +120,7 @@ const AnalyticsDashboard: React.FC = () => {
   const [servicesData, setServicesData] = useState<ServiceCount[]>([]);
   const [frequencyData, setFrequencyData] = useState<TimeSeriesDataPoint[]>([]);
 
-  useEffect(() => {
-    if (activeTab === 'overview') {
-      loadAnalyticsData();
-    }
-  }, [dateRange, activeTab]);
-
-  const loadAnalyticsData = async () => {
+  const loadAnalyticsData = useCallback(async () => {
     setLoading(true);
     setError(null);
 
@@ -152,7 +146,13 @@ const AnalyticsDashboard: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [dateRange]);
+
+  useEffect(() => {
+    if (activeTab === 'overview') {
+      loadAnalyticsData();
+    }
+  }, [activeTab, loadAnalyticsData]);
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);

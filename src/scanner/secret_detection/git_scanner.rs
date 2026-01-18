@@ -562,7 +562,8 @@ fn deduplicate_findings(findings: &mut Vec<GitSecretFinding>) {
 }
 
 impl super::types::SecretType {
-    fn to_string(&self) -> String {
+    /// Convert to debug string representation
+    pub fn as_debug_string(&self) -> String {
         format!("{:?}", self)
     }
 }

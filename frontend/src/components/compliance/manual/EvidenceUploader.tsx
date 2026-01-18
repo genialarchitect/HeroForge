@@ -7,10 +7,9 @@ import {
   X,
   AlertCircle,
   CheckCircle,
-  Loader2,
   Clipboard,
 } from 'lucide-react';
-import type { AssessmentEvidence, EvidenceType } from '../../../types';
+import type { AssessmentEvidence } from '../../../types';
 import { assessmentEvidenceAPI } from '../../../services/api';
 import Button from '../../ui/Button';
 import Input from '../../ui/Input';

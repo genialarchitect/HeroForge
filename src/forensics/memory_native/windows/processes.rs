@@ -417,6 +417,7 @@ pub fn detect_hidden_processes(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::Datelike;
 
     #[test]
     fn test_filetime_conversion() {

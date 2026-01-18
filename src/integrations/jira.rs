@@ -276,6 +276,149 @@ impl JiraClient {
     }
 }
 
+/// Issue status response
+#[derive(Debug, Serialize, Deserialize)]
+pub struct IssueStatus {
+    pub id: String,
+    pub name: String,
+}
+
+/// Full issue response
+#[derive(Debug, Serialize, Deserialize)]
+pub struct JiraIssue {
+    pub id: String,
+    pub key: String,
+    pub fields: JiraIssueFields,
+}
+
+/// Issue fields in response
+#[derive(Debug, Serialize, Deserialize)]
+pub struct JiraIssueFields {
+    pub summary: String,
+    pub description: Option<String>,
+    pub status: IssueStatus,
+    pub priority: Option<Priority>,
+    pub assignee: Option<JiraUser>,
+}
+
+/// JIRA user
+#[derive(Debug, Serialize, Deserialize)]
+pub struct JiraUser {
+    #[serde(rename = "accountId")]
+    pub account_id: String,
+    #[serde(rename = "displayName")]
+    pub display_name: String,
+}
+
+/// Transition option
+#[derive(Debug, Serialize, Deserialize)]
+pub struct JiraTransition {
+    pub id: String,
+    pub name: String,
+}
+
+/// Transitions response
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TransitionsResponse {
+    pub transitions: Vec<JiraTransition>,
+}
+
+/// Comment from JIRA
+#[derive(Debug, Serialize, Deserialize)]
+pub struct JiraComment {
+    pub id: String,
+    pub author: JiraUser,
+    pub body: String,
+    pub created: String,
+}
+
+/// Comments response
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CommentsResponse {
+    pub comments: Vec<JiraComment>,
+    pub total: i32,
+}
+
+impl JiraClient {
+    /// Get issue details
+    pub async fn get_issue(&self, issue_key: &str) -> Result<JiraIssue> {
+        let url = format!("{}/rest/api/3/issue/{}", self.base_url, issue_key);
+        let response = self.client.get(&url).send().await?;
+
+        if response.status().is_success() {
+            let issue = response.json::<JiraIssue>().await?;
+            Ok(issue)
+        } else {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_default();
+            Err(anyhow!(
+                "Failed to get JIRA issue ({}): {}",
+                status,
+                error_text
+            ))
+        }
+    }
+
+    /// Get available transitions for an issue
+    pub async fn get_transitions(&self, issue_key: &str) -> Result<Vec<JiraTransition>> {
+        let url = format!(
+            "{}/rest/api/3/issue/{}/transitions",
+            self.base_url, issue_key
+        );
+        let response = self.client.get(&url).send().await?;
+
+        if response.status().is_success() {
+            let resp = response.json::<TransitionsResponse>().await?;
+            Ok(resp.transitions)
+        } else {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_default();
+            Err(anyhow!(
+                "Failed to get transitions ({}): {}",
+                status,
+                error_text
+            ))
+        }
+    }
+
+    /// Get comments for an issue
+    pub async fn get_comments(&self, issue_key: &str) -> Result<Vec<super::sync_engine::RemoteComment>> {
+        let url = format!(
+            "{}/rest/api/3/issue/{}/comment",
+            self.base_url, issue_key
+        );
+        let response = self.client.get(&url).send().await?;
+
+        if response.status().is_success() {
+            let resp = response.json::<CommentsResponse>().await?;
+            let comments = resp
+                .comments
+                .into_iter()
+                .filter_map(|c| {
+                    let created_at = chrono::DateTime::parse_from_rfc3339(&c.created)
+                        .map(|t| t.with_timezone(&chrono::Utc))
+                        .ok()?;
+                    Some(super::sync_engine::RemoteComment {
+                        id: c.id,
+                        author: c.author.display_name,
+                        body: c.body,
+                        created_at,
+                    })
+                })
+                .collect();
+            Ok(comments)
+        } else {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_default();
+            Err(anyhow!(
+                "Failed to get comments ({}): {}",
+                status,
+                error_text
+            ))
+        }
+    }
+}
+
 /// Map vulnerability severity to JIRA priority
 pub fn severity_to_jira_priority(severity: &str) -> &str {
     match severity.to_lowercase().as_str() {

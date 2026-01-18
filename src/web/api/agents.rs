@@ -1222,16 +1222,25 @@ pub struct UpdateMeshConfigRequest {
 // ============================================================================
 
 /// Configure agent routes
+/// NOTE: Route registration order matters! More specific routes must come before wildcards.
+/// e.g., /agents/groups must be registered before /agents/{id}
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(register_agent)
         .service(list_agents)
+        // Static paths BEFORE wildcard /agents/{id}
         .service(get_agent_stats)
+        .service(list_agent_groups)
+        .service(create_agent_group)
+        .service(list_all_agent_tasks)
+        // Mesh endpoints (static paths)
+        .service(get_mesh_peers)
+        .service(get_mesh_clusters)
+        .service(create_mesh_cluster)
+        // Wildcard routes AFTER static paths
         .service(get_agent)
         .service(update_agent)
         .service(delete_agent)
         .service(regenerate_agent_token)
-        .service(create_agent_group)
-        .service(list_agent_groups)
         .service(get_agent_group)
         .service(update_agent_group)
         .service(delete_agent_group)
@@ -1242,16 +1251,11 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .service(submit_agent_results)
         .service(start_agent_task)
         .service(get_agent_heartbeats)
-        // Mesh endpoints
-        .service(get_mesh_peers)
-        .service(get_mesh_clusters)
-        .service(create_mesh_cluster)
         .service(get_mesh_cluster)
         .service(update_mesh_cluster)
         .service(delete_mesh_cluster)
         .service(add_agent_to_cluster)
         .service(remove_agent_from_cluster)
-        .service(list_all_agent_tasks)
         .service(get_agent_mesh_config)
         .service(update_agent_mesh_config);
 }

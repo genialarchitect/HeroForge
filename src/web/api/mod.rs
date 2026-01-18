@@ -42,6 +42,7 @@ pub mod dorking;
 pub mod email_security;
 pub mod exclusions;
 pub mod finding_templates;
+pub mod findings;
 pub mod forensics;
 pub mod fuzzing;
 pub mod git_recon;
@@ -140,6 +141,17 @@ pub mod scap;
 pub mod windows_audit;
 pub mod emass;
 pub mod audit_files;
+// Legal documents module
+pub mod legal_documents;
+// Integration sync module (bi-directional JIRA/ServiceNow)
+pub mod integration_sync;
+// Engagement templates module (quick setup)
+pub mod engagement_templates;
+// Continuous monitoring module (attack surface visibility)
+pub mod continuous_monitoring;
+// Phase 4 Enhancement modules
+pub mod finding_lifecycle;
+pub mod passive_recon;
 
 #[cfg(test)]
 mod tests;

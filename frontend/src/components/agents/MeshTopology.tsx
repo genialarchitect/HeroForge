@@ -7,7 +7,6 @@ import {
   Plus,
   Trash2,
   Users,
-  Settings,
   ChevronDown,
   ChevronRight,
   AlertCircle,

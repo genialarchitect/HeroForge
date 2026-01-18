@@ -140,7 +140,52 @@ impl EmassClient {
     }
 
     /// Upload multipart file
+    ///
+    /// Validates file before upload:
+    /// - File must exist
+    /// - Maximum size: 10MB
+    /// - Allowed extensions: pdf, xlsx, docx, xml, zip, txt, json, png, jpg, jpeg, gif, csv
     pub async fn upload_file(&self, endpoint: &str, file_path: &str, file_name: &str) -> Result<Response> {
+        use std::path::Path;
+
+        // Maximum file size for eMASS artifacts (10MB)
+        const MAX_ARTIFACT_SIZE: u64 = 10 * 1024 * 1024;
+
+        // Allowed file extensions for eMASS artifacts
+        const ALLOWED_EXTENSIONS: &[&str] = &[
+            "pdf", "xlsx", "xls", "docx", "doc", "xml", "zip",
+            "txt", "json", "png", "jpg", "jpeg", "gif", "csv",
+            "pptx", "ppt", "rtf", "html", "htm"
+        ];
+
+        // Validate file exists and get metadata
+        let metadata = tokio::fs::metadata(file_path)
+            .await
+            .with_context(|| format!("File not found: {}", file_path))?;
+
+        // Validate file size
+        if metadata.len() > MAX_ARTIFACT_SIZE {
+            bail!(
+                "File size ({:.2} MB) exceeds maximum allowed size of 10 MB",
+                metadata.len() as f64 / (1024.0 * 1024.0)
+            );
+        }
+
+        // Validate file extension
+        let extension = Path::new(file_path)
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+
+        if !ALLOWED_EXTENSIONS.contains(&extension.as_str()) {
+            bail!(
+                "File type '.{}' is not allowed for eMASS artifacts. Allowed types: {}",
+                extension,
+                ALLOWED_EXTENSIONS.join(", ")
+            );
+        }
+
         let url = format!("{}{}", self.settings.api_url, endpoint);
 
         let file_content = tokio::fs::read(file_path)

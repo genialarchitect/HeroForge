@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import {
   Clock,
   Play,
-  Pause,
   XCircle,
   CheckCircle,
   AlertTriangle,
@@ -11,7 +10,6 @@ import {
   Server,
   ChevronDown,
   ChevronRight,
-  MoreVertical,
   ArrowRightLeft,
 } from 'lucide-react';
 import { Badge } from '../ui/Badge';

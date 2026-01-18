@@ -1,9 +1,14 @@
 //! Remote Execution for OVAL Object Collection
 
-use anyhow::Result;
+use anyhow::{Result, Context};
 use std::collections::HashMap;
+use std::io::Read;
+use std::net::TcpStream;
+use std::time::Duration;
 use crate::scap::ScapCredentials;
 use crate::scap::oval::types::{OvalItem, OvalObject, OvalValue, ItemStatus, ObjectType};
+use crate::scanner::windows_audit::client::WinRmClient;
+use crate::scanner::windows_audit::types::WindowsCredentials;
 
 /// Remote execution context for collecting OVAL objects
 #[derive(Debug, Clone)]
@@ -79,15 +84,125 @@ impl RemoteExecutionContext {
     /// Execute a command on the remote host
     pub async fn execute(&self, command: &str) -> Result<String> {
         match &self.executor {
-            ExecutorType::Ssh { .. } => {
-                // TODO: Implement SSH execution
-                Err(anyhow::anyhow!("SSH execution not yet implemented"))
+            ExecutorType::Ssh { username, port, auth } => {
+                self.execute_ssh(username, *port, auth, command).await
             }
-            ExecutorType::WinRm { .. } => {
-                // TODO: Implement WinRM execution
-                Err(anyhow::anyhow!("WinRM execution not yet implemented"))
+            ExecutorType::WinRm { username, password, port, use_ssl, domain } => {
+                self.execute_winrm(username, password, *port, *use_ssl, domain.as_deref(), command).await
             }
         }
+    }
+
+    /// Execute command via SSH
+    async fn execute_ssh(
+        &self,
+        username: &str,
+        port: u16,
+        auth: &SshAuth,
+        command: &str,
+    ) -> Result<String> {
+        let host = self.host.clone();
+        let username = username.to_string();
+        let auth = auth.clone();
+        let command = command.to_string();
+        let timeout = Duration::from_secs(30);
+
+        tokio::task::spawn_blocking(move || {
+            let addr = format!("{}:{}", host, port);
+
+            // Connect with timeout
+            let tcp = TcpStream::connect_timeout(
+                &addr.parse().context("Invalid address format")?,
+                timeout,
+            )?;
+            tcp.set_read_timeout(Some(timeout))?;
+            tcp.set_write_timeout(Some(timeout))?;
+
+            // Create SSH session
+            let mut sess = ssh2::Session::new()
+                .map_err(|e| anyhow::anyhow!("Failed to create SSH session: {}", e))?;
+
+            sess.set_tcp_stream(tcp);
+            sess.set_timeout(timeout.as_millis() as u32);
+
+            // Perform SSH handshake
+            sess.handshake()
+                .map_err(|e| anyhow::anyhow!("SSH handshake failed: {}", e))?;
+
+            // Authenticate based on auth type
+            match &auth {
+                SshAuth::Password(password) => {
+                    sess.userauth_password(&username, password)
+                        .map_err(|e| anyhow::anyhow!("SSH password auth failed: {}", e))?;
+                }
+                SshAuth::PublicKey(key_path) => {
+                    sess.userauth_pubkey_file(&username, None, std::path::Path::new(key_path), None)
+                        .map_err(|e| anyhow::anyhow!("SSH public key auth failed: {}", e))?;
+                }
+            }
+
+            if !sess.authenticated() {
+                return Err(anyhow::anyhow!("SSH authentication failed"));
+            }
+
+            // Execute command
+            let mut channel = sess.channel_session()
+                .map_err(|e| anyhow::anyhow!("Failed to open SSH channel: {}", e))?;
+
+            channel.exec(&command)
+                .map_err(|e| anyhow::anyhow!("Failed to execute command: {}", e))?;
+
+            // Read stdout
+            let mut output = String::new();
+            channel.read_to_string(&mut output)?;
+
+            // Wait for channel to close
+            channel.wait_close()?;
+
+            // Check exit status
+            let exit_status = channel.exit_status()?;
+            if exit_status != 0 {
+                // Read stderr for error info
+                let mut stderr = String::new();
+                channel.stderr().read_to_string(&mut stderr)?;
+                log::warn!("Command exited with status {}: {}", exit_status, stderr);
+            }
+
+            // Cleanly disconnect
+            let _ = sess.disconnect(None, "SCAP OVAL collection complete", None);
+
+            Ok(output)
+        })
+        .await?
+    }
+
+    /// Execute command via WinRM using the existing WinRM client
+    async fn execute_winrm(
+        &self,
+        username: &str,
+        password: &str,
+        port: u16,
+        use_ssl: bool,
+        domain: Option<&str>,
+        command: &str,
+    ) -> Result<String> {
+        // Create Windows credentials
+        let credentials = WindowsCredentials {
+            username: username.to_string(),
+            password: password.to_string(),
+            domain: domain.map(|s| s.to_string()),
+            auth_type: crate::scanner::windows_audit::types::WindowsAuthType::Ntlm,
+        };
+
+        // Create WinRM client with appropriate settings
+        let mut client = WinRmClient::new(&self.host, credentials);
+        client = client.with_port(port);
+        if !use_ssl {
+            client = client.without_ssl();
+        }
+
+        // Execute the PowerShell command
+        client.execute_powershell(command).await
     }
 
     /// Collect OVAL items for an object from the remote host

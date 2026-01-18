@@ -1591,3 +1591,377 @@ pub async fn get_benchmark_by_benchmark_id(
 
     Ok(benchmark)
 }
+
+// ============================================================================
+// STIG Repository Sync Operations
+// ============================================================================
+
+use crate::scap::stig_sync::types::{TrackedStig, StigSyncHistoryEntry};
+
+/// List all tracked STIGs
+pub async fn list_tracked_stigs(pool: &SqlitePool) -> Result<Vec<TrackedStig>> {
+    let rows = sqlx::query_as::<_, TrackedStigRow>(
+        r#"
+        SELECT id, stig_id, stig_name, current_version, current_release,
+               available_version, available_release, release_date, bundle_id,
+               local_path, download_url, last_checked_at, last_updated_at,
+               auto_update, created_at
+        FROM stig_repository
+        ORDER BY stig_name
+        "#,
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows.into_iter().map(|r| r.into()).collect())
+}
+
+/// Get a tracked STIG by ID
+pub async fn get_tracked_stig(pool: &SqlitePool, id: &str) -> Result<Option<TrackedStig>> {
+    let row = sqlx::query_as::<_, TrackedStigRow>(
+        r#"
+        SELECT id, stig_id, stig_name, current_version, current_release,
+               available_version, available_release, release_date, bundle_id,
+               local_path, download_url, last_checked_at, last_updated_at,
+               auto_update, created_at
+        FROM stig_repository
+        WHERE id = ?1
+        "#,
+    )
+    .bind(id)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(row.map(|r| r.into()))
+}
+
+/// Get a tracked STIG by STIG ID
+pub async fn get_tracked_stig_by_stig_id(pool: &SqlitePool, stig_id: &str) -> Result<Option<TrackedStig>> {
+    let row = sqlx::query_as::<_, TrackedStigRow>(
+        r#"
+        SELECT id, stig_id, stig_name, current_version, current_release,
+               available_version, available_release, release_date, bundle_id,
+               local_path, download_url, last_checked_at, last_updated_at,
+               auto_update, created_at
+        FROM stig_repository
+        WHERE stig_id = ?1
+        "#,
+    )
+    .bind(stig_id)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(row.map(|r| r.into()))
+}
+
+/// Create a tracked STIG entry
+pub async fn create_tracked_stig(pool: &SqlitePool, tracked: &TrackedStig) -> Result<String> {
+    let id = if tracked.id.is_empty() {
+        Uuid::new_v4().to_string()
+    } else {
+        tracked.id.clone()
+    };
+
+    let release_date = tracked.release_date.map(|d| d.to_string());
+    let last_checked_at = tracked.last_checked_at.map(|dt| dt.to_rfc3339());
+    let last_updated_at = tracked.last_updated_at.map(|dt| dt.to_rfc3339());
+    let created_at = tracked.created_at.to_rfc3339();
+
+    sqlx::query(
+        r#"
+        INSERT INTO stig_repository (
+            id, stig_id, stig_name, current_version, current_release,
+            available_version, available_release, release_date, bundle_id,
+            local_path, download_url, last_checked_at, last_updated_at,
+            auto_update, created_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+        "#,
+    )
+    .bind(&id)
+    .bind(&tracked.stig_id)
+    .bind(&tracked.stig_name)
+    .bind(tracked.current_version)
+    .bind(tracked.current_release)
+    .bind(tracked.available_version)
+    .bind(tracked.available_release)
+    .bind(&release_date)
+    .bind(&tracked.bundle_id)
+    .bind(&tracked.local_path)
+    .bind(&tracked.download_url)
+    .bind(&last_checked_at)
+    .bind(&last_updated_at)
+    .bind(tracked.auto_update)
+    .bind(&created_at)
+    .execute(pool)
+    .await?;
+
+    Ok(id)
+}
+
+/// Update available version for a tracked STIG
+pub async fn update_tracked_stig_available_version(
+    pool: &SqlitePool,
+    id: &str,
+    version: i32,
+    release: i32,
+) -> Result<()> {
+    sqlx::query(
+        r#"
+        UPDATE stig_repository
+        SET available_version = ?1, available_release = ?2
+        WHERE id = ?3
+        "#,
+    )
+    .bind(version)
+    .bind(release)
+    .bind(id)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Update last_checked_at timestamp for a tracked STIG
+pub async fn update_tracked_stig_last_checked(pool: &SqlitePool, id: &str) -> Result<()> {
+    let now = Utc::now().to_rfc3339();
+
+    sqlx::query(
+        r#"
+        UPDATE stig_repository
+        SET last_checked_at = ?1
+        WHERE id = ?2
+        "#,
+    )
+    .bind(&now)
+    .bind(id)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Update last_updated_at timestamp and version for a tracked STIG
+pub async fn update_tracked_stig_version(
+    pool: &SqlitePool,
+    id: &str,
+    version: i32,
+    release: i32,
+    bundle_id: Option<&str>,
+    local_path: Option<&str>,
+) -> Result<()> {
+    let now = Utc::now().to_rfc3339();
+
+    sqlx::query(
+        r#"
+        UPDATE stig_repository
+        SET current_version = ?1, current_release = ?2,
+            available_version = NULL, available_release = NULL,
+            bundle_id = ?3, local_path = ?4, last_updated_at = ?5
+        WHERE id = ?6
+        "#,
+    )
+    .bind(version)
+    .bind(release)
+    .bind(bundle_id)
+    .bind(local_path)
+    .bind(&now)
+    .bind(id)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Update auto_update setting for a tracked STIG
+pub async fn update_tracked_stig_auto_update(
+    pool: &SqlitePool,
+    id: &str,
+    auto_update: bool,
+) -> Result<()> {
+    sqlx::query(
+        r#"
+        UPDATE stig_repository
+        SET auto_update = ?1
+        WHERE id = ?2
+        "#,
+    )
+    .bind(auto_update)
+    .bind(id)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Delete a tracked STIG
+pub async fn delete_tracked_stig(pool: &SqlitePool, id: &str) -> Result<()> {
+    // Delete sync history first
+    sqlx::query("DELETE FROM stig_sync_history WHERE stig_id = (SELECT stig_id FROM stig_repository WHERE id = ?1)")
+        .bind(id)
+        .execute(pool)
+        .await?;
+
+    sqlx::query("DELETE FROM stig_repository WHERE id = ?1")
+        .bind(id)
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+/// Create a STIG sync history entry
+pub async fn create_stig_sync_history(
+    pool: &SqlitePool,
+    history: &StigSyncHistoryEntry,
+) -> Result<String> {
+    let id = if history.id.is_empty() {
+        Uuid::new_v4().to_string()
+    } else {
+        history.id.clone()
+    };
+
+    let synced_at = history.synced_at.to_rfc3339();
+
+    sqlx::query(
+        r#"
+        INSERT INTO stig_sync_history (
+            id, stig_id, old_version, new_version, old_release, new_release,
+            sync_type, status, error_message, synced_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+        "#,
+    )
+    .bind(&id)
+    .bind(&history.stig_id)
+    .bind(history.old_version)
+    .bind(history.new_version)
+    .bind(history.old_release)
+    .bind(history.new_release)
+    .bind(history.sync_type.to_string())
+    .bind(history.status.to_string())
+    .bind(&history.error_message)
+    .bind(&synced_at)
+    .execute(pool)
+    .await?;
+
+    Ok(id)
+}
+
+/// Get sync history for a STIG
+pub async fn get_stig_sync_history(
+    pool: &SqlitePool,
+    stig_id: &str,
+    limit: i32,
+) -> Result<Vec<StigSyncHistoryRow>> {
+    let rows = sqlx::query_as::<_, StigSyncHistoryRow>(
+        r#"
+        SELECT id, stig_id, old_version, new_version, old_release, new_release,
+               sync_type, status, error_message, synced_at
+        FROM stig_sync_history
+        WHERE stig_id = ?1
+        ORDER BY synced_at DESC
+        LIMIT ?2
+        "#,
+    )
+    .bind(stig_id)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows)
+}
+
+/// Get recent sync history across all STIGs
+pub async fn get_recent_sync_history(pool: &SqlitePool, limit: i32) -> Result<Vec<StigSyncHistoryRow>> {
+    let rows = sqlx::query_as::<_, StigSyncHistoryRow>(
+        r#"
+        SELECT id, stig_id, old_version, new_version, old_release, new_release,
+               sync_type, status, error_message, synced_at
+        FROM stig_sync_history
+        ORDER BY synced_at DESC
+        LIMIT ?1
+        "#,
+    )
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows)
+}
+
+/// Count tracked STIGs with updates available
+pub async fn count_stigs_with_updates(pool: &SqlitePool) -> Result<i64> {
+    let row: (i64,) = sqlx::query_as(
+        r#"
+        SELECT COUNT(*) FROM stig_repository
+        WHERE available_version IS NOT NULL
+          AND (available_version > current_version
+               OR (available_version = current_version AND available_release > current_release))
+        "#,
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok(row.0)
+}
+
+// Helper types for database row mapping
+#[derive(Debug, sqlx::FromRow)]
+struct TrackedStigRow {
+    id: String,
+    stig_id: String,
+    stig_name: String,
+    current_version: i32,
+    current_release: i32,
+    available_version: Option<i32>,
+    available_release: Option<i32>,
+    release_date: Option<String>,
+    bundle_id: Option<String>,
+    local_path: Option<String>,
+    download_url: Option<String>,
+    last_checked_at: Option<String>,
+    last_updated_at: Option<String>,
+    auto_update: bool,
+    created_at: String,
+}
+
+impl From<TrackedStigRow> for TrackedStig {
+    fn from(row: TrackedStigRow) -> Self {
+        use chrono::NaiveDate;
+
+        TrackedStig {
+            id: row.id,
+            stig_id: row.stig_id,
+            stig_name: row.stig_name,
+            current_version: row.current_version,
+            current_release: row.current_release,
+            available_version: row.available_version,
+            available_release: row.available_release,
+            release_date: row.release_date.and_then(|s| NaiveDate::parse_from_str(&s, "%Y-%m-%d").ok()),
+            bundle_id: row.bundle_id,
+            local_path: row.local_path,
+            download_url: row.download_url,
+            last_checked_at: row.last_checked_at.and_then(|s| DateTime::parse_from_rfc3339(&s).ok().map(|dt| dt.with_timezone(&Utc))),
+            last_updated_at: row.last_updated_at.and_then(|s| DateTime::parse_from_rfc3339(&s).ok().map(|dt| dt.with_timezone(&Utc))),
+            auto_update: row.auto_update,
+            created_at: DateTime::parse_from_rfc3339(&row.created_at)
+                .map(|dt| dt.with_timezone(&Utc))
+                .unwrap_or_else(|_| Utc::now()),
+        }
+    }
+}
+
+#[derive(Debug, sqlx::FromRow, Serialize, Deserialize)]
+pub struct StigSyncHistoryRow {
+    pub id: String,
+    pub stig_id: String,
+    pub old_version: Option<i32>,
+    pub new_version: i32,
+    pub old_release: Option<i32>,
+    pub new_release: i32,
+    pub sync_type: String,
+    pub status: String,
+    pub error_message: Option<String>,
+    pub synced_at: String,
+}

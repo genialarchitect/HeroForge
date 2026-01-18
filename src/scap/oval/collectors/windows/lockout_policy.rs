@@ -137,10 +137,39 @@ impl Default for LockoutPolicyCollector {
 
 #[async_trait]
 impl WindowsCollector for LockoutPolicyCollector {
-    async fn collect(&self, _object: &OvalObject, _context: &CollectionContext) -> Result<Vec<OvalItem>> {
-        let _script = self.build_lockout_policy_script();
-        // TODO: Execute via WinRM
-        Ok(vec![])
+    async fn collect(&self, _object: &OvalObject, context: &CollectionContext) -> Result<Vec<OvalItem>> {
+        // Check if we have credentials configured
+        if !context.has_credentials() {
+            log::warn!("No WinRM credentials configured, skipping lockout policy collection");
+            return Ok(vec![]);
+        }
+
+        let script = self.build_lockout_policy_script();
+
+        // Execute via WinRM
+        let output = match context.execute_script(&script).await {
+            Ok(out) => out,
+            Err(e) => {
+                log::warn!("Failed to execute lockout policy collection script: {}", e);
+                return Ok(vec![]);
+            }
+        };
+
+        // Parse the JSON output
+        let json: serde_json::Value = match serde_json::from_str(&output) {
+            Ok(j) => j,
+            Err(e) => {
+                log::warn!("Failed to parse lockout policy collection output: {}", e);
+                return Ok(vec![]);
+            }
+        };
+
+        // Build item from result
+        if let Some(item) = self.build_item(&json) {
+            Ok(vec![item])
+        } else {
+            Ok(vec![])
+        }
     }
 
     fn supported_types(&self) -> Vec<ObjectType> {

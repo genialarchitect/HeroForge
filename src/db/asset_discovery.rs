@@ -21,6 +21,8 @@ pub struct AssetDiscoveryScanRow {
     pub started_at: String,
     pub completed_at: Option<String>,
     pub created_at: String,
+    pub customer_id: Option<String>,
+    pub engagement_id: Option<String>,
 }
 
 /// Database model for discovered assets

@@ -80,7 +80,7 @@ const PortDistributionChart: React.FC<PortDistributionChartProps> = ({ hosts }) 
             }}
             formatter={(value: number, _name: string, props: any) => [
               `${value} hosts`,
-              props.payload.service,
+              props?.payload?.service ?? '',
             ]}
             labelFormatter={(label: string) => `Port ${chartData.find(d => d.displayName === label)?.port}`}
           />

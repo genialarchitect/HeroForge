@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::types::ScanProgressMessage;
+use crate::types::{ScanProgressMessage, ReportProgressMessage};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -10,6 +10,9 @@ use tokio::time;
 
 pub type ProgressSender = broadcast::Sender<ScanProgressMessage>;
 pub type ProgressReceiver = broadcast::Receiver<ScanProgressMessage>;
+
+pub type ReportProgressSender = broadcast::Sender<ReportProgressMessage>;
+pub type ReportProgressReceiver = broadcast::Receiver<ReportProgressMessage>;
 
 // Configuration constants for message throttling and batching
 const MAX_MESSAGES_PER_SECOND: u32 = 10;
@@ -320,6 +323,120 @@ pub async fn get_all_scans_stats() -> Vec<ScanStats> {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ScanStats {
     pub scan_id: String,
+    pub message_count: u32,
+    pub elapsed_time: f64,
+    pub is_completed: bool,
+}
+
+// ============================================================================
+// Report Progress Channels
+// ============================================================================
+
+/// Metadata for a report channel
+#[derive(Clone)]
+struct ReportChannelInfo {
+    sender: ReportProgressSender,
+    created_at: Instant,
+    last_message_at: Instant,
+    message_count: u32,
+    is_completed: bool,
+}
+
+// Global map of report_id -> channel info
+static REPORT_CHANNELS: Lazy<Arc<RwLock<HashMap<String, ReportChannelInfo>>>> =
+    Lazy::new(|| Arc::new(RwLock::new(HashMap::new())));
+
+const REPORT_CHANNEL_CLEANUP_DELAY_SECS: u64 = 60; // 1 minute
+
+/// Create a new broadcast channel for a report
+pub async fn create_report_channel(report_id: String) -> ReportProgressSender {
+    let (tx, _) = broadcast::channel(50);
+    let now = Instant::now();
+
+    let info = ReportChannelInfo {
+        sender: tx.clone(),
+        created_at: now,
+        last_message_at: now,
+        message_count: 0,
+        is_completed: false,
+    };
+
+    let mut channels = REPORT_CHANNELS.write().await;
+    channels.insert(report_id, info);
+
+    tx
+}
+
+/// Subscribe to progress updates for a report
+pub async fn subscribe_to_report(report_id: &str) -> Option<ReportProgressReceiver> {
+    let channels = REPORT_CHANNELS.read().await;
+    channels.get(report_id).map(|info| info.sender.subscribe())
+}
+
+/// Send a progress message to all subscribers of a report
+pub async fn send_report_progress(report_id: &str, message: ReportProgressMessage) {
+    let channels = REPORT_CHANNELS.read().await;
+
+    if let Some(info) = channels.get(report_id) {
+        let _ = info.sender.send(message.clone());
+
+        // Update channel info
+        drop(channels);
+        let mut channels_mut = REPORT_CHANNELS.write().await;
+        if let Some(info_mut) = channels_mut.get_mut(report_id) {
+            info_mut.last_message_at = Instant::now();
+            info_mut.message_count += 1;
+
+            // Mark as completed if this is a completion message
+            if matches!(
+                message,
+                ReportProgressMessage::ReportCompleted { .. } | ReportProgressMessage::ReportFailed { .. }
+            ) {
+                info_mut.is_completed = true;
+
+                // Schedule cleanup
+                let report_id_clone = report_id.to_string();
+                tokio::spawn(async move {
+                    time::sleep(Duration::from_secs(REPORT_CHANNEL_CLEANUP_DELAY_SECS)).await;
+                    cleanup_report_channel(&report_id_clone).await;
+                });
+            }
+        }
+    }
+}
+
+/// Remove a report channel (cleanup after report completes)
+pub async fn remove_report_channel(report_id: &str) {
+    cleanup_report_channel(report_id).await;
+}
+
+/// Clean up all resources for a report channel
+async fn cleanup_report_channel(report_id: &str) {
+    log::info!("Cleaning up report channel: {}", report_id);
+
+    let mut channels = REPORT_CHANNELS.write().await;
+    channels.remove(report_id);
+}
+
+/// Get statistics for all active reports
+pub async fn get_all_reports_stats() -> Vec<ReportStats> {
+    let channels = REPORT_CHANNELS.read().await;
+
+    channels
+        .iter()
+        .map(|(report_id, info)| ReportStats {
+            report_id: report_id.clone(),
+            message_count: info.message_count,
+            elapsed_time: info.created_at.elapsed().as_secs_f64(),
+            is_completed: info.is_completed,
+        })
+        .collect()
+}
+
+/// Statistics for a single report
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ReportStats {
+    pub report_id: String,
     pub message_count: u32,
     pub elapsed_time: f64,
     pub is_completed: bool,

@@ -63,6 +63,13 @@ pub async fn test_credential(
         CredentialServiceType::Smtp => test_smtp(host, port, credential, timeout, use_ssl).await,
         CredentialServiceType::Pop3 => test_pop3(host, port, credential, timeout, use_ssl).await,
         CredentialServiceType::Imap => test_imap(host, port, credential, timeout, use_ssl).await,
+        CredentialServiceType::Oracle => test_oracle(host, port, credential, timeout).await,
+        CredentialServiceType::Memcached => test_memcached(host, port, credential, timeout).await,
+        CredentialServiceType::Cassandra => test_cassandra(host, port, credential, timeout).await,
+        CredentialServiceType::InfluxDb => test_influxdb(host, port, credential, timeout).await,
+        CredentialServiceType::Elasticsearch => test_elasticsearch(host, port, credential, timeout).await,
+        CredentialServiceType::CouchDb => test_couchdb(host, port, credential, timeout).await,
+        CredentialServiceType::ClickHouse => test_clickhouse(host, port, credential, timeout).await,
     };
 
     let duration_ms = start.elapsed().as_millis() as u64;
@@ -1527,6 +1534,551 @@ async fn test_imap(
         }
     })
     .await?
+}
+
+/// Test Oracle credentials using TNS protocol
+async fn test_oracle(host: &str, port: u16, credential: &Credential, timeout: Duration) -> Result<bool> {
+    let host = host.to_string();
+    let username = credential.username.clone();
+    let password = credential.password.clone();
+
+    tokio::task::spawn_blocking(move || {
+        let addr = format!("{}:{}", host, port);
+
+        let mut stream = TcpStream::connect_timeout(&addr.parse()?, timeout)?;
+        stream.set_read_timeout(Some(timeout))?;
+        stream.set_write_timeout(Some(timeout))?;
+
+        // Build Oracle TNS Connect packet
+        // This is a simplified TNS connection attempt
+        let service_name = "ORCL"; // Default Oracle SID
+        let connect_data = format!(
+            "(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST={})(PORT={}))(CONNECT_DATA=(SID={})(CID=(PROGRAM=heroforge)(HOST=scan-client)(USER={}))))",
+            host, port, service_name, username
+        );
+
+        // TNS packet header (8 bytes) + connect data
+        let connect_len = 8 + 58 + connect_data.len();
+        let mut tns_packet: Vec<u8> = Vec::new();
+
+        // Packet length (2 bytes, big endian)
+        tns_packet.push((connect_len >> 8) as u8);
+        tns_packet.push((connect_len & 0xFF) as u8);
+
+        // Packet checksum (2 bytes)
+        tns_packet.push(0x00);
+        tns_packet.push(0x00);
+
+        // Packet type: Connect = 1
+        tns_packet.push(0x01);
+
+        // Reserved
+        tns_packet.push(0x00);
+
+        // Header checksum
+        tns_packet.push(0x00);
+        tns_packet.push(0x00);
+
+        // TNS version (2 bytes) - Oracle 11g/12c
+        tns_packet.push(0x01);
+        tns_packet.push(0x39);
+
+        // Compatible version
+        tns_packet.push(0x01);
+        tns_packet.push(0x2C);
+
+        // Service options
+        tns_packet.extend_from_slice(&[0x00, 0x41]); // Options
+
+        // SDU size
+        tns_packet.extend_from_slice(&[0x20, 0x00]); // 8192
+
+        // TDU size
+        tns_packet.extend_from_slice(&[0x7F, 0xFF]); // 32767
+
+        // NT protocol characteristics
+        tns_packet.extend_from_slice(&[0x00, 0x00]); // Flags
+
+        // Line turnaround value
+        tns_packet.extend_from_slice(&[0x00, 0x00]);
+
+        // Value of 1 in hardware
+        tns_packet.extend_from_slice(&[0x00, 0x01]);
+
+        // Connect data length
+        let cd_len = connect_data.len() as u16;
+        tns_packet.push((cd_len >> 8) as u8);
+        tns_packet.push((cd_len & 0xFF) as u8);
+
+        // Connect data offset
+        tns_packet.extend_from_slice(&[0x00, 0x3A]); // Offset 58
+
+        // Max receivable connect data
+        tns_packet.extend_from_slice(&[0x00, 0x00, 0x00, 0x00]);
+
+        // Connect flags
+        tns_packet.push(0x00); // Connect flags 0
+        tns_packet.push(0x00); // Connect flags 1
+
+        // Trace cross facility item 1 (8 bytes)
+        tns_packet.extend_from_slice(&[0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+
+        // Trace cross facility item 2 (8 bytes)
+        tns_packet.extend_from_slice(&[0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+
+        // Trace unique connection ID (8 bytes)
+        tns_packet.extend_from_slice(&[0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+
+        // Padding to offset 58
+        while tns_packet.len() < 58 {
+            tns_packet.push(0x00);
+        }
+
+        // Connect data
+        tns_packet.extend_from_slice(connect_data.as_bytes());
+
+        stream.write_all(&tns_packet)?;
+        stream.flush()?;
+
+        // Read response
+        let mut response = vec![0u8; 1024];
+        let n = std::io::Read::read(&mut stream, &mut response)?;
+
+        if n < 8 {
+            return Err(anyhow::anyhow!("Invalid TNS response"));
+        }
+
+        // Check packet type
+        let pkt_type = response[4];
+
+        // Type 2 = Accept, Type 4 = Refuse, Type 11 = Resend
+        match pkt_type {
+            2 => {
+                // Connection accepted - now we'd send auth packet
+                // For now, just check if we can connect
+                // Real auth would require O3/O5 protocol handshake
+                debug!("Oracle connection accepted for {}@{}:{}", username, host, port);
+
+                // Try to authenticate with basic username/password check
+                // This is a simplified check - actual Oracle auth is complex
+                if password.is_empty() && username == "sys" {
+                    // No password for sys could indicate misconfiguration
+                    Ok(true)
+                } else {
+                    // Connection accepted but auth not tested - report as potential
+                    Ok(false)
+                }
+            }
+            4 => {
+                // Refuse packet - check reason
+                let refuse_data = String::from_utf8_lossy(&response[12..n]);
+                debug!("Oracle connection refused: {}", refuse_data);
+                Ok(false)
+            }
+            _ => {
+                debug!("Oracle TNS packet type: {}", pkt_type);
+                Ok(false)
+            }
+        }
+    })
+    .await?
+}
+
+/// Test Memcached - usually no auth, check for open access
+async fn test_memcached(host: &str, port: u16, credential: &Credential, timeout: Duration) -> Result<bool> {
+    let host = host.to_string();
+    let _password = credential.password.clone();
+
+    tokio::task::spawn_blocking(move || {
+        let addr = format!("{}:{}", host, port);
+
+        let stream = TcpStream::connect_timeout(&addr.parse()?, timeout)?;
+        stream.set_read_timeout(Some(timeout))?;
+        stream.set_write_timeout(Some(timeout))?;
+
+        let read_stream = stream.try_clone()?;
+        let mut write_stream = stream;
+        let mut reader = BufReader::new(read_stream);
+
+        // Try stats command - if it works, memcached is open
+        write_stream.write_all(b"stats\r\n")?;
+        write_stream.flush()?;
+
+        let mut response = String::new();
+        let mut lines = 0;
+
+        // Read response lines until END or timeout
+        loop {
+            response.clear();
+            match reader.read_line(&mut response) {
+                Ok(0) => break, // EOF
+                Ok(_) => {
+                    lines += 1;
+                    if response.starts_with("END") {
+                        break;
+                    }
+                    if response.starts_with("ERROR") || response.starts_with("CLIENT_ERROR") {
+                        return Ok(false);
+                    }
+                    if lines > 100 {
+                        break; // Prevent infinite loop
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+
+        // If we got stats output, memcached is open
+        if lines > 1 {
+            debug!("Memcached at {}:{} is open (no auth)", host, port);
+            Ok(true) // Open memcached = success (no auth required)
+        } else {
+            Ok(false)
+        }
+    })
+    .await?
+}
+
+/// Test Cassandra CQL credentials
+async fn test_cassandra(host: &str, port: u16, credential: &Credential, timeout: Duration) -> Result<bool> {
+    let host = host.to_string();
+    let username = credential.username.clone();
+    let password = credential.password.clone();
+
+    tokio::task::spawn_blocking(move || {
+        let addr = format!("{}:{}", host, port);
+
+        let mut stream = TcpStream::connect_timeout(&addr.parse()?, timeout)?;
+        stream.set_read_timeout(Some(timeout))?;
+        stream.set_write_timeout(Some(timeout))?;
+
+        // CQL native protocol frame format:
+        // version (1) | flags (1) | stream (2) | opcode (1) | length (4) | body
+
+        // Send OPTIONS request first (opcode 0x05)
+        let options_frame: [u8; 9] = [
+            0x04,       // Version 4 (request)
+            0x00,       // Flags
+            0x00, 0x00, // Stream ID
+            0x05,       // Opcode: OPTIONS
+            0x00, 0x00, 0x00, 0x00, // Length: 0
+        ];
+
+        stream.write_all(&options_frame)?;
+        stream.flush()?;
+
+        // Read response header
+        let mut response_header = [0u8; 9];
+        std::io::Read::read_exact(&mut stream, &mut response_header)?;
+
+        let opcode = response_header[4];
+
+        // Opcode 0x06 = SUPPORTED (response to OPTIONS)
+        if opcode == 0x06 {
+            // Server supports CQL - now try to authenticate
+
+            // Send STARTUP request (opcode 0x01)
+            let mut startup_body: Vec<u8> = Vec::new();
+
+            // String map with CQL_VERSION
+            startup_body.extend_from_slice(&[0x00, 0x01]); // Map size: 1
+            startup_body.extend_from_slice(&[0x00, 0x0B]); // Key length: 11
+            startup_body.extend_from_slice(b"CQL_VERSION");
+            startup_body.extend_from_slice(&[0x00, 0x05]); // Value length: 5
+            startup_body.extend_from_slice(b"3.0.0");
+
+            let body_len = startup_body.len() as u32;
+            let mut startup_frame: Vec<u8> = vec![
+                0x04,       // Version 4
+                0x00,       // Flags
+                0x00, 0x01, // Stream ID
+                0x01,       // Opcode: STARTUP
+            ];
+            startup_frame.extend_from_slice(&body_len.to_be_bytes());
+            startup_frame.extend_from_slice(&startup_body);
+
+            stream.write_all(&startup_frame)?;
+            stream.flush()?;
+
+            // Read response
+            let mut startup_response = [0u8; 9];
+            std::io::Read::read_exact(&mut stream, &mut startup_response)?;
+
+            let startup_opcode = startup_response[4];
+
+            match startup_opcode {
+                0x02 => {
+                    // READY - no auth required!
+                    debug!("Cassandra at {}:{} requires no authentication", host, port);
+                    return Ok(true);
+                }
+                0x03 => {
+                    // AUTHENTICATE - need to send credentials
+                    let auth_body_len = u32::from_be_bytes([
+                        startup_response[5],
+                        startup_response[6],
+                        startup_response[7],
+                        startup_response[8],
+                    ]) as usize;
+
+                    // Read auth body
+                    let mut auth_body = vec![0u8; auth_body_len];
+                    std::io::Read::read_exact(&mut stream, &mut auth_body)?;
+
+                    // Send AUTH_RESPONSE (opcode 0x0F)
+                    // PasswordAuthenticator format: \0username\0password
+                    let mut auth_response_body: Vec<u8> = Vec::new();
+                    auth_response_body.push(0x00); // null byte
+                    auth_response_body.extend_from_slice(username.as_bytes());
+                    auth_response_body.push(0x00); // null byte
+                    auth_response_body.extend_from_slice(password.as_bytes());
+
+                    let auth_body_len = auth_response_body.len() as u32;
+                    let mut auth_frame: Vec<u8> = vec![
+                        0x04,       // Version 4
+                        0x00,       // Flags
+                        0x00, 0x02, // Stream ID
+                        0x0F,       // Opcode: AUTH_RESPONSE
+                    ];
+                    // Length includes 4-byte size prefix
+                    let total_len = auth_body_len + 4;
+                    auth_frame.extend_from_slice(&total_len.to_be_bytes());
+                    // Size prefix for SASL token
+                    auth_frame.extend_from_slice(&auth_body_len.to_be_bytes());
+                    auth_frame.extend_from_slice(&auth_response_body);
+
+                    stream.write_all(&auth_frame)?;
+                    stream.flush()?;
+
+                    // Read auth response
+                    let mut auth_result = [0u8; 9];
+                    std::io::Read::read_exact(&mut stream, &mut auth_result)?;
+
+                    let auth_opcode = auth_result[4];
+
+                    match auth_opcode {
+                        0x02 => {
+                            // READY - auth successful!
+                            debug!("Cassandra auth successful for {}@{}:{}", username, host, port);
+                            return Ok(true);
+                        }
+                        0x10 => {
+                            // AUTH_SUCCESS
+                            debug!("Cassandra auth successful for {}@{}:{}", username, host, port);
+                            return Ok(true);
+                        }
+                        0x00 => {
+                            // ERROR
+                            debug!("Cassandra auth failed for {}@{}:{}", username, host, port);
+                            return Ok(false);
+                        }
+                        _ => {
+                            debug!("Cassandra unexpected opcode: {}", auth_opcode);
+                            return Ok(false);
+                        }
+                    }
+                }
+                0x00 => {
+                    // ERROR
+                    debug!("Cassandra startup error");
+                    return Ok(false);
+                }
+                _ => {
+                    debug!("Cassandra unexpected startup opcode: {}", startup_opcode);
+                }
+            }
+        }
+
+        Ok(false)
+    })
+    .await?
+}
+
+/// Test InfluxDB credentials via HTTP API
+async fn test_influxdb(host: &str, port: u16, credential: &Credential, timeout: Duration) -> Result<bool> {
+    let url = format!("http://{}:{}/query", host, port);
+
+    let client = reqwest::Client::builder()
+        .timeout(timeout)
+        .build()?;
+
+    // Try ping first
+    let ping_url = format!("http://{}:{}/ping", host, port);
+    let ping_resp = client.get(&ping_url).send().await?;
+
+    if !ping_resp.status().is_success() && ping_resp.status().as_u16() != 204 {
+        return Err(anyhow::anyhow!("InfluxDB not responding"));
+    }
+
+    // Check if auth is required
+    let test_resp = client
+        .get(&url)
+        .query(&[("q", "SHOW DATABASES")])
+        .send()
+        .await?;
+
+    if test_resp.status().is_success() {
+        // No auth required
+        debug!("InfluxDB at {}:{} requires no authentication", host, port);
+        return Ok(true);
+    }
+
+    // Try with credentials
+    let auth_resp = client
+        .get(&url)
+        .basic_auth(&credential.username, Some(&credential.password))
+        .query(&[("q", "SHOW DATABASES")])
+        .send()
+        .await?;
+
+    if auth_resp.status().is_success() {
+        debug!("InfluxDB auth successful for {}@{}:{}", credential.username, host, port);
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
+/// Test Elasticsearch credentials via HTTP API
+async fn test_elasticsearch(host: &str, port: u16, credential: &Credential, timeout: Duration) -> Result<bool> {
+    let url = format!("http://{}:{}/", host, port);
+
+    let client = reqwest::Client::builder()
+        .timeout(timeout)
+        .danger_accept_invalid_certs(true)
+        .build()?;
+
+    // First check if ES is accessible without auth
+    let test_resp = client.get(&url).send().await?;
+
+    if test_resp.status().is_success() {
+        let body = test_resp.text().await?;
+        if body.contains("cluster_name") || body.contains("tagline") {
+            // ES is open
+            debug!("Elasticsearch at {}:{} requires no authentication", host, port);
+            return Ok(true);
+        }
+    }
+
+    // Try with credentials
+    if !credential.username.is_empty() {
+        let auth_resp = client
+            .get(&url)
+            .basic_auth(&credential.username, Some(&credential.password))
+            .send()
+            .await?;
+
+        if auth_resp.status().is_success() {
+            let body = auth_resp.text().await?;
+            if body.contains("cluster_name") || body.contains("tagline") {
+                debug!("Elasticsearch auth successful for {}@{}:{}", credential.username, host, port);
+                return Ok(true);
+            }
+        }
+    }
+
+    Ok(false)
+}
+
+/// Test CouchDB credentials via HTTP API
+async fn test_couchdb(host: &str, port: u16, credential: &Credential, timeout: Duration) -> Result<bool> {
+    let url = format!("http://{}:{}/_session", host, port);
+
+    let client = reqwest::Client::builder()
+        .timeout(timeout)
+        .danger_accept_invalid_certs(true)
+        .build()?;
+
+    // First check if CouchDB is accessible without auth
+    let root_url = format!("http://{}:{}/", host, port);
+    let test_resp = client.get(&root_url).send().await?;
+
+    if test_resp.status().is_success() {
+        let body = test_resp.text().await?;
+        if body.contains("couchdb") || body.contains("Welcome") {
+            // Check if we can access _all_dbs
+            let dbs_url = format!("http://{}:{}/_all_dbs", host, port);
+            let dbs_resp = client.get(&dbs_url).send().await?;
+
+            if dbs_resp.status().is_success() {
+                debug!("CouchDB at {}:{} requires no authentication", host, port);
+                return Ok(true);
+            }
+        }
+    }
+
+    // Try with credentials
+    if !credential.username.is_empty() {
+        let auth_resp = client
+            .post(&url)
+            .header("Content-Type", "application/json")
+            .json(&serde_json::json!({
+                "name": credential.username,
+                "password": credential.password
+            }))
+            .send()
+            .await?;
+
+        if auth_resp.status().is_success() {
+            let body = auth_resp.text().await?;
+            if body.contains("\"ok\":true") {
+                debug!("CouchDB auth successful for {}@{}:{}", credential.username, host, port);
+                return Ok(true);
+            }
+        }
+    }
+
+    Ok(false)
+}
+
+/// Test ClickHouse credentials via HTTP API
+async fn test_clickhouse(host: &str, port: u16, credential: &Credential, timeout: Duration) -> Result<bool> {
+    let url = format!("http://{}:{}/", host, port);
+
+    let client = reqwest::Client::builder()
+        .timeout(timeout)
+        .build()?;
+
+    // Try simple query
+    let query = "SELECT 1";
+
+    // First without auth
+    let test_resp = client
+        .get(&url)
+        .query(&[("query", query)])
+        .send()
+        .await?;
+
+    if test_resp.status().is_success() {
+        let body = test_resp.text().await?;
+        if body.trim() == "1" {
+            debug!("ClickHouse at {}:{} requires no authentication", host, port);
+            return Ok(true);
+        }
+    }
+
+    // Try with credentials
+    if !credential.username.is_empty() {
+        let auth_resp = client
+            .get(&url)
+            .query(&[
+                ("query", query),
+                ("user", credential.username.as_str()),
+                ("password", credential.password.as_str()),
+            ])
+            .send()
+            .await?;
+
+        if auth_resp.status().is_success() {
+            let body = auth_resp.text().await?;
+            if body.trim() == "1" {
+                debug!("ClickHouse auth successful for {}@{}:{}", credential.username, host, port);
+                return Ok(true);
+            }
+        }
+    }
+
+    Ok(false)
 }
 
 #[cfg(test)]

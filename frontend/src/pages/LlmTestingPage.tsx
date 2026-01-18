@@ -23,12 +23,18 @@ import {
   X,
   Plus,
   Trash2,
+  MessageSquare,
+  Wrench,
+  Fingerprint,
 } from 'lucide-react';
 import Layout from '../components/layout/Layout';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Badge from '../components/ui/Badge';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
+import ConversationTestPanel from '../components/ai/ConversationTestPanel';
+import AgentTestPanel from '../components/ai/AgentTestPanel';
+import ReportGenerationPanel from '../components/ai/ReportGenerationPanel';
 import { aiSecurityAPI, LLMTarget } from '../services/api';
 
 // Types
@@ -67,7 +73,7 @@ interface TestRun {
 }
 
 const LlmTestingPage: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'targets' | 'run-test' | 'results'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'targets' | 'run-test' | 'results' | 'conversation' | 'agent' | 'reports'>('dashboard');
   const [selectedTarget, setSelectedTarget] = useState<string | null>(null);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [showAddTargetModal, setShowAddTargetModal] = useState(false);
@@ -391,11 +397,14 @@ const LlmTestingPage: React.FC = () => {
         </div>
 
         {/* Tabs */}
-        <div className="flex items-center gap-2 border-b border-dark-border">
+        <div className="flex items-center gap-2 border-b border-dark-border overflow-x-auto">
           {[
             { id: 'dashboard' as const, label: 'Dashboard', icon: <BarChart3 className="h-4 w-4" /> },
             { id: 'targets' as const, label: 'Targets', icon: <Target className="h-4 w-4" /> },
             { id: 'run-test' as const, label: 'Run Tests', icon: <Play className="h-4 w-4" /> },
+            { id: 'conversation' as const, label: 'Multi-Turn', icon: <MessageSquare className="h-4 w-4" /> },
+            { id: 'agent' as const, label: 'Agent Tests', icon: <Wrench className="h-4 w-4" /> },
+            { id: 'reports' as const, label: 'Reports', icon: <Fingerprint className="h-4 w-4" /> },
             { id: 'results' as const, label: 'Results', icon: <FileText className="h-4 w-4" /> },
           ].map((tab) => (
             <button
@@ -624,6 +633,18 @@ const LlmTestingPage: React.FC = () => {
               </Button>
             </Card>
           </div>
+        )}
+
+        {activeTab === 'conversation' && targets && (
+          <ConversationTestPanel targets={targets} />
+        )}
+
+        {activeTab === 'agent' && targets && (
+          <AgentTestPanel targets={targets} />
+        )}
+
+        {activeTab === 'reports' && targets && testRuns && (
+          <ReportGenerationPanel targets={targets} testRuns={testRuns} />
         )}
 
         {activeTab === 'results' && (

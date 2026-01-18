@@ -150,6 +150,12 @@ const TermsPage = lazy(() => import('./pages/legal/TermsPage'));
 const PrivacyPage = lazy(() => import('./pages/legal/PrivacyPage'));
 const AcceptableUsePage = lazy(() => import('./pages/legal/AcceptableUsePage'));
 const CookiePage = lazy(() => import('./pages/legal/CookiePage'));
+
+// Legal Document Management
+const LegalDocumentsPage = lazy(() => import('./pages/legal/LegalDocumentsPage'));
+const LegalTemplatesPage = lazy(() => import('./pages/legal/LegalTemplatesPage'));
+const DocumentEditorPage = lazy(() => import('./pages/legal/DocumentEditorPage'));
+const SignDocumentPage = lazy(() => import('./pages/legal/SignDocumentPage'));
 const CustomerList = lazy(() => import('./pages/crm/CustomerList'));
 const CustomerDetail = lazy(() => import('./pages/crm/CustomerDetail'));
 const EngagementsPage = lazy(() => import('./pages/crm/EngagementsPage'));
@@ -1059,6 +1065,60 @@ function App() {
           <Route path="/legal/privacy" element={<PrivacyPage />} />
           <Route path="/legal/acceptable-use" element={<AcceptableUsePage />} />
           <Route path="/legal/cookies" element={<CookiePage />} />
+
+          {/* Legal Documents Management (protected) */}
+          <Route
+            path="/legal/documents"
+            element={
+              <ProtectedRoute>
+                <LegalDocumentsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/legal/documents/new"
+            element={
+              <ProtectedRoute>
+                <DocumentEditorPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/legal/documents/:id"
+            element={
+              <ProtectedRoute>
+                <DocumentEditorPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/legal/templates"
+            element={
+              <ProtectedRoute>
+                <LegalTemplatesPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/legal/templates/new"
+            element={
+              <ProtectedRoute>
+                <DocumentEditorPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/legal/templates/:id/edit"
+            element={
+              <ProtectedRoute>
+                <DocumentEditorPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Public Signing Page (no auth required) */}
+          <Route path="/sign/:token" element={<SignDocumentPage />} />
+
           <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>

@@ -3,3 +3,8 @@ export { default as RiskScoreCard } from './RiskScoreCard';
 export { default as ScoreBreakdown } from './ScoreBreakdown';
 export { default as PrioritizedList } from './PrioritizedList';
 export { default as AIConfigPanel } from './AIConfigPanel';
+export { default as ConversationTestPanel } from './ConversationTestPanel';
+export { default as AgentTestPanel } from './AgentTestPanel';
+export { default as ReportGenerationPanel } from './ReportGenerationPanel';
+export { RemediationRoadmap } from './RemediationRoadmap';
+export { default as AttackPathInterpretationPanel } from './AttackPathInterpretationPanel';

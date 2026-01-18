@@ -314,6 +314,9 @@ pub async fn init_tables(pool: &SqlitePool) -> Result<()> {
     // Insert default STIG profiles
     insert_default_profiles(pool).await?;
 
+    // Initialize OVAL and STIG definition tables
+    init_oval_tables(pool).await?;
+
     Ok(())
 }
 
@@ -1126,4 +1129,515 @@ pub async fn update_schedule_next_run(
     .await?;
 
     Ok(())
+}
+
+// ============================================================================
+// OVAL Integration Types and Operations
+// ============================================================================
+
+/// Windows OVAL evaluation result database record
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct WindowsOvalResult {
+    pub id: String,
+    pub scan_id: String,
+    pub definition_id: String,
+    pub definition_class: String, // "vulnerability", "compliance", "inventory", "patch"
+    pub result: String, // "true", "false", "error", "unknown", "not_applicable", "not_evaluated"
+    pub version: i32,
+    pub evaluated_at: String,
+    pub collected_items: Option<String>, // JSON array of collected item IDs
+    pub message: Option<String>,
+    pub severity: Option<String>,
+    pub title: Option<String>,
+    pub description: Option<String>,
+}
+
+/// Windows STIG check definition database record
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct WindowsStigCheckDefinition {
+    pub id: String,
+    pub stig_id: String,          // e.g., "V-254239"
+    pub rule_id: String,          // e.g., "SV-254239r848574_rule"
+    pub group_id: String,         // e.g., "V-254239"
+    pub title: String,
+    pub description: String,
+    pub category: String,         // "CAT1", "CAT2", "CAT3"
+    pub severity: String,         // "high", "medium", "low"
+    pub fix_id: Option<String>,
+    pub fix_text: Option<String>,
+    pub check_id: String,
+    pub check_content: String,
+    pub check_system: String,     // "oval", "ocil", "manual"
+    pub oval_definition_id: Option<String>,
+    pub cci_refs: String,         // JSON array of CCI references
+    pub nist_refs: String,        // JSON array of NIST SP 800-53 refs
+    pub os_type: String,
+    pub stig_version: String,
+    pub stig_release: String,
+    pub benchmark_id: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// Initialize OVAL and STIG definition tables
+pub async fn init_oval_tables(pool: &SqlitePool) -> Result<()> {
+    // Windows OVAL results
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS windows_oval_results (
+            id TEXT PRIMARY KEY,
+            scan_id TEXT NOT NULL,
+            definition_id TEXT NOT NULL,
+            definition_class TEXT NOT NULL,
+            result TEXT NOT NULL,
+            version INTEGER NOT NULL DEFAULT 1,
+            evaluated_at TEXT NOT NULL,
+            collected_items TEXT,
+            message TEXT,
+            severity TEXT,
+            title TEXT,
+            description TEXT,
+            FOREIGN KEY (scan_id) REFERENCES windows_audit_scans(id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Windows STIG check definitions
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS windows_stig_check_definitions (
+            id TEXT PRIMARY KEY,
+            stig_id TEXT NOT NULL,
+            rule_id TEXT NOT NULL,
+            group_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT NOT NULL,
+            category TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            fix_id TEXT,
+            fix_text TEXT,
+            check_id TEXT NOT NULL,
+            check_content TEXT NOT NULL,
+            check_system TEXT NOT NULL,
+            oval_definition_id TEXT,
+            cci_refs TEXT NOT NULL DEFAULT '[]',
+            nist_refs TEXT NOT NULL DEFAULT '[]',
+            os_type TEXT NOT NULL,
+            stig_version TEXT NOT NULL,
+            stig_release TEXT NOT NULL,
+            benchmark_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(stig_id, stig_version, stig_release)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for OVAL results
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_win_oval_scan ON windows_oval_results(scan_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_win_oval_def ON windows_oval_results(definition_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_win_oval_result ON windows_oval_results(result)")
+        .execute(pool)
+        .await?;
+
+    // Create indexes for STIG check definitions
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_win_stig_def_stig ON windows_stig_check_definitions(stig_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_win_stig_def_os ON windows_stig_check_definitions(os_type)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_win_stig_def_cat ON windows_stig_check_definitions(category)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_win_stig_def_bench ON windows_stig_check_definitions(benchmark_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_win_stig_def_oval ON windows_stig_check_definitions(oval_definition_id)")
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+// ============================================================================
+// OVAL Result Operations
+// ============================================================================
+
+/// Create OVAL result
+pub async fn create_oval_result(pool: &SqlitePool, result: &WindowsOvalResult) -> Result<String> {
+    let id = if result.id.is_empty() {
+        Uuid::new_v4().to_string()
+    } else {
+        result.id.clone()
+    };
+
+    sqlx::query(
+        r#"
+        INSERT INTO windows_oval_results (
+            id, scan_id, definition_id, definition_class, result, version,
+            evaluated_at, collected_items, message, severity, title, description
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+        "#,
+    )
+    .bind(&id)
+    .bind(&result.scan_id)
+    .bind(&result.definition_id)
+    .bind(&result.definition_class)
+    .bind(&result.result)
+    .bind(result.version)
+    .bind(&result.evaluated_at)
+    .bind(&result.collected_items)
+    .bind(&result.message)
+    .bind(&result.severity)
+    .bind(&result.title)
+    .bind(&result.description)
+    .execute(pool)
+    .await?;
+
+    Ok(id)
+}
+
+/// Batch insert OVAL results
+pub async fn batch_insert_oval_results(
+    pool: &SqlitePool,
+    results: &[WindowsOvalResult],
+) -> Result<usize> {
+    let mut count = 0;
+    for result in results {
+        create_oval_result(pool, result).await?;
+        count += 1;
+    }
+    Ok(count)
+}
+
+/// Get OVAL results for scan
+pub async fn get_oval_results_for_scan(
+    pool: &SqlitePool,
+    scan_id: &str,
+    result_filter: Option<&str>,
+    definition_class: Option<&str>,
+) -> Result<Vec<WindowsOvalResult>> {
+    let mut query = String::from("SELECT * FROM windows_oval_results WHERE scan_id = ?1");
+
+    if let Some(r) = result_filter {
+        query.push_str(&format!(" AND result = '{}'", r));
+    }
+    if let Some(class) = definition_class {
+        query.push_str(&format!(" AND definition_class = '{}'", class));
+    }
+
+    query.push_str(" ORDER BY definition_id");
+
+    let results = sqlx::query_as::<_, WindowsOvalResult>(&query)
+        .bind(scan_id)
+        .fetch_all(pool)
+        .await?;
+
+    Ok(results)
+}
+
+/// Get OVAL result by definition ID for a scan
+pub async fn get_oval_result_by_definition(
+    pool: &SqlitePool,
+    scan_id: &str,
+    definition_id: &str,
+) -> Result<Option<WindowsOvalResult>> {
+    let result = sqlx::query_as::<_, WindowsOvalResult>(
+        "SELECT * FROM windows_oval_results WHERE scan_id = ?1 AND definition_id = ?2",
+    )
+    .bind(scan_id)
+    .bind(definition_id)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(result)
+}
+
+/// Get OVAL result summary for scan
+#[derive(Debug, Serialize, Deserialize)]
+pub struct OvalResultSummary {
+    pub definition_class: String,
+    pub total: i64,
+    pub true_count: i64,
+    pub false_count: i64,
+    pub error_count: i64,
+    pub unknown_count: i64,
+    pub not_applicable: i64,
+    pub not_evaluated: i64,
+}
+
+pub async fn get_oval_result_summary(pool: &SqlitePool, scan_id: &str) -> Result<Vec<OvalResultSummary>> {
+    let summaries = sqlx::query_as::<_, (String, i64, i64, i64, i64, i64, i64, i64)>(
+        r#"
+        SELECT
+            definition_class,
+            COUNT(*) as total,
+            SUM(CASE WHEN result = 'true' THEN 1 ELSE 0 END) as true_count,
+            SUM(CASE WHEN result = 'false' THEN 1 ELSE 0 END) as false_count,
+            SUM(CASE WHEN result = 'error' THEN 1 ELSE 0 END) as error_count,
+            SUM(CASE WHEN result = 'unknown' THEN 1 ELSE 0 END) as unknown_count,
+            SUM(CASE WHEN result = 'not_applicable' THEN 1 ELSE 0 END) as not_applicable,
+            SUM(CASE WHEN result = 'not_evaluated' THEN 1 ELSE 0 END) as not_evaluated
+        FROM windows_oval_results
+        WHERE scan_id = ?1
+        GROUP BY definition_class
+        ORDER BY definition_class
+        "#,
+    )
+    .bind(scan_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(summaries
+        .into_iter()
+        .map(|(class, total, true_count, false_count, error_count, unknown_count, na, ne)| OvalResultSummary {
+            definition_class: class,
+            total,
+            true_count,
+            false_count,
+            error_count,
+            unknown_count,
+            not_applicable: na,
+            not_evaluated: ne,
+        })
+        .collect())
+}
+
+// ============================================================================
+// STIG Check Definition Operations
+// ============================================================================
+
+/// Create or update STIG check definition
+pub async fn upsert_stig_check_definition(
+    pool: &SqlitePool,
+    definition: &WindowsStigCheckDefinition,
+) -> Result<String> {
+    let id = if definition.id.is_empty() {
+        Uuid::new_v4().to_string()
+    } else {
+        definition.id.clone()
+    };
+
+    let now = Utc::now().to_rfc3339();
+
+    // Check if exists
+    let existing: Option<(String,)> = sqlx::query_as(
+        "SELECT id FROM windows_stig_check_definitions WHERE stig_id = ?1 AND stig_version = ?2 AND stig_release = ?3",
+    )
+    .bind(&definition.stig_id)
+    .bind(&definition.stig_version)
+    .bind(&definition.stig_release)
+    .fetch_optional(pool)
+    .await?;
+
+    if let Some((existing_id,)) = existing {
+        // Update existing
+        sqlx::query(
+            r#"
+            UPDATE windows_stig_check_definitions
+            SET title = ?1, description = ?2, category = ?3, severity = ?4,
+                fix_id = ?5, fix_text = ?6, check_id = ?7, check_content = ?8,
+                check_system = ?9, oval_definition_id = ?10, cci_refs = ?11,
+                nist_refs = ?12, os_type = ?13, benchmark_id = ?14, updated_at = ?15
+            WHERE id = ?16
+            "#,
+        )
+        .bind(&definition.title)
+        .bind(&definition.description)
+        .bind(&definition.category)
+        .bind(&definition.severity)
+        .bind(&definition.fix_id)
+        .bind(&definition.fix_text)
+        .bind(&definition.check_id)
+        .bind(&definition.check_content)
+        .bind(&definition.check_system)
+        .bind(&definition.oval_definition_id)
+        .bind(&definition.cci_refs)
+        .bind(&definition.nist_refs)
+        .bind(&definition.os_type)
+        .bind(&definition.benchmark_id)
+        .bind(&now)
+        .bind(&existing_id)
+        .execute(pool)
+        .await?;
+
+        Ok(existing_id)
+    } else {
+        // Insert new
+        sqlx::query(
+            r#"
+            INSERT INTO windows_stig_check_definitions (
+                id, stig_id, rule_id, group_id, title, description, category, severity,
+                fix_id, fix_text, check_id, check_content, check_system, oval_definition_id,
+                cci_refs, nist_refs, os_type, stig_version, stig_release, benchmark_id,
+                created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)
+            "#,
+        )
+        .bind(&id)
+        .bind(&definition.stig_id)
+        .bind(&definition.rule_id)
+        .bind(&definition.group_id)
+        .bind(&definition.title)
+        .bind(&definition.description)
+        .bind(&definition.category)
+        .bind(&definition.severity)
+        .bind(&definition.fix_id)
+        .bind(&definition.fix_text)
+        .bind(&definition.check_id)
+        .bind(&definition.check_content)
+        .bind(&definition.check_system)
+        .bind(&definition.oval_definition_id)
+        .bind(&definition.cci_refs)
+        .bind(&definition.nist_refs)
+        .bind(&definition.os_type)
+        .bind(&definition.stig_version)
+        .bind(&definition.stig_release)
+        .bind(&definition.benchmark_id)
+        .bind(&now)
+        .bind(&now)
+        .execute(pool)
+        .await?;
+
+        Ok(id)
+    }
+}
+
+/// Get STIG check definition by STIG ID
+pub async fn get_stig_check_definition(
+    pool: &SqlitePool,
+    stig_id: &str,
+    version: Option<&str>,
+) -> Result<Option<WindowsStigCheckDefinition>> {
+    let result = if let Some(ver) = version {
+        sqlx::query_as::<_, WindowsStigCheckDefinition>(
+            "SELECT * FROM windows_stig_check_definitions WHERE stig_id = ?1 AND stig_version = ?2",
+        )
+        .bind(stig_id)
+        .bind(ver)
+        .fetch_optional(pool)
+        .await?
+    } else {
+        sqlx::query_as::<_, WindowsStigCheckDefinition>(
+            "SELECT * FROM windows_stig_check_definitions WHERE stig_id = ?1 ORDER BY created_at DESC LIMIT 1",
+        )
+        .bind(stig_id)
+        .fetch_optional(pool)
+        .await?
+    };
+
+    Ok(result)
+}
+
+/// Get STIG check definitions for benchmark
+pub async fn get_stig_definitions_for_benchmark(
+    pool: &SqlitePool,
+    benchmark_id: &str,
+    category: Option<&str>,
+) -> Result<Vec<WindowsStigCheckDefinition>> {
+    let mut query = String::from("SELECT * FROM windows_stig_check_definitions WHERE benchmark_id = ?1");
+
+    if let Some(cat) = category {
+        query.push_str(&format!(" AND category = '{}'", cat));
+    }
+
+    query.push_str(" ORDER BY stig_id");
+
+    let definitions = sqlx::query_as::<_, WindowsStigCheckDefinition>(&query)
+        .bind(benchmark_id)
+        .fetch_all(pool)
+        .await?;
+
+    Ok(definitions)
+}
+
+/// Get STIG check definitions for OS type
+pub async fn get_stig_definitions_for_os(
+    pool: &SqlitePool,
+    os_type: &str,
+    stig_version: Option<&str>,
+    category: Option<&str>,
+) -> Result<Vec<WindowsStigCheckDefinition>> {
+    let mut query = String::from("SELECT * FROM windows_stig_check_definitions WHERE os_type = ?1");
+
+    if let Some(ver) = stig_version {
+        query.push_str(&format!(" AND stig_version = '{}'", ver));
+    }
+    if let Some(cat) = category {
+        query.push_str(&format!(" AND category = '{}'", cat));
+    }
+
+    query.push_str(" ORDER BY stig_id");
+
+    let definitions = sqlx::query_as::<_, WindowsStigCheckDefinition>(&query)
+        .bind(os_type)
+        .fetch_all(pool)
+        .await?;
+
+    Ok(definitions)
+}
+
+/// Get STIG definitions that have OVAL references
+pub async fn get_stig_definitions_with_oval(
+    pool: &SqlitePool,
+    os_type: Option<&str>,
+) -> Result<Vec<WindowsStigCheckDefinition>> {
+    let mut query = String::from(
+        "SELECT * FROM windows_stig_check_definitions WHERE check_system = 'oval' AND oval_definition_id IS NOT NULL"
+    );
+
+    if let Some(os) = os_type {
+        query.push_str(&format!(" AND os_type = '{}'", os));
+    }
+
+    query.push_str(" ORDER BY stig_id");
+
+    let definitions = sqlx::query_as::<_, WindowsStigCheckDefinition>(&query)
+        .fetch_all(pool)
+        .await?;
+
+    Ok(definitions)
+}
+
+/// Delete STIG definitions for a benchmark (for re-import)
+pub async fn delete_stig_definitions_for_benchmark(
+    pool: &SqlitePool,
+    benchmark_id: &str,
+) -> Result<u64> {
+    let result = sqlx::query("DELETE FROM windows_stig_check_definitions WHERE benchmark_id = ?1")
+        .bind(benchmark_id)
+        .execute(pool)
+        .await?;
+
+    Ok(result.rows_affected())
+}
+
+/// Count STIG definitions
+pub async fn count_stig_definitions(
+    pool: &SqlitePool,
+    os_type: Option<&str>,
+) -> Result<i64> {
+    let count: (i64,) = if let Some(os) = os_type {
+        sqlx::query_as("SELECT COUNT(*) FROM windows_stig_check_definitions WHERE os_type = ?1")
+            .bind(os)
+            .fetch_one(pool)
+            .await?
+    } else {
+        sqlx::query_as("SELECT COUNT(*) FROM windows_stig_check_definitions")
+            .fetch_one(pool)
+            .await?
+    };
+
+    Ok(count.0)
 }

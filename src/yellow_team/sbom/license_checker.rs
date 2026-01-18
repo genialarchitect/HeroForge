@@ -108,7 +108,7 @@ pub struct LicenseComplianceReport {
     pub copyleft_licenses: Vec<String>,
 }
 
-/// Known licenses database
+// Known licenses database
 lazy_static::lazy_static! {
     static ref KNOWN_LICENSES: HashMap<&'static str, LicenseInfo> = {
         let mut m = HashMap::new();

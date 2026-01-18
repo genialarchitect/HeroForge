@@ -12,6 +12,7 @@ import {
   FileText,
   Wrench,
   BookOpen,
+  Zap,
 } from 'lucide-react';
 
 interface ItemCardProps {
@@ -19,6 +20,8 @@ interface ItemCardProps {
   isUpdating: boolean;
   onStatusChange: (status: ChecklistItemStatus) => void;
   onNotesChange: (notes: string) => void;
+  onExploit?: (item: ChecklistItemWithTemplate) => void;
+  canExploit?: boolean;
 }
 
 const ItemCard: React.FC<ItemCardProps> = ({
@@ -26,6 +29,8 @@ const ItemCard: React.FC<ItemCardProps> = ({
   isUpdating,
   onStatusChange,
   onNotesChange,
+  onExploit,
+  canExploit = false,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [notes, setNotes] = useState(item.notes || '');
@@ -129,6 +134,19 @@ const ItemCard: React.FC<ItemCardProps> = ({
 
         {/* Status Selector */}
         <div className="flex items-center gap-2">
+          {/* Exploit Button */}
+          {onExploit && canExploit && (
+            <button
+              onClick={() => onExploit(item)}
+              disabled={isUpdating}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-yellow-600/20 hover:bg-yellow-600/30 text-yellow-400 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+              title="Run automated exploit test"
+            >
+              <Zap className="h-4 w-4" />
+              Exploit
+            </button>
+          )}
+
           <button
             onClick={() => setShowNotes(!showNotes)}
             className={`p-1.5 rounded transition-colors ${

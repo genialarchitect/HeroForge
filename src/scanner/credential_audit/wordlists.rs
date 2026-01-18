@@ -109,6 +109,81 @@ pub static DEFAULT_CREDENTIALS: Lazy<HashMap<CredentialServiceType, Vec<Credenti
         Credential::new("default", "redis"),
     ]);
 
+    // Oracle default credentials
+    map.insert(CredentialServiceType::Oracle, vec![
+        Credential::new("system", "oracle"),
+        Credential::new("system", "password"),
+        Credential::new("system", "manager"),
+        Credential::new("system", "system"),
+        Credential::new("sys", "oracle"),
+        Credential::new("sys", "change_on_install"),
+        Credential::new("sys", "sys"),
+        Credential::new("scott", "tiger"),
+        Credential::new("dbsnmp", "dbsnmp"),
+        Credential::new("outln", "outln"),
+        Credential::new("mdsys", "mdsys"),
+        Credential::new("ordplugins", "ordplugins"),
+        Credential::new("ordsys", "ordsys"),
+        Credential::new("ctxsys", "ctxsys"),
+        Credential::new("dssys", "dssys"),
+        Credential::new("perfstat", "perfstat"),
+        Credential::new("wkproxy", "wkproxy"),
+        Credential::new("wksys", "wksys"),
+        Credential::new("xdb", "xdb"),
+        Credential::new("applsys", "applsys"),
+        Credential::new("apps", "apps"),
+    ]);
+
+    // Memcached default credentials (usually no auth)
+    map.insert(CredentialServiceType::Memcached, vec![
+        Credential::new("", ""),
+        Credential::new("admin", "admin"),
+        Credential::new("memcached", "memcached"),
+    ]);
+
+    // Cassandra default credentials
+    map.insert(CredentialServiceType::Cassandra, vec![
+        Credential::new("cassandra", "cassandra"),
+        Credential::new("admin", "admin"),
+        Credential::new("root", "root"),
+        Credential::new("cassandra", "password"),
+    ]);
+
+    // InfluxDB default credentials
+    map.insert(CredentialServiceType::InfluxDb, vec![
+        Credential::new("admin", "admin"),
+        Credential::new("admin", "password"),
+        Credential::new("admin", ""),
+        Credential::new("influx", "influx"),
+        Credential::new("root", "root"),
+    ]);
+
+    // Elasticsearch default credentials
+    map.insert(CredentialServiceType::Elasticsearch, vec![
+        Credential::new("elastic", "changeme"),
+        Credential::new("elastic", "elastic"),
+        Credential::new("admin", "admin"),
+        Credential::new("root", "root"),
+        Credential::new("kibana", "kibana"),
+    ]);
+
+    // CouchDB default credentials
+    map.insert(CredentialServiceType::CouchDb, vec![
+        Credential::new("admin", "password"),
+        Credential::new("admin", "admin"),
+        Credential::new("couchdb", "couchdb"),
+        Credential::new("root", "root"),
+        Credential::new("", ""), // No auth
+    ]);
+
+    // ClickHouse default credentials
+    map.insert(CredentialServiceType::ClickHouse, vec![
+        Credential::new("default", ""),
+        Credential::new("admin", "admin"),
+        Credential::new("clickhouse", "clickhouse"),
+        Credential::new("root", "root"),
+    ]);
+
     // Tomcat Manager default credentials
     map.insert(CredentialServiceType::TomcatManager, vec![
         Credential::new("tomcat", "tomcat"),

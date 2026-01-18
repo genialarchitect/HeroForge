@@ -266,6 +266,49 @@ pub async fn run_scheduled_report_now(
     })))
 }
 
+/// Get execution history for a scheduled report
+///
+/// GET /api/scheduled-reports/{id}/history
+pub async fn get_report_history(
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    report_id: web::Path<String>,
+    query: web::Query<HistoryQueryParams>,
+) -> Result<HttpResponse> {
+    // First check if report exists and belongs to user
+    let existing = db::get_scheduled_report_by_id(&pool, &report_id)
+        .await
+        .map_err(|e| {
+            log::error!("Database error: {}", e);
+            actix_web::error::ErrorInternalServerError("Database error")
+        })?;
+
+    match existing {
+        Some(r) => {
+            if r.user_id != claims.sub {
+                return Err(actix_web::error::ErrorForbidden("Access denied"));
+            }
+        }
+        None => return Err(actix_web::error::ErrorNotFound("Scheduled report not found")),
+    }
+
+    let limit = query.limit.unwrap_or(10).min(100);
+
+    let history = db::report_templates::get_report_run_history(&pool, &report_id, limit)
+        .await
+        .map_err(|e| {
+            log::error!("Failed to fetch report history: {}", e);
+            actix_web::error::ErrorInternalServerError("Failed to fetch report history")
+        })?;
+
+    Ok(HttpResponse::Ok().json(history))
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct HistoryQueryParams {
+    limit: Option<i32>,
+}
+
 /// Get available cron presets
 ///
 /// GET /api/scheduled-reports/presets

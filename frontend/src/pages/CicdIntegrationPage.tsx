@@ -26,11 +26,25 @@ import type { AxiosResponse } from 'axios';
 
 // Note: there are duplicate cicdAPI exports in api.ts that need to be resolved
 // We're using a local wrapper to access the endpoints directly
+interface CicdTemplate {
+  id: string;
+  name: string;
+  platform: string;
+  description: string | null;
+  template_content: string;
+  variables: string | null;
+  is_builtin: boolean;
+  category: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 const cicdAPI = {
   getPipelines: () => api.get<CicdPipeline[]>('/cicd/pipelines'),
   getRuns: (params?: any) => api.get<CicdRun[]>('/cicd/runs', { params }),
   getPolicies: () => api.get<CicdPolicy[]>('/cicd/policies'),
-  getTemplate: (platform: string) => api.get<{ platform: string; content: string; description?: string }>(`/cicd/templates/${platform}`),
+  getTemplate: (platform: string) => api.get<CicdTemplate>(`/cicd/templates/${platform}`),
 };
 
 interface IdeSettings {
@@ -95,10 +109,11 @@ const CicdIntegrationPage: React.FC = () => {
   const loadTemplate = async (platform: string) => {
     try {
       const result = await cicdAPI.getTemplate(platform);
-      setTemplateContent(result.data.content);
+      setTemplateContent(result.data.template_content || '');
     } catch (error) {
       console.error('Failed to load template:', error);
-      toast.error('Failed to load template');
+      // Don't show error toast for 404 (template not found) - just show empty
+      setTemplateContent('# Template not found for this platform');
     }
   };
 

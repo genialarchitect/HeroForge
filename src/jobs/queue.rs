@@ -262,7 +262,7 @@ impl JobQueue {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::jobs::types::JobType;
+    use crate::jobs::types::{JobPriority, JobType};
 
     #[tokio::test]
     async fn test_job_queue_basic_operations() {

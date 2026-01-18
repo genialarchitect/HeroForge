@@ -2,8 +2,6 @@
 // Advanced Types - Fuzzing, UEBA, AI, SSO, CI/CD, Container, IaC, Workflows, Purple Team, Organizations
 // =============================================================================
 
-import type { UserRole } from './common';
-
 // ============================================================================
 // AI Vulnerability Prioritization Types
 // ============================================================================

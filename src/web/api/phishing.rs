@@ -197,7 +197,7 @@ async fn list_campaigns(
             credentials_captured: r.7 as u32,
             reported_phish: r.8 as u32,
             launch_date: r.9.and_then(|d| chrono::DateTime::parse_from_rfc3339(&d).ok().map(|dt| dt.with_timezone(&Utc))),
-            created_at: chrono::DateTime::parse_from_rfc3339(&r.10).unwrap().with_timezone(&Utc),
+            created_at: chrono::DateTime::parse_from_rfc3339(&r.10).ok().map(|dt| dt.with_timezone(&Utc)).unwrap_or_else(Utc::now),
         }
     }).collect();
 
@@ -476,7 +476,7 @@ async fn list_campaign_targets(
         link_clicked_at: r.11.and_then(|d| chrono::DateTime::parse_from_rfc3339(&d).ok().map(|dt| dt.with_timezone(&Utc))),
         credentials_submitted_at: r.12.and_then(|d| chrono::DateTime::parse_from_rfc3339(&d).ok().map(|dt| dt.with_timezone(&Utc))),
         reported_at: r.13.and_then(|d| chrono::DateTime::parse_from_rfc3339(&d).ok().map(|dt| dt.with_timezone(&Utc))),
-        created_at: chrono::DateTime::parse_from_rfc3339(&r.14).unwrap().with_timezone(&Utc),
+        created_at: chrono::DateTime::parse_from_rfc3339(&r.14).ok().map(|dt| dt.with_timezone(&Utc)).unwrap_or_else(Utc::now),
     }).collect();
 
     Ok(HttpResponse::Ok().json(result))
@@ -552,7 +552,7 @@ async fn list_captured_credentials(
             fields,
             ip_address: r.5,
             user_agent: r.6,
-            created_at: chrono::DateTime::parse_from_rfc3339(&r.7).unwrap().with_timezone(&Utc),
+            created_at: chrono::DateTime::parse_from_rfc3339(&r.7).ok().map(|dt| dt.with_timezone(&Utc)).unwrap_or_else(Utc::now),
         }
     }).collect();
 
@@ -848,8 +848,8 @@ async fn get_landing_page(
         redirect_url: row.6,
         redirect_delay: row.7 as u32,
         cloned_from: row.8,
-        created_at: chrono::DateTime::parse_from_rfc3339(&row.9).unwrap().with_timezone(&Utc),
-        updated_at: chrono::DateTime::parse_from_rfc3339(&row.10).unwrap().with_timezone(&Utc),
+        created_at: chrono::DateTime::parse_from_rfc3339(&row.9).ok().map(|dt| dt.with_timezone(&Utc)).unwrap_or_else(Utc::now),
+        updated_at: chrono::DateTime::parse_from_rfc3339(&row.10).ok().map(|dt| dt.with_timezone(&Utc)).unwrap_or_else(Utc::now),
     }))
 }
 
@@ -2052,11 +2052,13 @@ async fn list_pretext_templates(
             tags: serde_json::from_str(&row.get::<String, _>("tags")).unwrap_or_default(),
             is_builtin: row.get("is_builtin"),
             created_at: chrono::DateTime::parse_from_rfc3339(&row.get::<String, _>("created_at"))
-                .unwrap()
-                .with_timezone(&Utc),
+                .ok()
+                .map(|dt| dt.with_timezone(&Utc))
+                .unwrap_or_else(Utc::now),
             updated_at: chrono::DateTime::parse_from_rfc3339(&row.get::<String, _>("updated_at"))
-                .unwrap()
-                .with_timezone(&Utc),
+                .ok()
+                .map(|dt| dt.with_timezone(&Utc))
+                .unwrap_or_else(Utc::now),
         };
 
         // Only add if not already in built-in list
@@ -2133,11 +2135,13 @@ async fn get_pretext_template(
         tags: serde_json::from_str(&row.get::<String, _>("tags")).unwrap_or_default(),
         is_builtin: row.get("is_builtin"),
         created_at: chrono::DateTime::parse_from_rfc3339(&row.get::<String, _>("created_at"))
-            .unwrap()
-            .with_timezone(&Utc),
+            .ok()
+            .map(|dt| dt.with_timezone(&Utc))
+            .unwrap_or_else(Utc::now),
         updated_at: chrono::DateTime::parse_from_rfc3339(&row.get::<String, _>("updated_at"))
-            .unwrap()
-            .with_timezone(&Utc),
+            .ok()
+            .map(|dt| dt.with_timezone(&Utc))
+            .unwrap_or_else(Utc::now),
     };
 
     Ok(HttpResponse::Ok().json(template))

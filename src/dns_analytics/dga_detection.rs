@@ -322,45 +322,45 @@ impl DgaDetector {
         domain_len: usize,
     ) -> (f64, DgaConfidence) {
         let mut score = 0.0;
-        let mut factors = 0;
+        let mut _factors = 0; // Used for future weighted scoring
 
         // High entropy is suspicious (weight: 25%)
         if entropy > self.entropy_threshold {
             let entropy_factor = ((entropy - self.entropy_threshold) / 2.0).min(1.0);
             score += entropy_factor * 0.25;
         }
-        factors += 1;
+        _factors += 1;
 
         // High consonant ratio is suspicious (weight: 15%)
         if consonant_ratio > self.max_consonant_ratio {
             let consonant_factor = ((consonant_ratio - self.max_consonant_ratio) / 0.3).min(1.0);
             score += consonant_factor * 0.15;
         }
-        factors += 1;
+        _factors += 1;
 
         // High digit ratio is suspicious (weight: 10%)
         if digit_ratio > 0.3 {
             score += ((digit_ratio - 0.3) / 0.7).min(1.0) * 0.10;
         }
-        factors += 1;
+        _factors += 1;
 
         // Low n-gram score is suspicious (weight: 25%)
         if ngram_score < 0.3 {
             score += (1.0 - ngram_score / 0.3) * 0.25;
         }
-        factors += 1;
+        _factors += 1;
 
         // Low dictionary score is suspicious (weight: 15%)
         if dictionary_score < 0.2 {
             score += (1.0 - dictionary_score / 0.2) * 0.15;
         }
-        factors += 1;
+        _factors += 1;
 
         // Abnormal length is suspicious (weight: 10%)
         if length_score < 0.5 {
             score += (1.0 - length_score / 0.5) * 0.10;
         }
-        factors += 1;
+        _factors += 1;
 
         // Normalize score
         let probability = score.min(1.0);

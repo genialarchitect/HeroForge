@@ -1,11 +1,9 @@
 import React, { useState } from 'react';
 import {
-  AlertTriangle,
   ChevronDown,
   ChevronUp,
   Clock,
   Target,
-  TrendingUp,
 } from 'lucide-react';
 import type { AIVulnerabilityScore } from '../../types';
 import RiskScoreCard from './RiskScoreCard';

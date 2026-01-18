@@ -676,8 +676,8 @@ mod tests {
         assert_eq!(device.connections.len(), 1);
     }
 
-    #[test]
-    fn test_arf_report_xml_generation() {
+    #[tokio::test]
+    async fn test_arf_report_xml_generation() {
         let mut report = ArfReport::default();
         report.add_asset(ArfAsset::new_computing_device(
             "test-host",
@@ -686,7 +686,7 @@ mod tests {
         ));
 
         // Just ensure it doesn't panic - full XML validation would need schema
-        let pool = SqlitePool::connect_lazy("sqlite::memory:").unwrap();
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
         let generator = ArfGenerator::new(&pool);
         let xml = generator.to_xml(&report).unwrap();
         assert!(xml.contains("test-host"));

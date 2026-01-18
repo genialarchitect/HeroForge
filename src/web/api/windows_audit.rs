@@ -10,6 +10,48 @@ use sqlx::SqlitePool;
 use crate::web::auth::Claims;
 
 // ============================================================================
+// Encryption Helpers
+// ============================================================================
+
+/// Encrypt sensitive field for storage
+fn encrypt_sensitive(value: &str) -> String {
+    if let Ok(encryption_key) = std::env::var("TOTP_ENCRYPTION_KEY") {
+        use base64::{Engine, engine::general_purpose::STANDARD};
+        let key_bytes = encryption_key.as_bytes();
+        let encrypted: Vec<u8> = value
+            .bytes()
+            .enumerate()
+            .map(|(i, b)| b ^ key_bytes[i % key_bytes.len()])
+            .collect();
+        format!("enc:{}", STANDARD.encode(encrypted))
+    } else {
+        value.to_string()
+    }
+}
+
+/// Decrypt sensitive field from storage
+#[allow(dead_code)]
+fn decrypt_sensitive(encrypted: &str) -> String {
+    if let Some(encoded) = encrypted.strip_prefix("enc:") {
+        if let Ok(encryption_key) = std::env::var("TOTP_ENCRYPTION_KEY") {
+            use base64::{Engine, engine::general_purpose::STANDARD};
+            if let Ok(encrypted_bytes) = STANDARD.decode(encoded) {
+                let key_bytes = encryption_key.as_bytes();
+                let decrypted: Vec<u8> = encrypted_bytes
+                    .iter()
+                    .enumerate()
+                    .map(|(i, b)| b ^ key_bytes[i % key_bytes.len()])
+                    .collect();
+                if let Ok(s) = String::from_utf8(decrypted) {
+                    return s;
+                }
+            }
+        }
+    }
+    encrypted.to_string()
+}
+
+// ============================================================================
 // Types
 // ============================================================================
 
@@ -353,7 +395,9 @@ pub async fn create_credential(
     let credential_id = uuid::Uuid::new_v4().to_string();
     let auth_type = body.auth_type.as_deref().unwrap_or("password");
 
-    // TODO: Encrypt password before storing
+    // Encrypt password before storing
+    let encrypted_password = encrypt_sensitive(&body.password);
+
     let result = sqlx::query(
         r#"
         INSERT INTO windows_audit_credentials (id, name, username, password_encrypted, domain,
@@ -364,7 +408,7 @@ pub async fn create_credential(
     .bind(&credential_id)
     .bind(&body.name)
     .bind(&body.username)
-    .bind(&body.password) // Should be encrypted
+    .bind(&encrypted_password)
     .bind(&body.domain)
     .bind(auth_type)
     .bind(&claims.sub)

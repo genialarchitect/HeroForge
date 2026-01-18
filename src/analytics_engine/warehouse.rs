@@ -678,6 +678,7 @@ impl WarehouseClient {
         let addr = format!("{}:{}", host, port);
 
         if use_tls {
+            #[allow(unexpected_cfgs)]
             #[cfg(feature = "native-tls")]
             {
                 use native_tls::TlsConnector;
@@ -699,6 +700,7 @@ impl WarehouseClient {
                 return Ok(response);
             }
 
+            #[allow(unexpected_cfgs)]
             #[cfg(not(feature = "native-tls"))]
             {
                 return Err(anyhow::anyhow!("TLS not available - compile with native-tls feature"));

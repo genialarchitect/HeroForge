@@ -1,15 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Settings,
   Server,
   Network,
-  Zap,
-  Shield,
   Save,
   X,
-  Plus,
-  Trash2,
-  Globe,
 } from 'lucide-react';
 import { Button } from '../ui/Button';
 import type {
@@ -17,8 +12,6 @@ import type {
   CreateMeshConfigRequest,
   UpdateMeshConfigRequest,
   AgentMeshConfig,
-  AGENT_CAPABILITIES,
-  NETWORK_ZONES,
 } from '../../types/agents';
 
 interface AgentConfigProps {
@@ -33,36 +26,6 @@ interface ClusterConfigFormProps {
   config: Partial<ClusterConfig>;
   onChange: (config: Partial<ClusterConfig>) => void;
 }
-
-// Predefined capabilities
-const CAPABILITIES: (typeof AGENT_CAPABILITIES)[number][] = [
-  'tcp_scan',
-  'udp_scan',
-  'syn_scan',
-  'service_detection',
-  'os_fingerprint',
-  'vuln_scan',
-  'web_scan',
-  'dns_scan',
-  'smb_enumeration',
-  'ssh_enumeration',
-  'snmp_enumeration',
-  'ldap_enumeration',
-  'container_scan',
-  'iac_scan',
-];
-
-// Predefined network zones
-const ZONES: (typeof NETWORK_ZONES)[number][] = [
-  'internal',
-  'dmz',
-  'external',
-  'cloud-aws',
-  'cloud-azure',
-  'cloud-gcp',
-  'on-premise',
-  'vpn',
-];
 
 const ClusterConfigForm: React.FC<ClusterConfigFormProps> = ({ config, onChange }) => {
   return (

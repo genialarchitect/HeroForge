@@ -35,6 +35,7 @@ mod dr;
 mod email;
 mod email_validation;
 mod event_bus;
+mod findings;
 mod forensics;
 mod fuzzing;
 mod hardening;
@@ -100,6 +101,9 @@ mod performance;
 mod analytics_engine;
 mod intelligence_platform;
 mod subscriptions;
+mod methodology;
+mod legal_documents;
+mod passive_recon;
 
 use types::{OutputFormat, ScanConfig, ScanType};
 

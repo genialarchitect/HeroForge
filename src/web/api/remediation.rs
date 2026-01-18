@@ -596,6 +596,130 @@ pub async fn get_dashboard(
 }
 
 // ============================================================================
+// AI Remediation Roadmap Endpoints
+// ============================================================================
+
+use std::sync::Arc;
+use crate::ai::{GenerateRoadmapRequest, RemediationPlanner};
+
+/// Request to generate a roadmap
+#[derive(Debug, Deserialize)]
+pub struct CreateRoadmapRequest {
+    pub scan_id: String,
+    pub hours_per_week: Option<u32>,
+    pub available_resources: Option<u32>,
+    pub include_low_severity: Option<bool>,
+    pub max_weeks: Option<u32>,
+}
+
+/// Generate a remediation roadmap for a scan
+pub async fn generate_roadmap(
+    pool: web::Data<SqlitePool>,
+    body: web::Json<CreateRoadmapRequest>,
+    _claims: web::ReqData<auth::Claims>,
+) -> HttpResponse {
+    let planner = RemediationPlanner::new(Arc::new(pool.get_ref().clone()));
+
+    let request = GenerateRoadmapRequest {
+        scan_id: body.scan_id.clone(),
+        start_date: None,
+        hours_per_week: body.hours_per_week,
+        available_resources: body.available_resources,
+        include_low_severity: body.include_low_severity,
+        max_weeks: body.max_weeks,
+    };
+
+    match planner.generate_roadmap(request).await {
+        Ok(roadmap) => HttpResponse::Ok().json(serde_json::json!({
+            "roadmap": roadmap,
+            "message": "Roadmap generated successfully"
+        })),
+        Err(e) => {
+            log::error!("Failed to generate roadmap: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to generate roadmap",
+                "details": e.to_string()
+            }))
+        }
+    }
+}
+
+/// Get a specific roadmap by ID
+pub async fn get_roadmap(
+    pool: web::Data<SqlitePool>,
+    path: web::Path<String>,
+    _claims: web::ReqData<auth::Claims>,
+) -> HttpResponse {
+    let roadmap_id = path.into_inner();
+    let planner = RemediationPlanner::new(Arc::new(pool.get_ref().clone()));
+
+    match planner.get_roadmap(&roadmap_id).await {
+        Ok(Some(roadmap)) => HttpResponse::Ok().json(serde_json::json!({
+            "roadmap": roadmap
+        })),
+        Ok(None) => HttpResponse::NotFound().json(serde_json::json!({
+            "error": "Roadmap not found"
+        })),
+        Err(e) => {
+            log::error!("Failed to get roadmap: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to get roadmap"
+            }))
+        }
+    }
+}
+
+/// Get all roadmaps for a scan
+pub async fn get_roadmaps_for_scan(
+    pool: web::Data<SqlitePool>,
+    path: web::Path<String>,
+    _claims: web::ReqData<auth::Claims>,
+) -> HttpResponse {
+    let scan_id = path.into_inner();
+    let planner = RemediationPlanner::new(Arc::new(pool.get_ref().clone()));
+
+    match planner.get_roadmaps_for_scan(&scan_id).await {
+        Ok(roadmaps) => HttpResponse::Ok().json(serde_json::json!({
+            "roadmaps": roadmaps,
+            "count": roadmaps.len(),
+            "scan_id": scan_id
+        })),
+        Err(e) => {
+            log::error!("Failed to get roadmaps for scan: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to get roadmaps"
+            }))
+        }
+    }
+}
+
+/// Delete a roadmap
+pub async fn delete_roadmap(
+    pool: web::Data<SqlitePool>,
+    path: web::Path<String>,
+    _claims: web::ReqData<auth::Claims>,
+) -> HttpResponse {
+    let roadmap_id = path.into_inner();
+    let planner = RemediationPlanner::new(Arc::new(pool.get_ref().clone()));
+
+    match planner.delete_roadmap(&roadmap_id).await {
+        Ok(true) => HttpResponse::Ok().json(serde_json::json!({
+            "message": "Roadmap deleted successfully",
+            "roadmap_id": roadmap_id
+        })),
+        Ok(false) => HttpResponse::NotFound().json(serde_json::json!({
+            "error": "Roadmap not found"
+        })),
+        Err(e) => {
+            log::error!("Failed to delete roadmap: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to delete roadmap"
+            }))
+        }
+    }
+}
+
+// ============================================================================
 // Route Configuration
 // ============================================================================
 
@@ -628,6 +752,11 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/escalations/{id}/acknowledge", web::post().to(acknowledge))
             .route("/escalations/pending", web::get().to(get_my_escalations))
             // Dashboard
-            .route("/dashboard", web::get().to(get_dashboard)),
+            .route("/dashboard", web::get().to(get_dashboard))
+            // AI Remediation Roadmaps
+            .route("/roadmaps", web::post().to(generate_roadmap))
+            .route("/roadmaps/{id}", web::get().to(get_roadmap))
+            .route("/roadmaps/{id}", web::delete().to(delete_roadmap))
+            .route("/roadmaps/scan/{scan_id}", web::get().to(get_roadmaps_for_scan)),
     );
 }
