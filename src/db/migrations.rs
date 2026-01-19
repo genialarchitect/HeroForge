@@ -25521,6 +25521,20 @@ async fn seed_subscription_tiers(pool: &SqlitePool) -> Result<()> {
     let tiers: Vec<(&str, &str, &str, Option<i32>, Option<i32>, i32, i32, i32, i32, i32, &str, i32)> = vec![
         // (name, display_name, description, monthly_cents, yearly_cents, max_users, max_scans, max_assets, max_reports, max_portals, feature_flags, sort_order)
         (
+            "free",
+            "Free",
+            "Get started with basic security scanning - no credit card required",
+            None,            // Free
+            None,
+            1,               // max_users
+            3,               // max_scans_per_day (effectively 3/month for light usage)
+            10,              // max_assets
+            3,               // max_reports_per_month
+            0,               // max_customer_portals
+            r#"{"scanning": true, "reporting": true, "scheduling": false, "team_management": false, "crm": false, "api_access": false, "custom_branding": false}"#,
+            0
+        ),
+        (
             "solo",
             "Solo",
             "Perfect for individual security professionals and freelancers",
@@ -25611,6 +25625,7 @@ async fn seed_subscription_tiers(pool: &SqlitePool) -> Result<()> {
 
     // Seed tier-specific roles
     let tier_roles: Vec<(&str, &str, &str)> = vec![
+        ("free_user", "Free User", "Limited scanning for evaluation - 3 scans per day"),
         ("solo_user", "Solo User", "Basic scanning and reporting for individual users"),
         ("professional_user", "Professional User", "Scanning, reporting, scheduling, and team features"),
         ("team_user", "Team User", "Full access including CRM and customer portals"),

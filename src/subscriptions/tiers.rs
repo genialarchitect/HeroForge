@@ -110,11 +110,12 @@ pub async fn get_tier_by_name(pool: &SqlitePool, name: &str) -> Result<Option<Su
 /// Get the role name for a given tier
 pub fn get_role_for_tier(tier_name: &str) -> &'static str {
     match tier_name {
+        "free" => "free_user",
         "solo" => "solo_user",
         "professional" => "professional_user",
         "team" => "team_user",
         "enterprise" => "enterprise_user",
-        _ => "solo_user", // Default fallback
+        _ => "free_user", // Default fallback to free tier
     }
 }
 
@@ -194,11 +195,12 @@ mod tests {
 
     #[test]
     fn test_role_for_tier() {
+        assert_eq!(get_role_for_tier("free"), "free_user");
         assert_eq!(get_role_for_tier("solo"), "solo_user");
         assert_eq!(get_role_for_tier("professional"), "professional_user");
         assert_eq!(get_role_for_tier("team"), "team_user");
         assert_eq!(get_role_for_tier("enterprise"), "enterprise_user");
-        assert_eq!(get_role_for_tier("unknown"), "solo_user");
+        assert_eq!(get_role_for_tier("unknown"), "free_user");
     }
 
     #[test]
