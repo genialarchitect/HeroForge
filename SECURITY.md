@@ -1,12 +1,5 @@
 # Security Policy
 
-## Supported Versions
-
-| Version | Supported          |
-| ------- | ------------------ |
-| 1.x.x   | :white_check_mark: |
-| < 1.0   | :x:                |
-
 ## Reporting a Vulnerability
 
 The HeroForge team takes security vulnerabilities seriously. We appreciate your efforts to responsibly disclose your findings.
@@ -15,80 +8,145 @@ The HeroForge team takes security vulnerabilities seriously. We appreciate your 
 
 **Please DO NOT report security vulnerabilities through public GitHub issues.**
 
-Instead, please report them via one of the following methods:
+Instead, please report them via email to:
 
-1. **Email**: Send details to [security@heroforge.dev](mailto:security@heroforge.dev)
-2. **GitHub Security Advisories**: Use [GitHub's private vulnerability reporting](https://github.com/genialarchitect/HeroForge/security/advisories/new)
+**security@heroforge.io**
 
-### What to Include
+Include the following information in your report:
 
-Please include as much of the following information as possible:
-
-- Type of vulnerability (e.g., buffer overflow, injection, authentication bypass)
+- Type of vulnerability (e.g., SQL injection, XSS, authentication bypass)
 - Full paths of source file(s) related to the vulnerability
-- Location of the affected source code (tag/branch/commit or direct URL)
 - Step-by-step instructions to reproduce the issue
 - Proof-of-concept or exploit code (if possible)
-- Impact assessment and potential attack scenarios
-
-### Response Timeline
-
-- **Initial Response**: Within 48 hours of submission
-- **Status Update**: Within 7 days with an evaluation of the report
-- **Resolution Target**: Critical vulnerabilities within 30 days; others within 90 days
+- Impact assessment of the vulnerability
+- Any potential mitigations you've identified
 
 ### What to Expect
 
-1. **Acknowledgment**: We will acknowledge receipt of your vulnerability report
-2. **Communication**: We will keep you informed of our progress
-3. **Credit**: We will credit you in our security advisories (unless you prefer anonymity)
-4. **No Legal Action**: We will not pursue legal action against researchers who follow this policy
+| Timeline | Action |
+|----------|--------|
+| 24 hours | Initial acknowledgment of your report |
+| 72 hours | Preliminary assessment and severity rating |
+| 7 days | Detailed response with remediation plan |
+| 90 days | Target resolution for critical/high severity issues |
+
+We will keep you informed of our progress throughout the process.
 
 ### Scope
 
-This security policy applies to:
+The following are **in scope** for security reports:
 
-- The HeroForge core application (`src/`)
-- Official Docker images and deployment configurations
-- The web frontend (`frontend/`)
-- Official documentation
+- HeroForge core application (Rust backend)
+- Web dashboard (React frontend)
+- Authentication and authorization systems
+- API endpoints
+- Database interactions
+- Docker container configuration
+- CI/CD pipeline security
 
-### Out of Scope
+The following are **out of scope**:
 
-The following are **not** considered vulnerabilities in HeroForge:
-
-- Vulnerabilities in third-party dependencies (please report these to the respective maintainers)
-- Issues requiring physical access to a user's device
+- Third-party services and integrations (report to respective vendors)
 - Social engineering attacks
-- Denial of service attacks against HeroForge infrastructure
-- Issues in unsupported versions
+- Physical security
+- Denial of service attacks
+- Issues in dependencies (report upstream, but notify us)
 
-### Responsible Disclosure
+### Safe Harbor
 
-We kindly ask that you:
+We consider security research conducted in accordance with this policy to be:
 
-- Give us reasonable time to address the issue before public disclosure
-- Make a good faith effort to avoid privacy violations, data destruction, and service disruption
-- Do not access or modify data that does not belong to you
+- Authorized concerning any applicable anti-hacking laws
+- Authorized concerning any relevant anti-circumvention laws
+- Exempt from restrictions in our Terms of Service that would interfere with conducting security research
 
-## Security Best Practices for Users
+We will not pursue civil action or initiate a complaint to law enforcement for accidental, good-faith violations of this policy.
 
-Since HeroForge is a security assessment tool, please ensure you:
+### Recognition
 
-1. **Only scan authorized networks** - Unauthorized scanning may be illegal
-2. **Secure your installation** - Protect API keys and scan results
-3. **Keep HeroForge updated** - Run the latest version for security fixes
-4. **Review scan configurations** - Avoid unintended aggressive scanning
-5. **Protect scan outputs** - Results may contain sensitive network information
+We maintain a [Security Hall of Fame](#hall-of-fame) to recognize researchers who have helped improve HeroForge security.
 
-## Security Features
+To be eligible for recognition:
+- Be the first to report a unique vulnerability
+- Allow reasonable time for remediation before disclosure
+- Not exploit the vulnerability beyond proof-of-concept
+- Not access or modify other users' data
 
-HeroForge includes several security features:
+### Severity Ratings
 
-- Database encryption for stored credentials and results
-- Multi-factor authentication (MFA) support
-- Rate limiting and scan throttling
-- Audit logging of all operations
-- Secure WebSocket connections for real-time updates
+We use CVSS v3.1 to assess vulnerability severity:
 
-For details, see our [Security Whitepaper](legal/SECURITY_WHITEPAPER.md).
+| Severity | CVSS Score | Response Time |
+|----------|------------|---------------|
+| Critical | 9.0 - 10.0 | 24-48 hours |
+| High | 7.0 - 8.9 | 7 days |
+| Medium | 4.0 - 6.9 | 30 days |
+| Low | 0.1 - 3.9 | 90 days |
+
+### Supported Versions
+
+| Version | Supported |
+|---------|-----------|
+| 0.2.x | :white_check_mark: |
+| 0.1.x | :x: |
+| < 0.1 | :x: |
+
+We recommend always running the latest version of HeroForge.
+
+## Security Best Practices
+
+When deploying HeroForge, follow these security recommendations:
+
+### Environment Variables
+
+```bash
+# Generate strong secrets
+JWT_SECRET=$(openssl rand -hex 32)
+DATABASE_ENCRYPTION_KEY=$(openssl rand -hex 32)
+TOTP_ENCRYPTION_KEY=$(openssl rand -hex 32)
+```
+
+**Never commit secrets to version control.**
+
+### Network Security
+
+- Deploy behind a reverse proxy (nginx, Traefik) with TLS
+- Use firewall rules to restrict access
+- Enable rate limiting
+- Consider VPN for internal deployments
+
+### Authentication
+
+- Enable MFA for all users
+- Use strong password policies
+- Rotate API keys regularly
+- Review audit logs periodically
+
+### Database
+
+- Enable SQLCipher encryption for sensitive deployments
+- Regular backups with encryption
+- Restrict database file permissions
+
+### Container Security
+
+- Run as non-root user (default in our Dockerfile)
+- Use read-only filesystem where possible
+- Limit container capabilities
+- Keep base images updated
+
+## Hall of Fame
+
+We thank the following security researchers for their responsible disclosures:
+
+*No submissions yet. Be the first!*
+
+---
+
+## Contact
+
+- **Security Reports**: security@heroforge.io
+- **PGP Key**: [Coming soon]
+- **General Inquiries**: support@heroforge.io
+
+Thank you for helping keep HeroForge and our users safe!

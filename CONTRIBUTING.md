@@ -1,185 +1,317 @@
 # Contributing to HeroForge
 
-Thank you for your interest in contributing to HeroForge! This document provides guidelines for contributing to this authorized security testing tool.
+Thank you for your interest in contributing to HeroForge! This document provides guidelines and instructions for contributing.
 
-## Ethical Guidelines
+## Table of Contents
 
-**Before contributing, please understand:**
+- [Code of Conduct](#code-of-conduct)
+- [Getting Started](#getting-started)
+- [Development Setup](#development-setup)
+- [Making Changes](#making-changes)
+- [Pull Request Process](#pull-request-process)
+- [Coding Standards](#coding-standards)
+- [Testing](#testing)
+- [Documentation](#documentation)
 
-HeroForge is designed exclusively for **authorized security assessments**, including:
-- Licensed penetration testing engagements
-- Authorized bug bounty programs
-- Security research in controlled environments
-- Network administration on systems you own or have permission to test
+## Code of Conduct
 
-All contributions must align with these ethical standards. We do not accept contributions that:
-- Facilitate unauthorized access to systems
-- Bypass security controls for malicious purposes
-- Target specific organizations or individuals without authorization
-- Violate responsible disclosure practices
+This project adheres to the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code. Please report unacceptable behavior to conduct@heroforge.io.
 
 ## Getting Started
 
 ### Prerequisites
 
-- Rust 1.70 or higher
-- Git
-- A development environment (VS Code, IntelliJ IDEA, or similar)
-- Familiarity with network security concepts
+- **Rust**: 1.70+ (edition 2021)
+- **Node.js**: 18+ (for frontend)
+- **Docker**: 24.0+ (for containerized development)
+- **SQLite**: 3.x (or let the app create it)
 
-### Setting Up Your Development Environment
+### Fork and Clone
 
-1. **Fork the repository**
+1. Fork the repository on GitHub
+2. Clone your fork:
    ```bash
-   # Clone your fork
    git clone https://github.com/YOUR_USERNAME/HeroForge.git
    cd HeroForge
    ```
-
-2. **Install dependencies**
+3. Add upstream remote:
    ```bash
-   cargo build
+   git remote add upstream https://github.com/genialarchitect/HeroForge.git
    ```
 
-3. **Run tests**
+## Development Setup
+
+### Backend (Rust)
+
+```bash
+# Install Rust if needed
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
+# Build the project
+cargo build
+
+# Run tests
+cargo test
+
+# Run with development settings
+JWT_SECRET=$(openssl rand -hex 32) cargo run -- serve
+```
+
+### Frontend (React/TypeScript)
+
+```bash
+cd frontend
+
+# Install dependencies
+npm install
+
+# Start development server (proxies to backend on :8080)
+npm run dev
+
+# Build for production
+npm run build
+```
+
+### Full Stack Development
+
+```bash
+# Terminal 1: Backend
+JWT_SECRET=dev-secret-key cargo run -- serve --bind 127.0.0.1:8080
+
+# Terminal 2: Frontend
+cd frontend && npm run dev
+```
+
+Access the app at `http://localhost:5173` (Vite dev server).
+
+### Docker Development
+
+```bash
+# Build and run with Docker Compose
+docker compose up --build
+
+# Or use the development compose file
+docker compose -f docker-compose.dev.yml up
+```
+
+## Making Changes
+
+### Branch Naming
+
+Use descriptive branch names:
+
+| Type | Pattern | Example |
+|------|---------|---------|
+| Feature | `feat/description` | `feat/add-nmap-import` |
+| Bug fix | `fix/description` | `fix/websocket-timeout` |
+| Documentation | `docs/description` | `docs/api-examples` |
+| Refactor | `refactor/description` | `refactor/scanner-module` |
+
+### Commit Messages
+
+Follow [Conventional Commits](https://www.conventionalcommits.org/):
+
+```
+<type>(<scope>): <description>
+
+[optional body]
+
+[optional footer]
+```
+
+**Types:**
+- `feat`: New feature
+- `fix`: Bug fix
+- `docs`: Documentation only
+- `style`: Formatting, no code change
+- `refactor`: Code change that neither fixes a bug nor adds a feature
+- `perf`: Performance improvement
+- `test`: Adding or updating tests
+- `chore`: Maintenance tasks
+
+**Examples:**
+```
+feat(scanner): add UDP protocol support
+
+fix(auth): resolve JWT expiration edge case
+
+docs(api): add examples for scan endpoints
+```
+
+### Keep Commits Focused
+
+- One logical change per commit
+- Atomic commits that can be reverted independently
+- Include relevant tests with feature commits
+
+## Pull Request Process
+
+### Before Submitting
+
+1. **Sync with upstream:**
+   ```bash
+   git fetch upstream
+   git rebase upstream/main
+   ```
+
+2. **Run the full test suite:**
    ```bash
    cargo test
+   cd frontend && npm run lint && npm run build
    ```
 
-4. **Create a branch**
+3. **Check formatting and lints:**
    ```bash
-   git checkout -b feature/your-feature-name
+   cargo fmt -- --check
+   cargo clippy --all-targets -- -D warnings
    ```
 
-## How to Contribute
+4. **Update documentation** if needed
 
-### Reporting Bugs
+### Submitting a PR
 
-Before submitting a bug report:
-1. Check existing issues to avoid duplicates
-2. Collect relevant information (OS, Rust version, error messages)
+1. Push your branch to your fork
+2. Open a Pull Request against `main`
+3. Fill out the PR template completely
+4. Link any related issues
 
-When submitting:
-- Use a clear, descriptive title
-- Describe steps to reproduce the issue
-- Include expected vs. actual behavior
-- Add relevant logs or screenshots
+### PR Requirements
 
-### Suggesting Features
+- [ ] All CI checks pass
+- [ ] Code follows project style guidelines
+- [ ] Tests added/updated for changes
+- [ ] Documentation updated if needed
+- [ ] No merge conflicts
+- [ ] Reviewed by at least one maintainer
 
-We welcome feature suggestions that enhance HeroForge's capabilities for **authorized security testing**. Please include:
-- Clear description of the feature
-- Use case and benefits for legitimate security assessments
-- Potential implementation approach (if known)
+### Review Process
 
-### Submitting Code
-
-#### Pull Request Process
-
-1. **Ensure your code follows our standards**
-   - Run `cargo fmt` for formatting
-   - Run `cargo clippy` for linting
-   - All tests must pass (`cargo test`)
-
-2. **Write meaningful commit messages**
-   ```
-   feat: add TCP SYN scan capability for authorized assessments
-
-   - Implements raw socket SYN scanning
-   - Adds rate limiting to prevent network disruption
-   - Includes documentation for proper usage
-   ```
-
-3. **Update documentation** if your changes affect:
-   - Command-line interface
-   - Configuration options
-   - API endpoints
-   - Security considerations
-
-4. **Submit your pull request**
-   - Reference any related issues
-   - Describe what your changes do
-   - Explain testing performed
-   - Confirm ethical compliance
-
-#### Code Review
-
-All submissions require review. Reviewers will check for:
-- Code quality and style consistency
-- Test coverage
-- Security implications
-- Documentation completeness
-- Alignment with ethical use guidelines
+1. Maintainers will review within 3-5 business days
+2. Address feedback and push updates
+3. Once approved, a maintainer will merge
 
 ## Coding Standards
 
-### Rust Style Guide
+### Rust
 
 - Follow the [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/)
-- Use `cargo fmt` with default settings
-- Address all `cargo clippy` warnings
-- Write documentation comments for public APIs
+- Use `rustfmt` for formatting (default config)
+- Zero `clippy` warnings with `-D warnings`
+- Prefer `anyhow::Error` for error handling in async code
+- Document public APIs with `///` doc comments
 
-### Security Considerations
+```rust
+/// Performs a TCP connect scan on the specified targets.
+///
+/// # Arguments
+///
+/// * `targets` - List of IP addresses or CIDR ranges to scan
+/// * `ports` - Port range specification (e.g., "1-1000" or "80,443,8080")
+///
+/// # Returns
+///
+/// Returns a `ScanResult` containing discovered hosts and services.
+///
+/// # Errors
+///
+/// Returns an error if the network is unreachable or permissions are insufficient.
+pub async fn tcp_connect_scan(
+    targets: &[IpAddr],
+    ports: &str,
+) -> Result<ScanResult> {
+    // Implementation
+}
+```
 
-When contributing security-related code:
+### TypeScript/React
 
-1. **Include safeguards** - Add rate limiting, timeouts, and scope restrictions
-2. **Document responsibly** - Explain legitimate use cases without providing attack tutorials
-3. **Consider impact** - Ensure features cannot easily be weaponized
-4. **Add warnings** - Include appropriate disclaimers in user-facing output
+- Follow the existing ESLint configuration
+- Use TypeScript strict mode
+- Prefer functional components with hooks
+- Use Zustand for global state, React Query for server state
 
-### Testing Requirements
+### SQL
 
-- Unit tests for new functionality
-- Integration tests for scanning features
-- **Test only against authorized targets** (localhost, test networks, or dedicated lab environments)
-- Never include real IP addresses or hostnames in test code
+- Use parameterized queries (never string concatenation)
+- Migrations are auto-applied; add new ones in `db/migrations.rs`
+
+## Testing
+
+### Running Tests
+
+```bash
+# All tests
+cargo test
+
+# Specific module
+cargo test scanner::
+
+# With output
+cargo test -- --nocapture
+
+# Sequential (for DB tests)
+cargo test -- --test-threads=1
+```
+
+### Writing Tests
+
+- Unit tests go in `#[cfg(test)]` modules within source files
+- Integration tests go in `tests/` directory
+- Use `#[serial_test::serial]` for tests that need database isolation
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_port_parser() {
+        let ports = parse_ports("80,443,8080").unwrap();
+        assert_eq!(ports, vec![80, 443, 8080]);
+    }
+
+    #[tokio::test]
+    async fn test_scan_localhost() {
+        let result = tcp_connect_scan(&["127.0.0.1".parse().unwrap()], "80")
+            .await
+            .unwrap();
+        // Assertions
+    }
+}
+```
+
+### Test Coverage
+
+We aim for >50% code coverage. Check coverage locally:
+
+```bash
+cargo install cargo-tarpaulin
+cargo tarpaulin --out Html
+```
 
 ## Documentation
 
-Good documentation helps users understand how to use HeroForge responsibly:
+### Code Documentation
 
-- Document all command-line options
-- Provide usage examples for legitimate scenarios
-- Include authorization reminders where appropriate
-- Keep the README and docs/ folder up to date
+- All public functions, structs, and modules need doc comments
+- Include examples where helpful
+- Document error conditions
 
-## Community
+### User Documentation
 
-### Communication Channels
+- Update `README.md` for user-facing changes
+- API changes should update `docs/` files
+- New features need usage examples
 
-- **GitHub Issues**: Bug reports and feature requests
-- **GitHub Discussions**: General questions and community chat
-- **Pull Requests**: Code contributions and reviews
+### Changelog
 
-### Code of Conduct
-
-All contributors must adhere to our [Code of Conduct](CODE_OF_CONDUCT.md), which emphasizes:
-- Ethical use of security tools
-- Respectful community interaction
-- Legal compliance in all activities
-
-## Recognition
-
-Contributors are recognized in:
-- Release notes for significant contributions
-- The CONTRIBUTORS file for ongoing participation
-- Security advisories for responsible vulnerability disclosure
-
-## Legal Notice
-
-By contributing to HeroForge, you agree that:
-
-1. Your contributions are your original work or properly attributed
-2. You grant the project a license to use your contributions under the MIT License
-3. Your contributions are intended for authorized security testing purposes
-4. You will not contribute code designed for malicious use
+- Add entries to `CHANGELOG.md` under `[Unreleased]`
+- Follow Keep a Changelog format
 
 ## Questions?
 
-If you have questions about contributing, please:
-- Open a GitHub Discussion
-- Email [contribute@heroforge.dev](mailto:contribute@heroforge.dev)
+- **Discord**: [Coming soon]
+- **Discussions**: Use GitHub Discussions for questions
+- **Issues**: For bugs and feature requests
 
-Thank you for helping make HeroForge a valuable tool for the security community!
+Thank you for contributing to HeroForge!

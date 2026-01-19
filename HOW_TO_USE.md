@@ -77,11 +77,11 @@ heroforge --help
 
 Visit: **https://heroforge.genialarchitect.io**
 
-**Default Admin Credentials:**
-- Username: `admin`
-- Password: `SecurePass123`
-
-**⚠️ Change the default password immediately after first login!**
+**Admin Account Setup:**
+Create your admin account on first launch. Set a strong password following these requirements:
+- Minimum 12 characters
+- Mix of uppercase, lowercase, numbers, and symbols
+- Store securely in a password manager
 
 ---
 

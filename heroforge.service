@@ -1,0 +1,40 @@
+[Unit]
+Description=HeroForge Network Reconnaissance Tool
+Documentation=https://github.com/genialarchitect/HeroForge
+After=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/root/Development/HeroForge
+
+# Environment variables
+Environment="DATABASE_URL=sqlite:///root/Development/HeroForge/heroforge.db"
+Environment="RUST_LOG=info"
+# Add your JWT secret (required)
+# Environment="JWT_SECRET=your-secret-key-here"
+
+# Service executable
+ExecStart=/root/Development/HeroForge/target/release/heroforge serve --bind 127.0.0.1:8080
+
+# Restart policy
+Restart=on-failure
+RestartSec=5
+
+# Resource limits
+LimitNOFILE=65535
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/root/Development/HeroForge
+PrivateTmp=true
+
+# Capabilities for raw socket operations (SYN scans)
+AmbientCapabilities=CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_RAW CAP_NET_BIND_SERVICE
+
+[Install]
+WantedBy=multi-user.target

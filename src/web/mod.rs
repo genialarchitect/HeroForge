@@ -376,6 +376,8 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .route("/api-keys", web::post().to(api::api_keys::create_api_key))
                     .route("/api-keys/{id}", web::patch().to(api::api_keys::update_api_key))
                     .route("/api-keys/{id}", web::delete().to(api::api_keys::delete_api_key))
+                    // License management endpoints
+                    .configure(api::license::configure_routes)
                     // Analytics endpoints
                     .route("/analytics/summary", web::get().to(api::analytics::get_summary))
                     .route("/analytics/hosts", web::get().to(api::analytics::get_hosts_over_time))

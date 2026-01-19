@@ -40,8 +40,8 @@ sudo nginx -t
 # Install Certbot
 sudo apt install certbot python3-certbot-nginx -y
 
-# Get SSL certificate
-sudo certbot --nginx -d heroforge.genialarchitect.io
+# Get SSL certificate (replace with your domain)
+sudo certbot --nginx -d your-domain.example.com
 
 # Follow the prompts:
 # - Enter email address

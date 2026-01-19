@@ -143,6 +143,8 @@ pub mod emass;
 pub mod audit_files;
 // Legal documents module
 pub mod legal_documents;
+// License management
+pub mod license;
 // Integration sync module (bi-directional JIRA/ServiceNow)
 pub mod integration_sync;
 // Engagement templates module (quick setup)

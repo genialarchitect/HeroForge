@@ -27,7 +27,7 @@ HeroForge is a fast, concurrent network reconnaissance tool written in Rust, des
 ### Building from Source
 
 ```bash
-git clone https://github.com/yourusername/heroforge.git
+git clone https://github.com/genialarchitect/HeroForge.git
 cd heroforge
 cargo build --release
 ```

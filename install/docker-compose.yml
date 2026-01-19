@@ -30,6 +30,9 @@ services:
       - DATABASE_ENCRYPTION_KEY=${DATABASE_ENCRYPTION_KEY}
       - TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY}
 
+      # Optional: License Key (unlocks Pro/Enterprise features)
+      - HEROFORGE_LICENSE_KEY=${HEROFORGE_LICENSE_KEY:-}
+
       # Optional: AI Features (Zeus AI assistant)
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
 
