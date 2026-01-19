@@ -7,6 +7,7 @@ import Checkbox from '../ui/Checkbox';
 import Card from '../ui/Card';
 import TagInput from './TagInput';
 import TemplateSelector from './TemplateSelector';
+import UpgradePrompt from '../ui/UpgradePrompt';
 import { scanAPI, targetGroupAPI, templateAPI, vpnAPI, crmAPI, scanTagAPI, exclusionsAPI, agentAPI } from '../../services/api';
 import { useScanStore } from '../../store/scanStore';
 import { Target, Cpu, Search, Radio, Wifi, FolderOpen, Save, Zap, Radar, Globe, EyeOff, Shield, Building2, ClipboardList, Ban, Server } from 'lucide-react';
@@ -84,6 +85,9 @@ const ScanForm: React.FC = () => {
   const [scanExecutionMode, setScanExecutionMode] = useState<'local' | 'agent' | 'agent_group'>('local');
   const [selectedAgentId, setSelectedAgentId] = useState<string>('');
   const [selectedAgentGroupId, setSelectedAgentGroupId] = useState<string>('');
+  // Upgrade prompt state
+  const [showUpgradePrompt, setShowUpgradePrompt] = useState(false);
+  const [quotaInfo, setQuotaInfo] = useState<{ quotaType: string; current: number; limit: number } | null>(null);
 
   const { addScan } = useScanStore();
 
@@ -475,9 +479,17 @@ const ScanForm: React.FC = () => {
       setSelectedAgentId('');
       setSelectedAgentGroupId('');
     } catch (error: unknown) {
-      const axiosError = error as { response?: { data?: { error?: string } } };
+      const axiosError = error as { response?: { status?: number; data?: { error?: string; quota_type?: string; current?: number; limit?: number } } };
       const message = axiosError.response?.data?.error || 'Failed to start scan';
-      toast.error(message);
+
+      // Check if this is a quota limit error (429 Too Many Requests)
+      if (axiosError.response?.status === 429 && axiosError.response?.data?.quota_type) {
+        const { quota_type, current, limit } = axiosError.response.data;
+        setQuotaInfo({ quotaType: quota_type, current: current || 0, limit: limit || 0 });
+        setShowUpgradePrompt(true);
+      } else {
+        toast.error(message);
+      }
     } finally {
       setLoading(false);
     }
@@ -492,8 +504,20 @@ const ScanForm: React.FC = () => {
   };
 
   return (
-    <Card>
-      <h3 className="text-xl font-semibold text-white mb-4">Create New Scan</h3>
+    <>
+      {/* Upgrade Prompt Modal */}
+      {quotaInfo && (
+        <UpgradePrompt
+          isOpen={showUpgradePrompt}
+          onClose={() => setShowUpgradePrompt(false)}
+          quotaType={quotaInfo.quotaType}
+          current={quotaInfo.current}
+          limit={quotaInfo.limit}
+        />
+      )}
+
+      <Card>
+        <h3 className="text-xl font-semibold text-white mb-4">Create New Scan</h3>
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* Template Selector */}
         <div className="pb-4 border-b border-dark-border">
@@ -1117,7 +1141,8 @@ const ScanForm: React.FC = () => {
           Start Scan
         </Button>
       </form>
-    </Card>
+      </Card>
+    </>
   );
 };
 
