@@ -104,6 +104,7 @@ mod subscriptions;
 mod methodology;
 mod legal_documents;
 mod passive_recon;
+mod license;
 
 use types::{OutputFormat, ScanConfig, ScanType};
 
@@ -340,6 +341,25 @@ impl From<CliSeverity> for types::Severity {
 
 #[tokio::main]
 async fn main() {
+    // Initialize Sentry for error tracking (must be done first)
+    // The guard must be held for the lifetime of the application
+    let _sentry_guard = sentry::init((
+        std::env::var("SENTRY_DSN").unwrap_or_default(),
+        sentry::ClientOptions {
+            release: sentry::release_name!(),
+            environment: Some(
+                std::env::var("SENTRY_ENVIRONMENT")
+                    .unwrap_or_else(|_| "production".to_string())
+                    .into(),
+            ),
+            // Capture 100% of transactions for performance monitoring
+            traces_sample_rate: 0.1,
+            // Enable session tracking
+            auto_session_tracking: true,
+            ..Default::default()
+        },
+    ));
+
     let cli = Cli::parse();
 
     // Initialize logger
@@ -415,6 +435,31 @@ async fn main() {
         Commands::Config { path } => generate_config(path),
         Commands::Serve { database, bind } => {
             println!("{}", "Starting HeroForge Web Server...".bright_green().bold());
+
+            // Initialize license system
+            let license_key = std::env::var("HEROFORGE_LICENSE_KEY").ok();
+            match license::init_license(license_key.as_deref()) {
+                Ok(Some(lic)) => {
+                    println!("{} {} ({})",
+                        "License:".bright_white(),
+                        lic.tier.to_string().bright_green(),
+                        if lic.expires_at.is_some() {
+                            format!("expires in {} days", lic.days_until_expiry().unwrap_or(0))
+                        } else {
+                            "never expires".to_string()
+                        }
+                    );
+                }
+                Ok(None) => {
+                    println!("{} {}", "License:".bright_white(), "Free tier (no license key)".yellow());
+                }
+                Err(e) => {
+                    println!("{} {}", "License Error:".bright_red(), e);
+                    println!("{}", "Starting in Free tier mode...".yellow());
+                    let _ = license::init_license(None);
+                }
+            }
+
             println!("{} {}", "Database:".bright_white(), database.cyan());
             println!("{} {}", "Bind Address:".bright_white(), bind.cyan());
             println!("\n{}", "Access the dashboard at:".bright_white().bold());

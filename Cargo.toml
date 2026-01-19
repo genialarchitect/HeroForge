@@ -2,8 +2,13 @@
 name = "heroforge"
 version = "0.2.0"
 edition = "2021"
-authors = ["Your Pentest Team"]
+authors = ["HeroForge Security Team"]
 description = "Network triage and reconnaissance tool for penetration testing"
+repository = "https://github.com/genialarchitect/HeroForge"
+homepage = "https://heroforge.io"
+license = "MIT"
+keywords = ["security", "penetration-testing", "reconnaissance", "vulnerability-scanner"]
+categories = ["command-line-utilities", "network-programming"]
 
 [dependencies]
 # CLI and configuration
@@ -188,6 +193,7 @@ pcap = "2.2"                   # libpcap bindings for packet capture
 
 # IDN/punycode handling for domain reputation analysis
 idna = "1.0"
+sentry = "0.46.1"
 
 [dev-dependencies]
 mockito = "1.5"
