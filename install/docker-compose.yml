@@ -1,0 +1,85 @@
+version: '3.8'
+
+services:
+  heroforge:
+    image: genialarchitect/heroforge:${HEROFORGE_VERSION:-latest}
+    container_name: heroforge
+    restart: unless-stopped
+
+    # Required for network scanning capabilities
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    sysctls:
+      - net.ipv4.ip_forward=1
+      - net.ipv4.conf.all.src_valid_mark=1
+
+    ports:
+      - "${HEROFORGE_PORT:-8443}:8080"
+
+    volumes:
+      - heroforge_data:/data
+      - heroforge_reports:/app/reports
+      - heroforge_vpn:/app/vpn_configs
+
+    environment:
+      # Security (auto-generated during install if not set)
+      - JWT_SECRET=${JWT_SECRET}
+      - DATABASE_ENCRYPTION_KEY=${DATABASE_ENCRYPTION_KEY}
+      - TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY}
+
+      # Optional: AI Features (Zeus AI assistant)
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+
+      # Optional: Email notifications
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_FROM_ADDRESS=${SMTP_FROM_ADDRESS:-}
+
+      # Optional: SSO Integration
+      - SAML_IDP_METADATA_URL=${SAML_IDP_METADATA_URL:-}
+      - OAUTH_CLIENT_ID=${OAUTH_CLIENT_ID:-}
+      - OAUTH_CLIENT_SECRET=${OAUTH_CLIENT_SECRET:-}
+
+      # Optional: Cloud Security Scanning
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - AZURE_CLIENT_ID=${AZURE_CLIENT_ID:-}
+      - AZURE_CLIENT_SECRET=${AZURE_CLIENT_SECRET:-}
+      - AZURE_TENANT_ID=${AZURE_TENANT_ID:-}
+      - GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS:-}
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+    deploy:
+      resources:
+        limits:
+          cpus: '${HEROFORGE_CPU_LIMIT:-4}'
+          memory: ${HEROFORGE_MEMORY_LIMIT:-8G}
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+
+volumes:
+  heroforge_data:
+    name: heroforge_data
+  heroforge_reports:
+    name: heroforge_reports
+  heroforge_vpn:
+    name: heroforge_vpn
