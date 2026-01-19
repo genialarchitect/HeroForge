@@ -261,7 +261,11 @@ mod tests {
         let conditions = PolicyConditions {
             max_critical: Some(0),
             max_high: Some(5),
-            ..Default::default()
+            min_severity: None,
+            max_new_findings: None,
+            max_total_findings: None,
+            min_coverage: None,
+            custom_expressions: Vec::new(),
         };
 
         let details = QualityGateDetails {

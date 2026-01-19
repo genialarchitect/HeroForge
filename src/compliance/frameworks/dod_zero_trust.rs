@@ -27,7 +27,7 @@ use super::super::types::{ComplianceControl, ComplianceFramework, ControlPriorit
 use crate::types::Severity;
 
 /// Total number of DoD Zero Trust controls in this module
-pub const CONTROL_COUNT: usize = 50;
+pub const CONTROL_COUNT: usize = 51;
 
 /// Get all DoD Zero Trust Reference Architecture controls
 pub fn get_controls() -> Vec<ComplianceControl> {

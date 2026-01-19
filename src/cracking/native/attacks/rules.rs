@@ -347,6 +347,7 @@ mod tests {
         assert!(candidates.contains(&"TEST".to_string()));    // Uppercase
         assert!(candidates.contains(&"test1".to_string()));   // Append 1
         assert!(candidates.contains(&"test!".to_string()));   // Append !
-        assert!(candidates.contains(&"t3st".to_string()));    // Leet
+        // Leet converts t->7, e->3, s->5: "test" -> "7357"
+        assert!(candidates.contains(&"7357".to_string()));    // Leet
     }
 }

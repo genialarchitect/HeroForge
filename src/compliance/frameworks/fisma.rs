@@ -25,7 +25,7 @@ use super::super::types::{ComplianceControl, ComplianceFramework, ControlPriorit
 use crate::types::Severity;
 
 /// Total number of FISMA controls in this module
-pub const CONTROL_COUNT: usize = 50;
+pub const CONTROL_COUNT: usize = 52;
 
 /// FISMA impact level for system categorization
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

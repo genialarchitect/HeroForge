@@ -478,7 +478,7 @@ mod tests {
         });
 
         // NTLM hash of "password"
-        let hashes = vec!["a4f49c406510bdcab6824ee7c30fd852".to_string()];
+        let hashes = vec!["8846f7eaee8fb117ad06bdd830b7586c".to_string()];
         let results = engine.quick_crack(hashes, HashType::Ntlm).await;
 
         assert_eq!(results.len(), 1);
@@ -499,7 +499,7 @@ mod tests {
         // NTLM
         assert!(engine.verify_password(
             "password",
-            "a4f49c406510bdcab6824ee7c30fd852",
+            "8846f7eaee8fb117ad06bdd830b7586c",
             HashType::Ntlm
         ));
     }
@@ -512,6 +512,6 @@ mod tests {
         assert_eq!(hash, "5d41402abc4b2a76b9719d911017c592");
 
         let hash = engine.hash_password("password", HashType::Ntlm);
-        assert_eq!(hash, "a4f49c406510bdcab6824ee7c30fd852");
+        assert_eq!(hash, "8846f7eaee8fb117ad06bdd830b7586c");
     }
 }

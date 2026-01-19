@@ -4,7 +4,7 @@ import { AlertTriangle } from 'lucide-react';
 
 const AcceptableUsePage: React.FC = () => {
   return (
-    <LegalLayout title="Acceptable Use Policy" lastUpdated="December 24, 2024">
+    <LegalLayout title="Acceptable Use Policy" lastUpdated="January 15, 2026">
       <section id="purpose">
         <p>
           This Acceptable Use Policy ("AUP") defines the acceptable and prohibited uses of the HeroForge security

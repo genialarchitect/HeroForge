@@ -294,11 +294,13 @@ mod tests {
     #[test]
     fn test_rich_header_detection() {
         // Create minimal data with Rich header
-        let mut data = vec![0u8; 256];
-        data[0x100] = 0x52; // R
-        data[0x101] = 0x69; // i
-        data[0x102] = 0x63; // c
-        data[0x103] = 0x68; // h
+        // Rich header search range is 0x80..min(data.len(), 0x200)-4
+        // So we need at least 0x84 bytes (132), and place Rich within 0x80..0x84
+        let mut data = vec![0u8; 512];
+        data[0x80] = 0x52; // R
+        data[0x81] = 0x69; // i
+        data[0x82] = 0x63; // c
+        data[0x83] = 0x68; // h
 
         assert!(detect_rich_header(&data));
     }

@@ -115,7 +115,7 @@ const PitchDeckPage: React.FC = () => {
         <div className="h-full flex flex-col">
           <h2 className="text-5xl font-bold text-white mb-6">My Solution: All-in-One Security Platform</h2>
           <p className="text-2xl text-gray-400 mb-12">
-            Built in 3 weeks with AI assistance • 90% functional • Rust + React + ML
+            Built with AI assistance • 86+ modules • 45 compliance frameworks • Rust + React + ML
           </p>
           <div className="grid grid-cols-3 gap-8 flex-1">
             <div className="bg-gradient-to-br from-cyan-600/20 to-cyan-800/20 border border-cyan-500/30 rounded-2xl p-6 flex flex-col">
@@ -196,7 +196,7 @@ const PitchDeckPage: React.FC = () => {
           <div className="mt-8 text-center">
             <div className="inline-block bg-gradient-to-r from-cyan-600/20 to-blue-600/20 border border-cyan-500/30 rounded-xl px-8 py-4">
               <p className="text-2xl font-bold text-white">
-                60-70% cheaper than Tenable/Qualys • Features they don't offer
+                70% of pentest cost • Features competitors don't offer
               </p>
             </div>
           </div>
@@ -257,7 +257,7 @@ const PitchDeckPage: React.FC = () => {
                   <p className="text-xl text-gray-300">Test AI models for prompt injection,</p>
                   <p className="text-xl text-gray-300">jailbreaks, data leakage</p>
                   <div className="mt-6 inline-block bg-blue-500/20 border border-blue-500/30 rounded-lg px-4 py-2">
-                    <span className="text-blue-400 font-bold">69 built-in test cases</span>
+                    <span className="text-blue-400 font-bold">150+ built-in test cases</span>
                   </div>
                 </div>
               </div>
@@ -266,15 +266,15 @@ const PitchDeckPage: React.FC = () => {
             <div className="bg-gray-800 border border-green-500/30 rounded-2xl p-6 flex flex-col">
               <div className="flex items-center gap-3 mb-4">
                 <Network className="w-8 h-8 text-green-400" />
-                <h3 className="text-2xl font-bold text-white">8 "Colored Team" Modules</h3>
+                <h3 className="text-2xl font-bold text-white">86+ Security Modules</h3>
               </div>
               <div className="flex-1 bg-gray-900 rounded-xl p-6 flex items-center justify-center">
                 <div className="text-center">
                   <Target className="w-24 h-24 text-green-400 mx-auto mb-4" />
-                  <p className="text-xl text-gray-300">Red, Blue, Green, Yellow, White,</p>
-                  <p className="text-xl text-gray-300">Orange, Purple Teams + DevSecOps</p>
+                  <p className="text-xl text-gray-300">45 Compliance Frameworks • Finding Lifecycle</p>
+                  <p className="text-xl text-gray-300">Passive Recon • Full Security Operations</p>
                   <div className="mt-6 inline-block bg-green-500/20 border border-green-500/30 rounded-lg px-4 py-2">
-                    <span className="text-green-400 font-bold">Full security lifecycle</span>
+                    <span className="text-green-400 font-bold">Enterprise-grade security ops</span>
                   </div>
                 </div>
               </div>
@@ -424,9 +424,9 @@ const PitchDeckPage: React.FC = () => {
           <h2 className="text-5xl font-bold text-white mb-12">Business Model: Freemium + Land & Expand</h2>
           <div className="grid grid-cols-4 gap-6 mb-12">
             <div className="bg-gradient-to-br from-cyan-600/20 to-cyan-800/20 border border-cyan-500/30 rounded-2xl p-6 text-center">
-              <div className="text-4xl font-bold text-white mb-2">$99</div>
+              <div className="text-4xl font-bold text-white mb-2">$299</div>
               <div className="text-cyan-400 font-semibold mb-4">Solo</div>
-              <div className="text-gray-400 text-sm mb-4">Freelance pentesters</div>
+              <div className="text-gray-400 text-sm mb-4">70% of $5K pentest</div>
               <div className="text-xs text-gray-500">1 user, unlimited scans</div>
             </div>
 
@@ -434,23 +434,23 @@ const PitchDeckPage: React.FC = () => {
               <div className="absolute -top-3 left-1/2 -translate-x-1/2">
                 <span className="bg-purple-500 text-white text-xs font-bold px-3 py-1 rounded-full">Target</span>
               </div>
-              <div className="text-4xl font-bold text-white mb-2">$299</div>
+              <div className="text-4xl font-bold text-white mb-2">$899</div>
               <div className="text-purple-400 font-semibold mb-4">Professional</div>
-              <div className="text-gray-400 text-sm mb-4">Small consultancies</div>
+              <div className="text-gray-400 text-sm mb-4">70% of $15K pentest</div>
               <div className="text-xs text-gray-500">5 users, collaboration</div>
             </div>
 
             <div className="bg-gradient-to-br from-blue-600/20 to-blue-800/20 border border-blue-500/30 rounded-2xl p-6 text-center">
-              <div className="text-4xl font-bold text-white mb-2">$599</div>
+              <div className="text-4xl font-bold text-white mb-2">$1,749</div>
               <div className="text-blue-400 font-semibold mb-4">Team</div>
-              <div className="text-gray-400 text-sm mb-4">MSPs & agencies</div>
+              <div className="text-gray-400 text-sm mb-4">70% of $30K pentest</div>
               <div className="text-xs text-gray-500">15 users, customer portal</div>
             </div>
 
             <div className="bg-gradient-to-br from-green-600/20 to-green-800/20 border border-green-500/30 rounded-2xl p-6 text-center">
               <div className="text-4xl font-bold text-white mb-2">Custom</div>
               <div className="text-green-400 font-semibold mb-4">Enterprise</div>
-              <div className="text-gray-400 text-sm mb-4">Large orgs</div>
+              <div className="text-gray-400 text-sm mb-4">70% of $50K+ pentests</div>
               <div className="text-xs text-gray-500">SSO, on-prem options</div>
             </div>
           </div>
@@ -465,7 +465,7 @@ const PitchDeckPage: React.FC = () => {
                   </div>
                   <div>
                     <h4 className="text-xl font-bold text-white mb-2">Launch Freemium (Month 1-3)</h4>
-                    <p className="text-gray-400">14-day free trial → $99 Solo tier → viral Reddit/HN launch</p>
+                    <p className="text-gray-400">14-day free trial → $299 Solo tier → viral Reddit/HN launch</p>
                   </div>
                 </div>
 
@@ -507,9 +507,9 @@ const PitchDeckPage: React.FC = () => {
                 <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-xl text-white font-semibold">HeroForge Professional</span>
-                    <span className="text-2xl font-bold text-cyan-400">$299/mo</span>
+                    <span className="text-2xl font-bold text-cyan-400">$899/mo</span>
                   </div>
-                  <p className="text-gray-400 text-sm">Unlimited scans + customer portal + CRM</p>
+                  <p className="text-gray-400 text-sm">70% of $15K pentest • Unlimited scans + portal + CRM</p>
                 </div>
 
                 <div className="bg-gray-800 border border-red-500/30 rounded-xl p-6">
@@ -594,9 +594,9 @@ const PitchDeckPage: React.FC = () => {
           <div className="grid grid-cols-3 gap-6">
             <div className="bg-gray-800 border border-cyan-500/30 rounded-2xl p-6">
               <Code className="w-10 h-10 text-cyan-400 mb-4" />
-              <h4 className="text-xl font-bold text-white mb-3">Built in 3 Weeks</h4>
+              <h4 className="text-xl font-bold text-white mb-3">86+ Modules Built</h4>
               <p className="text-gray-300">
-                Used AI (Claude) to accelerate development. 90% functional product with zero compilation errors.
+                Used AI (Claude) to accelerate development. 2,900+ tests passing, 45 compliance frameworks.
                 Rust backend + React frontend.
               </p>
             </div>
@@ -631,8 +631,8 @@ const PitchDeckPage: React.FC = () => {
                 <div className="text-gray-400 text-sm">Nation-state level</div>
               </div>
               <div>
-                <div className="text-3xl font-bold text-blue-400 mb-2">Solo</div>
-                <div className="text-gray-400 text-sm">Shipped in 3 weeks</div>
+                <div className="text-3xl font-bold text-blue-400 mb-2">86+</div>
+                <div className="text-gray-400 text-sm">Security modules</div>
               </div>
               <div>
                 <div className="text-3xl font-bold text-green-400 mb-2">Mission</div>
@@ -666,7 +666,7 @@ const PitchDeckPage: React.FC = () => {
                 <div>
                   <div className="text-green-400 font-semibold mb-2">My Advantage</div>
                   <ul className="text-sm text-gray-300 space-y-1">
-                    <li>• 60-70% cheaper</li>
+                    <li>• 70% of pentest cost ($299-$1,749/mo)</li>
                     <li>• Customer portal + CRM + time tracking</li>
                     <li>• Consultancy-first design</li>
                     <li>• Modern stack (Rust + React + ML)</li>
@@ -714,9 +714,9 @@ const PitchDeckPage: React.FC = () => {
                 <div>
                   <div className="text-green-400 font-semibold mb-2">My Advantage</div>
                   <ul className="text-sm text-gray-300 space-y-1">
-                    <li>• 96% cost savings</li>
+                    <li>• $3,588-$20,988/yr vs $5K-$100K one-time</li>
                     <li>• Real-time results</li>
-                    <li>• Continuous testing</li>
+                    <li>• Continuous testing year-round</li>
                     <li>• Infinitely scalable</li>
                   </ul>
                 </div>
@@ -757,7 +757,7 @@ const PitchDeckPage: React.FC = () => {
         <div className="h-full flex flex-col">
           <h2 className="text-5xl font-bold text-white mb-6">Technology Stack</h2>
           <p className="text-2xl text-gray-400 mb-12">
-            Built in 3 weeks with AI assistance • Modern stack • Production-ready
+            AI-assisted development • 2,900+ tests passing • Modern stack • Production-ready
           </p>
           <div className="grid grid-cols-2 gap-12 flex-1">
             <div>
@@ -780,7 +780,7 @@ const PitchDeckPage: React.FC = () => {
                     </li>
                     <li className="flex items-start gap-2">
                       <CheckCircle2 className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-0.5" />
-                      <span><strong>Zero errors:</strong> 100% tests passing</span>
+                      <span><strong>Test suite:</strong> 2,900+ tests passing</span>
                     </li>
                   </ul>
                 </div>
@@ -846,7 +846,7 @@ const PitchDeckPage: React.FC = () => {
                     </li>
                     <li className="flex items-start gap-2">
                       <Sparkles className="w-4 h-4 text-purple-400 flex-shrink-0 mt-1" />
-                      <span>LLM security testing (69 test cases)</span>
+                      <span>LLM security testing (150+ test cases)</span>
                     </li>
                     <li className="flex items-start gap-2">
                       <Sparkles className="w-4 h-4 text-purple-400 flex-shrink-0 mt-1" />
@@ -885,27 +885,27 @@ const PitchDeckPage: React.FC = () => {
                   <h4 className="text-xl font-bold text-white mb-4">Development Velocity</h4>
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
-                      <span className="text-gray-300">Lines of Code</span>
-                      <span className="text-xl font-bold text-cyan-400">~50,000</span>
+                      <span className="text-gray-300">Modules</span>
+                      <span className="text-xl font-bold text-cyan-400">86+</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-gray-300">Development Time</span>
-                      <span className="text-xl font-bold text-purple-400">3 weeks</span>
+                      <span className="text-gray-300">Compliance Frameworks</span>
+                      <span className="text-xl font-bold text-purple-400">45</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-gray-300">Test Coverage</span>
-                      <span className="text-xl font-bold text-green-400">100% passing</span>
+                      <span className="text-gray-300">Backend Tests</span>
+                      <span className="text-xl font-bold text-green-400">2,900+ passing</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-gray-300">Compilation Errors</span>
-                      <span className="text-xl font-bold text-green-400">Zero</span>
+                      <span className="text-gray-300">Frontend Tests</span>
+                      <span className="text-xl font-bold text-green-400">88 passing</span>
                     </div>
                   </div>
                 </div>
 
                 <div className="bg-gradient-to-r from-cyan-600/20 to-blue-600/20 border border-cyan-500/30 rounded-xl p-6">
                   <p className="text-lg text-white text-center">
-                    <strong className="text-cyan-400">Solo founder</strong> shipped production-grade security platform in <strong className="text-cyan-400">3 weeks</strong>.
+                    <strong className="text-cyan-400">Solo founder</strong> built enterprise-grade security platform with <strong className="text-cyan-400">86+ modules</strong>.
                     That's execution velocity VCs look for.
                   </p>
                 </div>
@@ -1250,7 +1250,7 @@ const PitchDeckPage: React.FC = () => {
                 </li>
                 <li className="flex items-start gap-2">
                   <CheckCircle2 className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-0.5" />
-                  <span>90% functional product (built in 3 weeks)</span>
+                  <span>Production-ready platform (86+ modules, 2,900+ tests)</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <CheckCircle2 className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-0.5" />

@@ -19,10 +19,10 @@ const whitepapers: Whitepaper[] = [
     id: 'unified-security',
     title: 'Transforming the Cybersecurity Landscape',
     subtitle: 'Through Unified Security Operations',
-    description: 'Examines how HeroForge\'s innovative "colored teams" architecture with 86+ modules, 45 compliance frameworks, and AI-powered operations addresses critical gaps in the current cybersecurity landscape.',
+    description: 'Examines how HeroForge\'s unified security architecture with 86+ modules, 45 compliance frameworks, and AI-powered operations addresses critical gaps in the current cybersecurity landscape.',
     readTime: '18 min read',
     date: 'January 2026 • v2.0',
-    topics: ['Unified Security', 'Colored Teams', 'AI-Powered Operations', '45 Compliance Frameworks', 'Finding Lifecycle'],
+    topics: ['Unified Security', 'AI-Powered Operations', '45 Compliance Frameworks', 'Finding Lifecycle', 'DevSecOps'],
   },
   {
     id: 'novel-approach',
@@ -32,6 +32,15 @@ const whitepapers: Whitepaper[] = [
     readTime: '25 min read',
     date: 'January 2026 • v2.0',
     topics: ['AI Security Operations', 'Finding Lifecycle', 'Passive Recon', 'Remediation Roadmaps', '8 Novel Approaches'],
+  },
+  {
+    id: 'competitive-analysis',
+    title: 'HeroForge vs. The Market',
+    subtitle: 'A Comprehensive Competitive Analysis',
+    description: 'Detailed comparison of HeroForge against Tenable, Qualys, Rapid7, and traditional penetration testing firms, demonstrating 70-82% cost savings with superior capabilities.',
+    readTime: '22 min read',
+    date: 'January 2026 • v1.0',
+    topics: ['Competitive Analysis', 'TCO Comparison', 'Feature Matrix', 'Pricing', 'Market Position'],
   },
 ];
 

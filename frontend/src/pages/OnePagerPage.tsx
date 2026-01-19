@@ -53,7 +53,7 @@ const OnePagerPage: React.FC = () => {
             <div className="text-right text-sm text-gray-600">
               <p className="font-semibold">Pre-Seed Fundraise</p>
               <p>$500K-$1.5M</p>
-              <p>December 2025</p>
+              <p>January 2026</p>
             </div>
           </div>
         </div>
@@ -73,10 +73,10 @@ const OnePagerPage: React.FC = () => {
             on a mission: <strong>Security is a right, not a luxury.</strong>
           </p>
           <p className="text-gray-700 leading-relaxed">
-            We replace $2,000-$100,000 manual pentesting engagements with continuous,
-            AI-powered security testing—reducing costs by 96% while enabling 24/7 monitoring instead
-            of periodic assessments. Built in 3 weeks with AI-assisted development, achieving what
-            VC-backed teams do in 12+ months.
+            We replace $5,000-$100,000 manual pentesting engagements with continuous,
+            AI-powered security testing at 70% of the cost while enabling 24/7 monitoring instead
+            of periodic assessments. Built with AI-assisted development: 86+ security modules,
+            45 compliance frameworks, and 2,900+ tests passing.
           </p>
         </div>
 
@@ -159,20 +159,20 @@ const OnePagerPage: React.FC = () => {
           </div>
           <div className="grid grid-cols-4 gap-4">
             <div className="text-center">
-              <p className="text-3xl font-bold text-cyan-600">Pre-Revenue</p>
-              <p className="text-xs text-gray-600 uppercase tracking-wide">Status</p>
+              <p className="text-3xl font-bold text-cyan-600">86+</p>
+              <p className="text-xs text-gray-600 uppercase tracking-wide">Security Modules</p>
             </div>
             <div className="text-center">
-              <p className="text-3xl font-bold text-cyan-600">90%</p>
-              <p className="text-xs text-gray-600 uppercase tracking-wide">Feature Complete</p>
+              <p className="text-3xl font-bold text-cyan-600">45</p>
+              <p className="text-xs text-gray-600 uppercase tracking-wide">Compliance Frameworks</p>
             </div>
             <div className="text-center">
-              <p className="text-3xl font-bold text-cyan-600">3 Weeks</p>
-              <p className="text-xs text-gray-600 uppercase tracking-wide">Dev Time</p>
+              <p className="text-3xl font-bold text-cyan-600">2,900+</p>
+              <p className="text-xs text-gray-600 uppercase tracking-wide">Tests Passing</p>
             </div>
             <div className="text-center">
-              <p className="text-3xl font-bold text-cyan-600">Tested</p>
-              <p className="text-xs text-gray-600 uppercase tracking-wide">Against Live Target</p>
+              <p className="text-3xl font-bold text-cyan-600">Production</p>
+              <p className="text-xs text-gray-600 uppercase tracking-wide">Ready to Launch</p>
             </div>
           </div>
           <div className="mt-4 pt-4 border-t border-gray-300">
@@ -220,29 +220,27 @@ const OnePagerPage: React.FC = () => {
             <ul className="space-y-1 text-sm text-gray-700">
               <li className="flex items-start gap-2">
                 <span className="text-cyan-600">•</span>
-                <span>Automated network, web app, cloud (AWS/Azure/GCP) scanning</span>
+                <span>Full security operations: Offensive, Defensive, GRC, DevSecOps unified</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-cyan-600">•</span>
-                <span>AI-powered vulnerability prioritization (70% false positive reduction)</span>
+                <span>45 compliance frameworks (FedRAMP, CMMC, NIST, PCI-DSS, HIPAA, SOC2)</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-cyan-600">•</span>
-                <span>
-                  Compliance automation (PCI-DSS, NIST 800-53, HIPAA, SOC 2, ISO 27001)
-                </span>
+                <span>AI-powered prioritization with 70% false positive reduction</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-cyan-600">•</span>
-                <span>Customer portals + CRM for consultancies (unique to market)</span>
+                <span>Finding lifecycle management (7 states) with automated tracking</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-cyan-600">•</span>
-                <span>SIEM integration, SOAR playbooks, incident response workflows</span>
+                <span>Passive reconnaissance automation (crt.sh, SecurityTrails, Wayback)</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-cyan-600">•</span>
-                <span>DevSecOps: SAST, SCA, CI/CD integration, IDE plugins</span>
+                <span>Customer portals + CRM + white-label branding for consultancies</span>
               </li>
             </ul>
           </div>
@@ -260,13 +258,13 @@ const OnePagerPage: React.FC = () => {
             <div className="border-l-4 border-cyan-600 pl-3">
               <p className="font-semibold text-gray-900">vs Tenable/Qualys</p>
               <p className="text-gray-600">
-                60% cheaper, built-in customer portal, AI prioritization, consultancy features
+                Full platform at 70% of pentest cost, built-in customer portal, AI prioritization
               </p>
             </div>
             <div className="border-l-4 border-cyan-600 pl-3">
               <p className="font-semibold text-gray-900">vs Traditional Pentesting</p>
               <p className="text-gray-600">
-                96% cost reduction, continuous testing (not annual), instant reports, scalable
+                $3,588-$20,988/yr vs $5K-$100K one-time, continuous testing year-round, scalable
               </p>
             </div>
             <div className="border-l-4 border-cyan-600 pl-3">
@@ -302,7 +300,7 @@ const OnePagerPage: React.FC = () => {
               <div>
                 <p className="font-semibold">AI-Assisted Development Expert</p>
                 <p className="text-xs text-gray-600">
-                  Built in 3 weeks what VC-backed teams achieve in 12+ months
+                  Built 86+ modules with 2,900+ tests passing using AI-powered development
                 </p>
               </div>
             </div>
@@ -340,7 +338,7 @@ const OnePagerPage: React.FC = () => {
             <div className="flex items-center gap-6">
               <div className="flex items-center gap-2">
                 <Mail className="w-4 h-4 text-cyan-600" />
-                <span>investors@heroforge.io</span>
+                <span>investors@genialarchitect.io</span>
               </div>
               <div className="flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-cyan-600" />
@@ -355,7 +353,7 @@ const OnePagerPage: React.FC = () => {
             </div>
             <div>
               <p className="font-semibold">heroforge.genialarchitect.io</p>
-              <p className="text-xs">Confidential – December 2025</p>
+              <p className="text-xs">Confidential – January 2026</p>
             </div>
           </div>
         </div>

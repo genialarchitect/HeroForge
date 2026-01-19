@@ -17,7 +17,7 @@
 use super::super::types::{ComplianceControl, ComplianceFramework, ControlPriority};
 
 /// Total number of ENS controls
-pub const CONTROL_COUNT: usize = 50;
+pub const CONTROL_COUNT: usize = 46;
 
 /// Get all ENS controls
 pub fn get_controls() -> Vec<ComplianceControl> {

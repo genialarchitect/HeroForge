@@ -810,6 +810,6 @@ mod tests {
     #[test]
     fn test_extract_yarn_package_name() {
         assert_eq!(extract_yarn_package_name("lodash@^4.17.0"), Some("lodash".to_string()));
-        assert_eq!(extract_yarn_package_name("@babel/core@^7.0.0"), Some("@babel".to_string()));
+        assert_eq!(extract_yarn_package_name("@babel/core@^7.0.0"), Some("@babel/core".to_string()));
     }
 }

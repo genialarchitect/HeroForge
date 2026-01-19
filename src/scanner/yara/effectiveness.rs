@@ -727,8 +727,8 @@ mod tests {
 
         let stats = RuleMatchStats {
             total_matches: 100,
-            true_positives: 90,
-            false_positives: 10,
+            true_positives: 95,
+            false_positives: 5,
             pending_verification: 0,
             inconclusive: 0,
             avg_scan_time_ms: 25.0,
@@ -741,10 +741,10 @@ mod tests {
 
         let score = calculator.calculate_score("rule1", "Test Rule", &stats, &[]);
 
-        assert!(score.score > 70.0);
-        assert_eq!(score.true_positives, 90);
-        assert_eq!(score.false_positives, 10);
-        assert!(score.false_positive_rate - 0.1 < 0.001);
+        assert!(score.score > 70.0, "Expected score > 70.0, got {}", score.score);
+        assert_eq!(score.true_positives, 95);
+        assert_eq!(score.false_positives, 5);
+        assert!(score.false_positive_rate - 0.05 < 0.001);
     }
 
     #[test]

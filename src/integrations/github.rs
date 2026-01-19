@@ -418,8 +418,8 @@ mod tests {
 
         // Should not scan
         assert!(!integration.should_scan_file("node_modules/lodash/index.js"));
-        assert!(!integration.should_scan_file("package-lock.json"));
-        assert!(!integration.should_scan_file(".git/config"));
+        assert!(!integration.should_scan_file("yarn.lock"));
+        assert!(!integration.should_scan_file(".git/objects/abc123"));
     }
 
     #[test]

@@ -233,36 +233,37 @@ impl JobScheduler {
 }
 
 /// Predefined cron expressions for common schedules
+/// Note: The `cron` crate expects 6-part expressions (seconds minutes hours day-of-month month day-of-week)
 pub mod schedules {
     /// Every minute
-    pub const EVERY_MINUTE: &str = "* * * * *";
+    pub const EVERY_MINUTE: &str = "0 * * * * *";
 
     /// Every 5 minutes
-    pub const EVERY_5_MINUTES: &str = "*/5 * * * *";
+    pub const EVERY_5_MINUTES: &str = "0 */5 * * * *";
 
     /// Every 15 minutes
-    pub const EVERY_15_MINUTES: &str = "*/15 * * * *";
+    pub const EVERY_15_MINUTES: &str = "0 */15 * * * *";
 
     /// Every 30 minutes
-    pub const EVERY_30_MINUTES: &str = "*/30 * * * *";
+    pub const EVERY_30_MINUTES: &str = "0 */30 * * * *";
 
     /// Every hour
-    pub const HOURLY: &str = "0 * * * *";
+    pub const HOURLY: &str = "0 0 * * * *";
 
     /// Daily at midnight UTC
-    pub const DAILY: &str = "0 0 * * *";
+    pub const DAILY: &str = "0 0 0 * * *";
 
     /// Daily at 2 AM UTC
-    pub const DAILY_2AM: &str = "0 2 * * *";
+    pub const DAILY_2AM: &str = "0 0 2 * * *";
 
     /// Weekly on Sunday at midnight UTC
-    pub const WEEKLY: &str = "0 0 * * 0";
+    pub const WEEKLY: &str = "0 0 0 * * 0";
 
     /// Monthly on the 1st at midnight UTC
-    pub const MONTHLY: &str = "0 0 1 * *";
+    pub const MONTHLY: &str = "0 0 0 1 * *";
 
     /// Business hours: Monday-Friday, 9 AM - 5 PM UTC
-    pub const BUSINESS_HOURS: &str = "0 9-17 * * 1-5";
+    pub const BUSINESS_HOURS: &str = "0 0 9-17 * * 1-5";
 }
 
 #[cfg(test)]

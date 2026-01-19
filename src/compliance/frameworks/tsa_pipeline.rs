@@ -16,7 +16,7 @@
 use super::super::types::{ComplianceControl, ComplianceFramework, ControlPriority};
 
 /// Total number of TSA Pipeline Security controls
-pub const CONTROL_COUNT: usize = 35;
+pub const CONTROL_COUNT: usize = 31;
 
 /// Get all TSA Pipeline Security controls
 pub fn get_controls() -> Vec<ComplianceControl> {

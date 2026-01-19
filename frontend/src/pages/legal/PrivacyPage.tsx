@@ -3,7 +3,7 @@ import LegalLayout from './LegalLayout';
 
 const PrivacyPage: React.FC = () => {
   return (
-    <LegalLayout title="Privacy Policy" lastUpdated="December 24, 2024">
+    <LegalLayout title="Privacy Policy" lastUpdated="January 15, 2026">
       <section id="introduction">
         <p>
           HeroForge ("we," "our," or "us") is committed to protecting your privacy. This Privacy Policy explains how

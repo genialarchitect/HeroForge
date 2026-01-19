@@ -1512,16 +1512,22 @@ function ThreatActorsTab() {
                 <p className="text-gray-400 text-sm mb-1">References</p>
                 <div className="space-y-1">
                   {actorDetail.data.external_references.slice(0, 5).map((ref, i) => (
-                    <a
-                      key={i}
-                      href={ref.url || '#'}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-2 text-cyan-400 text-sm hover:underline"
-                    >
-                      <ExternalLink className="h-3 w-3" />
-                      {ref.source}
-                    </a>
+                    ref.url ? (
+                      <a
+                        key={i}
+                        href={ref.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 text-cyan-400 text-sm hover:underline"
+                      >
+                        <ExternalLink className="h-3 w-3" />
+                        {ref.source}
+                      </a>
+                    ) : (
+                      <span key={i} className="flex items-center gap-2 text-gray-500 text-sm">
+                        {ref.source}
+                      </span>
+                    )
                   ))}
                 </div>
               </div>

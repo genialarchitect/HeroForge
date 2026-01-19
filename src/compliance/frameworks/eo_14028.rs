@@ -15,7 +15,7 @@
 use super::super::types::{ComplianceControl, ComplianceFramework, ControlPriority};
 
 /// Total number of EO 14028 controls
-pub const CONTROL_COUNT: usize = 30;
+pub const CONTROL_COUNT: usize = 27;
 
 /// Get all EO 14028 controls
 pub fn get_controls() -> Vec<ComplianceControl> {

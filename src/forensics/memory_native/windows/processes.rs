@@ -422,8 +422,8 @@ mod tests {
     #[test]
     fn test_filetime_conversion() {
         // Known timestamp: 2020-01-01 00:00:00 UTC
-        // FILETIME value: 132224352000000000
-        let filetime = 132224352000000000u64;
+        // FILETIME value: 132223104000000000 (correct value for 2020-01-01 00:00:00 UTC)
+        let filetime = 132223104000000000u64;
         let dt = filetime_to_datetime(filetime).unwrap();
         assert_eq!(dt.year(), 2020);
         assert_eq!(dt.month(), 1);

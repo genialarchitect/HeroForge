@@ -3,7 +3,7 @@ import LegalLayout from './LegalLayout';
 
 const TermsPage: React.FC = () => {
   return (
-    <LegalLayout title="Terms of Service" lastUpdated="December 24, 2024">
+    <LegalLayout title="Terms of Service" lastUpdated="January 15, 2026">
       <section id="introduction">
         <p>
           Welcome to HeroForge. These Terms of Service ("Terms") govern your access to and use of the HeroForge

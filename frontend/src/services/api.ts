@@ -502,6 +502,19 @@ export interface EnterpriseInquiryResponse {
   message: string;
 }
 
+export interface InvestorInquiryRequest {
+  name: string;
+  firm: string;
+  email: string;
+  message?: string;
+}
+
+export interface InvestorInquiryResponse {
+  success: boolean;
+  inquiry_id: string;
+  message: string;
+}
+
 export const registrationAPI = {
   // Get available subscription tiers
   getTiers: () => api.get<SubscriptionTier[]>('/subscriptions/tiers'),
@@ -525,6 +538,10 @@ export const registrationAPI = {
   // Submit enterprise inquiry
   submitEnterpriseInquiry: (data: EnterpriseInquiryRequest) =>
     api.post<EnterpriseInquiryResponse>('/enterprise/inquiry', data),
+
+  // Submit investor inquiry
+  submitInvestorInquiry: (data: InvestorInquiryRequest) =>
+    api.post<InvestorInquiryResponse>('/investor/inquiry', data),
 };
 
 export const mfaAPI = {
@@ -7249,7 +7266,7 @@ export const integrationSyncAPI = {
 
 import type {
   EngagementTemplate,
-  CreateTemplateRequest,
+  CreateEngagementTemplateRequest,
   CreateFromTemplateRequest,
   EngagementSetupResult,
   EngagementType,
@@ -7273,7 +7290,7 @@ export const engagementTemplatesAPI = {
     api.get<EngagementType[]>('/engagement-templates/types'),
 
   // Create custom template
-  create: (data: CreateTemplateRequest) =>
+  create: (data: CreateEngagementTemplateRequest) =>
     api.post<EngagementTemplate>('/engagement-templates', data),
 
   // Delete custom template

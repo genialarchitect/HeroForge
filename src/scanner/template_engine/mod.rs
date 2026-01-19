@@ -313,7 +313,7 @@ http:
 
         let result = validate_template(yaml);
         assert!(!result.valid);
-        assert!(result.errors.iter().any(|e| e.contains("ID")));
+        assert!(result.errors.iter().any(|e| e.to_lowercase().contains("id")));
     }
 
     #[test]

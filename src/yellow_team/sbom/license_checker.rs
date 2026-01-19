@@ -339,21 +339,33 @@ pub fn get_license_info(license: &str) -> Option<&'static LicenseInfo> {
 /// Normalize license identifier
 fn normalize_license(license: &str) -> String {
     let mut normalized = license.trim().to_string();
-    
+
     // Remove common suffixes/prefixes
     normalized = normalized.replace("-only", "");
     normalized = normalized.replace("-or-later", "");
     normalized = normalized.replace("+", "");
-    
-    // Common aliases
-    normalized = normalized.replace("Apache 2.0", "Apache-2.0");
-    normalized = normalized.replace("Apache-2", "Apache-2.0");
-    normalized = normalized.replace("BSD", "BSD-3-Clause");
-    normalized = normalized.replace("GPLv2", "GPL-2.0");
-    normalized = normalized.replace("GPLv3", "GPL-3.0");
-    normalized = normalized.replace("LGPLv2.1", "LGPL-2.1");
-    normalized = normalized.replace("LGPLv3", "LGPL-3.0");
-    
+
+    // Common aliases - order matters to avoid double replacements
+    // Handle exact matches first, then partial matches
+    if normalized == "Apache 2.0" || normalized == "Apache-2" {
+        return "Apache-2.0".to_string();
+    }
+    if normalized == "BSD" {
+        return "BSD-3-Clause".to_string();
+    }
+    if normalized == "GPLv2" {
+        return "GPL-2.0".to_string();
+    }
+    if normalized == "GPLv3" {
+        return "GPL-3.0".to_string();
+    }
+    if normalized == "LGPLv2.1" {
+        return "LGPL-2.1".to_string();
+    }
+    if normalized == "LGPLv3" {
+        return "LGPL-3.0".to_string();
+    }
+
     normalized
 }
 

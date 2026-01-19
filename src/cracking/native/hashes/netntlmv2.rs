@@ -240,7 +240,7 @@ mod tests {
     fn test_ntlm_hash_computation() {
         // NTLM hash of "password"
         let hash = NetNtlmv2Hash::ntlm_hash("password");
-        assert_eq!(hex::encode(&hash), "a4f49c406510bdcab6824ee7c30fd852");
+        assert_eq!(hex::encode(&hash), "8846f7eaee8fb117ad06bdd830b7586c");
     }
 
     #[test]

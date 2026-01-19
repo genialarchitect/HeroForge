@@ -235,16 +235,17 @@ mod tests {
             "password".to_string(),
             "123456".to_string(),
             "admin".to_string(),
+            "hello".to_string(),
         ]);
 
         let algorithm = Arc::new(Md5Hash);
 
-        // MD5 of "password" = 5d41402abc4b2a76b9719d911017c592
+        // MD5 of "hello" = 5d41402abc4b2a76b9719d911017c592
         let hashes = vec!["5d41402abc4b2a76b9719d911017c592".to_string()];
 
         let results = executor.execute_sync(&attack, algorithm, &hashes);
 
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].plaintext, Some("password".to_string()));
+        assert_eq!(results[0].plaintext, Some("hello".to_string()));
     }
 }

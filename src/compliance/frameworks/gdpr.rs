@@ -11,7 +11,7 @@
 use super::super::types::{ComplianceControl, ComplianceFramework, ControlPriority};
 
 /// Total number of GDPR controls
-pub const CONTROL_COUNT: usize = 45;
+pub const CONTROL_COUNT: usize = 37;
 
 /// Get all GDPR controls
 pub fn get_controls() -> Vec<ComplianceControl> {

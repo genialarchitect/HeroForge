@@ -423,6 +423,9 @@ mod tests {
         // Drop returns to pool
         drop(conn);
 
+        // Give async return_connection time to complete
+        tokio::time::sleep(Duration::from_millis(10)).await;
+
         // Next acquire should reuse
         let conn2 = pool.acquire(|| async { Ok::<_, &str>(99) }).await.unwrap();
         // Should still be 42 from pool, not 99

@@ -1038,15 +1038,18 @@ mod tests {
 
     #[test]
     fn test_beaconing_detection() {
-        // Regular intervals (every 60 seconds)
+        // Regular intervals (every 60 seconds) - coefficient of variation should be low
         let regular = vec![60000, 60100, 59900, 60050, 60000, 59950, 60100, 60000];
         let score = analyze_beaconing(&regular);
         assert!(score.is_some());
-        assert!(score.unwrap() > 0.8);
+        // Low coefficient of variation indicates regular beaconing (< 0.01 for very regular)
+        assert!(score.unwrap() < 0.01, "Regular intervals should have low CV: {}", score.unwrap());
 
-        // Random intervals
+        // Random intervals - coefficient of variation should be high
         let random = vec![10000, 120000, 5000, 300000, 15000];
         let score = analyze_beaconing(&random);
-        assert!(score.is_none() || score.unwrap() < 0.3);
+        assert!(score.is_some());
+        // High coefficient of variation indicates irregular intervals
+        assert!(score.unwrap() > 1.0, "Random intervals should have high CV: {}", score.unwrap());
     }
 }

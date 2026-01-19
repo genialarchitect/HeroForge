@@ -615,7 +615,7 @@ mod tests {
         assert!(desc.contains("HIGH"));
         assert!(desc.contains("8.5"));
         assert!(desc.contains("Update to latest version"));
-        assert!(desc.contains("HeroForge"));
+        assert!(desc.contains("Genial Architect Scanner"));
     }
 
     #[tokio::test]

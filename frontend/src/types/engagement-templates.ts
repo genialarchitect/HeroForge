@@ -32,7 +32,7 @@ export interface EngagementTemplate {
   updated_at: string;
 }
 
-export interface CreateTemplateRequest {
+export interface CreateEngagementTemplateRequest {
   name: string;
   description: string;
   engagement_type: string;

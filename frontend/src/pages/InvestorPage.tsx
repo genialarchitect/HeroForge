@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { toast } from 'react-toastify';
 import {
   Shield,
   TrendingUp,
@@ -15,10 +16,14 @@ import {
   CheckCircle2,
   Heart,
   Flag,
-  Code
+  Code,
+  Loader2
 } from 'lucide-react';
+import { registrationAPI } from '../services/api';
 
 const InvestorPage: React.FC = () => {
+  const [loading, setLoading] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     firm: '',
@@ -26,28 +31,42 @@ const InvestorPage: React.FC = () => {
     message: ''
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Investor inquiry:', formData);
-    alert('Thank you for your interest! We\'ll be in touch within 24 hours.');
-    setFormData({ name: '', firm: '', email: '', message: '' });
+
+    if (!formData.name || !formData.firm || !formData.email) {
+      toast.error('Please fill in all required fields');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await registrationAPI.submitInvestorInquiry(formData);
+      setSubmitted(true);
+      toast.success('Thank you for your interest! We\'ll be in touch within 24 hours.');
+      setFormData({ name: '', firm: '', email: '', message: '' });
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || 'Failed to submit inquiry. Please email investors@genialarchitect.io directly.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const founderStrengths = [
     { icon: <Shield className="w-6 h-6" />, label: '20 Years SIGINT', description: 'Nation-state level operations worldwide', color: 'cyan' },
     { icon: <Flag className="w-6 h-6" />, label: '100% Disabled Veteran', description: 'Army veteran, father, mission-driven', color: 'red' },
-    { icon: <Code className="w-6 h-6" />, label: 'Built in 3 Weeks', description: 'AI-assisted development at VC-backed speed', color: 'purple' },
+    { icon: <Code className="w-6 h-6" />, label: '86+ Modules', description: 'AI-assisted development, 2,900+ tests', color: 'purple' },
     { icon: <Heart className="w-6 h-6" />, label: 'Mission First', description: 'Security is a right, not a luxury', color: 'green' }
   ];
 
   const productHighlights = [
     '✓ Network, web app, cloud security (AWS/Azure/GCP)',
-    '✓ SIEM/SOAR (Blue Team) + Detection Engineering',
-    '✓ SAST/SCA (Yellow Team DevSecOps)',
+    '✓ SIEM/SOAR + Detection Engineering',
+    '✓ SAST/SCA DevSecOps pipeline',
     '✓ Compliance frameworks (SOC2, PCI-DSS, HIPAA)',
     '✓ Customer portal + CRM for consultancies',
     '✓ AI-powered vulnerability prioritization',
-    '✓ 8 "colored team" modules (Red, Blue, Green, Yellow, Orange, White, Purple, Pink)',
+    '✓ 86+ security modules covering offensive, defensive, GRC, and DevSecOps operations',
     '✓ Built on Rust (high performance, memory safe)'
   ];
 
@@ -147,7 +166,7 @@ const InvestorPage: React.FC = () => {
                   As a <strong className="text-white">100% disabled Army veteran and father</strong>, I believe security is a right, not a luxury. Small businesses, consultancies, and security researchers deserve access to world-class tools.
                 </p>
                 <p className="text-lg">
-                  So I built HeroForge in <strong className="text-white">3 weeks with AI assistance</strong>—an all-in-one platform that does what $50K worth of enterprise tools do, for $999/year.
+                  So I built HeroForge with <strong className="text-white">AI assistance—86+ modules, 45 compliance frameworks</strong>—an all-in-one platform at 70% of what manual pentests cost.
                 </p>
               </div>
             </div>
@@ -192,10 +211,10 @@ const InvestorPage: React.FC = () => {
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
             <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
-              Built in 3 Weeks. 90% Functional.
+              86+ Modules. Production Ready.
             </h2>
             <p className="text-xl text-gray-400 max-w-2xl mx-auto">
-              Everything you need in one platform. What took VC-backed teams 18 months, I built in 3 weeks with Claude Code.
+              Everything you need in one platform. 45 compliance frameworks, 2,900+ tests passing, built with AI-assisted development.
             </p>
           </div>
 
@@ -247,10 +266,10 @@ const InvestorPage: React.FC = () => {
                   <div className="p-2 bg-green-500/10 rounded-lg">
                     <Zap className="w-6 h-6 text-green-400" />
                   </div>
-                  <h4 className="text-lg font-bold text-white">96% Cost Reduction</h4>
+                  <h4 className="text-lg font-bold text-white">70% of Pentest Cost</h4>
                 </div>
                 <p className="text-gray-400 text-sm">
-                  $999/year vs $50K+ for equivalent enterprise tools. Continuous testing vs $5K-$100K manual pentests.
+                  $299-$1,749/mo vs $5K-$100K manual pentests. Continuous testing year-round.
                 </p>
               </div>
             </div>
@@ -272,14 +291,14 @@ const InvestorPage: React.FC = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
             <div className="bg-gray-800 border border-gray-700 rounded-xl p-8 text-center">
-              <div className="text-4xl font-bold text-cyan-400 mb-2">Tested Twice</div>
-              <div className="text-gray-400">Against same target</div>
-              <div className="text-gray-500 text-sm mt-2">Seeking first 100 users</div>
+              <div className="text-4xl font-bold text-cyan-400 mb-2">86+</div>
+              <div className="text-gray-400">Security Modules</div>
+              <div className="text-gray-500 text-sm mt-2">Full offensive + defensive coverage</div>
             </div>
             <div className="bg-gray-800 border border-gray-700 rounded-xl p-8 text-center">
-              <div className="text-4xl font-bold text-purple-400 mb-2">90%</div>
-              <div className="text-gray-400">Feature Complete</div>
-              <div className="text-gray-500 text-sm mt-2">Built in 3 weeks with AI</div>
+              <div className="text-4xl font-bold text-purple-400 mb-2">2,900+</div>
+              <div className="text-gray-400">Tests Passing</div>
+              <div className="text-gray-500 text-sm mt-2">Production-grade quality</div>
             </div>
             <div className="bg-gray-800 border border-gray-700 rounded-xl p-8 text-center">
               <div className="text-4xl font-bold text-green-400 mb-2">Pre-Revenue</div>
@@ -378,7 +397,7 @@ const InvestorPage: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
               <div className="text-cyan-400 font-semibold mb-2">vs Tenable/Qualys</div>
-              <div className="text-gray-300 text-sm">50-70% cheaper, customer portal + CRM, consultancy-focused</div>
+              <div className="text-gray-300 text-sm">Full platform at 70% of pentest costs, plus customer portal + CRM, consultancy-focused</div>
             </div>
             <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
               <div className="text-purple-400 font-semibold mb-2">vs Terra Security ($30M)</div>
@@ -386,7 +405,7 @@ const InvestorPage: React.FC = () => {
             </div>
             <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
               <div className="text-green-400 font-semibold mb-2">vs Free Tools (OpenVAS)</div>
-              <div className="text-gray-300 text-sm">AI prioritization, customer portal, professional support, compliance</div>
+              <div className="text-gray-300 text-sm">AI prioritization, customer portal, professional support, 45 compliance frameworks</div>
             </div>
           </div>
         </div>
@@ -482,10 +501,20 @@ const InvestorPage: React.FC = () => {
 
               <button
                 type="submit"
-                className="w-full bg-cyan-600 hover:bg-cyan-700 text-white py-4 rounded-lg font-semibold text-lg transition-colors flex items-center justify-center gap-2"
+                disabled={loading}
+                className="w-full bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 disabled:cursor-not-allowed text-white py-4 rounded-lg font-semibold text-lg transition-colors flex items-center justify-center gap-2"
               >
-                <Mail className="w-5 h-5" />
-                Send Inquiry
+                {loading ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    Sending...
+                  </>
+                ) : (
+                  <>
+                    <Mail className="w-5 h-5" />
+                    Send Inquiry
+                  </>
+                )}
               </button>
             </form>
 
@@ -534,7 +563,7 @@ const InvestorPage: React.FC = () => {
             <a href="mailto:investors@genialarchitect.io" className="text-gray-400 hover:text-white text-sm">Contact</a>
           </div>
           <p className="text-gray-500 text-sm mt-4">
-            &copy; 2025 Genial Architect Cybersecurity Research Associates. All rights reserved.
+            &copy; 2026 Genial Architect Cybersecurity Research Associates. All rights reserved.
           </p>
         </div>
       </footer>

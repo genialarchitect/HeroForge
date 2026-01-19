@@ -210,7 +210,8 @@ impl RateLimiter {
         tracker.last_update = now;
 
         // Check if we can add a new request (1 unit of "water")
-        if tracker.tokens < self.config.max_requests as f64 {
+        // Use strict less-than to ensure exactly max_requests are allowed before rejection
+        if tracker.tokens + 1.0 <= self.config.max_requests as f64 {
             tracker.tokens += 1.0;
             let remaining = (self.config.max_requests as f64 - tracker.tokens).max(0.0) as u64;
 

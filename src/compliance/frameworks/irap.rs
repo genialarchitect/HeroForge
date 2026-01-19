@@ -21,7 +21,7 @@
 use super::super::types::{ComplianceControl, ComplianceFramework, ControlPriority};
 
 /// Total number of IRAP controls
-pub const CONTROL_COUNT: usize = 45;
+pub const CONTROL_COUNT: usize = 42;
 
 /// Get all IRAP controls
 pub fn get_controls() -> Vec<ComplianceControl> {

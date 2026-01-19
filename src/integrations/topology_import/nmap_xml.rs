@@ -34,7 +34,6 @@ impl NmapXmlParser {
             match reader.read_event_into(&mut buf) {
                 Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e)) => {
                     let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
-                    let is_empty = matches!(reader.read_event_into(&mut Vec::new()), Ok(Event::End(_)));
 
                     match name.as_str() {
                         "nmaprun" => {

@@ -23,7 +23,7 @@
 use super::super::types::{ComplianceControl, ComplianceFramework, ControlPriority};
 
 /// Total number of SecNumCloud controls
-pub const CONTROL_COUNT: usize = 50;
+pub const CONTROL_COUNT: usize = 49;
 
 /// Get all SecNumCloud controls
 pub fn get_controls() -> Vec<ComplianceControl> {

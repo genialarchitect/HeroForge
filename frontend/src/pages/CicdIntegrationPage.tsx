@@ -187,13 +187,16 @@ const CicdIntegrationPage: React.FC = () => {
             <button
               key={tab}
               onClick={() => setActiveTab(tab as typeof activeTab)}
-              className={`px-4 py-2 font-medium capitalize ${
+              className={`px-4 py-2 font-medium capitalize flex items-center gap-2 ${
                 activeTab === tab
                   ? 'text-cyan-400 border-b-2 border-cyan-400'
                   : 'text-gray-400 hover:text-white'
               }`}
             >
               {tab === 'ide' ? 'IDE Settings' : tab}
+              {tab === 'ide' && (
+                <span className="text-xs bg-yellow-600 text-white px-1.5 py-0.5 rounded">Preview</span>
+              )}
             </button>
           ))}
         </div>
@@ -387,6 +390,11 @@ const CicdIntegrationPage: React.FC = () => {
             {/* IDE Settings Tab */}
             {activeTab === 'ide' && ideSettings && (
               <div className="max-w-2xl">
+                <div className="bg-yellow-600/10 border border-yellow-600/30 rounded-lg p-4 mb-4">
+                  <p className="text-yellow-400 text-sm">
+                    <strong>Preview Mode:</strong> IDE integration settings are coming soon. VS Code and JetBrains plugins will be available in a future release.
+                  </p>
+                </div>
                 <div className="bg-gray-800 rounded-lg p-6">
                   <h3 className="text-lg font-medium text-white mb-6 flex items-center gap-2">
                     <Code className="h-5 w-5 text-cyan-400" />

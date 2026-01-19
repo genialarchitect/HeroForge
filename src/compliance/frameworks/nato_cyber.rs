@@ -7,7 +7,7 @@ use crate::compliance::types::{ComplianceControl, ComplianceFramework, ControlPr
 use crate::types::Severity;
 
 /// Total number of NATO Cyber Defence controls
-pub const CONTROL_COUNT: usize = 40;
+pub const CONTROL_COUNT: usize = 39;
 
 /// Get all NATO Cyber Defence controls
 pub fn get_controls() -> Vec<ComplianceControl> {

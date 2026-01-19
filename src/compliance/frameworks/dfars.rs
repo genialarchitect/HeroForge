@@ -30,7 +30,7 @@ use super::super::types::{ComplianceControl, ComplianceFramework, ControlPriorit
 use crate::types::Severity;
 
 /// Total number of DFARS controls in this module
-pub const CONTROL_COUNT: usize = 40;
+pub const CONTROL_COUNT: usize = 39;
 
 /// Get all DFARS 252.204-7012 controls
 pub fn get_controls() -> Vec<ComplianceControl> {

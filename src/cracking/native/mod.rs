@@ -137,7 +137,7 @@ mod tests {
         assert!(!verify_password("wrong", "5d41402abc4b2a76b9719d911017c592", HashType::Md5));
 
         // NTLM
-        assert!(verify_password("password", "a4f49c406510bdcab6824ee7c30fd852", HashType::Ntlm));
+        assert!(verify_password("password", "8846f7eaee8fb117ad06bdd830b7586c", HashType::Ntlm));
 
         // SHA-1
         assert!(verify_password("", "da39a3ee5e6b4b0d3255bfef95601890afd80709", HashType::Sha1));
@@ -177,7 +177,7 @@ mod tests {
     #[tokio::test]
     async fn test_quick_crack() {
         // NTLM hash of "password" - should be in top 1000
-        let hashes = vec!["a4f49c406510bdcab6824ee7c30fd852".to_string()];
+        let hashes = vec!["8846f7eaee8fb117ad06bdd830b7586c".to_string()];
         let results = quick_crack(hashes, HashType::Ntlm).await;
 
         assert_eq!(results.len(), 1);

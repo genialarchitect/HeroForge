@@ -24,7 +24,7 @@ use super::super::types::{ComplianceControl, ComplianceFramework, ControlPriorit
 use crate::types::Severity;
 
 /// Total number of CNSSI 1253 controls in this module
-pub const CONTROL_COUNT: usize = 60;
+pub const CONTROL_COUNT: usize = 58;
 
 /// Security impact level for NSS categorization
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

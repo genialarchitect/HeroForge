@@ -178,7 +178,7 @@ const FeaturesPage: React.FC = () => {
       color: 'gray',
       description: 'Governance, Risk, and Compliance management for regulatory requirements.',
       features: [
-        { name: 'Compliance Frameworks', description: 'PCI-DSS 4.0, NIST 800-53, NIST CSF, HIPAA, SOC 2, ISO 27001' },
+        { name: 'Compliance Frameworks', description: '45 frameworks including PCI-DSS, NIST, FedRAMP, CMMC, HIPAA, SOC 2, ISO 27001' },
         { name: 'Risk Assessment', description: 'Risk identification, scoring, and treatment tracking' },
         { name: 'Policy Management', description: 'Policy lifecycle management with version control' },
         { name: 'Audit Management', description: 'Internal audit scheduling, evidence collection, findings tracking' },
@@ -321,7 +321,7 @@ const FeaturesPage: React.FC = () => {
       <section className="pt-32 pb-16 px-4">
         <div className="max-w-7xl mx-auto text-center">
           <h1 className="text-5xl md:text-6xl font-bold text-white mb-6">
-            83+ Security Modules
+            86+ Security Modules
             <br />
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500">
               One Unified Platform
@@ -354,20 +354,20 @@ const FeaturesPage: React.FC = () => {
         <div className="max-w-7xl mx-auto">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
             <div className="bg-gray-800/50 border border-gray-700 rounded-xl p-6 text-center">
-              <div className="text-4xl font-bold text-cyan-400 mb-2">83+</div>
+              <div className="text-4xl font-bold text-cyan-400 mb-2">86+</div>
               <div className="text-gray-400">Security Modules</div>
             </div>
             <div className="bg-gray-800/50 border border-gray-700 rounded-xl p-6 text-center">
-              <div className="text-4xl font-bold text-purple-400 mb-2">8</div>
-              <div className="text-gray-400">Team Colors</div>
+              <div className="text-4xl font-bold text-purple-400 mb-2">45</div>
+              <div className="text-gray-400">Compliance Frameworks</div>
             </div>
             <div className="bg-gray-800/50 border border-gray-700 rounded-xl p-6 text-center">
-              <div className="text-4xl font-bold text-green-400 mb-2">160+</div>
-              <div className="text-gray-400">API Endpoints</div>
+              <div className="text-4xl font-bold text-green-400 mb-2">2,900+</div>
+              <div className="text-gray-400">Tests Passing</div>
             </div>
             <div className="bg-gray-800/50 border border-gray-700 rounded-xl p-6 text-center">
-              <div className="text-4xl font-bold text-orange-400 mb-2">99</div>
-              <div className="text-gray-400">Frontend Pages</div>
+              <div className="text-4xl font-bold text-orange-400 mb-2">70%</div>
+              <div className="text-gray-400">Of Pentest Cost</div>
             </div>
           </div>
         </div>
@@ -381,7 +381,7 @@ const FeaturesPage: React.FC = () => {
               Explore Features by Category
             </h2>
             <p className="text-gray-400 max-w-2xl mx-auto">
-              Click on any category to see the full list of features. Our "colored teams" approach
+              Click on any category to see the full list of features. Our unified security approach
               covers every aspect of security operations.
             </p>
           </div>
@@ -496,7 +496,7 @@ const FeaturesPage: React.FC = () => {
           </div>
           <div className="mt-8 pt-8 border-t border-gray-800 text-center">
             <p className="text-gray-500 text-sm">
-              &copy; 2025 Genial Architect Cybersecurity Research Associates. All rights reserved.
+              &copy; 2026 Genial Architect Cybersecurity Research Associates. All rights reserved.
             </p>
           </div>
         </div>

@@ -909,9 +909,9 @@ const SalesPage: React.FC = () => {
               <h4 className="text-white font-semibold mb-4">Resources</h4>
               <ul className="space-y-2">
                 <li><a href="/api/docs" className="text-gray-400 hover:text-white text-sm">API Docs</a></li>
-                <li><a href="#" className="text-gray-400 hover:text-white text-sm">Documentation</a></li>
-                <li><a href="#" className="text-gray-400 hover:text-white text-sm">Blog</a></li>
-                <li><a href="#" className="text-gray-400 hover:text-white text-sm">Community</a></li>
+                <li><Link to="/features" className="text-gray-400 hover:text-white text-sm">Documentation</Link></li>
+                <li><Link to="/whitepapers" className="text-gray-400 hover:text-white text-sm">Whitepapers</Link></li>
+                <li><Link to="/about" className="text-gray-400 hover:text-white text-sm">About Us</Link></li>
               </ul>
             </div>
             <div>
@@ -924,7 +924,7 @@ const SalesPage: React.FC = () => {
           </div>
           <div className="border-t border-gray-800 pt-8 flex flex-col md:flex-row items-center justify-between">
             <p className="text-gray-500 text-sm">
-              &copy; 2025 Genial Architect Cybersecurity Research Associates. All rights reserved.
+              &copy; 2026 Genial Architect Cybersecurity Research Associates. All rights reserved.
             </p>
             <div className="flex items-center gap-6 mt-4 md:mt-0">
               <Link to="/legal/terms" className="text-gray-400 hover:text-white text-sm">Terms of Service</Link>

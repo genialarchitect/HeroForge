@@ -2124,7 +2124,7 @@ mod tests {
     #[test]
     fn test_builtin_playbooks() {
         let playbooks = BuiltinPlaybooks::get_all();
-        assert_eq!(playbooks.len(), 5);
+        assert_eq!(playbooks.len(), 11);
 
         let credential_playbook = &playbooks[0];
         assert_eq!(credential_playbook.category, PlaybookCategory::CredentialTheft);

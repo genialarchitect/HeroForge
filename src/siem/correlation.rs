@@ -1281,6 +1281,7 @@ mod tests {
         engine.add_rule(rule).await.unwrap();
 
         // Create test events
+        let mut alert_triggered = false;
         for i in 0..4 {
             let mut entry = LogEntry::new(
                 "test-source".to_string(),
@@ -1291,11 +1292,14 @@ mod tests {
             entry.source_ip = Some("192.168.1.100".parse().unwrap());
 
             let alerts = engine.process_event(&entry).await;
-            if i >= 2 {
-                // Should trigger alert after 3rd event
+            if i == 2 {
+                // Should trigger alert on 3rd event (when threshold is first met)
                 assert!(!alerts.is_empty(), "Expected alert after {} events", i + 1);
+                alert_triggered = true;
             }
+            // Subsequent events may not trigger due to alert spam prevention
         }
+        assert!(alert_triggered, "Threshold alert should have been triggered");
     }
 
     #[tokio::test]

@@ -24,7 +24,7 @@
 use super::super::types::{ComplianceControl, ComplianceFramework, ControlPriority};
 
 /// Total number of STIG controls in this module
-pub const CONTROL_COUNT: usize = 156;
+pub const CONTROL_COUNT: usize = 85;
 
 /// STIG severity category
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

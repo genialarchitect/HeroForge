@@ -623,13 +623,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_identify_manufacturer_unknown() {
-        let result = identify_manufacturer("00:00:00:00:00:00").await.unwrap();
+        let result = identify_manufacturer("FF:FF:FF:00:00:00").await.unwrap();
         assert!(result.is_none());
     }
 
     #[tokio::test]
     async fn test_identify_manufacturer_invalid() {
-        let result = identify_manufacturer("invalid").await;
+        let result = identify_manufacturer("XY").await;
         assert!(result.is_err());
     }
 

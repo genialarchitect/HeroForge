@@ -454,9 +454,9 @@ mod tests {
             DumpFormat::Hibernation
         );
 
-        // Unknown/raw
+        // Unknown/raw - needs at least 8 bytes for detection
         assert_eq!(
-            DumpFormat::detect(b"\x00\x00\x00\x00"),
+            DumpFormat::detect(b"\x00\x00\x00\x00\x00\x00\x00\x00"),
             DumpFormat::Raw
         );
     }

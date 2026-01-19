@@ -3,7 +3,7 @@ import LegalLayout from './LegalLayout';
 
 const CookiePage: React.FC = () => {
   return (
-    <LegalLayout title="Cookie Policy" lastUpdated="December 24, 2024">
+    <LegalLayout title="Cookie Policy" lastUpdated="January 15, 2026">
       <section id="what-are-cookies">
         <h2>What Are Cookies?</h2>
         <p>

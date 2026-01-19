@@ -976,6 +976,7 @@ pub fn map_vulnerability(
     // Logging/audit vulnerabilities
     if title_lower.contains("no logging")
         || title_lower.contains("audit disabled")
+        || title_lower.contains("logging disabled")
         || title_lower.contains("insufficient logging")
         || title_lower.contains("log injection")
     {

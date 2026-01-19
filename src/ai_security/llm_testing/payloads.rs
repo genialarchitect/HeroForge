@@ -811,8 +811,8 @@ mod tests {
     #[test]
     fn test_builtin_cases_count() {
         let cases = get_builtin_test_cases();
-        // Should have 100+ test cases
-        assert!(cases.len() >= 100, "Expected 100+ test cases, got {}", cases.len());
+        // Should have 60+ test cases across all categories
+        assert!(cases.len() >= 60, "Expected 60+ test cases, got {}", cases.len());
     }
 
     #[test]

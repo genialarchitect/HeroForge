@@ -427,7 +427,8 @@ mod tests {
     #[test]
     fn test_aws_access_key_detection() {
         let scanner = SecretsScanner::new();
-        let content = "AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE";
+        // Use a realistic-looking AWS key that won't be filtered as a placeholder
+        let content = "AWS_ACCESS_KEY_ID=AKIAIOSFODNN7REALKEY";
         let findings = scanner.scan_file(content).unwrap();
         assert!(!findings.is_empty());
         assert!(findings.iter().any(|f| f.secret_type.contains("AWS")));
@@ -436,7 +437,10 @@ mod tests {
     #[test]
     fn test_github_token_detection() {
         let scanner = SecretsScanner::new();
-        let content = "token = 'ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'";
+        // Use a realistic-looking GitHub token that won't be filtered as a placeholder
+        // Avoid placeholders: example, sample, test, dummy, fake, xxx, abc, 123, 000, etc.
+        // GitHub PAT pattern requires exactly 36 alphanumeric chars after ghp_
+        let content = "token = 'ghp_qRstuVwxYzMnopQrstuvWxYz045678qRstuV'";
         let findings = scanner.scan_file(content).unwrap();
         assert!(findings.iter().any(|f| f.secret_type.contains("GitHub")));
     }
@@ -469,8 +473,10 @@ mod tests {
     #[test]
     fn test_jwt_detection() {
         let scanner = SecretsScanner::new();
-        let content = "token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c'";
+        // JWT token that avoids placeholder strings (no 123, abc, test, example, etc in the token)
+        let content = "Authorization: Bearer eyJhbGciOiAiSFMyNTYiLCAidHlwIjogIkpXVCJ9.eyJzdWIiOiAiOTg3NjU0IiwgIm5hbWUiOiAiQWxpY2UiLCAiaWF0IjogMTYwOTQ1OTIwMH0.KxWRJMmvLFYhD9bKTJ8qN3gVf5YZfRWGhE7sT2nPwXm";
         let findings = scanner.scan_file(content).unwrap();
-        assert!(findings.iter().any(|f| f.secret_type.contains("JWT")));
+        // Pattern name is "JSON Web Token", not "JWT"
+        assert!(findings.iter().any(|f| f.secret_type.contains("Web Token")));
     }
 }

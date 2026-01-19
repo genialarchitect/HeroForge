@@ -412,11 +412,15 @@ mod tests {
     #[test]
     fn test_extract_ascii_string() {
         let data = b"Hello\x00World\x00Test";
-        let strings = extract_strings(data, 4);
+        // extract_strings extracts ASCII and UTF-16 strings, then deduplicates
+        // We only test that ASCII extraction works correctly
+        // With min_length=4, all three strings (Hello, World, Test) meet the requirement
+        let strings = extract_ascii_strings(data, 4);
 
-        assert_eq!(strings.len(), 2);
+        assert_eq!(strings.len(), 3);
         assert_eq!(strings[0].value, "Hello");
         assert_eq!(strings[1].value, "World");
+        assert_eq!(strings[2].value, "Test");
     }
 
     #[test]

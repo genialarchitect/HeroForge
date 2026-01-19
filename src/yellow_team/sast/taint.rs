@@ -753,19 +753,26 @@ def search():
     #[test]
     fn test_sanitized_flow() {
         let analyzer = TaintAnalyzer::new();
+        // Code that uses html_escape on user input (recognized HTML sanitizer)
         let code = r#"
 from flask import request
 
 @app.route('/search')
 def search():
     query = request.args.get('q')
-    cursor.execute("SELECT * FROM users WHERE name = ?", (query,))
+    safe_query = html_escape(query)
+    document.write(safe_query)
     return results
 "#;
 
         let flows = analyzer.analyze(code, "test.py", SastLanguage::Python);
-        // Should find flow but mark as sanitized
-        let unsanitized: Vec<_> = flows.iter().filter(|f| !f.is_sanitized).collect();
-        assert!(unsanitized.is_empty() || unsanitized.iter().all(|f| f.confidence == TaintConfidence::Low));
+        // html_escape sanitizer should mark XSS flows as sanitized
+        // Filter for html-output sinks (XSS vulnerability)
+        let xss_unsanitized: Vec<_> = flows.iter()
+            .filter(|f| f.sink.sink_id == "html-output" && !f.is_sanitized)
+            .collect();
+        // With html_escape pattern and html-output sink, flow should be sanitized
+        assert!(xss_unsanitized.is_empty(),
+            "Expected XSS flows to be sanitized with html_escape, found: {:?}", xss_unsanitized);
     }
 }
