@@ -71,7 +71,7 @@ pub fn create_jwt_extended(
     let now = Utc::now();
     let expiration = now
         .checked_add_signed(Duration::hours(JWT_EXPIRATION_HOURS))
-        .expect("valid timestamp")
+        .ok_or("Failed to compute JWT expiration timestamp")?
         .timestamp() as usize;
 
     let (org_id, org_role, teams, permissions) = match extended {
@@ -103,7 +103,7 @@ pub fn create_jwt_extended(
 pub fn create_refresh_token(user_id: &str) -> Result<String, Box<dyn Error>> {
     let expiration = Utc::now()
         .checked_add_signed(Duration::days(REFRESH_TOKEN_EXPIRATION_DAYS))
-        .expect("valid timestamp")
+        .ok_or("Failed to compute refresh token expiration timestamp")?
         .timestamp() as usize;
 
     let claims = RefreshClaims {
@@ -150,7 +150,7 @@ pub fn create_mfa_token(user_id: &str) -> Result<String, Box<dyn Error>> {
     // MFA token expires in 5 minutes
     let expiration = Utc::now()
         .checked_add_signed(Duration::minutes(5))
-        .expect("valid timestamp")
+        .ok_or("Failed to compute MFA token expiration timestamp")?
         .timestamp() as usize;
 
     let claims = MfaClaims {
