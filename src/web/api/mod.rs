@@ -14,6 +14,7 @@ pub mod asset_discovery;
 pub mod assets;
 pub mod attack_paths;
 pub mod auth;
+pub mod badges;
 pub mod bas;
 pub mod binary_analysis;
 pub mod bloodhound;
@@ -154,6 +155,8 @@ pub mod continuous_monitoring;
 // Phase 4 Enhancement modules
 pub mod finding_lifecycle;
 pub mod passive_recon;
+// Academy LMS module
+pub mod academy;
 
 #[cfg(test)]
 mod tests;

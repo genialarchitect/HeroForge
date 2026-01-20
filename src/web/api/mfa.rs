@@ -431,7 +431,7 @@ pub async fn verify_mfa(
     // Get organization context for extended JWT claims
     let extended_claims = build_extended_claims(pool.get_ref(), user_id).await;
 
-    let token = create_jwt_extended(user_id, &user.username, role_names, extended_claims)
+    let token = create_jwt_extended(user_id, &user.username, role_names.clone(), extended_claims)
         .map_err(|_| actix_web::error::ErrorInternalServerError("Failed to create token"))?;
 
     let refresh_token = auth::create_refresh_token(user_id)
@@ -447,7 +447,7 @@ pub async fn verify_mfa(
     Ok(HttpResponse::Ok().json(models::LoginResponse {
         token,
         refresh_token,
-        user: user.into(),
+        user: models::UserInfo::with_roles(user, role_names),
     }))
 }
 

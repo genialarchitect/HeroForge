@@ -232,11 +232,13 @@ const SalesPage: React.FC = () => {
               <Shield className="w-8 h-8 text-cyan-500" />
               <span className="text-xl font-bold text-white">HeroForge</span>
             </div>
-            <div className="flex items-center gap-4">
+            <div className="hidden md:flex items-center gap-4">
               <Link to="/features" className="text-gray-300 hover:text-white transition-colors">Features</Link>
-              <Link to="/use-cases" className="text-gray-300 hover:text-white transition-colors">Use Cases</Link>
-              <a href="#pricing" className="text-gray-300 hover:text-white transition-colors">Pricing</a>
-              <Link to="/about" className="text-gray-300 hover:text-white transition-colors">About</Link>
+              <Link to="/pricing" className="text-gray-300 hover:text-white transition-colors">Pricing</Link>
+              <Link to="/tools" className="text-gray-300 hover:text-white transition-colors">Free Tools</Link>
+              <Link to="/blog" className="text-gray-300 hover:text-white transition-colors">Blog</Link>
+              <Link to="/academy" className="text-gray-300 hover:text-white transition-colors">Academy</Link>
+              <Link to="/docs" className="text-gray-300 hover:text-white transition-colors">Docs</Link>
               <Link
                 to="/login"
                 className="bg-cyan-600 hover:bg-cyan-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
@@ -899,8 +901,9 @@ const SalesPage: React.FC = () => {
               <ul className="space-y-2">
                 <li><Link to="/features" className="text-gray-400 hover:text-white text-sm">Features</Link></li>
                 <li><Link to="/use-cases" className="text-gray-400 hover:text-white text-sm">Use Cases</Link></li>
-                <li><a href="#pricing" className="text-gray-400 hover:text-white text-sm">Pricing</a></li>
-                <li><a href="#faq" className="text-gray-400 hover:text-white text-sm">FAQ</a></li>
+                <li><Link to="/pricing" className="text-gray-400 hover:text-white text-sm">Pricing</Link></li>
+                <li><Link to="/roadmap" className="text-gray-400 hover:text-white text-sm">Roadmap</Link></li>
+                <li><Link to="/status" className="text-gray-400 hover:text-white text-sm">Status</Link></li>
                 <li><Link to="/about" className="text-gray-400 hover:text-white text-sm">About</Link></li>
                 <li><Link to="/login" className="text-gray-400 hover:text-white text-sm">Login</Link></li>
               </ul>
@@ -908,10 +911,13 @@ const SalesPage: React.FC = () => {
             <div>
               <h4 className="text-white font-semibold mb-4">Resources</h4>
               <ul className="space-y-2">
-                <li><a href="/api/docs" className="text-gray-400 hover:text-white text-sm">API Docs</a></li>
-                <li><Link to="/features" className="text-gray-400 hover:text-white text-sm">Documentation</Link></li>
+                <li><Link to="/tools" className="text-gray-400 hover:text-white text-sm">Free Tools</Link></li>
+                <li><Link to="/blog" className="text-gray-400 hover:text-white text-sm">Blog</Link></li>
+                <li><Link to="/academy" className="text-gray-400 hover:text-white text-sm">Academy</Link></li>
+                <li><Link to="/certifications" className="text-gray-400 hover:text-white text-sm">Certifications</Link></li>
+                <li><Link to="/docs" className="text-gray-400 hover:text-white text-sm">Documentation</Link></li>
                 <li><Link to="/whitepapers" className="text-gray-400 hover:text-white text-sm">Whitepapers</Link></li>
-                <li><Link to="/about" className="text-gray-400 hover:text-white text-sm">About Us</Link></li>
+                <li><Link to="/developers" className="text-gray-400 hover:text-white text-sm">Developer Portal</Link></li>
               </ul>
             </div>
             <div>

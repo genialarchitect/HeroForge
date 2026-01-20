@@ -290,8 +290,14 @@ export default function RegisterPage() {
       if (response.data.checkout_url) {
         // Redirect to Stripe checkout
         window.location.href = response.data.checkout_url;
+      } else if (response.data.auto_verified && response.data.token) {
+        // Auto-verified (SMTP not configured) - go directly to account setup
+        setVerificationToken(response.data.token);
+        setEmailVerified(true);
+        toast.success('Email verified! Complete your account setup.');
+        setStep('details');
       } else {
-        // No payment required or Stripe not configured
+        // Email verification required
         toast.success('Check your email to verify your account');
         setStep('payment');
       }

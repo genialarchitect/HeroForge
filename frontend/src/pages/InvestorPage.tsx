@@ -80,10 +80,12 @@ const InvestorPage: React.FC = () => {
               <Shield className="w-8 h-8 text-cyan-500" />
               <span className="text-xl font-bold text-white">HeroForge</span>
             </Link>
-            <div className="flex items-center gap-4">
-              <a href="#story" className="text-gray-300 hover:text-white transition-colors">Story</a>
-              <a href="#product" className="text-gray-300 hover:text-white transition-colors">Product</a>
-              <a href="#market" className="text-gray-300 hover:text-white transition-colors">Market</a>
+            <div className="hidden md:flex items-center gap-4">
+              <Link to="/" className="text-gray-300 hover:text-white transition-colors">Home</Link>
+              <Link to="/features" className="text-gray-300 hover:text-white transition-colors">Features</Link>
+              <Link to="/pricing" className="text-gray-300 hover:text-white transition-colors">Pricing</Link>
+              <Link to="/tools" className="text-gray-300 hover:text-white transition-colors">Free Tools</Link>
+              <Link to="/blog" className="text-gray-300 hover:text-white transition-colors">Blog</Link>
               <a href="#contact" className="bg-cyan-600 hover:bg-cyan-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
                 Get in Touch
               </a>
@@ -549,22 +551,60 @@ const InvestorPage: React.FC = () => {
 
       {/* Footer */}
       <footer className="border-t border-gray-800 py-12 px-4">
-        <div className="max-w-7xl mx-auto text-center">
-          <div className="flex items-center justify-center gap-3 mb-4">
-            <Shield className="w-8 h-8 text-cyan-500" />
-            <span className="text-xl font-bold text-white">HeroForge</span>
+        <div className="max-w-7xl mx-auto">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
+            <div>
+              <div className="flex items-center gap-3 mb-4">
+                <Shield className="w-8 h-8 text-cyan-500" />
+                <span className="text-xl font-bold text-white">HeroForge</span>
+              </div>
+              <p className="text-gray-400 text-sm">
+                Professional penetration testing and vulnerability management platform.
+              </p>
+            </div>
+            <div>
+              <h4 className="text-white font-semibold mb-4">Product</h4>
+              <ul className="space-y-2">
+                <li><Link to="/features" className="text-gray-400 hover:text-white text-sm">Features</Link></li>
+                <li><Link to="/use-cases" className="text-gray-400 hover:text-white text-sm">Use Cases</Link></li>
+                <li><Link to="/pricing" className="text-gray-400 hover:text-white text-sm">Pricing</Link></li>
+                <li><Link to="/roadmap" className="text-gray-400 hover:text-white text-sm">Roadmap</Link></li>
+                <li><Link to="/status" className="text-gray-400 hover:text-white text-sm">Status</Link></li>
+                <li><Link to="/about" className="text-gray-400 hover:text-white text-sm">About</Link></li>
+                <li><Link to="/login" className="text-gray-400 hover:text-white text-sm">Login</Link></li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="text-white font-semibold mb-4">Resources</h4>
+              <ul className="space-y-2">
+                <li><Link to="/tools" className="text-gray-400 hover:text-white text-sm">Free Tools</Link></li>
+                <li><Link to="/blog" className="text-gray-400 hover:text-white text-sm">Blog</Link></li>
+                <li><Link to="/academy" className="text-gray-400 hover:text-white text-sm">Academy</Link></li>
+                <li><Link to="/certifications" className="text-gray-400 hover:text-white text-sm">Certifications</Link></li>
+                <li><Link to="/docs" className="text-gray-400 hover:text-white text-sm">Documentation</Link></li>
+                <li><Link to="/whitepapers" className="text-gray-400 hover:text-white text-sm">Whitepapers</Link></li>
+                <li><Link to="/developers" className="text-gray-400 hover:text-white text-sm">Developer Portal</Link></li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="text-white font-semibold mb-4">Contact</h4>
+              <ul className="space-y-2">
+                <li><a href="mailto:sales@genialarchitect.io" className="text-gray-400 hover:text-white text-sm">sales@genialarchitect.io</a></li>
+                <li><a href="mailto:support@genialarchitect.io" className="text-gray-400 hover:text-white text-sm">support@genialarchitect.io</a></li>
+              </ul>
+            </div>
           </div>
-          <p className="text-gray-400 mb-4">
-            Security is a right, not a luxury.
-          </p>
-          <div className="flex items-center justify-center gap-6">
-            <Link to="/" className="text-gray-400 hover:text-white text-sm">Home</Link>
-            <Link to="/sales" className="text-gray-400 hover:text-white text-sm">For Customers</Link>
-            <a href="mailto:investors@genialarchitect.io" className="text-gray-400 hover:text-white text-sm">Contact</a>
+          <div className="border-t border-gray-800 pt-8 flex flex-col md:flex-row items-center justify-between">
+            <p className="text-gray-500 text-sm">
+              &copy; 2026 Genial Architect Cybersecurity Research Associates. All rights reserved.
+            </p>
+            <div className="flex items-center gap-6 mt-4 md:mt-0">
+              <Link to="/legal/terms" className="text-gray-400 hover:text-white text-sm">Terms of Service</Link>
+              <Link to="/legal/privacy" className="text-gray-400 hover:text-white text-sm">Privacy Policy</Link>
+              <Link to="/legal/acceptable-use" className="text-gray-400 hover:text-white text-sm">Acceptable Use</Link>
+              <Link to="/legal/cookies" className="text-gray-400 hover:text-white text-sm">Cookies</Link>
+            </div>
           </div>
-          <p className="text-gray-500 text-sm mt-4">
-            &copy; 2026 Genial Architect Cybersecurity Research Associates. All rights reserved.
-          </p>
         </div>
       </footer>
     </div>

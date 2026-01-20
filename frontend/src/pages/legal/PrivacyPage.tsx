@@ -3,11 +3,22 @@ import LegalLayout from './LegalLayout';
 
 const PrivacyPage: React.FC = () => {
   return (
-    <LegalLayout title="Privacy Policy" lastUpdated="January 15, 2026">
+    <LegalLayout title="Privacy Policy" lastUpdated="January 1, 2026">
       <section id="introduction">
         <p>
-          HeroForge ("we," "our," or "us") is committed to protecting your privacy. This Privacy Policy explains how
-          we collect, use, disclose, and safeguard your information when you use our security assessment platform.
+          This Privacy Policy ("Policy") describes how Genial Architect Cybersecurity Research Associates ("Company," "we,"
+          "us," or "our") collects, uses, discloses, and protects personal information when you use the HeroForge
+          cybersecurity platform and services (the "Service").
+        </p>
+        <p>
+          We are committed to protecting your privacy and handling your personal information responsibly. This Policy
+          explains your rights and choices regarding your personal information.
+        </p>
+        <p><strong>Data Controller:</strong><br />
+          Genial Architect Cybersecurity Research Associates<br />
+          550 Ernestine Falls<br />
+          Grovetown, GA 30813<br />
+          Email: privacy@genialarchitect.io
         </p>
       </section>
 
@@ -239,7 +250,7 @@ const PrivacyPage: React.FC = () => {
         <ul>
           <li>Use the Settings page in your account</li>
           <li>Use the API: <code>GET /api/auth/export</code> or <code>DELETE /api/auth/account</code></li>
-          <li>Email: privacy@heroforge.security</li>
+          <li>Email: privacy@genialarchitect.io</li>
         </ul>
         <p>We will respond within 30 days (or sooner as required by law).</p>
       </section>
@@ -296,10 +307,13 @@ const PrivacyPage: React.FC = () => {
 
       <section id="contact">
         <h2>12. Contact Us</h2>
+        <p><strong>Genial Architect Cybersecurity Research Associates</strong><br />
+          550 Ernestine Falls<br />
+          Grovetown, GA 30813</p>
         <ul>
-          <li><strong>Privacy Inquiries:</strong> privacy@heroforge.security</li>
-          <li><strong>Data Protection Officer:</strong> dpo@heroforge.security</li>
-          <li><strong>General Support:</strong> support@heroforge.security</li>
+          <li><strong>Privacy Inquiries:</strong> privacy@genialarchitect.io</li>
+          <li><strong>Data Protection Officer:</strong> dpo@genialarchitect.io</li>
+          <li><strong>General Support:</strong> support@genialarchitect.io</li>
         </ul>
       </section>
 

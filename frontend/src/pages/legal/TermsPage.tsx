@@ -3,16 +3,19 @@ import LegalLayout from './LegalLayout';
 
 const TermsPage: React.FC = () => {
   return (
-    <LegalLayout title="Terms of Service" lastUpdated="January 15, 2026">
+    <LegalLayout title="Terms of Service" lastUpdated="January 1, 2026">
       <section id="introduction">
         <p>
-          Welcome to HeroForge. These Terms of Service ("Terms") govern your access to and use of the HeroForge
-          security assessment platform, including our website, APIs, and related services (collectively, the "Service").
+          These Terms of Service ("Terms") constitute a legally binding agreement between you ("Customer," "you," or "your")
+          and Genial Architect Cybersecurity Research Associates ("Company," "we," "us," or "our") governing your access to
+          and use of the HeroForge cybersecurity platform, including all associated services, features, content, and
+          applications (collectively, the "Service").
         </p>
         <p>
-          By accessing or using the Service, you agree to be bound by these Terms. If you do not agree to these Terms,
-          you may not access or use the Service.
+          By accessing or using the Service, you agree to be bound by these Terms. If you are using the Service on behalf
+          of an organization, you represent and warrant that you have the authority to bind that organization to these Terms.
         </p>
+        <p><strong>IF YOU DO NOT AGREE TO THESE TERMS, DO NOT ACCESS OR USE THE SERVICE.</strong></p>
         <p><strong>IMPORTANT:</strong> HeroForge is a security assessment tool designed for authorized penetration
           testing only. Unauthorized use of this tool to scan, test, or attack systems you do not own or have
           explicit permission to test is illegal and strictly prohibited.</p>
@@ -183,10 +186,13 @@ const TermsPage: React.FC = () => {
       <section id="governing-law">
         <h2>10. Governing Law and Disputes</h2>
         <h3>10.1 Governing Law</h3>
-        <p>These Terms shall be governed by the laws of the jurisdiction in which HeroForge is incorporated.</p>
+        <p>These Terms shall be governed by the laws of the State of Georgia, USA, without regard to conflict of law principles.</p>
         <h3>10.2 Dispute Resolution</h3>
-        <p>Any disputes arising under these Terms shall be resolved through binding arbitration, except where
-          prohibited by law.</p>
+        <p>Any disputes not resolved informally shall be resolved through binding arbitration under the rules of the
+          American Arbitration Association (AAA) in the State of Georgia, USA.</p>
+        <h3>10.3 Class Action Waiver</h3>
+        <p><strong>YOU AGREE TO RESOLVE DISPUTES ON AN INDIVIDUAL BASIS AND WAIVE ANY RIGHT TO PARTICIPATE IN CLASS
+          ACTIONS, CLASS ARBITRATIONS, OR REPRESENTATIVE ACTIONS.</strong></p>
       </section>
 
       <section id="changes">
@@ -199,10 +205,14 @@ const TermsPage: React.FC = () => {
 
       <section id="contact">
         <h2>12. Contact Information</h2>
-        <p>For questions about these Terms, contact us at:</p>
+        <p>For questions about these Terms, please contact:</p>
+        <p><strong>Genial Architect Cybersecurity Research Associates</strong><br />
+          550 Ernestine Falls<br />
+          Grovetown, GA 30813</p>
         <ul>
-          <li><strong>Email:</strong> legal@heroforge.security</li>
-          <li><strong>Support:</strong> support@heroforge.security</li>
+          <li><strong>Legal:</strong> legal@genialarchitect.io</li>
+          <li><strong>Security:</strong> security@genialarchitect.io</li>
+          <li><strong>Support:</strong> support@genialarchitect.io</li>
         </ul>
       </section>
 

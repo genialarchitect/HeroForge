@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import Header from './Header';
 import Footer from './Footer';
 import Sidebar from './Sidebar';
@@ -6,6 +6,8 @@ import { ChatWidget } from '../chat';
 import { useAuth } from '../../hooks/useAuth';
 import { useUIStore } from '../../store/uiStore';
 import { useIsMobile } from '../../hooks/useMediaQuery';
+import { useCopilotStore } from '../../store/copilotStore';
+import AICopilotPanel from '../AICopilotPanel';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -15,6 +17,25 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const { user } = useAuth();
   const { sidebarCollapsed } = useUIStore();
   const isMobile = useIsMobile();
+  const { isOpen: copilotOpen, toggle: toggleCopilot } = useCopilotStore();
+
+  // Cmd+K keyboard shortcut for AI Copilot
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Check for Cmd+K (Mac) or Ctrl+K (Windows/Linux)
+      if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
+        event.preventDefault();
+        toggleCopilot();
+      }
+      // Escape to close copilot
+      if (event.key === 'Escape' && copilotOpen) {
+        toggleCopilot();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [toggleCopilot, copilotOpen]);
 
   // Calculate sidebar offset for desktop
   const sidebarOffset = user && !isMobile
@@ -38,6 +59,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       </div>
 
       <ChatWidget />
+
+      {/* AI Copilot Panel - Global */}
+      {user && <AICopilotPanel />}
     </div>
   );
 };

@@ -290,6 +290,31 @@ pub struct AIVulnerabilityScore {
     pub confidence: f64,
     /// When this score was calculated
     pub calculated_at: DateTime<Utc>,
+    /// Human-readable explanation of why this vulnerability is prioritized
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub explanation: Option<String>,
+    /// Top factors contributing to the risk score
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key_factors: Option<Vec<KeyFactor>>,
+    /// EPSS score (Exploit Prediction Scoring System, 0.0-1.0)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub epss_score: Option<f64>,
+    /// EPSS percentile (0.0-1.0)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub epss_percentile: Option<f64>,
+}
+
+/// Key factor contributing to a vulnerability's risk score
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct KeyFactor {
+    /// Factor name (e.g., "Exploit Available", "Internet Facing")
+    pub name: String,
+    /// Description of the factor's impact
+    pub description: String,
+    /// Contribution to total score (percentage)
+    pub contribution: f64,
+    /// Display value for the factor
+    pub value: String,
 }
 
 /// Summary of prioritization results

@@ -458,6 +458,8 @@ export interface InitRegistrationResponse {
   verification_id: string;
   checkout_url?: string;
   message: string;
+  token?: string;
+  auto_verified?: boolean;
 }
 
 export interface VerifyEmailRequest {
@@ -521,19 +523,19 @@ export const registrationAPI = {
 
   // Check if email is available
   checkEmail: (email: string) =>
-    api.post<{ available: boolean; message: string }>('/auth/register/check-email', { email }),
+    api.post<{ available: boolean; message: string }>('/registration/check-email', { email }),
 
   // Initialize registration (creates verification, may return Stripe checkout URL)
   initRegistration: (data: InitRegistrationRequest) =>
-    api.post<InitRegistrationResponse>('/auth/register/init', data),
+    api.post<InitRegistrationResponse>('/registration/init', data),
 
   // Verify email token
   verifyEmail: (token: string) =>
-    api.post<VerifyEmailResponse>('/auth/register/verify', { token }),
+    api.post<VerifyEmailResponse>('/registration/verify', { token }),
 
   // Complete registration after verification and payment
   completeRegistration: (data: CompleteRegistrationRequest) =>
-    api.post<CompleteRegistrationResponse>('/auth/register/complete', data),
+    api.post<CompleteRegistrationResponse>('/registration/complete', data),
 
   // Submit enterprise inquiry
   submitEnterpriseInquiry: (data: EnterpriseInquiryRequest) =>

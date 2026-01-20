@@ -14,6 +14,7 @@
 
 pub mod censys;
 pub mod cve_feeds;
+pub mod epss;
 pub mod exploit_db;
 pub mod misp;
 pub mod shodan;

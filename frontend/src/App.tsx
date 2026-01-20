@@ -31,6 +31,26 @@ const SalesPage = lazy(() => import('./pages/SalesPage'));
 const FeaturesPage = lazy(() => import('./pages/FeaturesPage'));
 const UseCasesPage = lazy(() => import('./pages/UseCasesPage'));
 const AboutPage = lazy(() => import('./pages/AboutPage'));
+const PricingPage = lazy(() => import('./pages/PricingPage'));
+const DocsPage = lazy(() => import('./pages/DocsPage'));
+const BlogPage = lazy(() => import('./pages/BlogPage'));
+const AcademyPage = lazy(() => import('./pages/AcademyPage'));
+const AcademyPathPage = lazy(() => import('./pages/AcademyPathPage'));
+const AcademyLessonPage = lazy(() => import('./pages/AcademyLessonPage'));
+const AcademyQuizPage = lazy(() => import('./pages/AcademyQuizPage'));
+const AcademyAdminPage = lazy(() => import('./pages/AcademyAdminPage'));
+const CertificateVerifyPage = lazy(() => import('./pages/CertificateVerifyPage'));
+const FreeToolsPage = lazy(() => import('./pages/FreeToolsPage'));
+const SecurityBadgePage = lazy(() => import('./pages/SecurityBadgePage'));
+const ComparePage = lazy(() => import('./pages/ComparePage'));
+const StatusPage = lazy(() => import('./pages/StatusPage'));
+const RoadmapPage = lazy(() => import('./pages/RoadmapPage'));
+const NewsletterPage = lazy(() => import('./pages/NewsletterPage'));
+const CertificationPage = lazy(() => import('./pages/CertificationPage'));
+const DeveloperPortalPage = lazy(() => import('./pages/DeveloperPortalPage'));
+const WhiteLabelPage = lazy(() => import('./pages/WhiteLabelPage'));
+const AttackLabPage = lazy(() => import('./pages/AttackLabPage'));
+const MarketplacePage = lazy(() => import('./pages/MarketplacePage'));
 const InvestorPage = lazy(() => import('./pages/InvestorPage'));
 const WhitepapersPage = lazy(() => import('./pages/WhitepapersPage'));
 const PitchDeckPage = lazy(() => import('./pages/PitchDeckPage'));
@@ -250,6 +270,44 @@ function App() {
           <Route path="/features" element={<FeaturesPage />} />
           <Route path="/use-cases" element={<UseCasesPage />} />
           <Route path="/about" element={<AboutPage />} />
+          <Route path="/pricing" element={<PricingPage />} />
+          <Route path="/docs" element={<DocsPage />} />
+          <Route path="/docs/:slug" element={<DocsPage />} />
+          <Route path="/blog" element={<BlogPage />} />
+          <Route path="/blog/:slug" element={<BlogPage />} />
+          <Route path="/academy" element={<AcademyPage />} />
+          <Route path="/academy/path/:slug" element={<AcademyPathPage />} />
+          <Route
+            path="/academy/lesson/:lessonId"
+            element={
+              <ProtectedRoute>
+                <AcademyLessonPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/academy/quiz/:lessonId"
+            element={
+              <ProtectedRoute>
+                <AcademyQuizPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="/certificates/verify" element={<CertificateVerifyPage />} />
+          <Route path="/certificates/verify/:number" element={<CertificateVerifyPage />} />
+          <Route path="/tools" element={<FreeToolsPage />} />
+          <Route path="/security" element={<SecurityBadgePage />} />
+          <Route path="/security/:domain" element={<SecurityBadgePage />} />
+          <Route path="/status" element={<StatusPage />} />
+          <Route path="/vs" element={<ComparePage />} />
+          <Route path="/vs/:competitor" element={<ComparePage />} />
+          <Route path="/roadmap" element={<RoadmapPage />} />
+          <Route path="/newsletter" element={<NewsletterPage />} />
+          <Route path="/certifications" element={<CertificationPage />} />
+          <Route path="/developers" element={<DeveloperPortalPage />} />
+          <Route path="/partners" element={<WhiteLabelPage />} />
+          <Route path="/labs" element={<AttackLabPage />} />
+          <Route path="/marketplace" element={<MarketplacePage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/register/verify" element={<VerifyEmailPage />} />
@@ -281,6 +339,14 @@ function App() {
             element={
               <AdminRoute>
                 <AdminPage />
+              </AdminRoute>
+            }
+          />
+          <Route
+            path="/admin/academy"
+            element={
+              <AdminRoute>
+                <AcademyAdminPage />
               </AdminRoute>
             }
           />

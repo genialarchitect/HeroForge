@@ -20,6 +20,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/prioritize/{scan_id}", web::post().to(prioritize_scan))
             .route("/scores/{scan_id}", web::get().to(get_scan_scores))
             .route("/scores/vulnerability/{vuln_id}", web::get().to(get_vulnerability_score))
+            .route("/top-risks", web::get().to(get_top_risks))
             .route("/config", web::get().to(get_config))
             .route("/config", web::put().to(update_config))
             .route("/feedback", web::post().to(submit_feedback)),
@@ -186,6 +187,58 @@ pub async fn get_vulnerability_score(
             "No AI score found for this vulnerability".to_string(),
         )),
     }
+}
+
+/// Query parameters for top risks endpoint
+#[derive(Debug, serde::Deserialize)]
+pub struct TopRisksQuery {
+    pub limit: Option<i32>,
+}
+
+/// Response for top risks endpoint
+#[derive(Debug, serde::Serialize)]
+pub struct TopRisksResponse {
+    pub vulnerabilities: Vec<AIVulnerabilityScore>,
+    pub generated_at: chrono::DateTime<chrono::Utc>,
+    pub total_count: usize,
+}
+
+/// GET /api/ai/top-risks
+///
+/// Get top AI-prioritized vulnerabilities across all scans.
+#[utoipa::path(
+    get,
+    path = "/api/ai/top-risks",
+    tag = "AI Prioritization",
+    params(
+        ("limit" = Option<i32>, Query, description = "Number of results (default: 5)"),
+    ),
+    responses(
+        (status = 200, description = "Top prioritized vulnerabilities"),
+        (status = 401, description = "Unauthorized"),
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
+pub async fn get_top_risks(
+    pool: web::Data<SqlitePool>,
+    query: web::Query<TopRisksQuery>,
+    claims: web::ReqData<auth::Claims>,
+) -> Result<HttpResponse, ApiError> {
+    let user_id = &claims.sub;
+    let limit = query.limit.unwrap_or(5).min(50);
+
+    // Get top vulnerabilities by effective risk score
+    let scores = crate::db::ai::get_top_prioritized_vulnerabilities(&pool, user_id, limit).await?;
+
+    let response = TopRisksResponse {
+        total_count: scores.len(),
+        vulnerabilities: scores,
+        generated_at: chrono::Utc::now(),
+    };
+
+    Ok(HttpResponse::Ok().json(response))
 }
 
 /// GET /api/ai/config

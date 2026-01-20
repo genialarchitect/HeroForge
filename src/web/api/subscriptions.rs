@@ -60,6 +60,10 @@ pub struct InitRegistrationResponse {
     pub verification_id: String,
     pub checkout_url: Option<String>,
     pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub token: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auto_verified: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -265,26 +269,40 @@ pub async fn init_registration(
             None
         }
     } else {
-        // Stripe not configured - send verification email instead
-        send_verification_email(&req.email, &verification.token).await?;
+        // Stripe not configured - will handle email/auto-verify below
         None
     };
 
-    // If no checkout URL, send verification email
-    if checkout_url.is_none() {
-        send_verification_email(&req.email, &verification.token).await?;
-    }
+    // If no checkout URL, either send verification email or auto-verify
+    let (message, token, auto_verified) = if checkout_url.is_some() {
+        ("Please complete payment to continue registration".to_string(), None, None)
+    } else if !EmailService::is_configured() {
+        // SMTP not configured - auto-verify the email for immediate registration
+        log::info!("SMTP not configured - auto-verifying email for {}", req.email);
+        VerificationService::mark_email_verified(pool.get_ref(), &verification.id).await?;
 
-    let message = if checkout_url.is_some() {
-        "Please complete payment to continue registration".to_string()
+        // For free tier, also mark payment as verified (no payment needed)
+        if tier.monthly_price_cents.is_none() {
+            VerificationService::mark_payment_verified(pool.get_ref(), &verification.id, "").await?;
+        }
+
+        (
+            "Email auto-verified. Please complete your account setup.".to_string(),
+            Some(verification.token.clone()),
+            Some(true),
+        )
     } else {
-        "Please check your email to verify your account".to_string()
+        // SMTP configured - send verification email
+        send_verification_email(&req.email, &verification.token).await?;
+        ("Please check your email to verify your account".to_string(), None, None)
     };
 
     Ok(HttpResponse::Ok().json(InitRegistrationResponse {
         verification_id: verification.id,
         checkout_url,
         message,
+        token,
+        auto_verified,
     }))
 }
 
@@ -766,16 +784,19 @@ async fn create_organization_for_user(
 ) -> Result<(), ApiError> {
     let org_id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
+    // Generate a unique slug from the org_id
+    let slug = format!("org-{}", &org_id[..8]);
 
     // Create organization
     sqlx::query(
         r#"
-        INSERT INTO organizations (id, name, created_at, updated_at)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO organizations (id, name, slug, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?)
         "#,
     )
     .bind(&org_id)
     .bind(format!("{}'s Organization", user_id))
+    .bind(&slug)
     .bind(&now)
     .bind(&now)
     .execute(pool)

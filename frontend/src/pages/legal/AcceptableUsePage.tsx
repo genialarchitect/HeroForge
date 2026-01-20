@@ -218,7 +218,7 @@ const AcceptableUsePage: React.FC = () => {
 
         <h3>7.3 Appeals</h3>
         <p>
-          You may appeal enforcement decisions by emailing legal@heroforge.security within 14 days. Include your
+          You may appeal enforcement decisions by emailing legal@genialarchitect.io within 14 days. Include your
           justification and any relevant documentation.
         </p>
       </section>
@@ -227,7 +227,7 @@ const AcceptableUsePage: React.FC = () => {
         <h2>8. Reporting Violations</h2>
         <p>Report AUP violations to:</p>
         <ul>
-          <li><strong>Email:</strong> abuse@heroforge.security</li>
+          <li><strong>Email:</strong> abuse@genialarchitect.io</li>
           <li><strong>Include:</strong> Details of the violation, evidence, affected parties</li>
         </ul>
       </section>
@@ -235,9 +235,9 @@ const AcceptableUsePage: React.FC = () => {
       <section id="contact">
         <h2>9. Contact</h2>
         <ul>
-          <li><strong>Abuse Reports:</strong> abuse@heroforge.security</li>
-          <li><strong>Policy Questions:</strong> legal@heroforge.security</li>
-          <li><strong>General Support:</strong> support@heroforge.security</li>
+          <li><strong>Abuse Reports:</strong> abuse@genialarchitect.io</li>
+          <li><strong>Policy Questions:</strong> legal@genialarchitect.io</li>
+          <li><strong>General Support:</strong> support@genialarchitect.io</li>
         </ul>
       </section>
 

@@ -310,6 +310,10 @@ fn record_to_score(record: AIScoreRecord) -> Result<AIVulnerabilityScore> {
         estimated_effort,
         confidence: record.confidence,
         calculated_at: record.calculated_at,
+        explanation: None,
+        key_factors: None,
+        epss_score: None,
+        epss_percentile: None,
     })
 }
 
@@ -338,4 +342,129 @@ pub async fn delete_prioritization_for_scan(pool: &SqlitePool, scan_id: &str) ->
         .await?;
 
     Ok(())
+}
+
+/// Get top prioritized vulnerabilities across all scans for a user
+pub async fn get_top_prioritized_vulnerabilities(
+    pool: &SqlitePool,
+    user_id: &str,
+    limit: i32,
+) -> Result<Vec<AIVulnerabilityScore>> {
+    // Join with vulnerabilities and scans to ensure we only get user's data
+    let records: Vec<AIScoreRecord> = sqlx::query_as(
+        r#"
+        SELECT DISTINCT s.id, s.scan_id, s.vulnerability_id, s.effective_risk_score, s.risk_category,
+               s.factor_scores, s.remediation_priority, s.estimated_effort, s.confidence, s.calculated_at
+        FROM ai_scores s
+        INNER JOIN vulnerabilities v ON v.id = s.vulnerability_id
+        INNER JOIN scan_results sr ON sr.id = s.scan_id
+        WHERE sr.user_id = ?1
+          AND v.status NOT IN ('resolved', 'false_positive', 'accepted_risk')
+        ORDER BY s.effective_risk_score DESC
+        LIMIT ?2
+        "#,
+    )
+    .bind(user_id)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+
+    let mut scores: Vec<AIVulnerabilityScore> = Vec::new();
+    for record in records {
+        if let Ok(score) = record_to_score(record) {
+            // Enrich with explanation
+            let mut enriched = score;
+            enriched.explanation = Some(generate_explanation(&enriched));
+            enriched.key_factors = Some(generate_key_factors(&enriched));
+            scores.push(enriched);
+        }
+    }
+
+    Ok(scores)
+}
+
+/// Generate a human-readable explanation for why a vulnerability is prioritized
+fn generate_explanation(score: &AIVulnerabilityScore) -> String {
+    let mut reasons = Vec::new();
+
+    // Check factor scores for key contributors
+    for factor in &score.factor_scores {
+        if factor.contribution > 15.0 {
+            match factor.factor_name.as_str() {
+                "cvss_base" => {
+                    if factor.raw_value >= 9.0 {
+                        reasons.push("has a critical CVSS score");
+                    } else if factor.raw_value >= 7.0 {
+                        reasons.push("has a high CVSS score");
+                    }
+                }
+                "exploit_available" => {
+                    if factor.raw_value > 50.0 {
+                        reasons.push("has known exploits in the wild");
+                    }
+                }
+                "asset_criticality" => {
+                    if factor.raw_value >= 75.0 {
+                        reasons.push("affects a critical asset");
+                    }
+                }
+                "network_exposure" => {
+                    if factor.raw_value >= 75.0 {
+                        reasons.push("is internet-facing");
+                    }
+                }
+                "data_sensitivity" => {
+                    if factor.raw_value >= 75.0 {
+                        reasons.push("involves sensitive data");
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    if reasons.is_empty() {
+        format!(
+            "This vulnerability has an effective risk score of {:.1}, placing it in the {} risk category.",
+            score.effective_risk_score,
+            score.risk_category
+        )
+    } else {
+        format!(
+            "This vulnerability {} and has an effective risk score of {:.1}.",
+            reasons.join(", "),
+            score.effective_risk_score
+        )
+    }
+}
+
+/// Generate key factors for the score
+fn generate_key_factors(score: &AIVulnerabilityScore) -> Vec<crate::ai::models::KeyFactor> {
+    let mut factors: Vec<crate::ai::models::KeyFactor> = score
+        .factor_scores
+        .iter()
+        .filter(|f| f.contribution > 5.0)
+        .take(3)
+        .map(|f| {
+            let description = match f.factor_name.as_str() {
+                "cvss_base" => "Base CVSS vulnerability score",
+                "exploit_available" => "Known exploit availability",
+                "asset_criticality" => "Criticality of affected asset",
+                "network_exposure" => "Network exposure level",
+                "data_sensitivity" => "Sensitivity of data at risk",
+                "patch_age" => "Time since patch availability",
+                _ => "Contributing risk factor",
+            };
+
+            crate::ai::models::KeyFactor {
+                name: f.factor_name.replace('_', " ").to_uppercase(),
+                description: description.to_string(),
+                contribution: (f.contribution / score.effective_risk_score) * 100.0,
+                value: format!("{:.1}", f.raw_value),
+            }
+        })
+        .collect();
+
+    factors.sort_by(|a, b| b.contribution.partial_cmp(&a.contribution).unwrap_or(std::cmp::Ordering::Equal));
+    factors
 }

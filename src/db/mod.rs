@@ -120,6 +120,8 @@ pub mod emass;
 pub mod audit_files;
 // Legal documents module
 pub mod legal_documents;
+// Academy LMS module
+pub mod academy;
 
 // Core imports used by this module
 use sqlx::sqlite::SqlitePool;
@@ -329,6 +331,9 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
 
     // Initialize legal documents tables
     legal_documents::init_tables(pool).await?;
+
+    // Initialize Academy LMS tables
+    academy::init_tables(pool).await?;
 
     Ok(())
 }

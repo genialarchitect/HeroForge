@@ -596,11 +596,151 @@ pub async fn get_dashboard(
 }
 
 // ============================================================================
-// AI Remediation Roadmap Endpoints
+// AI Remediation Generation Endpoints
 // ============================================================================
 
 use std::sync::Arc;
 use crate::ai::{GenerateRoadmapRequest, RemediationPlanner};
+use crate::ai::prompts::remediation::{
+    RemediationPlatform, RemediationContext, RemediationSuggestion, RemediationStep, CodeSnippet,
+    build_system_prompt, build_user_prompt,
+};
+
+/// Request to generate AI-powered remediation suggestions
+#[derive(Debug, Deserialize)]
+pub struct GenerateRemediationRequest {
+    pub vulnerability_id: String,
+    pub platform: Option<String>,
+    pub include_rollback: Option<bool>,
+    pub verbose: Option<bool>,
+}
+
+/// Generate AI-powered remediation suggestions for a vulnerability
+pub async fn generate_remediation(
+    pool: web::Data<SqlitePool>,
+    body: web::Json<GenerateRemediationRequest>,
+    claims: web::ReqData<auth::Claims>,
+) -> HttpResponse {
+    let vuln_id = &body.vulnerability_id;
+
+    // Get vulnerability details
+    let vuln_detail = match crate::db::get_vulnerability_detail(pool.get_ref(), vuln_id).await {
+        Ok(detail) => detail,
+        Err(e) => {
+            log::error!("Failed to get vulnerability {}: {}", vuln_id, e);
+            return HttpResponse::NotFound().json(serde_json::json!({
+                "error": "Vulnerability not found"
+            }));
+        }
+    };
+
+    let vuln = &vuln_detail.vulnerability;
+
+    // Parse platform
+    let platform: RemediationPlatform = body
+        .platform
+        .as_deref()
+        .map(|p| p.parse().unwrap_or_default())
+        .unwrap_or_default();
+
+    // Build context - using available fields from VulnerabilityTracking
+    let context = RemediationContext {
+        vulnerability_id: vuln_id.clone(),
+        cve_id: None, // CVE info available via separate lookup if needed
+        title: vuln.vulnerability_id.clone(), // Use vulnerability_id as title
+        description: vuln.notes.clone().unwrap_or_default(),
+        severity: vuln.severity.clone(),
+        affected_component: None, // Could be parsed from vulnerability_id
+        affected_version: None, // Could be parsed from vulnerability_id
+        platform: platform.clone(),
+        host_os: None, // Could be detected from host_ip
+        include_rollback: body.include_rollback.unwrap_or(true),
+        verbose: body.verbose.unwrap_or(false),
+    };
+
+    // Build prompts
+    let system_prompt = build_system_prompt(&platform);
+    let user_prompt = build_user_prompt(&context);
+
+    // Get LLM provider
+    let provider = match crate::ai::providers::get_provider(None).await {
+        Ok(p) => p,
+        Err(e) => {
+            log::error!("Failed to get LLM provider: {}", e);
+            return HttpResponse::ServiceUnavailable().json(serde_json::json!({
+                "error": "AI service unavailable",
+                "details": "No LLM provider configured. Set ANTHROPIC_API_KEY."
+            }));
+        }
+    };
+
+    // Build the LLM request
+    let llm_request = crate::ai::providers::LLMRequest::new()
+        .with_system_prompt(&system_prompt)
+        .with_user_message(&user_prompt)
+        .with_max_tokens(4096);
+
+    // Generate remediation
+    match provider.complete(llm_request).await {
+        Ok(llm_response) => {
+            let response_text = &llm_response.content;
+            // Try to parse as JSON, fall back to wrapping in a basic structure
+            let suggestion: RemediationSuggestion = match serde_json::from_str(response_text) {
+                Ok(s) => s,
+                Err(_) => {
+                    // If LLM didn't return valid JSON, create a basic suggestion
+                    RemediationSuggestion {
+                        vulnerability_id: vuln_id.clone(),
+                        platform: format!("{:?}", platform).to_lowercase(),
+                        steps: vec![RemediationStep {
+                            step_number: 1,
+                            title: "Review Remediation Guidance".to_string(),
+                            description: response_text.clone(),
+                            code_snippet: None,
+                            code_language: None,
+                            estimated_time: None,
+                            risk_level: None,
+                            requires_reboot: None,
+                            requires_downtime: None,
+                        }],
+                        code_snippets: Vec::new(),
+                        estimated_effort: "Varies".to_string(),
+                        risk_notes: Vec::new(),
+                        prerequisites: Vec::new(),
+                        verification_steps: Vec::new(),
+                        rollback_steps: None,
+                        generated_at: chrono::Utc::now(),
+                    }
+                }
+            };
+
+            // Log the generation
+            let _ = crate::db::log_audit(
+                pool.get_ref(),
+                &claims.sub,
+                "ai_remediation_generate",
+                Some("vulnerability"),
+                Some(vuln_id),
+                Some(&format!("Generated {:?} remediation for {}", platform, vuln_id)),
+                None,
+            )
+            .await;
+
+            HttpResponse::Ok().json(suggestion)
+        }
+        Err(e) => {
+            log::error!("Failed to generate remediation: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to generate remediation",
+                "details": e.to_string()
+            }))
+        }
+    }
+}
+
+// ============================================================================
+// AI Remediation Roadmap Endpoints
+// ============================================================================
 
 /// Request to generate a roadmap
 #[derive(Debug, Deserialize)]
@@ -726,6 +866,8 @@ pub async fn delete_roadmap(
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/remediation")
+            // AI-powered remediation generation
+            .route("/generate", web::post().to(generate_remediation))
             // Verification requests
             .route("/verifications", web::post().to(create_verification))
             .route("/verifications", web::get().to(list_verifications))

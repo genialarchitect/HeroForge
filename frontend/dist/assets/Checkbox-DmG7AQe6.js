@@ -1,0 +1,4 @@
+import{j as r}from"./vendor-state-oFDmcCcB.js";import{d as n}from"./vendor-ui-BlFJDRaq.js";const m=({id:t,label:s,checked:e,onChange:l,className:o="",disabled:a=!1})=>r.jsxs("label",{className:`inline-flex items-center ${a?"opacity-50 cursor-not-allowed":"cursor-pointer"} ${o}`,children:[r.jsxs("div",{className:"relative",children:[r.jsx("input",{id:t,type:"checkbox",checked:e,onChange:i=>l(i.target.checked),disabled:a,className:"sr-only"}),r.jsx("div",{className:`
+            w-5 h-5 border-2 rounded transition-all
+            ${e?"bg-primary border-primary":"bg-light-surface dark:bg-dark-surface border-light-border dark:border-dark-border hover:border-primary"}
+          `,children:e&&r.jsx(n,{className:"h-full w-full text-white p-0.5"})})]}),s&&r.jsx("span",{className:"ml-2 text-sm text-slate-700 dark:text-slate-300",children:s})]});export{m as C};

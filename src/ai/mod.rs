@@ -30,6 +30,7 @@ pub mod llm_orchestrator;
 pub mod ml_pipeline;
 pub mod models;
 pub mod prioritization;
+pub mod prompts;
 pub mod providers;
 pub mod red_team_advisor;
 pub mod remediation_planner;
@@ -359,6 +360,10 @@ impl AIPrioritizationManager {
             estimated_effort,
             confidence: self.calculate_confidence(features),
             calculated_at: Utc::now(),
+            explanation: None,
+            key_factors: None,
+            epss_score: None,
+            epss_percentile: None,
         }
     }
 

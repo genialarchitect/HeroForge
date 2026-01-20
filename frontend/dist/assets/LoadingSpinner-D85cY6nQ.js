@@ -1,1 +1,0 @@
-import{j as e}from"./vendor-state-BjT_zREg.js";import{L as m}from"./vendor-ui-CfSMq23b.js";const o=({size:s="md",className:r=""})=>{const t={sm:"h-4 w-4",md:"h-8 w-8",lg:"h-12 w-12"};return e.jsx(m,{className:`${t[s]} animate-spin text-primary ${r}`})};export{o as L};

@@ -207,6 +207,20 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
             )
             // Phishing tracking routes (public, no auth required)
             .configure(api::phishing::configure_tracking)
+            // Academy public routes (no auth required - marketing)
+            .service(
+                web::scope("/api/academy/public")
+                    .wrap(rate_limit::RateLimitStatsMiddleware::api())
+                    .wrap(rate_limit::api_rate_limiter())
+                    .configure(api::academy::configure_public)
+            )
+            // Security Badge routes (public, viral growth feature)
+            .service(
+                web::scope("/api")
+                    .wrap(rate_limit::RateLimitStatsMiddleware::api())
+                    .wrap(rate_limit::api_rate_limiter())
+                    .configure(api::badges::configure)
+            )
             // SMS Phishing tracking routes (public, no auth required)
             .configure(api::sms_phishing::configure_sms_tracking)
             // Customer Portal routes (separate auth from main app) - at /api/portal/*
@@ -803,6 +817,10 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .service(api::finding_lifecycle::configure())
                     // Passive Reconnaissance API
                     .service(api::passive_recon::configure())
+                    // Academy LMS API (authenticated)
+                    .configure(api::academy::configure)
+                    // Academy Admin API (authenticated, admin role checked in handlers)
+                    .configure(api::academy::configure_admin)
                     // Start workflow from vulnerability
                     .route("/vulnerabilities/{id}/workflow", web::post().to(api::workflows::start_workflow))
                     // SSO Admin endpoints

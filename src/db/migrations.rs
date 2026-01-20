@@ -347,6 +347,67 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     create_finding_lifecycle_tables(pool).await?;
     // Passive Reconnaissance Results tables
     create_passive_recon_tables(pool).await?;
+    // Security Score Badges tables (viral growth feature)
+    create_security_badge_tables(pool).await?;
+    Ok(())
+}
+
+/// Create security badge tables for public domain scoring
+async fn create_security_badge_tables(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS security_badges (
+            id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+            domain TEXT NOT NULL,
+            critical_count INTEGER DEFAULT 0,
+            high_count INTEGER DEFAULT 0,
+            medium_count INTEGER DEFAULT 0,
+            low_count INTEGER DEFAULT 0,
+            info_count INTEGER DEFAULT 0,
+            ssl_grade TEXT,
+            headers_grade TEXT,
+            dns_grade TEXT,
+            overall_score INTEGER DEFAULT 0,
+            last_scan_at TEXT NOT NULL DEFAULT (datetime('now')),
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(domain)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Index for fast domain lookups
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_security_badges_domain ON security_badges(domain)")
+        .execute(pool)
+        .await?;
+
+    // Scan history for trending
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS security_badge_history (
+            id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+            domain TEXT NOT NULL,
+            score INTEGER NOT NULL,
+            grade TEXT NOT NULL,
+            critical_count INTEGER DEFAULT 0,
+            high_count INTEGER DEFAULT 0,
+            medium_count INTEGER DEFAULT 0,
+            low_count INTEGER DEFAULT 0,
+            info_count INTEGER DEFAULT 0,
+            scanned_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (domain) REFERENCES security_badges(domain) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_security_badge_history_domain ON security_badge_history(domain)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created security badge tables");
     Ok(())
 }
 
@@ -25481,6 +25542,14 @@ async fn create_subscription_tables(pool: &SqlitePool) -> Result<()> {
         .await;
 
     let _ = sqlx::query("ALTER TABLE users ADD COLUMN subscription_tier_id TEXT REFERENCES subscription_tiers(id)")
+        .execute(pool)
+        .await;
+
+    let _ = sqlx::query("ALTER TABLE users ADD COLUMN updated_at TEXT")
+        .execute(pool)
+        .await;
+
+    let _ = sqlx::query("ALTER TABLE users ADD COLUMN organization_id TEXT REFERENCES organizations(id)")
         .execute(pool)
         .await;
 
