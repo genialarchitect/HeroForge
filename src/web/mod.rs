@@ -224,6 +224,46 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .route("/{domain}/scan", web::post().to(api::badges::request_scan))
                     .route("/{domain}/embed", web::get().to(api::badges::get_embed_code))
             )
+            // Roadmap routes (public, with voting)
+            .service(
+                web::scope("/api/roadmap")
+                    .wrap(rate_limit::RateLimitStatsMiddleware::api())
+                    .wrap(rate_limit::api_rate_limiter())
+                    .route("/items", web::get().to(api::roadmap::get_items))
+                    .route("/stats", web::get().to(api::roadmap::get_stats))
+                    .route("/items/{id}/vote", web::post().to(api::roadmap::vote_item))
+                    .route("/items/{id}/vote", web::delete().to(api::roadmap::unvote_item))
+                    .route("/suggestions", web::post().to(api::roadmap::submit_suggestion))
+            )
+            // Status page routes (public)
+            .service(
+                web::scope("/api/status")
+                    .wrap(rate_limit::RateLimitStatsMiddleware::api())
+                    .wrap(rate_limit::api_rate_limiter())
+                    .route("/services", web::get().to(api::status::get_services))
+                    .route("/overall", web::get().to(api::status::get_overall_status))
+                    .route("/uptime", web::get().to(api::status::get_uptime_history))
+                    .route("/uptime/summary", web::get().to(api::status::get_uptime_summary))
+                    .route("/incidents", web::get().to(api::status::get_incidents))
+                    .route("/maintenance", web::get().to(api::status::get_maintenance))
+                    .route("/subscribe", web::post().to(api::status::subscribe))
+                    .route("/subscribe/verify/{token}", web::get().to(api::status::verify_subscription))
+                    .route("/unsubscribe/{token}", web::delete().to(api::status::unsubscribe))
+            )
+            // Free tools routes (public, rate limited)
+            .service(
+                web::scope("/api/tools")
+                    .wrap(rate_limit::RateLimitStatsMiddleware::api())
+                    .wrap(rate_limit::api_rate_limiter())
+                    .configure(api::free_tools::configure)
+            )
+            // Referral program routes (public for tracking, auth for dashboard)
+            .service(
+                web::scope("/api/referrals")
+                    .wrap(rate_limit::RateLimitStatsMiddleware::api())
+                    .wrap(rate_limit::api_rate_limiter())
+                    .configure(api::referrals::configure_public)
+            )
             // SMS Phishing tracking routes (public, no auth required)
             .configure(api::sms_phishing::configure_sms_tracking)
             // Customer Portal routes (separate auth from main app) - at /api/portal/*
@@ -395,6 +435,11 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .route("/api-keys/{id}", web::delete().to(api::api_keys::delete_api_key))
                     // License management endpoints
                     .configure(api::license::configure_routes)
+                    // Referral program endpoints (authenticated)
+                    .service(
+                        web::scope("/referrals")
+                            .configure(api::referrals::configure_auth)
+                    )
                     // Analytics endpoints
                     .route("/analytics/summary", web::get().to(api::analytics::get_summary))
                     .route("/analytics/hosts", web::get().to(api::analytics::get_hosts_over_time))
@@ -840,6 +885,17 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
                     .route("/sso/admin/providers/{id}/test", web::post().to(api::sso::test_provider))
                     .route("/sso/logout", web::post().to(api::sso::sso_logout)),
             )
+            // Serve favicon.svg (must be before default_service)
+            .service(
+                web::resource("/favicon.svg").route(web::get().to(|| async {
+                    match std::fs::read("./frontend/dist/favicon.svg") {
+                        Ok(content) => HttpResponse::Ok()
+                            .content_type("image/svg+xml")
+                            .body(content),
+                        Err(_) => HttpResponse::NotFound().finish(),
+                    }
+                }))
+            )
             // Swagger UI for API documentation
             .service(
                 SwaggerUi::new("/api/docs/{_:.*}")
@@ -849,15 +905,6 @@ pub async fn run_web_server(database_url: &str, bind_address: &str) -> std::io::
             .route("/assets", web::get().to(spa_fallback))
             // Serve frontend static assets (Vite build output - files like /assets/index-xyz.js)
             .service(fs::Files::new("/assets", "./frontend/dist/assets"))
-            // Serve vite.svg
-            .route("/vite.svg", web::get().to(|| async {
-                match std::fs::read("./frontend/dist/vite.svg") {
-                    Ok(content) => HttpResponse::Ok()
-                        .content_type("image/svg+xml")
-                        .body(content),
-                    Err(_) => HttpResponse::NotFound().finish(),
-                }
-            }))
             // Root path serves index.html
             .route("/", web::get().to(spa_fallback))
             // SPA fallback - serve index.html for all unmatched non-API routes

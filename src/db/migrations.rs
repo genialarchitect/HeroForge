@@ -349,6 +349,16 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     create_passive_recon_tables(pool).await?;
     // Security Score Badges tables (viral growth feature)
     create_security_badge_tables(pool).await?;
+    // Roadmap and Status page tables (public engagement features)
+    create_roadmap_tables(pool).await?;
+    create_status_page_tables(pool).await?;
+    seed_default_roadmap_items(pool).await?;
+    seed_default_status_services(pool).await?;
+    // Free tools and Referral program tables
+    create_free_tools_tables(pool).await?;
+    create_referral_tables(pool).await?;
+    // Performance indexes for common query patterns
+    create_performance_indexes(pool).await?;
     Ok(())
 }
 
@@ -29769,5 +29779,480 @@ async fn create_passive_recon_tables(pool: &SqlitePool) -> Result<()> {
         .await?;
 
     log::info!("Created passive reconnaissance tables");
+    Ok(())
+}
+
+/// Create roadmap tables for public feature voting
+async fn create_roadmap_tables(pool: &SqlitePool) -> Result<()> {
+    // Roadmap items table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS roadmap_items (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            description TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'planned',
+            category TEXT NOT NULL DEFAULT 'platform',
+            quarter TEXT NOT NULL DEFAULT 'TBD',
+            votes INTEGER NOT NULL DEFAULT 0,
+            completed_date TEXT,
+            tags TEXT NOT NULL DEFAULT '[]',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Roadmap votes table (for deduplication)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS roadmap_votes (
+            id TEXT PRIMARY KEY,
+            item_id TEXT NOT NULL,
+            identifier TEXT NOT NULL,
+            voted_at TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(item_id, identifier),
+            FOREIGN KEY (item_id) REFERENCES roadmap_items(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Roadmap suggestions table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS roadmap_suggestions (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            description TEXT NOT NULL,
+            email TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            submitter_identifier TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Indexes
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_roadmap_items_status ON roadmap_items(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_roadmap_votes_item ON roadmap_votes(item_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_roadmap_suggestions_status ON roadmap_suggestions(status)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created roadmap tables");
+    Ok(())
+}
+
+/// Create status page tables for service monitoring
+async fn create_status_page_tables(pool: &SqlitePool) -> Result<()> {
+    // Status services table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS status_services (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            description TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'operational',
+            latency_ms INTEGER,
+            uptime_percent REAL NOT NULL DEFAULT 100.0,
+            last_check_at TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Status uptime history (daily aggregates)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS status_uptime_history (
+            id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+            service_id TEXT NOT NULL,
+            date TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'operational',
+            uptime_percent REAL NOT NULL DEFAULT 100.0,
+            avg_latency_ms INTEGER,
+            check_count INTEGER NOT NULL DEFAULT 0,
+            UNIQUE(service_id, date),
+            FOREIGN KEY (service_id) REFERENCES status_services(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Status incidents table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS status_incidents (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'investigating',
+            severity TEXT NOT NULL DEFAULT 'minor',
+            affected_services TEXT NOT NULL DEFAULT '[]',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            resolved_at TEXT
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Status incident updates table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS status_incident_updates (
+            id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+            incident_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            message TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (incident_id) REFERENCES status_incidents(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Status subscribers table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS status_subscribers (
+            id TEXT PRIMARY KEY,
+            email TEXT NOT NULL UNIQUE,
+            verified INTEGER NOT NULL DEFAULT 0,
+            verification_token TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Indexes
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_status_uptime_service ON status_uptime_history(service_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_status_uptime_date ON status_uptime_history(date)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_status_incidents_status ON status_incidents(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_status_incident_updates ON status_incident_updates(incident_id)")
+        .execute(pool)
+        .await?;
+
+    log::info!("Created status page tables");
+    Ok(())
+}
+
+/// Seed default roadmap items
+async fn seed_default_roadmap_items(pool: &SqlitePool) -> Result<()> {
+    // Check if items already exist
+    let count: i32 = sqlx::query_scalar("SELECT COUNT(*) FROM roadmap_items")
+        .fetch_one(pool)
+        .await
+        .unwrap_or(0);
+
+    if count > 0 {
+        return Ok(());
+    }
+
+    let items = vec![
+        // Completed
+        ("1", "AI-Powered Vulnerability Prioritization", "Machine learning model that ranks vulnerabilities based on exploitability, business context, and threat intelligence.", "completed", "ai", "Q4 2025", 342, Some("December 2025"), r#"["AI/ML", "Prioritization"]"#),
+        ("2", "45 Compliance Frameworks", "Support for 45 compliance frameworks including SOC 2, PCI-DSS 4.0, HIPAA, NIST, FedRAMP, CMMC, and more.", "completed", "compliance", "Q4 2025", 289, Some("January 2026"), r#"["Compliance", "Enterprise"]"#),
+        ("3", "Customer Portal", "White-labeled portal for consultancies to share findings, reports, and remediation progress with clients.", "completed", "platform", "Q4 2025", 256, Some("January 2026"), r#"["Consultancies", "Portal"]"#),
+        ("4", "Interactive Learning Academy", "Built-in learning platform with courses, labs, and certifications for security professionals.", "completed", "platform", "Q1 2026", 198, Some("January 2026"), r#"["Education", "Certification"]"#),
+        ("5", "Free Security Tools", "Public tools including subdomain finder, security headers checker, SSL analyzer, and more.", "completed", "platform", "Q1 2026", 176, Some("January 2026"), r#"["Free Tools", "Lead Gen"]"#),
+        // In Progress
+        ("6", "Real-Time Threat Intelligence Feed", "Live CVE feed, CISA KEV integration, and correlation with your asset inventory.", "in_progress", "security", "Q1 2026", 412, None, r#"["Threat Intel", "Real-time"]"#),
+        ("7", "Visual Attack Surface Map", "Interactive network topology visualization with risk-based coloring and attack path overlays.", "in_progress", "scanning", "Q1 2026", 387, None, r#"["Visualization", "Attack Surface"]"#),
+        ("8", "Python & Node.js SDKs", "Official SDKs for programmatic access to all HeroForge features with full documentation.", "in_progress", "integrations", "Q1 2026", 298, None, r#"["SDK", "Developer"]"#),
+        // Planned
+        ("9", "GitHub Actions Integration", "Native GitHub Action for running security scans in CI/CD pipelines with PR comments.", "planned", "integrations", "Q2 2026", 445, None, r#"["CI/CD", "GitHub"]"#),
+        ("10", "Live Attack Simulation Lab", "Safe, sandboxed environments for practicing exploitation techniques and testing detections.", "planned", "platform", "Q2 2026", 389, None, r#"["Training", "Lab"]"#),
+        ("11", "HeroForge Certification Program", "Official certifications: HCA (Analyst), HCP (Professional), HCE (Expert) with proctored exams.", "planned", "platform", "Q2 2026", 334, None, r#"["Certification", "Career"]"#),
+        ("12", "Community Marketplace", "Share and download scan templates, report templates, and custom integrations.", "planned", "platform", "Q2 2026", 267, None, r#"["Community", "Templates"]"#),
+        ("13", "White-Label / MSP Features", "Full white-labeling with custom domains, branding, and multi-tenant management for MSPs.", "planned", "platform", "Q3 2026", 312, None, r#"["MSP", "White-label"]"#),
+        ("14", "Browser Extension", "Quick security checks, saved credentials lookup, and one-click scanning from browser.", "planned", "platform", "Q3 2026", 234, None, r#"["Browser", "Convenience"]"#),
+        ("15", "Advanced SIEM Correlation", "Cross-correlate scan findings with SIEM logs for enhanced detection and investigation.", "planned", "integrations", "Q3 2026", 287, None, r#"["SIEM", "Correlation"]"#),
+        // Considering
+        ("16", "Mobile App (iOS & Android)", "Native mobile apps for monitoring scans, receiving alerts, and quick status checks.", "considering", "platform", "Q4 2026", 423, None, r#"["Mobile", "iOS", "Android"]"#),
+        ("17", "On-Premise Deployment", "Self-hosted deployment option for organizations with strict data residency requirements.", "considering", "platform", "Q4 2026", 356, None, r#"["Enterprise", "Self-hosted"]"#),
+        ("18", "Slack/Teams Bot", "Interactive bot for running scans, querying results, and receiving alerts in chat.", "considering", "integrations", "Q4 2026", 278, None, r#"["Slack", "Teams", "Bot"]"#),
+        ("19", "AI Report Writer", "Generate complete penetration test reports with AI-written executive summaries and findings.", "considering", "ai", "TBD", 512, None, r#"["AI", "Reports"]"#),
+        ("20", "Bug Bounty Platform Integration", "Direct integration with HackerOne and Bugcrowd for streamlined vulnerability disclosure.", "considering", "integrations", "TBD", 189, None, r#"["Bug Bounty", "Integration"]"#),
+    ];
+
+    for (id, title, description, status, category, quarter, votes, completed_date, tags) in items {
+        sqlx::query(
+            r#"INSERT OR IGNORE INTO roadmap_items (id, title, description, status, category, quarter, votes, completed_date, tags)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"#
+        )
+        .bind(id)
+        .bind(title)
+        .bind(description)
+        .bind(status)
+        .bind(category)
+        .bind(quarter)
+        .bind(votes)
+        .bind(completed_date)
+        .bind(tags)
+        .execute(pool)
+        .await?;
+    }
+
+    log::info!("Seeded default roadmap items");
+    Ok(())
+}
+
+/// Seed default status services
+async fn seed_default_status_services(pool: &SqlitePool) -> Result<()> {
+    // Check if services already exist
+    let count: i32 = sqlx::query_scalar("SELECT COUNT(*) FROM status_services")
+        .fetch_one(pool)
+        .await
+        .unwrap_or(0);
+
+    if count > 0 {
+        return Ok(());
+    }
+
+    let services = vec![
+        ("web-app", "Web Application", "Main web dashboard and user interface", "operational", Some(45)),
+        ("api", "API", "REST API endpoints for all operations", "operational", Some(23)),
+        ("scanning", "Scanning Engine", "Network and vulnerability scanning services", "operational", Some(156)),
+        ("database", "Database", "Primary data storage and retrieval", "operational", Some(12)),
+        ("auth", "Authentication", "User authentication and authorization", "operational", Some(34)),
+        ("reports", "Report Generation", "PDF, HTML, and other report formats", "operational", Some(89)),
+        ("websocket", "WebSocket", "Real-time scan progress updates", "operational", Some(18)),
+        ("email", "Email Service", "Notifications and alerts delivery", "operational", Some(245)),
+    ];
+
+    for (id, name, description, status, latency) in &services {
+        sqlx::query(
+            r#"INSERT OR IGNORE INTO status_services (id, name, description, status, latency_ms, uptime_percent)
+               VALUES (?, ?, ?, ?, ?, 99.99)"#
+        )
+        .bind(*id)
+        .bind(*name)
+        .bind(*description)
+        .bind(*status)
+        .bind(*latency)
+        .execute(pool)
+        .await?;
+    }
+
+    // Seed some uptime history for the last 90 days
+    let today = chrono::Utc::now().date_naive();
+    for (service_id, _, _, _, _) in &services {
+        for i in 0..90 {
+            let date = today - chrono::Duration::days(i);
+            let date_str = date.format("%Y-%m-%d").to_string();
+            
+            // Mostly operational with occasional degraded performance
+            let (status, uptime) = if i == 5 && *service_id == "database" {
+                ("maintenance", 95.0)
+            } else if rand::random::<f64>() > 0.98 {
+                ("degraded", 99.5)
+            } else {
+                ("operational", 100.0)
+            };
+
+            sqlx::query(
+                r#"INSERT OR IGNORE INTO status_uptime_history (service_id, date, status, uptime_percent, check_count)
+                   VALUES (?, ?, ?, ?, 1440)"#
+            )
+            .bind(service_id)
+            .bind(&date_str)
+            .bind(status)
+            .bind(uptime)
+            .execute(pool)
+            .await?;
+        }
+    }
+
+    log::info!("Seeded default status services and uptime history");
+    Ok(())
+}
+
+/// Create tables for free security tools usage tracking
+async fn create_free_tools_tables(pool: &SqlitePool) -> Result<()> {
+    // Free tool usage tracking for rate limiting
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS free_tool_usage (
+            id TEXT PRIMARY KEY,
+            identifier TEXT NOT NULL,
+            tool TEXT NOT NULL,
+            target TEXT,
+            used_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#
+    )
+    .execute(pool)
+    .await?;
+
+    // Index for rate limiting queries
+    sqlx::query(
+        r#"CREATE INDEX IF NOT EXISTS idx_free_tool_usage_lookup
+           ON free_tool_usage(identifier, tool, used_at)"#
+    )
+    .execute(pool)
+    .await?;
+
+    log::info!("Created free tools usage tracking tables");
+    Ok(())
+}
+
+/// Create tables for referral program
+async fn create_referral_tables(pool: &SqlitePool) -> Result<()> {
+    // Referral codes table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS referral_codes (
+            code TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            active BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"CREATE INDEX IF NOT EXISTS idx_referral_codes_user
+           ON referral_codes(user_id)"#
+    )
+    .execute(pool)
+    .await?;
+
+    // Referrals table (tracks each referral)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS referrals (
+            id TEXT PRIMARY KEY,
+            referrer_id TEXT NOT NULL,
+            referee_id TEXT,
+            referee_email TEXT,
+            referee_ip TEXT,
+            status TEXT DEFAULT 'pending',
+            credits_awarded INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            converted_at TIMESTAMP
+        )
+        "#
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"CREATE INDEX IF NOT EXISTS idx_referrals_referrer
+           ON referrals(referrer_id)"#
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"CREATE INDEX IF NOT EXISTS idx_referrals_referee
+           ON referrals(referee_id)"#
+    )
+    .execute(pool)
+    .await?;
+
+    // Referral credits table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS referral_credits (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            amount INTEGER NOT NULL,
+            type TEXT NOT NULL,
+            referral_id TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"CREATE INDEX IF NOT EXISTS idx_referral_credits_user
+           ON referral_credits(user_id)"#
+    )
+    .execute(pool)
+    .await?;
+
+    log::info!("Created referral program tables");
+    Ok(())
+}
+
+/// Create performance indexes for common query patterns
+async fn create_performance_indexes(pool: &SqlitePool) -> Result<()> {
+    // Composite index for user's scans sorted by date (scan history page)
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_scan_results_user_created ON scan_results(user_id, created_at DESC)"
+    )
+    .execute(pool)
+    .await?;
+
+    // Composite index for filtering scans by user and status
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_scan_results_user_status ON scan_results(user_id, status)"
+    )
+    .execute(pool)
+    .await?;
+
+    // Composite index for vulnerability dashboard (severity + status filtering)
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_vuln_severity_status ON vulnerability_tracking(severity, status)"
+    )
+    .execute(pool)
+    .await?;
+
+    // Composite index for vulnerability by created date and severity (timeline views)
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_vuln_created_severity ON vulnerability_tracking(created_at DESC, severity)"
+    )
+    .execute(pool)
+    .await?;
+
+    // Index for assets by organization and discovery date
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_assets_org_discovered ON assets(organization_id, first_seen DESC)"
+    )
+    .execute(pool)
+    .await?;
+
+    // Index for incidents by severity and status (incident response dashboard)
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_incidents_severity_status ON incidents(severity, status)"
+    )
+    .execute(pool)
+    .await?;
+
+    // Index for audit logs by user and timestamp (audit trail queries)
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_audit_logs_user_time ON audit_logs(user_id, created_at DESC)"
+    )
+    .execute(pool)
+    .await?;
+
+    log::info!("Created performance indexes for common query patterns");
     Ok(())
 }
