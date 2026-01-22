@@ -1,4 +1,29 @@
-//! Threat prediction using ML
+//! Threat Prediction using ML and Expert Rules
+//!
+//! This module combines machine learning classification with expert-defined rules
+//! for comprehensive threat prediction. The hybrid approach provides:
+//!
+//! # Architecture
+//!
+//! ```text
+//! Scan Results → Feature Extraction → ML Classification → Threat Level
+//!              ↓                                          ↓
+//!              → Attack Vector Analysis (rules) → MITRE Mapping
+//!              → Recommendation Engine (rules) → Actions
+//! ```
+//!
+//! ## ML Component (threat-classifier-v1)
+//! - Classifies overall threat level using logistic regression
+//! - Trained on security scan data patterns
+//! - Outputs benign/suspicious/malicious classification
+//!
+//! ## Rule-Based Components
+//! - **Attack Vector Analysis**: Maps open ports to known attack techniques
+//! - **MITRE ATT&CK Mapping**: Links findings to MITRE technique IDs
+//! - **Recommendation Engine**: Generates actionable remediation steps
+//!
+//! The hybrid approach is intentional: ML provides statistical pattern recognition
+//! while rules encode expert security knowledge that doesn't require training data.
 
 use anyhow::Result;
 use serde::{Serialize, Deserialize};

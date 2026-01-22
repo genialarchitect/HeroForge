@@ -1575,28 +1575,254 @@ async fn test_action(
     _claims: web::ReqData<auth::Claims>,
     body: web::Json<serde_json::Value>,
 ) -> Result<HttpResponse> {
+    use crate::green_team::playbooks::ExecutionContext;
+    use crate::green_team::playbooks::actions::ActionExecutor;
+    use crate::green_team::types::PlaybookAction;
+
     let action_id = path.into_inner();
+    let start_time = std::time::Instant::now();
+    let test_input = body.into_inner();
 
-    // Verify action exists
-    let action = sqlx::query("SELECT name, display_name FROM soar_action_library WHERE id = ?")
-        .bind(&action_id)
-        .fetch_optional(pool.get_ref())
-        .await
-        .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+    // Fetch full action definition
+    let action_row = sqlx::query(
+        "SELECT id, name, display_name, description, category, integration, action_type, input_schema, output_schema, timeout_seconds, requires_approval, risk_level FROM soar_action_library WHERE id = ?"
+    )
+    .bind(&action_id)
+    .fetch_optional(pool.get_ref())
+    .await
+    .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
 
-    match action {
-        Some(a) => {
-            let action_name: String = a.get("name");
-            // In a real implementation, this would actually execute the action in test mode
-            Ok(HttpResponse::Ok().json(serde_json::json!({
-                "success": true,
-                "action": action_name,
-                "test_input": body.into_inner(),
-                "message": "Action test completed successfully (dry run)",
-                "output": {"test_mode": true, "simulated": true}
-            })))
+    let action_row = match action_row {
+        Some(a) => a,
+        None => return Ok(HttpResponse::NotFound().json(serde_json::json!({"error": "Action not found"}))),
+    };
+
+    let action_name: String = action_row.get("name");
+    let action_type: String = action_row.get("action_type");
+    let integration: Option<String> = action_row.get("integration");
+    let input_schema: String = action_row.get("input_schema");
+
+    // Validate input against schema
+    let schema: serde_json::Value = serde_json::from_str(&input_schema).unwrap_or(serde_json::json!({}));
+    let validation_errors = validate_action_input(&test_input, &schema);
+
+    if !validation_errors.is_empty() {
+        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+            "success": false,
+            "action": action_name,
+            "errors": validation_errors,
+            "message": "Input validation failed"
+        })));
+    }
+
+    // Create test execution context with the test input
+    let run_id = Uuid::new_v4();
+    let mut context = ExecutionContext::new(run_id, Some(test_input.clone()));
+
+    // Map library action to executable PlaybookAction and execute in test mode
+    let (test_result, output) = execute_action_test(
+        &action_name,
+        &action_type,
+        &integration,
+        &test_input,
+        &mut context,
+    ).await;
+
+    let duration_ms = start_time.elapsed().as_millis() as u64;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "success": test_result.success,
+        "action": action_name,
+        "action_type": action_type,
+        "integration": integration,
+        "test_input": test_input,
+        "output": output,
+        "message": test_result.message,
+        "duration_ms": duration_ms,
+        "test_mode": true
+    })))
+}
+
+/// Validate action input against schema
+fn validate_action_input(input: &serde_json::Value, schema: &serde_json::Value) -> Vec<String> {
+    let mut errors = Vec::new();
+
+    // Check required fields if schema defines them
+    if let Some(required) = schema.get("required").and_then(|r| r.as_array()) {
+        for req in required {
+            if let Some(field_name) = req.as_str() {
+                if input.get(field_name).is_none() {
+                    errors.push(format!("Missing required field: {}", field_name));
+                }
+            }
         }
-        None => Ok(HttpResponse::NotFound().json(serde_json::json!({"error": "Action not found"}))),
+    }
+
+    // Check property types if defined
+    if let Some(properties) = schema.get("properties").and_then(|p| p.as_object()) {
+        for (field_name, field_schema) in properties {
+            if let Some(value) = input.get(field_name) {
+                if let Some(expected_type) = field_schema.get("type").and_then(|t| t.as_str()) {
+                    let actual_type = match value {
+                        serde_json::Value::String(_) => "string",
+                        serde_json::Value::Number(_) => "number",
+                        serde_json::Value::Bool(_) => "boolean",
+                        serde_json::Value::Array(_) => "array",
+                        serde_json::Value::Object(_) => "object",
+                        serde_json::Value::Null => "null",
+                    };
+
+                    // Check type compatibility
+                    let type_matches = match expected_type {
+                        "string" => actual_type == "string",
+                        "number" | "integer" => actual_type == "number",
+                        "boolean" => actual_type == "boolean",
+                        "array" => actual_type == "array",
+                        "object" => actual_type == "object",
+                        _ => true, // Unknown type, allow
+                    };
+
+                    if !type_matches {
+                        errors.push(format!(
+                            "Field '{}' expected type '{}' but got '{}'",
+                            field_name, expected_type, actual_type
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    errors
+}
+
+struct ActionTestResult {
+    success: bool,
+    message: String,
+}
+
+/// Execute action in test mode
+async fn execute_action_test(
+    action_name: &str,
+    action_type: &str,
+    integration: &Option<String>,
+    input: &serde_json::Value,
+    context: &mut crate::green_team::playbooks::ExecutionContext,
+) -> (ActionTestResult, serde_json::Value) {
+    use crate::green_team::playbooks::actions::ActionExecutor;
+    use crate::green_team::types::{PlaybookAction, NotificationChannel, Severity, CaseType, TicketSystem};
+
+    let executor = ActionExecutor::new();
+
+    // Map action name/type to PlaybookAction for execution
+    let playbook_action = match (action_type, action_name) {
+        ("http", _) | (_, _) if action_name.contains("http_request") => {
+            PlaybookAction::HttpRequest {
+                method: input.get("method").and_then(|v| v.as_str()).unwrap_or("GET").to_string(),
+                url: input.get("url").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                headers: input.get("headers")
+                    .and_then(|v| serde_json::from_value(v.clone()).ok())
+                    .unwrap_or_default(),
+                body: input.get("body").and_then(|v| v.as_str()).map(String::from),
+            }
+        }
+        (_, name) if name.contains("notification") || name.contains("send_") => {
+            PlaybookAction::SendNotification {
+                channel: input.get("channel")
+                    .and_then(|v| serde_json::from_value(v.clone()).ok())
+                    .unwrap_or(NotificationChannel::Email),
+                template: input.get("template").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                recipients: input.get("recipients")
+                    .and_then(|v| serde_json::from_value(v.clone()).ok())
+                    .unwrap_or_default(),
+            }
+        }
+        (_, name) if name.contains("create_case") => {
+            PlaybookAction::CreateCase {
+                title: input.get("title").and_then(|v| v.as_str()).unwrap_or("Test Case").to_string(),
+                severity: input.get("severity")
+                    .and_then(|v| serde_json::from_value(v.clone()).ok())
+                    .unwrap_or(Severity::Medium),
+                case_type: input.get("case_type")
+                    .and_then(|v| serde_json::from_value(v.clone()).ok())
+                    .unwrap_or(CaseType::Incident),
+                assign_to: input.get("assignee").and_then(|v| v.as_str()).map(String::from),
+            }
+        }
+        (_, name) if name.contains("enrich") || name.contains("ioc") => {
+            PlaybookAction::EnrichIoc {
+                ioc_type: input.get("ioc_type").and_then(|v| v.as_str()).unwrap_or("ip").to_string(),
+                value_template: input.get("value").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                sources: input.get("sources")
+                    .and_then(|v| serde_json::from_value(v.clone()).ok())
+                    .unwrap_or_else(|| vec!["virustotal".to_string()]),
+            }
+        }
+        (_, name) if name.contains("block_ip") => {
+            PlaybookAction::BlockIp {
+                ip_template: input.get("ip").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                firewall: input.get("firewall").and_then(|v| v.as_str()).unwrap_or("paloalto").to_string(),
+                duration_hours: input.get("duration_hours").and_then(|v| v.as_u64()).map(|v| v as u32),
+            }
+        }
+        (_, name) if name.contains("isolate") => {
+            PlaybookAction::IsolateHost {
+                hostname_template: input.get("hostname").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                agent_type: input.get("agent_type").and_then(|v| v.as_str()).unwrap_or("crowdstrike").to_string(),
+            }
+        }
+        (_, name) if name.contains("ticket") || name.contains("jira") || name.contains("servicenow") => {
+            PlaybookAction::CreateTicket {
+                system: input.get("system")
+                    .and_then(|v| serde_json::from_value(v.clone()).ok())
+                    .unwrap_or(TicketSystem::Jira),
+                title: input.get("title").and_then(|v| v.as_str()).unwrap_or("Test Ticket").to_string(),
+                description: input.get("description").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                priority: input.get("priority").and_then(|v| v.as_str()).unwrap_or("medium").to_string(),
+            }
+        }
+        ("script", _) | (_, _) if action_name.contains("script") || action_name.contains("run") => {
+            PlaybookAction::RunScript {
+                script: input.get("script").and_then(|v| v.as_str()).unwrap_or("echo 'test'").to_string(),
+                interpreter: input.get("interpreter").and_then(|v| v.as_str()).unwrap_or("bash").to_string(),
+                args: input.get("args")
+                    .and_then(|v| serde_json::from_value(v.clone()).ok())
+                    .unwrap_or_default(),
+            }
+        }
+        _ => {
+            // For unknown action types, return a simulated result
+            return (
+                ActionTestResult {
+                    success: true,
+                    message: format!("Action '{}' validated successfully (simulated - no direct executor)", action_name),
+                },
+                serde_json::json!({
+                    "simulated": true,
+                    "action_type": action_type,
+                    "integration": integration,
+                    "note": "This action type doesn't have a direct test executor. Input was validated against schema."
+                }),
+            );
+        }
+    };
+
+    // Execute the action
+    match executor.execute(&playbook_action, context).await {
+        Ok(output) => (
+            ActionTestResult {
+                success: true,
+                message: format!("Action '{}' executed successfully in test mode", action_name),
+            },
+            output,
+        ),
+        Err(error) => (
+            ActionTestResult {
+                success: false,
+                message: format!("Action '{}' test failed: {}", action_name, error),
+            },
+            serde_json::json!({"error": error}),
+        ),
     }
 }
 
@@ -2054,20 +2280,444 @@ async fn test_integration(
     let id = path.into_inner();
     let now = Utc::now().to_rfc3339();
 
-    // In a real implementation, this would actually test the connection
-    // For now, we just update the last_test_at and mark as success
-    sqlx::query("UPDATE soar_integrations SET last_test_at = ?, last_test_status = 'success' WHERE id = ?")
+    // Fetch the integration to get its type and config
+    let integration = sqlx::query(
+        "SELECT integration_type, endpoint, extra_config FROM soar_integrations WHERE id = ?"
+    )
+    .bind(&id)
+    .fetch_optional(pool.get_ref())
+    .await
+    .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+
+    let integration = match integration {
+        Some(i) => i,
+        None => {
+            return Ok(HttpResponse::NotFound().json(serde_json::json!({
+                "error": "Integration not found"
+            })));
+        }
+    };
+
+    let integration_type: String = integration.get("integration_type");
+    let endpoint: String = integration.get("endpoint");
+    let extra_config: Option<String> = integration.get("extra_config");
+    let config: serde_json::Value = extra_config
+        .and_then(|c| serde_json::from_str(&c).ok())
+        .unwrap_or(serde_json::json!({}));
+
+    // Perform actual connectivity test based on integration type
+    let (success, message, details) = test_integration_connection(
+        &integration_type,
+        &endpoint,
+        &config,
+    ).await;
+
+    let status = if success { "success" } else { "failed" };
+
+    // Update the integration with test results
+    sqlx::query("UPDATE soar_integrations SET last_test_at = ?, last_test_status = ? WHERE id = ?")
         .bind(&now)
+        .bind(status)
         .bind(&id)
         .execute(pool.get_ref())
         .await
         .ok();
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
-        "success": true,
-        "message": "Integration test successful",
+        "success": success,
+        "message": message,
+        "details": details,
         "tested_at": now
     })))
+}
+
+/// Perform actual connectivity test for different integration types
+async fn test_integration_connection(
+    integration_type: &str,
+    endpoint: &str,
+    config: &serde_json::Value,
+) -> (bool, String, Option<serde_json::Value>) {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .unwrap_or_default();
+
+    match integration_type.to_lowercase().as_str() {
+        "slack" => test_slack_connection(&client, endpoint, config).await,
+        "teams" | "microsoft_teams" => test_teams_connection(&client, endpoint).await,
+        "jira" => test_jira_connection(&client, config).await,
+        "email" | "smtp" => test_smtp_connection(config).await,
+        "splunk" => test_splunk_connection(&client, config).await,
+        "webhook" => test_webhook_connection(&client, endpoint).await,
+        "pagerduty" => test_pagerduty_connection(&client, config).await,
+        "servicenow" => test_servicenow_connection(&client, config).await,
+        _ => (
+            false,
+            format!("Unknown integration type: {}", integration_type),
+            None,
+        ),
+    }
+}
+
+async fn test_slack_connection(
+    client: &reqwest::Client,
+    endpoint: &str,
+    config: &serde_json::Value,
+) -> (bool, String, Option<serde_json::Value>) {
+    let webhook_url = if !endpoint.is_empty() {
+        endpoint.to_string()
+    } else {
+        config.get("webhook_url")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string()
+    };
+
+    if webhook_url.is_empty() {
+        return (false, "No Slack webhook URL configured".to_string(), None);
+    }
+
+    // Slack webhooks don't have a test endpoint, but we can validate the URL format
+    // and send a minimal test message
+    if !webhook_url.contains("hooks.slack.com") {
+        return (false, "Invalid Slack webhook URL format".to_string(), None);
+    }
+
+    // Send a test message (Slack webhooks don't return useful status on HEAD)
+    let test_payload = serde_json::json!({
+        "text": "🔧 HeroForge integration test - connection verified",
+        "username": "HeroForge",
+        "icon_emoji": ":shield:"
+    });
+
+    match client.post(&webhook_url).json(&test_payload).send().await {
+        Ok(resp) if resp.status().is_success() => (
+            true,
+            "Slack webhook connection successful".to_string(),
+            Some(serde_json::json!({"status_code": resp.status().as_u16()})),
+        ),
+        Ok(resp) => (
+            false,
+            format!("Slack webhook returned status {}", resp.status()),
+            Some(serde_json::json!({"status_code": resp.status().as_u16()})),
+        ),
+        Err(e) => (
+            false,
+            format!("Failed to connect to Slack: {}", e),
+            None,
+        ),
+    }
+}
+
+async fn test_teams_connection(
+    client: &reqwest::Client,
+    endpoint: &str,
+) -> (bool, String, Option<serde_json::Value>) {
+    if endpoint.is_empty() {
+        return (false, "No Teams webhook URL configured".to_string(), None);
+    }
+
+    // Send a test adaptive card to Teams
+    let test_payload = serde_json::json!({
+        "@type": "MessageCard",
+        "@context": "http://schema.org/extensions",
+        "summary": "HeroForge Integration Test",
+        "themeColor": "0076D7",
+        "title": "🔧 Integration Test",
+        "text": "HeroForge connection verified successfully"
+    });
+
+    match client.post(endpoint).json(&test_payload).send().await {
+        Ok(resp) if resp.status().is_success() => (
+            true,
+            "Microsoft Teams webhook connection successful".to_string(),
+            Some(serde_json::json!({"status_code": resp.status().as_u16()})),
+        ),
+        Ok(resp) => (
+            false,
+            format!("Teams webhook returned status {}", resp.status()),
+            Some(serde_json::json!({"status_code": resp.status().as_u16()})),
+        ),
+        Err(e) => (
+            false,
+            format!("Failed to connect to Teams: {}", e),
+            None,
+        ),
+    }
+}
+
+async fn test_jira_connection(
+    client: &reqwest::Client,
+    config: &serde_json::Value,
+) -> (bool, String, Option<serde_json::Value>) {
+    let base_url = config.get("url").or(config.get("base_url"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let email = config.get("email").or(config.get("username"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let api_token = config.get("api_token").or(config.get("token"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
+    if base_url.is_empty() || email.is_empty() || api_token.is_empty() {
+        return (false, "Incomplete JIRA configuration (need url, email, api_token)".to_string(), None);
+    }
+
+    // Test JIRA connection by fetching current user
+    let url = format!("{}/rest/api/3/myself", base_url.trim_end_matches('/'));
+
+    match client
+        .get(&url)
+        .basic_auth(email, Some(api_token))
+        .header("Accept", "application/json")
+        .send()
+        .await
+    {
+        Ok(resp) if resp.status().is_success() => {
+            let user_info: serde_json::Value = resp.json().await.unwrap_or(serde_json::json!({}));
+            (
+                true,
+                format!("JIRA connection successful - logged in as {}",
+                    user_info.get("displayName").and_then(|v| v.as_str()).unwrap_or("unknown")),
+                Some(serde_json::json!({
+                    "account_id": user_info.get("accountId"),
+                    "email": user_info.get("emailAddress")
+                })),
+            )
+        }
+        Ok(resp) => (
+            false,
+            format!("JIRA authentication failed: {}", resp.status()),
+            Some(serde_json::json!({"status_code": resp.status().as_u16()})),
+        ),
+        Err(e) => (
+            false,
+            format!("Failed to connect to JIRA: {}", e),
+            None,
+        ),
+    }
+}
+
+async fn test_smtp_connection(
+    config: &serde_json::Value,
+) -> (bool, String, Option<serde_json::Value>) {
+    let host = config.get("host").or(config.get("smtp_host"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let port = config.get("port").or(config.get("smtp_port"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(587) as u16;
+
+    if host.is_empty() {
+        return (false, "No SMTP host configured".to_string(), None);
+    }
+
+    // Test TCP connection to SMTP server
+    use std::net::ToSocketAddrs;
+    let addr = format!("{}:{}", host, port);
+
+    match addr.to_socket_addrs() {
+        Ok(mut addrs) => {
+            if let Some(socket_addr) = addrs.next() {
+                match tokio::time::timeout(
+                    std::time::Duration::from_secs(10),
+                    tokio::net::TcpStream::connect(socket_addr)
+                ).await {
+                    Ok(Ok(_stream)) => (
+                        true,
+                        format!("SMTP server {}:{} is reachable", host, port),
+                        Some(serde_json::json!({"host": host, "port": port})),
+                    ),
+                    Ok(Err(e)) => (
+                        false,
+                        format!("Failed to connect to SMTP server: {}", e),
+                        None,
+                    ),
+                    Err(_) => (
+                        false,
+                        "SMTP connection timed out".to_string(),
+                        None,
+                    ),
+                }
+            } else {
+                (false, "Could not resolve SMTP host".to_string(), None)
+            }
+        }
+        Err(e) => (
+            false,
+            format!("Invalid SMTP host address: {}", e),
+            None,
+        ),
+    }
+}
+
+async fn test_splunk_connection(
+    client: &reqwest::Client,
+    config: &serde_json::Value,
+) -> (bool, String, Option<serde_json::Value>) {
+    let base_url = config.get("url").or(config.get("base_url"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let token = config.get("token").or(config.get("hec_token"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
+    if base_url.is_empty() || token.is_empty() {
+        return (false, "Incomplete Splunk configuration (need url, token)".to_string(), None);
+    }
+
+    // Test Splunk HEC endpoint
+    let url = format!("{}/services/collector/health", base_url.trim_end_matches('/'));
+
+    match client
+        .get(&url)
+        .header("Authorization", format!("Splunk {}", token))
+        .send()
+        .await
+    {
+        Ok(resp) if resp.status().is_success() => (
+            true,
+            "Splunk HEC connection successful".to_string(),
+            Some(serde_json::json!({"status_code": resp.status().as_u16()})),
+        ),
+        Ok(resp) => (
+            false,
+            format!("Splunk HEC returned status {}", resp.status()),
+            Some(serde_json::json!({"status_code": resp.status().as_u16()})),
+        ),
+        Err(e) => (
+            false,
+            format!("Failed to connect to Splunk: {}", e),
+            None,
+        ),
+    }
+}
+
+async fn test_webhook_connection(
+    client: &reqwest::Client,
+    endpoint: &str,
+) -> (bool, String, Option<serde_json::Value>) {
+    if endpoint.is_empty() {
+        return (false, "No webhook URL configured".to_string(), None);
+    }
+
+    // For generic webhooks, just test if the endpoint is reachable
+    match client.head(endpoint).send().await {
+        Ok(resp) => {
+            let status = resp.status();
+            // Accept 2xx, 3xx, or 405 (Method Not Allowed - server exists but doesn't allow HEAD)
+            if status.is_success() || status.is_redirection() || status.as_u16() == 405 {
+                (
+                    true,
+                    format!("Webhook endpoint is reachable (status {})", status),
+                    Some(serde_json::json!({"status_code": status.as_u16()})),
+                )
+            } else {
+                (
+                    false,
+                    format!("Webhook endpoint returned status {}", status),
+                    Some(serde_json::json!({"status_code": status.as_u16()})),
+                )
+            }
+        }
+        Err(e) => (
+            false,
+            format!("Failed to reach webhook endpoint: {}", e),
+            None,
+        ),
+    }
+}
+
+async fn test_pagerduty_connection(
+    client: &reqwest::Client,
+    config: &serde_json::Value,
+) -> (bool, String, Option<serde_json::Value>) {
+    let api_key = config.get("api_key").or(config.get("token"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
+    if api_key.is_empty() {
+        return (false, "No PagerDuty API key configured".to_string(), None);
+    }
+
+    // Test PagerDuty API by fetching abilities
+    match client
+        .get("https://api.pagerduty.com/abilities")
+        .header("Authorization", format!("Token token={}", api_key))
+        .header("Accept", "application/vnd.pagerduty+json;version=2")
+        .send()
+        .await
+    {
+        Ok(resp) if resp.status().is_success() => (
+            true,
+            "PagerDuty API connection successful".to_string(),
+            Some(serde_json::json!({"status_code": resp.status().as_u16()})),
+        ),
+        Ok(resp) => (
+            false,
+            format!("PagerDuty API returned status {}", resp.status()),
+            Some(serde_json::json!({"status_code": resp.status().as_u16()})),
+        ),
+        Err(e) => (
+            false,
+            format!("Failed to connect to PagerDuty: {}", e),
+            None,
+        ),
+    }
+}
+
+async fn test_servicenow_connection(
+    client: &reqwest::Client,
+    config: &serde_json::Value,
+) -> (bool, String, Option<serde_json::Value>) {
+    let instance = config.get("instance").or(config.get("url"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let username = config.get("username")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let password = config.get("password")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
+    if instance.is_empty() || username.is_empty() || password.is_empty() {
+        return (false, "Incomplete ServiceNow configuration (need instance, username, password)".to_string(), None);
+    }
+
+    // Normalize instance URL
+    let base_url = if instance.starts_with("http") {
+        instance.to_string()
+    } else {
+        format!("https://{}.service-now.com", instance)
+    };
+
+    // Test ServiceNow connection by fetching sys_user table (minimal query)
+    let url = format!("{}/api/now/table/sys_user?sysparm_limit=1", base_url.trim_end_matches('/'));
+
+    match client
+        .get(&url)
+        .basic_auth(username, Some(password))
+        .header("Accept", "application/json")
+        .send()
+        .await
+    {
+        Ok(resp) if resp.status().is_success() => (
+            true,
+            "ServiceNow connection successful".to_string(),
+            Some(serde_json::json!({"instance": instance})),
+        ),
+        Ok(resp) => (
+            false,
+            format!("ServiceNow authentication failed: {}", resp.status()),
+            Some(serde_json::json!({"status_code": resp.status().as_u16()})),
+        ),
+        Err(e) => (
+            false,
+            format!("Failed to connect to ServiceNow: {}", e),
+            None,
+        ),
+    }
 }
 
 /// Clone a playbook

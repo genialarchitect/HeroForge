@@ -1,0 +1,63 @@
+# Database default usernames (aggressive scan)
+# MySQL/MariaDB
+root
+mysql
+admin
+test
+user
+guest
+backup
+replication
+monitor
+dbadmin
+dba
+
+# PostgreSQL
+postgres
+admin
+pgsql
+replication
+monitor
+
+# MongoDB
+admin
+root
+user
+test
+backup
+monitor
+
+# Redis
+default
+redis
+admin
+
+# MSSQL
+sa
+sql
+admin
+user
+test
+
+# Oracle
+sys
+system
+scott
+admin
+dbsnmp
+
+# Elasticsearch
+elastic
+kibana
+logstash
+beats
+apm_system
+remote_monitoring_user
+
+# CouchDB
+admin
+root
+
+# Cassandra
+cassandra
+admin

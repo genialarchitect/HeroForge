@@ -275,6 +275,8 @@ pub enum SearchProviderType {
     DirectGoogle,
     /// SerpAPI service (recommended)
     SerpApi,
+    /// DuckDuckGo API (free, no API key required)
+    DuckDuckGo,
     /// Placeholder mode - returns URLs for manual execution
     Placeholder,
 }
@@ -318,6 +320,161 @@ impl SearchProvider for PlaceholderProvider {
 
     fn is_available(&self) -> bool {
         true
+    }
+}
+
+/// DuckDuckGo search provider (free, no API key required)
+pub struct DuckDuckGoProvider {
+    client: reqwest::Client,
+}
+
+impl DuckDuckGoProvider {
+    pub fn new() -> Self {
+        Self {
+            client: reqwest::Client::builder()
+                .timeout(Duration::from_secs(30))
+                .user_agent("HeroForge Security Scanner/1.0")
+                .build()
+                .unwrap_or_default(),
+        }
+    }
+}
+
+impl Default for DuckDuckGoProvider {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct DuckDuckGoResponse {
+    #[serde(rename = "Abstract")]
+    abstract_text: Option<String>,
+    #[serde(rename = "AbstractURL")]
+    abstract_url: Option<String>,
+    #[serde(rename = "RelatedTopics")]
+    related_topics: Option<Vec<DuckDuckGoTopic>>,
+    #[serde(rename = "Results")]
+    results: Option<Vec<DuckDuckGoResult>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DuckDuckGoTopic {
+    #[serde(rename = "Text")]
+    text: Option<String>,
+    #[serde(rename = "FirstURL")]
+    first_url: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DuckDuckGoResult {
+    #[serde(rename = "Text")]
+    text: Option<String>,
+    #[serde(rename = "FirstURL")]
+    first_url: Option<String>,
+}
+
+#[async_trait::async_trait]
+impl SearchProvider for DuckDuckGoProvider {
+    async fn search(&self, query: &str, max_results: usize) -> Result<Vec<SearchResult>> {
+        // DuckDuckGo Instant Answer API
+        let url = format!(
+            "https://api.duckduckgo.com/?q={}&format=json&no_html=1&skip_disambig=1",
+            urlencoding::encode(query)
+        );
+
+        let response = self.client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| anyhow::anyhow!("DuckDuckGo request failed: {}", e))?;
+
+        if !response.status().is_success() {
+            // Fall back to returning manual search URLs
+            return Ok(vec![SearchResult {
+                title: "DuckDuckGo Search".to_string(),
+                url: format!("https://duckduckgo.com/?q={}", urlencoding::encode(query)),
+                snippet: format!("Click to search DuckDuckGo for: {}", query),
+                position: 1,
+            }]);
+        }
+
+        let ddg_response: DuckDuckGoResponse = response
+            .json()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to parse DuckDuckGo response: {}", e))?;
+
+        let mut results = Vec::new();
+        let mut position = 1;
+
+        // Add abstract result if available
+        if let (Some(url), Some(text)) = (&ddg_response.abstract_url, &ddg_response.abstract_text) {
+            if !url.is_empty() && !text.is_empty() {
+                results.push(SearchResult {
+                    title: text.chars().take(100).collect(),
+                    url: url.clone(),
+                    snippet: text.clone(),
+                    position,
+                });
+                position += 1;
+            }
+        }
+
+        // Add direct results
+        if let Some(direct_results) = ddg_response.results {
+            for result in direct_results {
+                if position as usize > max_results {
+                    break;
+                }
+                if let (Some(url), Some(text)) = (result.first_url, result.text) {
+                    results.push(SearchResult {
+                        title: text.chars().take(100).collect(),
+                        url,
+                        snippet: text,
+                        position,
+                    });
+                    position += 1;
+                }
+            }
+        }
+
+        // Add related topics
+        if let Some(topics) = ddg_response.related_topics {
+            for topic in topics {
+                if position as usize > max_results {
+                    break;
+                }
+                if let (Some(url), Some(text)) = (topic.first_url, topic.text) {
+                    results.push(SearchResult {
+                        title: text.chars().take(100).collect(),
+                        url,
+                        snippet: text,
+                        position,
+                    });
+                    position += 1;
+                }
+            }
+        }
+
+        // If no results from API, provide manual search URL
+        if results.is_empty() {
+            results.push(SearchResult {
+                title: "DuckDuckGo Search".to_string(),
+                url: format!("https://duckduckgo.com/?q={}", urlencoding::encode(query)),
+                snippet: format!("Click to search DuckDuckGo for: {}", query),
+                position: 1,
+            });
+        }
+
+        Ok(results)
+    }
+
+    fn name(&self) -> &str {
+        "duckduckgo"
+    }
+
+    fn is_available(&self) -> bool {
+        true // Always available, no API key required
     }
 }
 
@@ -413,14 +570,15 @@ pub fn create_provider(config: &DorkConfig) -> Box<dyn SearchProvider> {
             if let Some(key) = &config.serpapi_key {
                 Box::new(SerpApiProvider::new(key.clone()))
             } else {
-                warn!("SerpAPI key not provided, falling back to placeholder mode");
-                Box::new(PlaceholderProvider)
+                info!("SerpAPI key not provided, falling back to DuckDuckGo provider");
+                Box::new(DuckDuckGoProvider::new())
             }
         }
         SearchProviderType::DirectGoogle => {
-            warn!("Direct Google search is not recommended and may be blocked. Using placeholder mode.");
-            Box::new(PlaceholderProvider)
+            warn!("Direct Google search is not recommended and may be blocked. Using DuckDuckGo fallback.");
+            Box::new(DuckDuckGoProvider::new())
         }
+        SearchProviderType::DuckDuckGo => Box::new(DuckDuckGoProvider::new()),
         SearchProviderType::Placeholder => Box::new(PlaceholderProvider),
     }
 }

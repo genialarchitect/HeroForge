@@ -8,6 +8,10 @@ pub struct WordlistManager {
     http_files_aggressive: Vec<String>,
     subdomains_light: Vec<String>,
     subdomains_aggressive: Vec<String>,
+    db_users_light: Vec<String>,
+    db_users_aggressive: Vec<String>,
+    db_passwords_light: Vec<String>,
+    db_passwords_aggressive: Vec<String>,
 }
 
 impl WordlistManager {
@@ -19,6 +23,10 @@ impl WordlistManager {
             http_files_aggressive: parse_embedded_wordlist(include_str!("../../../wordlists/http_files_aggressive.txt")),
             subdomains_light: parse_embedded_wordlist(include_str!("../../../wordlists/subdomains_light.txt")),
             subdomains_aggressive: parse_embedded_wordlist(include_str!("../../../wordlists/subdomains_aggressive.txt")),
+            db_users_light: parse_embedded_wordlist(include_str!("../../../wordlists/db_users_light.txt")),
+            db_users_aggressive: parse_embedded_wordlist(include_str!("../../../wordlists/db_users_aggressive.txt")),
+            db_passwords_light: parse_embedded_wordlist(include_str!("../../../wordlists/db_passwords_light.txt")),
+            db_passwords_aggressive: parse_embedded_wordlist(include_str!("../../../wordlists/db_passwords_aggressive.txt")),
         }
     }
 
@@ -44,6 +52,45 @@ impl WordlistManager {
             EnumDepth::Light => &self.subdomains_light,
             EnumDepth::Aggressive => &self.subdomains_aggressive,
         }
+    }
+
+    /// Get database username wordlist based on scan depth
+    pub fn get_db_user_wordlist(&self, depth: EnumDepth) -> &[String] {
+        match depth {
+            EnumDepth::Passive => &[],
+            EnumDepth::Light => &self.db_users_light,
+            EnumDepth::Aggressive => &self.db_users_aggressive,
+        }
+    }
+
+    /// Get database password wordlist based on scan depth
+    pub fn get_db_password_wordlist(&self, depth: EnumDepth) -> &[String] {
+        match depth {
+            EnumDepth::Passive => &[],
+            EnumDepth::Light => &self.db_passwords_light,
+            EnumDepth::Aggressive => &self.db_passwords_aggressive,
+        }
+    }
+
+    /// Generate credential pairs from username and password wordlists
+    /// Always includes empty password as first attempt for each user
+    pub fn get_db_credentials(&self, depth: EnumDepth) -> Vec<(String, String)> {
+        let users = self.get_db_user_wordlist(depth);
+        let passwords = self.get_db_password_wordlist(depth);
+
+        let mut credentials = Vec::new();
+
+        for user in users {
+            // Always try empty password first
+            credentials.push((user.clone(), String::new()));
+
+            // Then try each password from the wordlist
+            for password in passwords {
+                credentials.push((user.clone(), password.clone()));
+            }
+        }
+
+        credentials
     }
 
     pub fn load_custom_wordlist(path: &Path) -> anyhow::Result<Vec<String>> {

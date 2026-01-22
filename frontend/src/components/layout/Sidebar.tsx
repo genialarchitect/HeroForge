@@ -80,6 +80,7 @@ import {
   Gavel,
   Monitor,
   FileCheck,
+  Gift,
 } from 'lucide-react';
 
 // Types
@@ -648,6 +649,7 @@ const Sidebar: React.FC = () => {
 
   const quickAccessItems: NavItem[] = [
     { to: '/crm', icon: Building2, label: 'CRM Dashboard' },
+    { to: '/referrals', icon: Gift, label: 'Referral Program' },
     { to: '/admin', icon: Users, label: 'Admin' },
     { to: '/settings', icon: Settings, label: 'Settings' },
     { to: '/plugins', icon: Puzzle, label: 'Plugins' },

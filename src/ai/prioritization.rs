@@ -257,6 +257,10 @@ mod tests {
             },
             confidence: 85.0,
             calculated_at: Utc::now(),
+            explanation: None,
+            key_factors: None,
+            epss_score: None,
+            epss_percentile: None,
         }
     }
 

@@ -343,6 +343,30 @@ pub async fn get_exercise_results(
     rows.into_iter().map(|r| r.try_into()).collect()
 }
 
+/// Get a single attack result by ID
+pub async fn get_attack_result(
+    pool: &SqlitePool,
+    result_id: &str,
+) -> Result<Option<PurpleAttackResult>> {
+    let row = sqlx::query_as::<_, AttackResultRow>(
+        r#"
+        SELECT id, exercise_id, technique_id, technique_name, tactic,
+               attack_type, target, attack_status, detection_status,
+               detection_details, time_to_detect_ms, executed_at, error_message
+        FROM purple_attack_results
+        WHERE id = ?
+        "#,
+    )
+    .bind(result_id)
+    .fetch_optional(pool)
+    .await?;
+
+    match row {
+        Some(r) => Ok(Some(r.try_into()?)),
+        None => Ok(None),
+    }
+}
+
 /// Update attack result detection status
 pub async fn update_result_detection(
     pool: &SqlitePool,

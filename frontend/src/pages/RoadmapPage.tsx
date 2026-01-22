@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { toast } from 'react-toastify';
 
 interface RoadmapItem {
   id: string;
@@ -9,230 +10,63 @@ interface RoadmapItem {
   category: 'scanning' | 'reporting' | 'integrations' | 'compliance' | 'ai' | 'platform' | 'security';
   quarter: string;
   votes: number;
-  hasVoted?: boolean;
-  completedDate?: string;
+  has_voted: boolean;
+  completed_date?: string;
   tags: string[];
 }
 
-const roadmapItems: RoadmapItem[] = [
-  // Completed
-  {
-    id: '1',
-    title: 'AI-Powered Vulnerability Prioritization',
-    description: 'Machine learning model that ranks vulnerabilities based on exploitability, business context, and threat intelligence.',
-    status: 'completed',
-    category: 'ai',
-    quarter: 'Q4 2025',
-    votes: 342,
-    completedDate: 'December 2025',
-    tags: ['AI/ML', 'Prioritization'],
-  },
-  {
-    id: '2',
-    title: '45 Compliance Frameworks',
-    description: 'Support for 45 compliance frameworks including SOC 2, PCI-DSS 4.0, HIPAA, NIST, FedRAMP, CMMC, and more.',
-    status: 'completed',
-    category: 'compliance',
-    quarter: 'Q4 2025',
-    votes: 289,
-    completedDate: 'January 2026',
-    tags: ['Compliance', 'Enterprise'],
-  },
-  {
-    id: '3',
-    title: 'Customer Portal',
-    description: 'White-labeled portal for consultancies to share findings, reports, and remediation progress with clients.',
-    status: 'completed',
-    category: 'platform',
-    quarter: 'Q4 2025',
-    votes: 256,
-    completedDate: 'January 2026',
-    tags: ['Consultancies', 'Portal'],
-  },
-  {
-    id: '4',
-    title: 'Interactive Learning Academy',
-    description: 'Built-in learning platform with courses, labs, and certifications for security professionals.',
-    status: 'completed',
-    category: 'platform',
-    quarter: 'Q1 2026',
-    votes: 198,
-    completedDate: 'January 2026',
-    tags: ['Education', 'Certification'],
-  },
-  {
-    id: '5',
-    title: 'Free Security Tools',
-    description: 'Public tools including subdomain finder, security headers checker, SSL analyzer, and more.',
-    status: 'completed',
-    category: 'platform',
-    quarter: 'Q1 2026',
-    votes: 176,
-    completedDate: 'January 2026',
-    tags: ['Free Tools', 'Lead Gen'],
-  },
-  // In Progress
-  {
-    id: '6',
-    title: 'Real-Time Threat Intelligence Feed',
-    description: 'Live CVE feed, CISA KEV integration, and correlation with your asset inventory.',
-    status: 'in_progress',
-    category: 'security',
-    quarter: 'Q1 2026',
-    votes: 412,
-    tags: ['Threat Intel', 'Real-time'],
-  },
-  {
-    id: '7',
-    title: 'Visual Attack Surface Map',
-    description: 'Interactive network topology visualization with risk-based coloring and attack path overlays.',
-    status: 'in_progress',
-    category: 'scanning',
-    quarter: 'Q1 2026',
-    votes: 387,
-    tags: ['Visualization', 'Attack Surface'],
-  },
-  {
-    id: '8',
-    title: 'Python & Node.js SDKs',
-    description: 'Official SDKs for programmatic access to all HeroForge features with full documentation.',
-    status: 'in_progress',
-    category: 'integrations',
-    quarter: 'Q1 2026',
-    votes: 298,
-    tags: ['SDK', 'Developer'],
-  },
-  // Planned
-  {
-    id: '9',
-    title: 'GitHub Actions Integration',
-    description: 'Native GitHub Action for running security scans in CI/CD pipelines with PR comments.',
-    status: 'planned',
-    category: 'integrations',
-    quarter: 'Q2 2026',
-    votes: 445,
-    tags: ['CI/CD', 'GitHub'],
-  },
-  {
-    id: '10',
-    title: 'Live Attack Simulation Lab',
-    description: 'Safe, sandboxed environments for practicing exploitation techniques and testing detections.',
-    status: 'planned',
-    category: 'platform',
-    quarter: 'Q2 2026',
-    votes: 389,
-    tags: ['Training', 'Lab'],
-  },
-  {
-    id: '11',
-    title: 'HeroForge Certification Program',
-    description: 'Official certifications: HCA (Analyst), HCP (Professional), HCE (Expert) with proctored exams.',
-    status: 'planned',
-    category: 'platform',
-    quarter: 'Q2 2026',
-    votes: 334,
-    tags: ['Certification', 'Career'],
-  },
-  {
-    id: '12',
-    title: 'Community Marketplace',
-    description: 'Share and download scan templates, report templates, and custom integrations.',
-    status: 'planned',
-    category: 'platform',
-    quarter: 'Q2 2026',
-    votes: 267,
-    tags: ['Community', 'Templates'],
-  },
-  {
-    id: '13',
-    title: 'White-Label / MSP Features',
-    description: 'Full white-labeling with custom domains, branding, and multi-tenant management for MSPs.',
-    status: 'planned',
-    category: 'platform',
-    quarter: 'Q3 2026',
-    votes: 312,
-    tags: ['MSP', 'White-label'],
-  },
-  {
-    id: '14',
-    title: 'Browser Extension',
-    description: 'Quick security checks, saved credentials lookup, and one-click scanning from browser.',
-    status: 'planned',
-    category: 'platform',
-    quarter: 'Q3 2026',
-    votes: 234,
-    tags: ['Browser', 'Convenience'],
-  },
-  {
-    id: '15',
-    title: 'Advanced SIEM Correlation',
-    description: 'Cross-correlate scan findings with SIEM logs for enhanced detection and investigation.',
-    status: 'planned',
-    category: 'integrations',
-    quarter: 'Q3 2026',
-    votes: 287,
-    tags: ['SIEM', 'Correlation'],
-  },
-  // Considering
-  {
-    id: '16',
-    title: 'Mobile App (iOS & Android)',
-    description: 'Native mobile apps for monitoring scans, receiving alerts, and quick status checks.',
-    status: 'considering',
-    category: 'platform',
-    quarter: 'Q4 2026',
-    votes: 423,
-    tags: ['Mobile', 'iOS', 'Android'],
-  },
-  {
-    id: '17',
-    title: 'On-Premise Deployment',
-    description: 'Self-hosted deployment option for organizations with strict data residency requirements.',
-    status: 'considering',
-    category: 'platform',
-    quarter: 'Q4 2026',
-    votes: 356,
-    tags: ['Enterprise', 'Self-hosted'],
-  },
-  {
-    id: '18',
-    title: 'Slack/Teams Bot',
-    description: 'Interactive bot for running scans, querying results, and receiving alerts in chat.',
-    status: 'considering',
-    category: 'integrations',
-    quarter: 'Q4 2026',
-    votes: 278,
-    tags: ['Slack', 'Teams', 'Bot'],
-  },
-  {
-    id: '19',
-    title: 'AI Report Writer',
-    description: 'Generate complete penetration test reports with AI-written executive summaries and findings.',
-    status: 'considering',
-    category: 'ai',
-    quarter: 'TBD',
-    votes: 512,
-    tags: ['AI', 'Reports'],
-  },
-  {
-    id: '20',
-    title: 'Bug Bounty Platform Integration',
-    description: 'Direct integration with HackerOne and Bugcrowd for streamlined vulnerability disclosure.',
-    status: 'considering',
-    category: 'integrations',
-    quarter: 'TBD',
-    votes: 189,
-    tags: ['Bug Bounty', 'Integration'],
-  },
-];
+interface RoadmapStats {
+  total_items: number;
+  completed: number;
+  in_progress: number;
+  planned: number;
+  considering: number;
+  total_votes: number;
+}
 
-const StatusPage: React.FC = () => {
-  const [items, setItems] = useState<RoadmapItem[]>(roadmapItems);
+const RoadmapPage: React.FC = () => {
+  const [items, setItems] = useState<RoadmapItem[]>([]);
+  const [stats, setStats] = useState<RoadmapStats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [votingItemId, setVotingItemId] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<string>('all');
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'votes' | 'quarter'>('votes');
   const [suggestionForm, setSuggestionForm] = useState({ title: '', description: '', email: '' });
+  const [suggestionSubmitting, setSuggestionSubmitting] = useState(false);
   const [suggestionSubmitted, setSuggestionSubmitted] = useState(false);
+
+  useEffect(() => {
+    fetchRoadmapData();
+  }, []);
+
+  const fetchRoadmapData = async () => {
+    try {
+      const [itemsRes, statsRes] = await Promise.all([
+        fetch('/api/roadmap/items'),
+        fetch('/api/roadmap/stats'),
+      ]);
+
+      if (itemsRes.ok) {
+        const itemsData = await itemsRes.json();
+        if (itemsData.success) {
+          setItems(itemsData.data);
+        }
+      }
+
+      if (statsRes.ok) {
+        const statsData = await statsRes.json();
+        if (statsData.success) {
+          setStats(statsData.data);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch roadmap data:', error);
+      toast.error('Failed to load roadmap data');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const statusFilters = [
     { id: 'all', label: 'All', count: items.length },
@@ -289,27 +123,69 @@ const StatusPage: React.FC = () => {
       case 'ai': return '🤖';
       case 'platform': return '🏗️';
       case 'security': return '🛡️';
+      default: return '📦';
     }
   };
 
-  const handleVote = (itemId: string) => {
-    setItems(prev => prev.map(item => {
-      if (item.id === itemId) {
-        return {
-          ...item,
-          votes: item.hasVoted ? item.votes - 1 : item.votes + 1,
-          hasVoted: !item.hasVoted,
-        };
+  const handleVote = async (itemId: string, hasVoted: boolean) => {
+    setVotingItemId(itemId);
+    try {
+      const method = hasVoted ? 'DELETE' : 'POST';
+      const response = await fetch(`/api/roadmap/items/${itemId}/vote`, { method });
+      const data = await response.json();
+
+      if (data.success) {
+        // Update local state
+        setItems(prev => prev.map(item => {
+          if (item.id === itemId) {
+            return {
+              ...item,
+              votes: data.data.votes,
+              has_voted: data.data.has_voted,
+            };
+          }
+          return item;
+        }));
+      } else {
+        toast.error(data.error || 'Failed to update vote');
       }
-      return item;
-    }));
+    } catch (error) {
+      console.error('Failed to vote:', error);
+      toast.error('Failed to update vote');
+    } finally {
+      setVotingItemId(null);
+    }
   };
 
-  const handleSuggestionSubmit = (e: React.FormEvent) => {
+  const handleSuggestionSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (suggestionForm.title && suggestionForm.description) {
-      setSuggestionSubmitted(true);
-      setSuggestionForm({ title: '', description: '', email: '' });
+    if (!suggestionForm.title.trim() || !suggestionForm.description.trim()) {
+      toast.error('Please fill in all required fields');
+      return;
+    }
+
+    setSuggestionSubmitting(true);
+    try {
+      const response = await fetch('/api/roadmap/suggestions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(suggestionForm),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setSuggestionSubmitted(true);
+        setSuggestionForm({ title: '', description: '', email: '' });
+        toast.success('Thank you for your suggestion!');
+      } else {
+        toast.error(data.error || 'Failed to submit suggestion');
+      }
+    } catch (error) {
+      console.error('Failed to submit suggestion:', error);
+      toast.error('Failed to submit suggestion');
+    } finally {
+      setSuggestionSubmitting(false);
     }
   };
 
@@ -321,8 +197,21 @@ const StatusPage: React.FC = () => {
       return a.quarter.localeCompare(b.quarter);
     });
 
-  const completedCount = items.filter(i => i.status === 'completed').length;
-  const inProgressCount = items.filter(i => i.status === 'in_progress').length;
+  const completedCount = stats?.completed || items.filter(i => i.status === 'completed').length;
+  const inProgressCount = stats?.in_progress || items.filter(i => i.status === 'in_progress').length;
+  const plannedCount = stats?.planned || items.filter(i => i.status === 'planned').length;
+  const totalVotes = stats?.total_votes || items.reduce((sum, i) => sum + i.votes, 0);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin" />
+          <p className="text-gray-400">Loading roadmap...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-900">
@@ -363,11 +252,11 @@ const StatusPage: React.FC = () => {
             <p className="text-gray-400 text-sm">In Progress</p>
           </div>
           <div className="bg-gray-800 rounded-xl border border-gray-700 p-4 text-center">
-            <p className="text-3xl font-bold text-purple-400">{items.filter(i => i.status === 'planned').length}</p>
+            <p className="text-3xl font-bold text-purple-400">{plannedCount}</p>
             <p className="text-gray-400 text-sm">Planned</p>
           </div>
           <div className="bg-gray-800 rounded-xl border border-gray-700 p-4 text-center">
-            <p className="text-3xl font-bold text-gray-400">{items.reduce((sum, i) => sum + i.votes, 0).toLocaleString()}</p>
+            <p className="text-3xl font-bold text-gray-400">{totalVotes.toLocaleString()}</p>
             <p className="text-gray-400 text-sm">Total Votes</p>
           </div>
         </div>
@@ -425,18 +314,23 @@ const StatusPage: React.FC = () => {
                 {/* Vote Button */}
                 <div className="flex flex-col items-center">
                   <button
-                    onClick={() => handleVote(item.id)}
+                    onClick={() => handleVote(item.id, item.has_voted)}
+                    disabled={votingItemId === item.id}
                     className={`w-12 h-12 rounded-lg flex flex-col items-center justify-center transition-colors ${
-                      item.hasVoted
+                      item.has_voted
                         ? 'bg-cyan-600 text-white'
                         : 'bg-gray-700 text-gray-400 hover:bg-gray-600 hover:text-white'
-                    }`}
+                    } ${votingItemId === item.id ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                    </svg>
+                    {votingItemId === item.id ? (
+                      <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                      </svg>
+                    )}
                   </button>
-                  <span className={`mt-1 font-bold ${item.hasVoted ? 'text-cyan-400' : 'text-gray-400'}`}>
+                  <span className={`mt-1 font-bold ${item.has_voted ? 'text-cyan-400' : 'text-gray-400'}`}>
                     {item.votes}
                   </span>
                 </div>
@@ -448,8 +342,8 @@ const StatusPage: React.FC = () => {
                       {getStatusLabel(item.status)}
                     </span>
                     <span className="text-gray-500 text-sm">{item.quarter}</span>
-                    {item.completedDate && (
-                      <span className="text-green-400 text-sm">Shipped {item.completedDate}</span>
+                    {item.completed_date && (
+                      <span className="text-green-400 text-sm">Shipped {item.completed_date}</span>
                     )}
                   </div>
                   <h3 className="text-lg font-semibold text-white mb-2 flex items-center gap-2">
@@ -499,6 +393,7 @@ const StatusPage: React.FC = () => {
                   placeholder="What feature would you like to see?"
                   className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500"
                   required
+                  maxLength={200}
                 />
               </div>
               <div>
@@ -510,6 +405,7 @@ const StatusPage: React.FC = () => {
                   rows={3}
                   className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 resize-none"
                   required
+                  maxLength={2000}
                 />
               </div>
               <div>
@@ -524,9 +420,10 @@ const StatusPage: React.FC = () => {
               </div>
               <button
                 type="submit"
-                className="px-6 py-3 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg font-medium transition-colors"
+                disabled={suggestionSubmitting}
+                className="px-6 py-3 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Submit Suggestion
+                {suggestionSubmitting ? 'Submitting...' : 'Submit Suggestion'}
               </button>
             </form>
           )}
@@ -552,4 +449,4 @@ const StatusPage: React.FC = () => {
   );
 };
 
-export default StatusPage;
+export default RoadmapPage;

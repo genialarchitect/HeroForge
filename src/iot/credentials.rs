@@ -481,12 +481,52 @@ impl IotCredentialChecker {
         false
     }
 
-    /// Try SSH auth (simplified - just connection test)
-    async fn try_ssh_auth(&self, _addr: SocketAddr, _username: &str, _password: &str) -> bool {
-        // Note: Full SSH auth would require an SSH library
-        // For now, we just return false (not implemented)
-        // In production, use a library like russh or ssh2
-        false
+    /// Try SSH auth using ssh2 library
+    async fn try_ssh_auth(&self, addr: SocketAddr, username: &str, password: &str) -> bool {
+        use std::net::TcpStream;
+
+        // SSH authentication needs to be done in a blocking context
+        let addr_clone = addr;
+        let username_clone = username.to_string();
+        let password_clone = password.to_string();
+        let timeout_secs = self.timeout.as_secs();
+
+        // Run SSH auth in blocking task
+        let result = tokio::task::spawn_blocking(move || {
+            // Connect with timeout
+            let tcp = match TcpStream::connect_timeout(
+                &addr_clone,
+                std::time::Duration::from_secs(timeout_secs.min(30))
+            ) {
+                Ok(stream) => stream,
+                Err(_) => return false,
+            };
+
+            // Set read/write timeout
+            let _ = tcp.set_read_timeout(Some(std::time::Duration::from_secs(timeout_secs.min(30))));
+            let _ = tcp.set_write_timeout(Some(std::time::Duration::from_secs(timeout_secs.min(30))));
+
+            // Create SSH session
+            let mut sess = match ssh2::Session::new() {
+                Ok(s) => s,
+                Err(_) => return false,
+            };
+
+            sess.set_tcp_stream(tcp);
+
+            // Perform SSH handshake
+            if sess.handshake().is_err() {
+                return false;
+            }
+
+            // Try password authentication
+            match sess.userauth_password(&username_clone, &password_clone) {
+                Ok(_) => sess.authenticated(),
+                Err(_) => false,
+            }
+        }).await;
+
+        result.unwrap_or(false)
     }
 
     /// Try FTP auth

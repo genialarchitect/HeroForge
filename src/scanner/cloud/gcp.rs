@@ -1085,8 +1085,8 @@ impl CloudScanner for GcpScanner {
 
     async fn scan_iam(&self, _config: &CloudScanConfig) -> Result<(Vec<CloudResource>, Vec<CloudFinding>)> {
         if self.demo_mode {
-            log::info!("GCP IAM scan running in demo mode");
-            return Ok(self.generate_demo_iam_resources());
+            log::warn!("⚠️ GCP IAM scan running in DEMO MODE - data is SIMULATED and NOT from real GCP APIs");
+            return Ok(Self::mark_as_demo_data(self.generate_demo_iam_resources()));
         }
 
         info!("Starting GCP IAM scan");
@@ -1354,8 +1354,8 @@ impl CloudScanner for GcpScanner {
 
     async fn scan_storage(&self, _config: &CloudScanConfig) -> Result<(Vec<CloudResource>, Vec<CloudFinding>)> {
         if self.demo_mode {
-            log::info!("GCP Storage scan running in demo mode");
-            return Ok(self.generate_demo_storage_resources());
+            log::warn!("⚠️ GCP Storage scan running in DEMO MODE - data is SIMULATED and NOT from real GCP APIs");
+            return Ok(Self::mark_as_demo_data(self.generate_demo_storage_resources()));
         }
 
         info!("Starting GCP Cloud Storage scan");
@@ -1571,8 +1571,8 @@ impl CloudScanner for GcpScanner {
 
     async fn scan_compute(&self, _config: &CloudScanConfig) -> Result<(Vec<CloudResource>, Vec<CloudFinding>)> {
         if self.demo_mode {
-            log::info!("GCP Compute scan running in demo mode");
-            return Ok(self.generate_demo_compute_resources());
+            log::warn!("⚠️ GCP Compute scan running in DEMO MODE - data is SIMULATED and NOT from real GCP APIs");
+            return Ok(Self::mark_as_demo_data(self.generate_demo_compute_resources()));
         }
 
         info!("Starting GCP Compute Engine scan");
@@ -1914,8 +1914,8 @@ impl CloudScanner for GcpScanner {
 
     async fn scan_network(&self, _config: &CloudScanConfig) -> Result<(Vec<CloudResource>, Vec<CloudFinding>)> {
         if self.demo_mode {
-            log::info!("GCP Network scan running in demo mode");
-            return Ok(self.generate_demo_network_resources());
+            log::warn!("⚠️ GCP Network scan running in DEMO MODE - data is SIMULATED and NOT from real GCP APIs");
+            return Ok(Self::mark_as_demo_data(self.generate_demo_network_resources()));
         }
 
         info!("Starting GCP Network/Firewall scan");
@@ -2125,8 +2125,8 @@ impl CloudScanner for GcpScanner {
 
     async fn scan_database(&self, _config: &CloudScanConfig) -> Result<(Vec<CloudResource>, Vec<CloudFinding>)> {
         if self.demo_mode {
-            log::info!("GCP Database scan running in demo mode");
-            return Ok(self.generate_demo_database_resources());
+            log::warn!("⚠️ GCP Database scan running in DEMO MODE - data is SIMULATED and NOT from real GCP APIs");
+            return Ok(Self::mark_as_demo_data(self.generate_demo_database_resources()));
         }
 
         info!("Starting GCP Cloud SQL scan");
@@ -2507,6 +2507,23 @@ impl CloudScanner for GcpScanner {
 
         info!("GCP Database scan complete: {} resources, {} findings", resources.len(), findings.len());
         Ok((resources, findings))
+    }
+}
+
+impl GcpScanner {
+    /// Mark all resources and findings as demo data
+    /// This is critical to ensure users know the data is not from real cloud APIs
+    fn mark_as_demo_data(mut data: (Vec<CloudResource>, Vec<CloudFinding>)) -> (Vec<CloudResource>, Vec<CloudFinding>) {
+        for resource in &mut data.0 {
+            if let Some(obj) = resource.metadata.as_object_mut() {
+                obj.insert("_demo_warning".to_string(),
+                    serde_json::json!("⚠️ DEMO DATA - This resource is simulated and does not represent real GCP infrastructure"));
+            }
+        }
+        for finding in &mut data.1 {
+            finding.description = format!("⚠️ [DEMO DATA - NOT REAL] {}", finding.description);
+        }
+        data
     }
 }
 

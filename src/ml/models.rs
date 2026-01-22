@@ -1,4 +1,36 @@
-//! ML model management
+//! ML Model Management
+//!
+//! This module implements lightweight machine learning models for security threat classification.
+//!
+//! # Model Architecture
+//!
+//! The models use **logistic regression with softmax output** - a classic and interpretable
+//! ML approach well-suited for security applications where:
+//! - Explainability is important (linear weights show feature importance)
+//! - Predictions need to be deterministic and auditable
+//! - Models need to work without GPU/heavy infrastructure
+//!
+//! # Pre-trained Weights
+//!
+//! Model weights are embedded (pre-trained offline) rather than trained at runtime.
+//! This provides:
+//! - Consistent predictions across deployments
+//! - No training data exposure at runtime
+//! - Instant availability without training phase
+//!
+//! # Available Models
+//!
+//! - `threat-classifier-v1`: Classifies hosts as benign/suspicious/malicious
+//! - `anomaly-detector-v1`: Detects normal vs anomalous behavior patterns
+//! - `risk-predictor-v1`: Predicts risk level (low/medium/high/critical)
+//! - `pattern-recognizer-v1`: Identifies attack patterns (recon/exploitation/lateral/exfil)
+//!
+//! # Mathematical Details
+//!
+//! For input features x, class probabilities are computed as:
+//! 1. Normalize: x_norm = (x - mean) / std
+//! 2. Compute logits: z_k = w_k · x_norm + b_k for each class k
+//! 3. Apply softmax: P(class=k) = exp(z_k) / Σ exp(z_j)
 
 use anyhow::{anyhow, Result};
 use serde::{Serialize, Deserialize};

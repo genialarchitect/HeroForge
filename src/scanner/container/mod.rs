@@ -64,6 +64,11 @@ use std::collections::HashMap;
 pub async fn run_container_scan(
     config: &ContainerScanConfig,
 ) -> Result<(Vec<ContainerImage>, Vec<K8sResource>, Vec<ContainerFinding>)> {
+    if config.demo_mode {
+        log::warn!("⚠️ Container scan running in DEMO MODE - data is SIMULATED and NOT from real container runtime");
+        log::warn!("⚠️ Demo data should NOT be used for actual security assessments");
+    }
+
     log::info!(
         "Starting container scan with demo_mode={}",
         config.demo_mode
@@ -155,6 +160,13 @@ CMD ["./app"]"#;
         all_resources.len(),
         all_findings.len()
     );
+
+    // Mark findings as demo data if in demo mode
+    if config.demo_mode {
+        for finding in &mut all_findings {
+            finding.description = format!("⚠️ [DEMO DATA - NOT REAL] {}", finding.description);
+        }
+    }
 
     Ok((all_images, all_resources, all_findings))
 }

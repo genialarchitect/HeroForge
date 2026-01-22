@@ -1466,8 +1466,8 @@ impl CloudScanner for AzureScanner {
                 }
             }
         }
-        info!("Azure IAM scanning using demo data");
-        Ok(self.generate_demo_iam_resources())
+        warn!("⚠️ Azure IAM scan running in DEMO MODE - data is SIMULATED and NOT from real Azure APIs");
+        Ok(Self::mark_as_demo_data(self.generate_demo_iam_resources()))
     }
 
     async fn scan_storage(&self, _config: &CloudScanConfig) -> Result<(Vec<CloudResource>, Vec<CloudFinding>)> {
@@ -1480,8 +1480,8 @@ impl CloudScanner for AzureScanner {
                 }
             }
         }
-        info!("Azure Storage scanning using demo data");
-        Ok(self.generate_demo_storage_resources())
+        warn!("⚠️ Azure Storage scan running in DEMO MODE - data is SIMULATED and NOT from real Azure APIs");
+        Ok(Self::mark_as_demo_data(self.generate_demo_storage_resources()))
     }
 
     async fn scan_compute(&self, _config: &CloudScanConfig) -> Result<(Vec<CloudResource>, Vec<CloudFinding>)> {
@@ -1494,8 +1494,8 @@ impl CloudScanner for AzureScanner {
                 }
             }
         }
-        info!("Azure Compute scanning using demo data");
-        Ok(self.generate_demo_compute_resources())
+        warn!("⚠️ Azure Compute scan running in DEMO MODE - data is SIMULATED and NOT from real Azure APIs");
+        Ok(Self::mark_as_demo_data(self.generate_demo_compute_resources()))
     }
 
     async fn scan_network(&self, _config: &CloudScanConfig) -> Result<(Vec<CloudResource>, Vec<CloudFinding>)> {
@@ -1508,8 +1508,8 @@ impl CloudScanner for AzureScanner {
                 }
             }
         }
-        info!("Azure Network scanning using demo data");
-        Ok(self.generate_demo_network_resources())
+        warn!("⚠️ Azure Network scan running in DEMO MODE - data is SIMULATED and NOT from real Azure APIs");
+        Ok(Self::mark_as_demo_data(self.generate_demo_network_resources()))
     }
 
     async fn scan_database(&self, _config: &CloudScanConfig) -> Result<(Vec<CloudResource>, Vec<CloudFinding>)> {
@@ -1522,8 +1522,25 @@ impl CloudScanner for AzureScanner {
                 }
             }
         }
-        info!("Azure Database scanning using demo data");
-        Ok(self.generate_demo_database_resources())
+        warn!("⚠️ Azure Database scan running in DEMO MODE - data is SIMULATED and NOT from real Azure APIs");
+        Ok(Self::mark_as_demo_data(self.generate_demo_database_resources()))
+    }
+}
+
+impl AzureScanner {
+    /// Mark all resources and findings as demo data
+    /// This is critical to ensure users know the data is not from real cloud APIs
+    fn mark_as_demo_data(mut data: (Vec<CloudResource>, Vec<CloudFinding>)) -> (Vec<CloudResource>, Vec<CloudFinding>) {
+        for resource in &mut data.0 {
+            if let Some(obj) = resource.metadata.as_object_mut() {
+                obj.insert("_demo_warning".to_string(),
+                    serde_json::json!("⚠️ DEMO DATA - This resource is simulated and does not represent real Azure infrastructure"));
+            }
+        }
+        for finding in &mut data.1 {
+            finding.description = format!("⚠️ [DEMO DATA - NOT REAL] {}", finding.description);
+        }
+        data
     }
 }
 

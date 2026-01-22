@@ -1,4 +1,5 @@
 use super::types::{DbType, EnumDepth, EnumerationResult, Finding, FindingType, ServiceType};
+use super::wordlists::WordlistManager;
 use crate::types::{ScanProgressMessage, ScanTarget};
 use anyhow::Result;
 use log::{debug, info};
@@ -9,6 +10,11 @@ use tokio::sync::broadcast::Sender;
 // Database client imports
 use mysql_async::prelude::*;
 use sqlx::Row;
+
+// Lazy static wordlist manager for database credential enumeration
+lazy_static::lazy_static! {
+    static ref WORDLISTS: WordlistManager = WordlistManager::new();
+}
 
 /// Enumerate database service
 pub async fn enumerate_database(
@@ -79,22 +85,13 @@ async fn enumerate_mysql(
 ) -> Vec<Finding> {
     let mut findings = Vec::new();
 
-    // Common MySQL default credentials
-    let credentials = if matches!(depth, EnumDepth::Aggressive) {
-        vec![
-            ("root", ""),
-            ("root", "root"),
-            ("root", "password"),
-            ("root", "toor"),
-            ("admin", "admin"),
-            ("mysql", "mysql"),
-            ("test", "test"),
-        ]
-    } else {
-        vec![("root", ""), ("root", "root")]
-    };
+    // Get credentials from wordlist manager
+    let credentials = WORDLISTS.get_db_credentials(depth);
+    info!("Testing {} credential combinations for MySQL on {}:{}", credentials.len(), target.ip, port);
 
     for (username, password) in credentials {
+        let username = username.as_str();
+        let password = password.as_str();
         let conn_str = format!(
             "mysql://{}:{}@{}:{}/mysql",
             username, password, target.ip, port
@@ -178,19 +175,13 @@ async fn enumerate_postgres(
 ) -> Vec<Finding> {
     let mut findings = Vec::new();
 
-    // Common PostgreSQL default credentials
-    let credentials = if matches!(depth, EnumDepth::Aggressive) {
-        vec![
-            ("postgres", ""),
-            ("postgres", "postgres"),
-            ("postgres", "password"),
-            ("admin", "admin"),
-        ]
-    } else {
-        vec![("postgres", ""), ("postgres", "postgres")]
-    };
+    // Get credentials from wordlist manager
+    let credentials = WORDLISTS.get_db_credentials(depth);
+    info!("Testing {} credential combinations for PostgreSQL on {}:{}", credentials.len(), target.ip, port);
 
     for (username, password) in credentials {
+        let username = username.as_str();
+        let password = password.as_str();
         let conn_str = format!(
             "postgres://{}:{}@{}:{}/postgres",
             username, password, target.ip, port

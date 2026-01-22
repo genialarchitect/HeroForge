@@ -1,28 +1,51 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { toast } from 'react-toastify';
 
 interface ServiceStatus {
+  id: string;
   name: string;
-  status: 'operational' | 'degraded' | 'partial_outage' | 'major_outage' | 'maintenance';
-  latency?: number;
-  uptime: number;
   description: string;
+  status: 'operational' | 'degraded' | 'partial_outage' | 'major_outage' | 'maintenance';
+  latency_ms?: number;
+  uptime_percent: number;
+  last_check_at?: string;
+}
+
+interface IncidentUpdate {
+  id: string;
+  incident_id: string;
+  status: string;
+  message: string;
+  created_at: string;
 }
 
 interface Incident {
   id: string;
   title: string;
   status: 'investigating' | 'identified' | 'monitoring' | 'resolved';
-  severity: 'minor' | 'major' | 'critical';
-  createdAt: string;
-  updatedAt: string;
-  resolvedAt?: string;
-  updates: {
-    timestamp: string;
-    status: string;
-    message: string;
-  }[];
-  affectedServices: string[];
+  severity: 'minor' | 'major' | 'critical' | 'maintenance';
+  affected_services: string;
+  created_at: string;
+  updated_at: string;
+  resolved_at?: string;
+  updates: IncidentUpdate[];
+}
+
+interface UptimeRecord {
+  service_id: string;
+  date: string;
+  status: string;
+  uptime_percent: number;
+  avg_latency_ms?: number;
+  check_count: number;
+}
+
+interface UptimeSummary {
+  current_month: number;
+  last_30_days: number;
+  last_90_days: number;
+  all_time: number;
 }
 
 interface UptimeDay {
@@ -34,91 +57,72 @@ const StatusPage: React.FC = () => {
   const [services, setServices] = useState<ServiceStatus[]>([]);
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [uptimeHistory, setUptimeHistory] = useState<Record<string, UptimeDay[]>>({});
+  const [uptimeSummary, setUptimeSummary] = useState<UptimeSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [subscribeEmail, setSubscribeEmail] = useState('');
   const [subscribed, setSubscribed] = useState(false);
+  const [subscribing, setSubscribing] = useState(false);
 
   useEffect(() => {
-    // Simulate fetching status data
-    const fetchStatus = async () => {
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      const mockServices: ServiceStatus[] = [
-        { name: 'Web Application', status: 'operational', latency: 45, uptime: 99.98, description: 'Main web dashboard and user interface' },
-        { name: 'API', status: 'operational', latency: 23, uptime: 99.99, description: 'REST API endpoints for all operations' },
-        { name: 'Scanning Engine', status: 'operational', latency: 156, uptime: 99.95, description: 'Network and vulnerability scanning services' },
-        { name: 'Database', status: 'operational', latency: 12, uptime: 99.99, description: 'Primary data storage and retrieval' },
-        { name: 'Authentication', status: 'operational', latency: 34, uptime: 99.99, description: 'User authentication and authorization' },
-        { name: 'Report Generation', status: 'operational', latency: 89, uptime: 99.92, description: 'PDF, HTML, and other report formats' },
-        { name: 'WebSocket', status: 'operational', latency: 18, uptime: 99.97, description: 'Real-time scan progress updates' },
-        { name: 'Email Service', status: 'operational', latency: 245, uptime: 99.85, description: 'Notifications and alerts delivery' },
-      ];
-
-      const mockIncidents: Incident[] = [
-        {
-          id: '1',
-          title: 'Scheduled Maintenance - Database Optimization',
-          status: 'resolved',
-          severity: 'minor',
-          createdAt: '2026-01-15T02:00:00Z',
-          updatedAt: '2026-01-15T04:30:00Z',
-          resolvedAt: '2026-01-15T04:30:00Z',
-          updates: [
-            { timestamp: '2026-01-15T02:00:00Z', status: 'maintenance', message: 'Starting scheduled database optimization. Expected duration: 2-3 hours.' },
-            { timestamp: '2026-01-15T04:30:00Z', status: 'resolved', message: 'Database optimization completed successfully. All systems operational.' },
-          ],
-          affectedServices: ['Database', 'API'],
-        },
-        {
-          id: '2',
-          title: 'Elevated API Latency',
-          status: 'resolved',
-          severity: 'minor',
-          createdAt: '2026-01-10T14:23:00Z',
-          updatedAt: '2026-01-10T15:45:00Z',
-          resolvedAt: '2026-01-10T15:45:00Z',
-          updates: [
-            { timestamp: '2026-01-10T14:23:00Z', status: 'investigating', message: 'We are investigating reports of elevated API response times.' },
-            { timestamp: '2026-01-10T14:45:00Z', status: 'identified', message: 'Root cause identified: Increased traffic from a large scan operation. Scaling resources.' },
-            { timestamp: '2026-01-10T15:45:00Z', status: 'resolved', message: 'Additional capacity deployed. API latency returned to normal levels.' },
-          ],
-          affectedServices: ['API'],
-        },
-      ];
-
-      // Generate 90 days of uptime history
-      const generateUptimeHistory = (serviceName: string): UptimeDay[] => {
-        const days: UptimeDay[] = [];
-        const today = new Date();
-        for (let i = 89; i >= 0; i--) {
-          const date = new Date(today);
-          date.setDate(date.getDate() - i);
-          const rand = Math.random();
-          let status: UptimeDay['status'] = 'operational';
-          if (rand > 0.98) status = 'degraded';
-          if (rand > 0.995) status = 'partial_outage';
-          if (serviceName === 'Database' && i === 5) status = 'maintenance';
-          days.push({
-            date: date.toISOString().split('T')[0],
-            status,
-          });
-        }
-        return days;
-      };
-
-      const history: Record<string, UptimeDay[]> = {};
-      mockServices.forEach(service => {
-        history[service.name] = generateUptimeHistory(service.name);
-      });
-
-      setServices(mockServices);
-      setIncidents(mockIncidents);
-      setUptimeHistory(history);
-      setLoading(false);
-    };
-
-    fetchStatus();
+    fetchStatusData();
+    // Refresh every 60 seconds
+    const interval = setInterval(fetchStatusData, 60000);
+    return () => clearInterval(interval);
   }, []);
+
+  const fetchStatusData = async () => {
+    try {
+      const [servicesRes, incidentsRes, uptimeRes, summaryRes] = await Promise.all([
+        fetch('/api/status/services'),
+        fetch('/api/status/incidents'),
+        fetch('/api/status/uptime'),
+        fetch('/api/status/uptime/summary'),
+      ]);
+
+      if (servicesRes.ok) {
+        const data = await servicesRes.json();
+        if (data.success) {
+          setServices(data.data);
+        }
+      }
+
+      if (incidentsRes.ok) {
+        const data = await incidentsRes.json();
+        if (data.success) {
+          setIncidents(data.data);
+        }
+      }
+
+      if (uptimeRes.ok) {
+        const data = await uptimeRes.json();
+        if (data.success && Array.isArray(data.data)) {
+          // Group uptime by service
+          const history: Record<string, UptimeDay[]> = {};
+          data.data.forEach((record: UptimeRecord) => {
+            if (!history[record.service_id]) {
+              history[record.service_id] = [];
+            }
+            history[record.service_id].push({
+              date: record.date,
+              status: record.status as UptimeDay['status'],
+            });
+          });
+          setUptimeHistory(history);
+        }
+      }
+
+      if (summaryRes.ok) {
+        const data = await summaryRes.json();
+        if (data.success) {
+          setUptimeSummary(data.data);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch status data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const getStatusColor = (status: ServiceStatus['status']) => {
     switch (status) {
@@ -157,23 +161,49 @@ const StatusPage: React.FC = () => {
       case 'critical': return 'bg-red-500/20 text-red-400 border-red-500/50';
       case 'major': return 'bg-orange-500/20 text-orange-400 border-orange-500/50';
       case 'minor': return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50';
+      case 'maintenance': return 'bg-blue-500/20 text-blue-400 border-blue-500/50';
       default: return 'bg-gray-500/20 text-gray-400 border-gray-500/50';
     }
   };
 
   const getOverallStatus = () => {
-    if (services.some(s => s.status === 'major_outage')) return { status: 'major_outage', text: 'Major System Outage', color: 'bg-red-500' };
-    if (services.some(s => s.status === 'partial_outage')) return { status: 'partial_outage', text: 'Partial System Outage', color: 'bg-orange-500' };
-    if (services.some(s => s.status === 'degraded')) return { status: 'degraded', text: 'Degraded Performance', color: 'bg-yellow-500' };
-    if (services.some(s => s.status === 'maintenance')) return { status: 'maintenance', text: 'Scheduled Maintenance', color: 'bg-blue-500' };
+    if (services.some(s => s.status === 'major_outage'))
+      return { status: 'major_outage', text: 'Major System Outage', color: 'bg-red-500' };
+    if (services.some(s => s.status === 'partial_outage'))
+      return { status: 'partial_outage', text: 'Partial System Outage', color: 'bg-orange-500' };
+    if (services.some(s => s.status === 'degraded'))
+      return { status: 'degraded', text: 'Degraded Performance', color: 'bg-yellow-500' };
+    if (services.some(s => s.status === 'maintenance'))
+      return { status: 'maintenance', text: 'Scheduled Maintenance', color: 'bg-blue-500' };
     return { status: 'operational', text: 'All Systems Operational', color: 'bg-green-500' };
   };
 
-  const handleSubscribe = (e: React.FormEvent) => {
+  const handleSubscribe = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (subscribeEmail) {
-      setSubscribed(true);
-      setSubscribeEmail('');
+    if (!subscribeEmail.trim()) return;
+
+    setSubscribing(true);
+    try {
+      const response = await fetch('/api/status/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: subscribeEmail }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setSubscribed(true);
+        setSubscribeEmail('');
+        toast.success('Please check your email to verify your subscription.');
+      } else {
+        toast.error(data.error || 'Failed to subscribe');
+      }
+    } catch (error) {
+      console.error('Failed to subscribe:', error);
+      toast.error('Failed to subscribe');
+    } finally {
+      setSubscribing(false);
     }
   };
 
@@ -185,6 +215,14 @@ const StatusPage: React.FC = () => {
       hour: '2-digit',
       minute: '2-digit',
     });
+  };
+
+  const parseAffectedServices = (services: string): string[] => {
+    try {
+      return JSON.parse(services);
+    } catch {
+      return [];
+    }
   };
 
   const overallStatus = getOverallStatus();
@@ -212,6 +250,7 @@ const StatusPage: React.FC = () => {
           <nav className="hidden md:flex items-center space-x-6">
             <Link to="/features" className="text-gray-300 hover:text-white">Features</Link>
             <Link to="/pricing" className="text-gray-300 hover:text-white">Pricing</Link>
+            <Link to="/roadmap" className="text-gray-300 hover:text-white">Roadmap</Link>
             <Link to="/docs" className="text-gray-300 hover:text-white">Docs</Link>
             <Link to="/login" className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg">Sign In</Link>
           </nav>
@@ -232,6 +271,28 @@ const StatusPage: React.FC = () => {
           </div>
         </div>
 
+        {/* Uptime Summary */}
+        {uptimeSummary && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+            <div className="bg-gray-800 rounded-xl border border-gray-700 p-4 text-center">
+              <p className="text-2xl font-bold text-green-400">{uptimeSummary.current_month.toFixed(2)}%</p>
+              <p className="text-gray-400 text-sm">This Month</p>
+            </div>
+            <div className="bg-gray-800 rounded-xl border border-gray-700 p-4 text-center">
+              <p className="text-2xl font-bold text-green-400">{uptimeSummary.last_30_days.toFixed(2)}%</p>
+              <p className="text-gray-400 text-sm">Last 30 Days</p>
+            </div>
+            <div className="bg-gray-800 rounded-xl border border-gray-700 p-4 text-center">
+              <p className="text-2xl font-bold text-green-400">{uptimeSummary.last_90_days.toFixed(2)}%</p>
+              <p className="text-gray-400 text-sm">Last 90 Days</p>
+            </div>
+            <div className="bg-gray-800 rounded-xl border border-gray-700 p-4 text-center">
+              <p className="text-2xl font-bold text-green-400">{uptimeSummary.all_time.toFixed(2)}%</p>
+              <p className="text-gray-400 text-sm">All Time</p>
+            </div>
+          </div>
+        )}
+
         {/* Subscribe to Updates */}
         <div className="bg-gray-800 rounded-xl border border-gray-700 p-6 mb-8">
           <h2 className="text-lg font-semibold text-white mb-2">Subscribe to Updates</h2>
@@ -243,7 +304,7 @@ const StatusPage: React.FC = () => {
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
-              <span>You're subscribed to status updates!</span>
+              <span>Please check your email to verify your subscription.</span>
             </div>
           ) : (
             <form onSubmit={handleSubscribe} className="flex gap-2">
@@ -252,128 +313,121 @@ const StatusPage: React.FC = () => {
                 value={subscribeEmail}
                 onChange={(e) => setSubscribeEmail(e.target.value)}
                 placeholder="your@email.com"
-                className="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                className="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500"
                 required
               />
               <button
                 type="submit"
-                className="px-6 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg font-medium transition-colors"
+                disabled={subscribing}
+                className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
               >
-                Subscribe
+                {subscribing ? 'Subscribing...' : 'Subscribe'}
               </button>
             </form>
           )}
         </div>
 
-        {/* Services Status */}
-        <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden mb-8">
-          <div className="p-4 border-b border-gray-700">
-            <h2 className="text-lg font-semibold text-white">System Status</h2>
-          </div>
-          <div className="divide-y divide-gray-700">
+        {/* Services List */}
+        <div className="mb-12">
+          <h2 className="text-xl font-semibold text-white mb-4">System Status</h2>
+          <div className="bg-gray-800 rounded-xl border border-gray-700 divide-y divide-gray-700">
             {services.map((service) => (
-              <div key={service.name} className="p-4">
-                <div className="flex items-center justify-between mb-2">
+              <div key={service.id} className="p-4">
+                <div className="flex items-center justify-between mb-3">
                   <div>
                     <h3 className="text-white font-medium">{service.name}</h3>
                     <p className="text-gray-500 text-sm">{service.description}</p>
                   </div>
                   <div className="flex items-center gap-3">
-                    {service.latency && (
-                      <span className="text-gray-400 text-sm">{service.latency}ms</span>
+                    {service.latency_ms && (
+                      <span className="text-gray-400 text-sm">{service.latency_ms}ms</span>
                     )}
                     <div className="flex items-center gap-2">
-                      <div className={`w-3 h-3 rounded-full ${getStatusColor(service.status)}`} />
-                      <span className={`text-sm ${service.status === 'operational' ? 'text-green-400' : 'text-yellow-400'}`}>
-                        {getStatusText(service.status)}
-                      </span>
+                      <span className={`w-3 h-3 rounded-full ${getStatusColor(service.status)}`} />
+                      <span className="text-gray-300 text-sm">{getStatusText(service.status)}</span>
                     </div>
                   </div>
                 </div>
-                {/* Uptime Bar */}
-                <div className="flex items-center gap-1 mt-3">
-                  <span className="text-gray-500 text-xs w-20">{service.uptime}% uptime</span>
-                  <div className="flex-1 flex gap-px">
-                    {uptimeHistory[service.name]?.slice(-90).map((day, i) => (
-                      <div
-                        key={i}
-                        className={`h-6 flex-1 rounded-sm ${getStatusColor(day.status as ServiceStatus['status'])} opacity-80 hover:opacity-100 transition-opacity`}
-                        title={`${day.date}: ${getStatusText(day.status as ServiceStatus['status'])}`}
-                      />
-                    ))}
-                  </div>
-                  <span className="text-gray-500 text-xs w-16 text-right">90 days</span>
+                {/* Uptime History Bar */}
+                <div className="flex gap-px">
+                  {(uptimeHistory[service.id] || []).slice(-90).map((day, i) => (
+                    <div
+                      key={i}
+                      className={`flex-1 h-6 rounded-sm ${getStatusColor(day.status as ServiceStatus['status'])} opacity-80 hover:opacity-100 transition-opacity`}
+                      title={`${day.date}: ${getStatusText(day.status as ServiceStatus['status'])}`}
+                    />
+                  ))}
+                  {(!uptimeHistory[service.id] || uptimeHistory[service.id].length === 0) && (
+                    // Show placeholder bars if no history
+                    Array.from({ length: 90 }).map((_, i) => (
+                      <div key={i} className="flex-1 h-6 rounded-sm bg-green-500 opacity-50" />
+                    ))
+                  )}
+                </div>
+                <div className="flex justify-between mt-1">
+                  <span className="text-gray-500 text-xs">90 days ago</span>
+                  <span className="text-gray-400 text-xs font-medium">{service.uptime_percent.toFixed(2)}% uptime</span>
+                  <span className="text-gray-500 text-xs">Today</span>
                 </div>
               </div>
             ))}
           </div>
         </div>
 
-        {/* Uptime Summary */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          {[
-            { label: 'Current Month', value: '99.98%', trend: '+0.02%' },
-            { label: 'Last 30 Days', value: '99.97%', trend: '+0.01%' },
-            { label: 'Last 90 Days', value: '99.95%', trend: '+0.03%' },
-            { label: 'All Time', value: '99.94%', trend: '' },
-          ].map((stat) => (
-            <div key={stat.label} className="bg-gray-800 rounded-xl border border-gray-700 p-4">
-              <p className="text-gray-400 text-sm mb-1">{stat.label}</p>
-              <div className="flex items-baseline gap-2">
-                <span className="text-2xl font-bold text-white">{stat.value}</span>
-                {stat.trend && (
-                  <span className="text-green-400 text-sm">{stat.trend}</span>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-
         {/* Incidents */}
-        <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden mb-8">
-          <div className="p-4 border-b border-gray-700">
-            <h2 className="text-lg font-semibold text-white">Recent Incidents</h2>
-          </div>
+        <div>
+          <h2 className="text-xl font-semibold text-white mb-4">Recent Incidents</h2>
           {incidents.length === 0 ? (
-            <div className="p-8 text-center">
+            <div className="bg-gray-800 rounded-xl border border-gray-700 p-8 text-center">
               <div className="w-16 h-16 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
                 <svg className="w-8 h-8 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
               </div>
-              <p className="text-gray-400">No incidents reported in the last 90 days</p>
+              <p className="text-gray-400">No incidents reported in the last 90 days.</p>
             </div>
           ) : (
-            <div className="divide-y divide-gray-700">
+            <div className="space-y-4">
               {incidents.map((incident) => (
-                <div key={incident.id} className="p-4">
-                  <div className="flex items-start justify-between mb-3">
+                <div key={incident.id} className="bg-gray-800 rounded-xl border border-gray-700 p-6">
+                  <div className="flex items-start justify-between mb-4">
                     <div>
-                      <div className="flex items-center gap-2 mb-1">
+                      <div className="flex items-center gap-3 mb-1">
+                        <h3 className="text-white font-medium">{incident.title}</h3>
                         <span className={`text-xs px-2 py-0.5 rounded border ${getSeverityBadge(incident.severity)}`}>
-                          {incident.severity.toUpperCase()}
-                        </span>
-                        <span className={`text-sm font-medium ${getIncidentStatusColor(incident.status)}`}>
-                          {incident.status.charAt(0).toUpperCase() + incident.status.slice(1)}
+                          {incident.severity}
                         </span>
                       </div>
-                      <h3 className="text-white font-medium">{incident.title}</h3>
+                      <p className="text-gray-500 text-sm">
+                        {formatDate(incident.created_at)}
+                        {incident.resolved_at && ` — Resolved ${formatDate(incident.resolved_at)}`}
+                      </p>
                     </div>
-                    <span className="text-gray-500 text-sm">{formatDate(incident.createdAt)}</span>
+                    <span className={`text-sm font-medium ${getIncidentStatusColor(incident.status)}`}>
+                      {incident.status.charAt(0).toUpperCase() + incident.status.slice(1)}
+                    </span>
                   </div>
-                  <div className="flex flex-wrap gap-2 mb-3">
-                    {incident.affectedServices.map((service) => (
+
+                  {/* Affected Services */}
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    {parseAffectedServices(incident.affected_services).map((service) => (
                       <span key={service} className="text-xs bg-gray-700 text-gray-300 px-2 py-1 rounded">
                         {service}
                       </span>
                     ))}
                   </div>
-                  <div className="space-y-3 pl-4 border-l-2 border-gray-700">
+
+                  {/* Timeline */}
+                  <div className="border-l-2 border-gray-700 pl-4 space-y-4">
                     {incident.updates.map((update, i) => (
-                      <div key={i} className="relative">
-                        <div className="absolute -left-[21px] w-3 h-3 bg-gray-700 rounded-full border-2 border-gray-600" />
-                        <p className="text-gray-500 text-xs mb-1">{formatDate(update.timestamp)}</p>
-                        <p className="text-gray-300 text-sm">{update.message}</p>
+                      <div key={i}>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className={`text-sm font-medium ${getIncidentStatusColor(update.status as Incident['status'])}`}>
+                            {update.status.charAt(0).toUpperCase() + update.status.slice(1)}
+                          </span>
+                          <span className="text-gray-500 text-xs">{formatDate(update.created_at)}</span>
+                        </div>
+                        <p className="text-gray-400 text-sm">{update.message}</p>
                       </div>
                     ))}
                   </div>
@@ -381,22 +435,6 @@ const StatusPage: React.FC = () => {
               ))}
             </div>
           )}
-        </div>
-
-        {/* Scheduled Maintenance */}
-        <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
-          <div className="p-4 border-b border-gray-700">
-            <h2 className="text-lg font-semibold text-white">Scheduled Maintenance</h2>
-          </div>
-          <div className="p-8 text-center">
-            <div className="w-16 h-16 bg-blue-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-            </div>
-            <p className="text-gray-400 mb-2">No scheduled maintenance</p>
-            <p className="text-gray-500 text-sm">We'll notify subscribers 48 hours before any planned maintenance.</p>
-          </div>
         </div>
       </main>
 
@@ -408,9 +446,9 @@ const StatusPage: React.FC = () => {
               &copy; {new Date().getFullYear()} HeroForge Security. All rights reserved.
             </p>
             <div className="flex items-center gap-6">
+              <Link to="/roadmap" className="text-gray-400 hover:text-white text-sm">Roadmap</Link>
               <Link to="/legal/terms" className="text-gray-400 hover:text-white text-sm">Terms</Link>
               <Link to="/legal/privacy" className="text-gray-400 hover:text-white text-sm">Privacy</Link>
-              <a href="mailto:support@heroforge.io" className="text-gray-400 hover:text-white text-sm">Contact Support</a>
             </div>
           </div>
         </div>

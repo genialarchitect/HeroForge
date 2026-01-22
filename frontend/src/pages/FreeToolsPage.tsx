@@ -89,25 +89,40 @@ const SubdomainFinder: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<SubdomainResult[] | null>(null);
   const [showEmailPrompt, setShowEmailPrompt] = useState(false);
+  const [totalFound, setTotalFound] = useState(0);
+  const [error, setError] = useState<string | null>(null);
 
   const handleScan = async () => {
     if (!domain) return;
     setLoading(true);
+    setError(null);
 
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    try {
+      // Clean domain
+      let cleanDomain = domain.replace(/^https?:\/\//, '').split('/')[0];
 
-    const mockResults: SubdomainResult[] = [
-      { subdomain: `www.${domain}`, ip: '192.168.1.1', status: 'active' },
-      { subdomain: `mail.${domain}`, ip: '192.168.1.2', status: 'active' },
-      { subdomain: `api.${domain}`, ip: '192.168.1.3', status: 'active' },
-      { subdomain: `dev.${domain}`, status: 'inactive' },
-      { subdomain: `staging.${domain}`, ip: '192.168.1.5', status: 'active' },
-    ];
+      const response = await fetch(`/api/tools/subdomains?domain=${encodeURIComponent(cleanDomain)}`);
+      const data = await response.json();
 
-    setResults(mockResults.slice(0, 3)); // Show only 3 for free
-    setShowEmailPrompt(true);
-    setLoading(false);
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to find subdomains');
+      }
+
+      // Map API response to component format
+      const mappedResults: SubdomainResult[] = data.data.subdomains.map((s: { subdomain: string; ip?: string }) => ({
+        subdomain: s.subdomain,
+        ip: s.ip,
+        status: s.ip ? 'active' : 'inactive',
+      }));
+
+      setTotalFound(data.data.total || mappedResults.length);
+      setResults(mappedResults.slice(0, 3)); // Show only 3 for free
+      setShowEmailPrompt(mappedResults.length > 3);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to find subdomains');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleGetFullResults = () => {
@@ -136,6 +151,12 @@ const SubdomainFinder: React.FC = () => {
         </button>
       </div>
 
+      {error && (
+        <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-4 text-red-400 text-sm">
+          {error}
+        </div>
+      )}
+
       {results && (
         <div className="space-y-3">
           <h3 className="text-sm font-medium text-gray-300">Found {results.length} subdomains (showing preview):</h3>
@@ -155,7 +176,7 @@ const SubdomainFinder: React.FC = () => {
 
           {showEmailPrompt && (
             <div className="bg-cyan-900/30 border border-cyan-700 rounded-lg p-4 mt-4">
-              <p className="text-cyan-300 text-sm mb-3">Enter your email to receive the full list of 47 discovered subdomains:</p>
+              <p className="text-cyan-300 text-sm mb-3">Enter your email to receive the full list of {totalFound} discovered subdomains:</p>
               <div className="flex gap-2">
                 <input
                   type="email"
@@ -185,27 +206,42 @@ const SecurityHeadersChecker: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<HeaderResult[] | null>(null);
   const [score, setScore] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const handleCheck = async () => {
     if (!url) return;
     setLoading(true);
+    setError(null);
 
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    try {
+      // Ensure URL has protocol
+      let targetUrl = url;
+      if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
+        targetUrl = 'https://' + targetUrl;
+      }
 
-    const mockResults: HeaderResult[] = [
-      { header: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains', status: 'good', recommendation: 'HSTS is properly configured' },
-      { header: 'Content-Security-Policy', value: null, status: 'missing', recommendation: 'Add CSP header to prevent XSS attacks' },
-      { header: 'X-Frame-Options', value: 'SAMEORIGIN', status: 'good', recommendation: 'Clickjacking protection enabled' },
-      { header: 'X-Content-Type-Options', value: 'nosniff', status: 'good', recommendation: 'MIME sniffing protection enabled' },
-      { header: 'X-XSS-Protection', value: null, status: 'warning', recommendation: 'Consider adding for legacy browser support' },
-      { header: 'Referrer-Policy', value: null, status: 'missing', recommendation: 'Add to control referrer information' },
-      { header: 'Permissions-Policy', value: null, status: 'missing', recommendation: 'Add to control browser features' },
-    ];
+      const response = await fetch(`/api/tools/security-headers?url=${encodeURIComponent(targetUrl)}`);
+      const data = await response.json();
 
-    const goodCount = mockResults.filter(r => r.status === 'good').length;
-    setScore(Math.round((goodCount / mockResults.length) * 100));
-    setResults(mockResults);
-    setLoading(false);
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to check headers');
+      }
+
+      // Map API response to component format
+      const mappedResults: HeaderResult[] = data.data.headers.map((h: { name: string; value: string | null; present: boolean; recommendation: string }) => ({
+        header: h.name,
+        value: h.value,
+        status: h.present ? 'good' : (h.name === 'X-XSS-Protection' ? 'warning' : 'missing'),
+        recommendation: h.recommendation,
+      }));
+
+      setScore(data.data.score);
+      setResults(mappedResults);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to check headers');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -226,6 +262,12 @@ const SecurityHeadersChecker: React.FC = () => {
           {loading ? 'Checking...' : 'Check Headers'}
         </button>
       </div>
+
+      {error && (
+        <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-4 text-red-400 text-sm">
+          {error}
+        </div>
+      )}
 
       {results && score !== null && (
         <div className="space-y-4">
@@ -268,27 +310,42 @@ const SSLAnalyzer: React.FC = () => {
   const [domain, setDomain] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<SSLResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const handleAnalyze = async () => {
     if (!domain) return;
     setLoading(true);
+    setError(null);
 
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    try {
+      // Clean domain (remove protocol if present)
+      let cleanDomain = domain.replace(/^https?:\/\//, '').split('/')[0];
 
-    const mockResult: SSLResult = {
-      valid: true,
-      issuer: "Let's Encrypt Authority X3",
-      subject: domain,
-      validFrom: '2024-01-15',
-      validTo: '2024-04-15',
-      daysRemaining: 45,
-      protocol: 'TLSv1.3',
-      cipher: 'TLS_AES_256_GCM_SHA384',
-      grade: 'A',
-    };
+      const response = await fetch(`/api/tools/ssl-analyzer?domain=${encodeURIComponent(cleanDomain)}`);
+      const data = await response.json();
 
-    setResult(mockResult);
-    setLoading(false);
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to analyze SSL');
+      }
+
+      // Map API response to component format
+      const cert = data.data;
+      setResult({
+        valid: cert.valid,
+        issuer: cert.issuer || 'Unknown',
+        subject: cert.subject || cleanDomain,
+        validFrom: cert.not_before || 'Unknown',
+        validTo: cert.not_after || 'Unknown',
+        daysRemaining: cert.days_until_expiry || 0,
+        protocol: cert.protocol || 'Unknown',
+        cipher: cert.cipher || 'Unknown',
+        grade: cert.grade || 'F',
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to analyze SSL');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -309,6 +366,12 @@ const SSLAnalyzer: React.FC = () => {
           {loading ? 'Analyzing...' : 'Analyze SSL'}
         </button>
       </div>
+
+      {error && (
+        <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-4 text-red-400 text-sm">
+          {error}
+        </div>
+      )}
 
       {result && (
         <div className="space-y-4">
@@ -359,25 +422,38 @@ const DNSLookup: React.FC = () => {
   const [domain, setDomain] = useState('');
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<DNSRecord[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const handleLookup = async () => {
     if (!domain) return;
     setLoading(true);
+    setError(null);
 
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    try {
+      // Clean domain
+      let cleanDomain = domain.replace(/^https?:\/\//, '').split('/')[0];
 
-    const mockResults: DNSRecord[] = [
-      { type: 'A', name: domain, value: '93.184.216.34', ttl: 3600 },
-      { type: 'AAAA', name: domain, value: '2606:2800:220:1:248:1893:25c8:1946', ttl: 3600 },
-      { type: 'MX', name: domain, value: 'mail.example.com (priority: 10)', ttl: 3600 },
-      { type: 'NS', name: domain, value: 'ns1.example.com', ttl: 86400 },
-      { type: 'NS', name: domain, value: 'ns2.example.com', ttl: 86400 },
-      { type: 'TXT', name: domain, value: 'v=spf1 include:_spf.google.com ~all', ttl: 3600 },
-      { type: 'SOA', name: domain, value: 'ns1.example.com admin.example.com', ttl: 3600 },
-    ];
+      const response = await fetch(`/api/tools/dns-security?domain=${encodeURIComponent(cleanDomain)}`);
+      const data = await response.json();
 
-    setResults(mockResults);
-    setLoading(false);
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to lookup DNS');
+      }
+
+      // Map API response to component format
+      const mappedResults: DNSRecord[] = data.data.records.map((r: { record_type: string; name: string; value: string; ttl: number }) => ({
+        type: r.record_type,
+        name: r.name || cleanDomain,
+        value: r.value,
+        ttl: r.ttl || 3600,
+      }));
+
+      setResults(mappedResults);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to lookup DNS');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const getTypeColor = (type: string) => {
@@ -411,6 +487,12 @@ const DNSLookup: React.FC = () => {
           {loading ? 'Looking up...' : 'Lookup DNS'}
         </button>
       </div>
+
+      {error && (
+        <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-4 text-red-400 text-sm">
+          {error}
+        </div>
+      )}
 
       {results && (
         <div className="space-y-2">
@@ -522,24 +604,39 @@ const PortScanner: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<PortResult[] | null>(null);
   const [showEmailPrompt, setShowEmailPrompt] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleScan = async () => {
     if (!target) return;
     setLoading(true);
+    setError(null);
 
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    try {
+      // Clean target (remove protocol if present)
+      let cleanTarget = target.replace(/^https?:\/\//, '').split('/')[0];
 
-    const mockResults: PortResult[] = [
-      { port: 22, state: 'open', service: 'SSH', version: 'OpenSSH 8.2' },
-      { port: 80, state: 'open', service: 'HTTP', version: 'nginx 1.18' },
-      { port: 443, state: 'open', service: 'HTTPS', version: 'nginx 1.18' },
-      { port: 3306, state: 'filtered', service: 'MySQL' },
-      { port: 8080, state: 'closed', service: 'HTTP-Alt' },
-    ];
+      const response = await fetch(`/api/tools/port-scan?target=${encodeURIComponent(cleanTarget)}&ports=20`);
+      const data = await response.json();
 
-    setResults(mockResults);
-    setShowEmailPrompt(true);
-    setLoading(false);
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to scan ports');
+      }
+
+      // Map API response to component format
+      const mappedResults: PortResult[] = data.data.ports.map((p: { port: number; state: string; service?: string; version?: string }) => ({
+        port: p.port,
+        state: p.state as 'open' | 'closed' | 'filtered',
+        service: p.service || 'unknown',
+        version: p.version,
+      }));
+
+      setResults(mappedResults);
+      setShowEmailPrompt(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to scan ports');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -562,9 +659,15 @@ const PortScanner: React.FC = () => {
       </div>
 
       <p className="text-yellow-400 text-xs flex items-center gap-2">
-        <span>⚠️</span>
+        <span>Warning:</span>
         <span>Only scan targets you own or have permission to test</span>
       </p>
+
+      {error && (
+        <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-4 text-red-400 text-sm">
+          {error}
+        </div>
+      )}
 
       {results && (
         <div className="space-y-3">

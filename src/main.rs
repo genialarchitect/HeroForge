@@ -1,8 +1,6 @@
 #![recursion_limit = "512"]
-// Suppress warnings for code that's implemented but not yet fully integrated
-#![allow(dead_code)]
-#![allow(unused_imports)]
-#![allow(unused_variables)]
+// Note: Previously suppressed dead_code, unused_imports, unused_variables warnings.
+// These have been removed to expose real issues. Use #[allow(...)] on specific items if needed.
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};

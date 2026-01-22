@@ -84,6 +84,9 @@ bcrypt = "0.17"
 # Email notifications
 lettre = { version = "0.11", features = ["tokio1", "tokio1-native-tls"] }
 
+# TLS analysis for free tools
+native-tls = "0.2"
+
 # Database
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "postgres", "mysql", "chrono", "uuid"] }
 

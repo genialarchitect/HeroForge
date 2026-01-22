@@ -389,9 +389,123 @@ async fn handle_slack_command(
             SlackBot::build_vulns_response(&vulns, severity.as_deref())
         }
         HeroForgeCommand::Scan { target } => {
-            // In a real implementation, this would start a scan
-            let scan_id = Uuid::new_v4().to_string();
-            SlackBot::build_scan_response(&target, &scan_id)
+            // Get or create a system user ID for bot-initiated scans
+            let bot_user_id = format!("bot_{}", workspace_id);
+
+            // Create scan in database with default settings
+            match crate::db::create_scan(
+                pool.as_ref(),
+                &bot_user_id,
+                &format!("Bot scan: {}", target),
+                &vec![target.clone()],
+                None, // no customer_id
+                None, // no engagement_id
+            ).await {
+                Ok(scan) => {
+                    let scan_id = scan.id.clone();
+                    let scan_id_for_response = scan_id.clone();
+                    let pool_clone = pool.get_ref().clone();
+                    let targets = vec![target.clone()];
+
+                    // Spawn background scan task
+                    tokio::spawn(async move {
+                        use crate::types::{ScanConfig, ScanType, ScanProgressMessage};
+                        use crate::web::broadcast::create_scan_channel;
+
+                        log::info!("Starting bot-initiated scan {} for target {}", scan_id, targets.join(", "));
+
+                        // Create broadcast channel
+                        let tx = create_scan_channel(scan_id.clone()).await;
+
+                        // Update status to running
+                        let _ = crate::db::update_scan_status(&pool_clone, &scan_id, "running", None, None).await;
+
+                        // Send scan started message
+                        let _ = tx.send(ScanProgressMessage::ScanStarted {
+                            scan_id: scan_id.clone(),
+                            timestamp: chrono::Utc::now().to_rfc3339(),
+                        });
+
+                        // Configure scan with default settings (quick scan)
+                        let config = ScanConfig {
+                            targets,
+                            port_range: (1, 1000), // Common ports only
+                            threads: 100,
+                            timeout: std::time::Duration::from_secs(3),
+                            scan_type: ScanType::TCPConnect,
+                            enable_os_detection: true,
+                            enable_service_detection: true,
+                            enable_vuln_scan: true,
+                            enable_enumeration: false, // Skip enumeration for quick scan
+                            enum_depth: crate::scanner::enumeration::types::EnumDepth::Light,
+                            enum_wordlist_path: None,
+                            enum_services: vec![],
+                            output_format: crate::types::OutputFormat::Json,
+                            udp_port_range: None,
+                            udp_retries: 2,
+                            skip_host_discovery: false,
+                            service_detection_timeout: None,
+                            dns_timeout: None,
+                            syn_timeout: None,
+                            udp_timeout: None,
+                            vpn_config_id: None,
+                            exclusions: vec![],
+                        };
+
+                        // Run the scan
+                        match crate::scanner::run_scan(&config, Some(tx.clone())).await {
+                            Ok(results) => {
+                                // Calculate totals - results is Vec<HostInfo>
+                                let total_hosts = results.len();
+                                let total_ports: usize = results.iter().map(|h| h.ports.len()).sum();
+                                let total_vulns: usize = results.iter().map(|h| h.vulnerabilities.len()).sum();
+
+                                // Log the scan completion
+                                log::info!("Bot scan {} completed: {} hosts, {} ports, {} vulnerabilities",
+                                    scan_id, total_hosts, total_ports, total_vulns);
+
+                                // Update scan as completed
+                                let _ = crate::db::update_scan_status(
+                                    &pool_clone,
+                                    &scan_id,
+                                    "completed",
+                                    None, // results JSON would go here if needed
+                                    None,
+                                ).await;
+
+                                let _ = tx.send(ScanProgressMessage::ScanCompleted {
+                                    scan_id: scan_id.clone(),
+                                    duration: 0.0, // Actual duration would need timing
+                                    total_hosts,
+                                });
+                            }
+                            Err(e) => {
+                                log::error!("Scan {} failed: {}", scan_id, e);
+                                let _ = crate::db::update_scan_status(
+                                    &pool_clone,
+                                    &scan_id,
+                                    "failed",
+                                    None,
+                                    Some(&e.to_string()),
+                                ).await;
+
+                                let _ = tx.send(ScanProgressMessage::Error {
+                                    message: format!("Scan {} failed: {}", scan_id, e),
+                                });
+                            }
+                        }
+
+                        // Cleanup broadcast channel
+                        crate::web::broadcast::remove_scan_channel(&scan_id).await;
+                    });
+
+                    SlackBot::build_scan_response(&target, &scan_id_for_response)
+                }
+                Err(e) => {
+                    log::error!("Failed to create bot scan: {}", e);
+                    SlackBot::build_error_response(&format!("Failed to start scan: {}", e))
+                }
+            }
         }
         HeroForgeCommand::Report { scan_id } => {
             let report_url = format!("https://heroforge.genialarchitect.io/reports/{}", scan_id);

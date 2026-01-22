@@ -402,14 +402,104 @@ async fn get_exercise_results(
 }
 
 async fn recheck_detection(
-    _pool: web::Data<SqlitePool>,
-    _claims: web::ReqData<auth::Claims>,
-    _path: web::Path<String>,
+    pool: web::Data<SqlitePool>,
+    claims: web::ReqData<auth::Claims>,
+    path: web::Path<String>,
 ) -> HttpResponse {
-    // For now, just return success - in production would trigger SIEM re-check
+    use crate::purple_team::DetectionChecker;
+
+    let result_id = path.into_inner();
+
+    // Get the attack result to recheck
+    let attack_result = match db::purple_team::get_attack_result(&pool, &result_id).await {
+        Ok(Some(result)) => result,
+        Ok(None) => return HttpResponse::NotFound().json(serde_json::json!({
+            "error": "Attack result not found"
+        })),
+        Err(e) => return HttpResponse::InternalServerError().json(serde_json::json!({
+            "error": format!("Failed to get attack result: {}", e)
+        })),
+    };
+
+    // Get the exercise to check ownership and get SIEM integration
+    let exercise = match db::purple_team::get_exercise_by_id(&pool, &attack_result.exercise_id).await {
+        Ok(Some(e)) => e,
+        Ok(None) => return HttpResponse::NotFound().json(serde_json::json!({
+            "error": "Exercise not found"
+        })),
+        Err(e) => return HttpResponse::InternalServerError().json(serde_json::json!({
+            "error": format!("Failed to get exercise: {}", e)
+        })),
+    };
+
+    // Check ownership
+    if exercise.user_id != claims.sub {
+        return HttpResponse::Forbidden().json(serde_json::json!({
+            "error": "Access denied"
+        }));
+    }
+
+    // Check if SIEM integration is configured
+    let siem_integration_id = match exercise.siem_integration_id {
+        Some(id) => id,
+        None => return HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "No SIEM integration configured for this exercise"
+        })),
+    };
+
+    // Create detection checker and recheck
+    let detection_checker = DetectionChecker::new(pool.get_ref().clone());
+
+    // Use a short timeout for recheck (5 seconds)
+    let recheck_timeout = 5;
+
+    let detection_status = match detection_checker
+        .check_detection(&siem_integration_id, &attack_result, recheck_timeout)
+        .await
+    {
+        Ok(status) => status,
+        Err(e) => return HttpResponse::InternalServerError().json(serde_json::json!({
+            "error": format!("SIEM query failed: {}", e)
+        })),
+    };
+
+    // Get detailed detection info
+    let detection_details = detection_checker
+        .get_detection_details(&siem_integration_id, &attack_result)
+        .await
+        .ok();
+
+    // Update the attack result in database with new detection status
+    let status_str = match detection_status {
+        crate::purple_team::types::DetectionStatus::Detected => "detected",
+        crate::purple_team::types::DetectionStatus::PartiallyDetected => "partially_detected",
+        crate::purple_team::types::DetectionStatus::NotDetected => "not_detected",
+        crate::purple_team::types::DetectionStatus::Pending => "pending",
+    };
+
+    if let Err(e) = sqlx::query(
+        "UPDATE purple_team_attack_results SET detection_status = ?, detection_rechecked_at = ? WHERE id = ?"
+    )
+    .bind(status_str)
+    .bind(chrono::Utc::now().to_rfc3339())
+    .bind(&result_id)
+    .execute(pool.get_ref())
+    .await
+    {
+        log::warn!("Failed to update detection status: {}", e);
+    }
+
     HttpResponse::Ok().json(serde_json::json!({
         "success": true,
-        "message": "Detection recheck queued"
+        "message": "Detection recheck completed",
+        "result_id": result_id,
+        "technique_id": attack_result.technique_id,
+        "technique_name": attack_result.technique_name,
+        "previous_status": format!("{:?}", attack_result.detection_status),
+        "new_status": status_str,
+        "detection_details": detection_details,
+        "siem_integration_id": siem_integration_id,
+        "rechecked_at": chrono::Utc::now().to_rfc3339()
     }))
 }
 

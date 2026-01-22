@@ -972,6 +972,47 @@ pub async fn get_matches_by_rule(pool: &SqlitePool, scan_id: &str) -> Result<Vec
     Ok(rows)
 }
 
+/// Count total matches for a specific rule across all scans
+pub async fn count_rule_matches(pool: &SqlitePool, rule_id: &str) -> Result<i64> {
+    let count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*) FROM yara_matches WHERE rule_id = ?
+        "#,
+    )
+    .bind(rule_id)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(count)
+}
+
+/// Get match counts for multiple rules (more efficient than individual queries)
+pub async fn get_rule_match_counts(pool: &SqlitePool, rule_ids: &[String]) -> Result<std::collections::HashMap<String, i64>> {
+    if rule_ids.is_empty() {
+        return Ok(std::collections::HashMap::new());
+    }
+
+    let placeholders = rule_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let query = format!(
+        r#"
+        SELECT rule_id, COUNT(*) as count
+        FROM yara_matches
+        WHERE rule_id IN ({})
+        GROUP BY rule_id
+        "#,
+        placeholders
+    );
+
+    let mut query_builder = sqlx::query_as::<_, (String, i64)>(&query);
+    for rule_id in rule_ids {
+        query_builder = query_builder.bind(rule_id);
+    }
+
+    let rows: Vec<(String, i64)> = query_builder.fetch_all(pool).await?;
+
+    Ok(rows.into_iter().collect())
+}
+
 // ============================================================================
 // Row Types
 // ============================================================================

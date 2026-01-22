@@ -1,0 +1,19 @@
+# Database default usernames (light scan)
+# MySQL/MariaDB
+root
+mysql
+admin
+
+# PostgreSQL
+postgres
+admin
+
+# MongoDB
+admin
+root
+
+# Redis
+default
+
+# Elasticsearch
+elastic

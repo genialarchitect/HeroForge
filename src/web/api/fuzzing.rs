@@ -6,11 +6,14 @@ use actix_web::{web, HttpResponse};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sqlx::{Row, SqlitePool};
+use std::sync::Arc;
 
 use crate::web::auth::Claims;
 use crate::web::error::ApiError;
 use crate::fuzzing::types::*;
-use base64::{Engine, engine::general_purpose::STANDARD};
+use crate::fuzzing::engine::FuzzingEngine;
+use crate::fuzzing::crash_triage::CrashTriager;
+use base64::{Engine as Base64Engine, engine::general_purpose::STANDARD};
 
 /// Configure fuzzing API routes
 pub fn configure(cfg: &mut web::ServiceConfig) {
@@ -353,8 +356,124 @@ async fn start_campaign(
         return Err(ApiError::bad_request("Campaign not found or cannot be started"));
     }
 
-    // In a real implementation, this would spawn a background task to run the fuzzer
-    // For now, we just update the status
+    // Get full campaign data for the fuzzing engine
+    let campaign_row = sqlx::query(
+        r#"SELECT id, user_id, name, description, target_type, fuzzer_type,
+                  target_config, fuzzer_config, status, total_iterations,
+                  crashes_found, unique_crashes, coverage_percent, execs_per_sec,
+                  started_at, completed_at, created_at, updated_at
+           FROM fuzzing_campaigns WHERE id = ?"#
+    )
+    .bind(&campaign_id)
+    .fetch_one(pool.get_ref())
+    .await
+    .map_err(|e| ApiError::internal(format!("Failed to load campaign: {}", e)))?;
+
+    // Parse campaign configuration
+    let target_config: TargetConfig = serde_json::from_str(
+        &campaign_row.get::<String, _>("target_config")
+    ).map_err(|e| ApiError::internal(format!("Invalid target config: {}", e)))?;
+
+    let fuzzer_config: FuzzerConfig = serde_json::from_str(
+        &campaign_row.get::<String, _>("fuzzer_config")
+    ).map_err(|e| ApiError::internal(format!("Invalid fuzzer config: {}", e)))?;
+
+    let campaign = FuzzingCampaign {
+        id: campaign_row.get::<String, _>("id"),
+        user_id: campaign_row.get::<String, _>("user_id"),
+        name: campaign_row.get::<String, _>("name"),
+        description: campaign_row.get::<Option<String>, _>("description"),
+        target_type: serde_json::from_str(&format!("\"{}\"", campaign_row.get::<String, _>("target_type")))
+            .unwrap_or(FuzzTargetType::Http),
+        fuzzer_type: serde_json::from_str(&format!("\"{}\"", campaign_row.get::<String, _>("fuzzer_type")))
+            .unwrap_or(FuzzerType::Mutation),
+        target_config,
+        fuzzer_config,
+        status: CampaignStatus::Running,
+        total_iterations: campaign_row.get::<i64, _>("total_iterations") as u64,
+        crashes_found: campaign_row.get::<i32, _>("crashes_found") as u32,
+        unique_crashes: campaign_row.get::<i32, _>("unique_crashes") as u32,
+        coverage_percent: campaign_row.get::<Option<f64>, _>("coverage_percent"),
+        execs_per_sec: campaign_row.get::<Option<f64>, _>("execs_per_sec"),
+        started_at: Some(Utc::now()),
+        completed_at: None,
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+    };
+
+    // Get seed inputs for the campaign
+    let seeds: Vec<Vec<u8>> = sqlx::query(
+        "SELECT input_data FROM fuzzing_seeds WHERE campaign_id = ?"
+    )
+    .bind(&campaign_id)
+    .fetch_all(pool.get_ref())
+    .await
+    .unwrap_or_default()
+    .into_iter()
+    .map(|row| row.get::<Vec<u8>, _>("input_data"))
+    .collect();
+
+    // Spawn background task to run the fuzzing engine
+    // Note: FuzzingEngine uses ThreadRng which is not Send, so we use spawn_blocking
+    // and run the async code with a new runtime handle
+    let pool_clone = pool.get_ref().clone();
+    let campaign_id_clone = campaign_id.clone();
+    let handle = tokio::runtime::Handle::current();
+    std::thread::spawn(move || {
+        handle.block_on(async move {
+            log::info!("Starting fuzzing campaign: {}", campaign_id_clone);
+
+            let engine = FuzzingEngine::new(4); // 4 workers max
+            let input_queue = if seeds.is_empty() {
+                vec![vec![0u8; 64]] // Default seed if none provided
+            } else {
+                seeds
+            };
+
+            match engine.run_campaign(&campaign, input_queue).await {
+            Ok(stats) => {
+                log::info!("Fuzzing campaign {} completed: {} execs, {} crashes",
+                    campaign_id_clone, stats.total_execs, stats.total_crashes);
+
+                // Update campaign with final stats
+                let now = Utc::now().to_rfc3339();
+                let _ = sqlx::query(
+                    r#"UPDATE fuzzing_campaigns SET
+                        status = 'completed',
+                        total_iterations = ?,
+                        crashes_found = ?,
+                        unique_crashes = ?,
+                        coverage_percent = ?,
+                        execs_per_sec = ?,
+                        completed_at = ?,
+                        updated_at = ?
+                    WHERE id = ?"#
+                )
+                .bind(stats.total_execs as i64)
+                .bind(stats.total_crashes as i32)
+                .bind(stats.unique_crashes as i32)
+                .bind(stats.coverage_percent)
+                .bind(stats.execs_per_sec)
+                .bind(&now)
+                .bind(&now)
+                .bind(&campaign_id_clone)
+                .execute(&pool_clone)
+                .await;
+            }
+            Err(e) => {
+                log::error!("Fuzzing campaign {} failed: {}", campaign_id_clone, e);
+                let now = Utc::now().to_rfc3339();
+                let _ = sqlx::query(
+                    "UPDATE fuzzing_campaigns SET status = 'failed', updated_at = ? WHERE id = ?"
+                )
+                .bind(&now)
+                .bind(&campaign_id_clone)
+                .execute(&pool_clone)
+                .await;
+            }
+        }
+        })
+    });
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "message": "Campaign started",
@@ -601,9 +720,10 @@ async fn reproduce_crash(
 ) -> Result<HttpResponse, ApiError> {
     let crash_id = path.into_inner();
 
-    // Verify ownership
+    // Get crash details and campaign info for reproduction
     let row = sqlx::query(
-        r#"SELECT c.id, c.reproduction_count
+        r#"SELECT c.id, c.input_data, c.reproduction_count, c.campaign_id,
+                  fc.target_config, fc.target_type
            FROM fuzzing_crashes c
            JOIN fuzzing_campaigns fc ON c.campaign_id = fc.id
            WHERE c.id = ? AND fc.user_id = ?"#
@@ -616,23 +736,117 @@ async fn reproduce_crash(
     .ok_or_else(|| ApiError::not_found("Crash not found"))?;
 
     let current_count: i32 = row.get("reproduction_count");
+    let input_data: Vec<u8> = row.get("input_data");
+    let target_config_str: String = row.get("target_config");
+    let target_type: String = row.get("target_type");
 
-    // In a real implementation, we would actually reproduce the crash
-    // For now, just increment the reproduction count
+    // Parse target configuration
+    let target_config: TargetConfig = serde_json::from_str(&target_config_str)
+        .map_err(|e| ApiError::internal(format!("Invalid target config: {}", e)))?;
+
+    // Use CrashTriager to attempt reproduction
+    let triager = CrashTriager::new();
+    let mut reproduced = false;
+    let mut successful_reproductions = 0u32;
+
+    // For file-based fuzzing, use the command-based reproduction
+    if target_type == "file" {
+        if let Some(command) = &target_config.command {
+            let arguments = target_config.arguments.clone().unwrap_or_default();
+            let temp_path = format!("/tmp/repro_input_{}", uuid::Uuid::new_v4());
+
+            // Write input to temp file
+            if tokio::fs::write(&temp_path, &input_data).await.is_ok() {
+                // Prepare command arguments
+                let args: Vec<String> = arguments.iter()
+                    .map(|arg| arg.replace("@@", &temp_path))
+                    .collect();
+
+                // Create executor closure
+                let cmd = command.clone();
+                let executor = |_input: &[u8]| -> std::io::Result<std::process::Output> {
+                    std::process::Command::new(&cmd)
+                        .args(&args)
+                        .output()
+                };
+
+                // Attempt reproduction 3 times
+                let (was_reproduced, count) = triager.reproduce(&input_data, executor, 3).await;
+                reproduced = was_reproduced;
+                successful_reproductions = count;
+
+                // Cleanup
+                let _ = tokio::fs::remove_file(&temp_path).await;
+            }
+        }
+    } else if target_type == "http" || target_type == "api" {
+        // For HTTP/API targets, send the request and check for errors
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_millis(target_config.timeout_ms.unwrap_or(5000)))
+            .danger_accept_invalid_certs(true)
+            .build()
+            .ok();
+
+        if let Some(client) = client {
+            for _ in 0..3 {
+                let method = target_config.method.as_deref().unwrap_or("GET");
+                let result = match method.to_uppercase().as_str() {
+                    "POST" => client.post(&target_config.target).body(input_data.clone()).send().await,
+                    "PUT" => client.put(&target_config.target).body(input_data.clone()).send().await,
+                    _ => client.get(&target_config.target).send().await,
+                };
+
+                if let Ok(response) = result {
+                    if response.status().as_u16() >= 500 {
+                        reproduced = true;
+                        successful_reproductions += 1;
+                    }
+                }
+            }
+        }
+    } else if target_type == "protocol" {
+        // For protocol targets, try connecting and sending the input
+        let port = target_config.port.unwrap_or(80);
+        let addr = format!("{}:{}", target_config.target, port);
+        let protocol = target_config.protocol.as_deref().unwrap_or("tcp");
+
+        for _ in 0..3 {
+            let result = if protocol == "tcp" {
+                match tokio::net::TcpStream::connect(&addr).await {
+                    Ok(mut stream) => {
+                        use tokio::io::AsyncWriteExt;
+                        stream.write_all(&input_data).await.is_err()
+                    }
+                    Err(_) => true,
+                }
+            } else {
+                false
+            };
+
+            if result {
+                reproduced = true;
+                successful_reproductions += 1;
+            }
+        }
+    }
+
+    let new_count = current_count + successful_reproductions as i32;
 
     sqlx::query(
-        "UPDATE fuzzing_crashes SET reproduced = 1, reproduction_count = ? WHERE id = ?"
+        "UPDATE fuzzing_crashes SET reproduced = ?, reproduction_count = ? WHERE id = ?"
     )
-    .bind(current_count + 1)
+    .bind(reproduced)
+    .bind(new_count)
     .bind(&crash_id)
     .execute(pool.get_ref())
     .await
     .map_err(|e| ApiError::internal(format!("Database error: {}", e)))?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
-        "message": "Crash reproduction attempted",
-        "reproduced": true,
-        "reproduction_count": current_count + 1
+        "message": if reproduced { "Crash successfully reproduced" } else { "Could not reproduce crash" },
+        "reproduced": reproduced,
+        "successful_attempts": successful_reproductions,
+        "reproduction_count": new_count
     })))
 }
 
@@ -643,9 +857,10 @@ async fn minimize_crash(
 ) -> Result<HttpResponse, ApiError> {
     let crash_id = path.into_inner();
 
-    // Verify ownership
+    // Get crash details and campaign info for minimization
     let row = sqlx::query(
-        r#"SELECT c.id, c.input_data
+        r#"SELECT c.id, c.input_data, c.campaign_id,
+                  fc.target_config, fc.target_type
            FROM fuzzing_crashes c
            JOIN fuzzing_campaigns fc ON c.campaign_id = fc.id
            WHERE c.id = ? AND fc.user_id = ?"#
@@ -659,13 +874,113 @@ async fn minimize_crash(
 
     let input_data: Vec<u8> = row.get("input_data");
     let original_size = input_data.len();
+    let target_config_str: String = row.get("target_config");
+    let target_type: String = row.get("target_type");
 
-    // In a real implementation, we would use the CrashTriager to minimize
-    // For now, just simulate by returning a smaller input
-    let minimized = if input_data.len() > 10 {
-        input_data[..input_data.len() / 2].to_vec()
+    // Parse target configuration
+    let target_config: TargetConfig = serde_json::from_str(&target_config_str)
+        .map_err(|e| ApiError::internal(format!("Invalid target config: {}", e)))?;
+
+    // Use CrashTriager to minimize the input
+    let triager = CrashTriager::new();
+
+    let minimized = if target_type == "file" {
+        // For file-based fuzzing, use command-based verification
+        if let Some(command) = &target_config.command {
+            let arguments = target_config.arguments.clone().unwrap_or_default();
+            let cmd = command.clone();
+
+            // Create crash verification closure
+            let is_crash = move |input: &[u8]| -> bool {
+                let temp_path = format!("/tmp/minimize_input_{}", uuid::Uuid::new_v4());
+                if std::fs::write(&temp_path, input).is_err() {
+                    return false;
+                }
+
+                let args: Vec<String> = arguments.iter()
+                    .map(|arg| arg.replace("@@", &temp_path))
+                    .collect();
+
+                let result = std::process::Command::new(&cmd)
+                    .args(&args)
+                    .output();
+
+                let _ = std::fs::remove_file(&temp_path);
+
+                match result {
+                    Ok(output) => {
+                        // Check for crash indicators
+                        !output.status.success() ||
+                        output.status.code().map(|c| c > 128).unwrap_or(false) ||
+                        String::from_utf8_lossy(&output.stderr).to_lowercase().contains("segmentation")
+                    }
+                    Err(_) => false,
+                }
+            };
+
+            triager.minimize(&input_data, is_crash).await
+        } else {
+            input_data.clone()
+        }
+    } else if target_type == "http" || target_type == "api" {
+        // For HTTP, minimize while checking for 5xx errors
+        let target_url = target_config.target.clone();
+        let method = target_config.method.clone().unwrap_or_else(|| "POST".to_string());
+        let timeout = target_config.timeout_ms.unwrap_or(5000);
+
+        let is_crash = move |input: &[u8]| -> bool {
+            // Use a blocking HTTP client for the synchronous closure
+            let client = reqwest::blocking::Client::builder()
+                .timeout(std::time::Duration::from_millis(timeout))
+                .danger_accept_invalid_certs(true)
+                .build();
+
+            match client {
+                Ok(client) => {
+                    let result = match method.to_uppercase().as_str() {
+                        "POST" => client.post(&target_url).body(input.to_vec()).send(),
+                        "PUT" => client.put(&target_url).body(input.to_vec()).send(),
+                        _ => client.get(&target_url).send(),
+                    };
+
+                    match result {
+                        Ok(response) => response.status().as_u16() >= 500,
+                        Err(_) => true, // Connection error might indicate crash
+                    }
+                }
+                Err(_) => false,
+            }
+        };
+
+        triager.minimize(&input_data, is_crash).await
     } else {
-        input_data.clone()
+        // For protocol fuzzing or unknown types, use basic minimization
+        // Try to reduce while maintaining structure
+        let mut minimized = input_data.clone();
+
+        // Binary reduction - try removing chunks
+        let mut step = minimized.len() / 2;
+        while step > 0 && minimized.len() > 1 {
+            let mut i = 0;
+            while i + step <= minimized.len() {
+                let mut candidate = minimized[..i].to_vec();
+                candidate.extend_from_slice(&minimized[i + step..]);
+                if candidate.len() > 0 {
+                    minimized = candidate;
+                } else {
+                    i += 1;
+                }
+            }
+            step /= 2;
+        }
+        minimized
+    };
+
+    let minimized_size = minimized.len();
+    let reduction_percent = if original_size > 0 {
+        ((original_size - minimized_size) as f64 / original_size as f64 * 100.0) as u32
+    } else {
+        0
     };
 
     sqlx::query(
@@ -678,9 +993,10 @@ async fn minimize_crash(
     .map_err(|e| ApiError::internal(format!("Database error: {}", e)))?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
-        "message": "Input minimized",
+        "message": "Input minimized successfully",
         "original_size": original_size,
-        "minimized_size": minimized.len()
+        "minimized_size": minimized_size,
+        "reduction_percent": reduction_percent
     })))
 }
 

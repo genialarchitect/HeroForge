@@ -1187,8 +1187,8 @@ impl CloudScanner for AwsScanner {
 
     async fn scan_iam(&self, config: &CloudScanConfig) -> Result<(Vec<CloudResource>, Vec<CloudFinding>)> {
         if self.demo_mode {
-            log::info!("AWS IAM scan running in demo mode");
-            return Ok(self.generate_demo_iam_resources());
+            log::warn!("⚠️ AWS IAM scan running in DEMO MODE - data is SIMULATED and NOT from real AWS APIs");
+            return Ok(Self::mark_as_demo_data(self.generate_demo_iam_resources()));
         }
 
         log::info!("AWS IAM scan running with real AWS SDK");
@@ -1197,8 +1197,8 @@ impl CloudScanner for AwsScanner {
 
     async fn scan_storage(&self, config: &CloudScanConfig) -> Result<(Vec<CloudResource>, Vec<CloudFinding>)> {
         if self.demo_mode {
-            log::info!("AWS Storage scan running in demo mode");
-            return Ok(self.generate_demo_storage_resources());
+            log::warn!("⚠️ AWS Storage scan running in DEMO MODE - data is SIMULATED and NOT from real AWS APIs");
+            return Ok(Self::mark_as_demo_data(self.generate_demo_storage_resources()));
         }
 
         log::info!("AWS Storage scan running with real AWS SDK");
@@ -1207,8 +1207,8 @@ impl CloudScanner for AwsScanner {
 
     async fn scan_compute(&self, config: &CloudScanConfig) -> Result<(Vec<CloudResource>, Vec<CloudFinding>)> {
         if self.demo_mode {
-            log::info!("AWS Compute scan running in demo mode");
-            return Ok(self.generate_demo_compute_resources());
+            log::warn!("⚠️ AWS Compute scan running in DEMO MODE - data is SIMULATED and NOT from real AWS APIs");
+            return Ok(Self::mark_as_demo_data(self.generate_demo_compute_resources()));
         }
 
         log::info!("AWS Compute scan running with real AWS SDK");
@@ -1217,8 +1217,8 @@ impl CloudScanner for AwsScanner {
 
     async fn scan_network(&self, config: &CloudScanConfig) -> Result<(Vec<CloudResource>, Vec<CloudFinding>)> {
         if self.demo_mode {
-            log::info!("AWS Network scan running in demo mode");
-            return Ok(self.generate_demo_network_resources());
+            log::warn!("⚠️ AWS Network scan running in DEMO MODE - data is SIMULATED and NOT from real AWS APIs");
+            return Ok(Self::mark_as_demo_data(self.generate_demo_network_resources()));
         }
 
         log::info!("AWS Network scan running with real AWS SDK");
@@ -1227,12 +1227,31 @@ impl CloudScanner for AwsScanner {
 
     async fn scan_database(&self, config: &CloudScanConfig) -> Result<(Vec<CloudResource>, Vec<CloudFinding>)> {
         if self.demo_mode {
-            log::info!("AWS Database scan running in demo mode");
-            return Ok(self.generate_demo_database_resources());
+            log::warn!("⚠️ AWS Database scan running in DEMO MODE - data is SIMULATED and NOT from real AWS APIs");
+            return Ok(Self::mark_as_demo_data(self.generate_demo_database_resources()));
         }
 
         log::info!("AWS Database scan running with real AWS SDK");
         self.scan_database_real(&config.regions).await
+    }
+}
+
+impl AwsScanner {
+    /// Mark all resources and findings as demo data
+    /// This is critical to ensure users know the data is not from real cloud APIs
+    fn mark_as_demo_data(mut data: (Vec<CloudResource>, Vec<CloudFinding>)) -> (Vec<CloudResource>, Vec<CloudFinding>) {
+        for resource in &mut data.0 {
+            // Add demo warning to metadata
+            if let Some(obj) = resource.metadata.as_object_mut() {
+                obj.insert("_demo_warning".to_string(),
+                    serde_json::json!("⚠️ DEMO DATA - This resource is simulated and does not represent real cloud infrastructure"));
+            }
+        }
+        for finding in &mut data.1 {
+            // Prepend warning to description
+            finding.description = format!("⚠️ [DEMO DATA - NOT REAL] {}", finding.description);
+        }
+        data
     }
 }
 

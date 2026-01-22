@@ -1,4 +1,22 @@
-//! Machine Learning infrastructure (Sprint 6)
+//! Machine Learning Infrastructure
+//!
+//! This module provides lightweight ML capabilities for security analysis, including:
+//!
+//! - **Threat Classification**: Linear classifier for host risk assessment
+//! - **Anomaly Detection**: Statistical outlier detection for behavioral analysis
+//! - **Risk Prediction**: Multi-class classification for vulnerability prioritization
+//! - **Pattern Recognition**: Attack pattern identification (recon, lateral movement, etc.)
+//!
+//! # Implementation Notes
+//!
+//! Models use interpretable linear classifiers (logistic regression with softmax)
+//! rather than deep neural networks. This design choice prioritizes:
+//! - Explainability (important for security decisions)
+//! - Deterministic behavior (consistent across runs)
+//! - No GPU requirements (runs anywhere)
+//! - Auditability (weights can be inspected)
+//!
+//! See [`models`] module for mathematical details.
 
 use serde::{Serialize, Deserialize};
 use anyhow::Result;

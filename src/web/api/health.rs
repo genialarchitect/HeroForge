@@ -23,6 +23,72 @@ fn get_uptime_seconds() -> u64 {
         .unwrap_or(0)
 }
 
+/// Check disk space availability
+fn check_disk_space() -> CheckStatus {
+    // Try to get disk space info for the current working directory
+    #[cfg(unix)]
+    {
+        use std::ffi::CString;
+        use std::mem::MaybeUninit;
+
+        let path = CString::new(".").unwrap_or_default();
+        let mut stat: MaybeUninit<libc::statvfs> = MaybeUninit::uninit();
+
+        let result = unsafe { libc::statvfs(path.as_ptr(), stat.as_mut_ptr()) };
+
+        if result == 0 {
+            let stat = unsafe { stat.assume_init() };
+            let block_size = stat.f_frsize as u64;
+            let total_blocks = stat.f_blocks as u64;
+            let available_blocks = stat.f_bavail as u64;
+
+            let total_bytes = total_blocks * block_size;
+            let available_bytes = available_blocks * block_size;
+
+            let available_gb = available_bytes / (1024 * 1024 * 1024);
+            let total_gb = total_bytes / (1024 * 1024 * 1024);
+            let used_percent = if total_bytes > 0 {
+                ((total_bytes - available_bytes) as f64 / total_bytes as f64 * 100.0) as u32
+            } else {
+                0
+            };
+
+            // Consider unhealthy if less than 1GB available or more than 95% used
+            let status = if available_gb < 1 || used_percent > 95 {
+                "unhealthy"
+            } else if available_gb < 5 || used_percent > 90 {
+                "warning"
+            } else {
+                "healthy"
+            };
+
+            CheckStatus {
+                status: status.to_string(),
+                message: Some(format!(
+                    "{}GB available of {}GB total ({}% used)",
+                    available_gb, total_gb, used_percent
+                )),
+                latency_ms: None,
+            }
+        } else {
+            CheckStatus {
+                status: "unknown".to_string(),
+                message: Some("Failed to check disk space".to_string()),
+                latency_ms: None,
+            }
+        }
+    }
+
+    #[cfg(not(unix))]
+    {
+        CheckStatus {
+            status: "unknown".to_string(),
+            message: Some("Disk space check not available on this platform".to_string()),
+            latency_ms: None,
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct HealthResponse {
     pub status: String,
@@ -72,7 +138,10 @@ pub async fn readiness(pool: web::Data<SqlitePool>) -> Result<HttpResponse> {
         },
     };
 
-    let all_healthy = db_check.status == "healthy";
+    // Check disk space on the system
+    let disk_check = check_disk_space();
+
+    let all_healthy = db_check.status == "healthy" && disk_check.status != "unhealthy";
 
     let response = HealthResponse {
         status: if all_healthy { "ready".to_string() } else { "not_ready".to_string() },
@@ -82,15 +151,11 @@ pub async fn readiness(pool: web::Data<SqlitePool>) -> Result<HttpResponse> {
         checks: HealthChecks {
             database: db_check,
             redis: CheckStatus {
-                status: "unknown".to_string(),
-                message: Some("Redis health check not implemented".to_string()),
+                status: "disabled".to_string(),
+                message: Some("Redis not configured for this deployment".to_string()),
                 latency_ms: None,
             },
-            disk_space: CheckStatus {
-                status: "healthy".to_string(),
-                message: None,
-                latency_ms: None,
-            },
+            disk_space: disk_check,
         },
     };
 

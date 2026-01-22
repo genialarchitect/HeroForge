@@ -4,6 +4,7 @@
 //! including embedding signatures and creating the final signed document.
 
 use anyhow::Result;
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use chrono::Utc;
 use log::{debug, info, warn};
 use std::path::Path;
@@ -362,12 +363,12 @@ pub fn validate_signature_image(data: &str) -> Result<()> {
     if data.starts_with("data:image/png;base64,") {
         let base64_data = &data[22..];
         // Validate base64
-        if base64::decode(base64_data).is_ok() {
+        if BASE64.decode(base64_data).is_ok() {
             return Ok(());
         }
     }
     // Also accept raw base64
-    if base64::decode(data).is_ok() {
+    if BASE64.decode(data).is_ok() {
         return Ok(());
     }
 

@@ -834,6 +834,12 @@ pub async fn list_rules(
         .await
         .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
 
+    // Get match counts for all rules in this batch
+    let rule_ids: Vec<String> = rules.iter().map(|r| r.id.clone()).collect();
+    let match_counts = db::get_rule_match_counts(pool.get_ref(), &rule_ids)
+        .await
+        .unwrap_or_default();
+
     let rule_responses: Vec<RuleResponse> = rules
         .into_iter()
         .map(|r| {
@@ -852,6 +858,9 @@ pub async fn list_rules(
                 .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
                 .unwrap_or_default();
 
+            // Get actual match count for this rule
+            let match_count = match_counts.get(&r.id).copied().unwrap_or(0);
+
             RuleResponse {
                 id: r.id,
                 name: r.name,
@@ -863,7 +872,7 @@ pub async fn list_rules(
                 is_builtin: r.is_builtin,
                 tags,
                 metadata,
-                match_count: 0, // TODO: Could add match tracking
+                match_count,
                 created_at: r.created_at.to_rfc3339(),
                 updated_at: r.updated_at.to_rfc3339(),
             }
@@ -897,6 +906,11 @@ pub async fn get_rule(
                 })));
             }
 
+            // Get actual match count for this rule
+            let match_count = db::count_rule_matches(pool.get_ref(), &r.id)
+                .await
+                .unwrap_or(0);
+
             let metadata: serde_json::Value =
                 serde_json::from_str(&r.metadata).unwrap_or(serde_json::json!({}));
 
@@ -923,7 +937,7 @@ pub async fn get_rule(
                 is_builtin: r.is_builtin,
                 tags,
                 metadata,
-                match_count: 0,
+                match_count,
                 created_at: r.created_at.to_rfc3339(),
                 updated_at: r.updated_at.to_rfc3339(),
             }))

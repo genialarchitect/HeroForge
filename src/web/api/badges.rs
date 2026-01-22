@@ -453,7 +453,7 @@ async fn perform_quick_scan(pool: &SqlitePool, domain: &str) -> anyhow::Result<S
     // This is a lightweight scan that checks:
     // 1. SSL/TLS configuration
     // 2. Security headers
-    // 3. DNS security (SPF, DKIM, DMARC)
+    // 3. DNS security (SPF, DKIM, DMARC, CAA)
 
     let mut issues = SecurityIssues::default();
 
@@ -513,8 +513,11 @@ async fn perform_quick_scan(pool: &SqlitePool, domain: &str) -> anyhow::Result<S
     }
 
     // Check DNS security records
-    // In production, this would use a DNS library
-    // For now, we'll add placeholder checks
+    let dns_issues = check_dns_security(domain).await;
+    issues.high += dns_issues.high;
+    issues.medium += dns_issues.medium;
+    issues.low += dns_issues.low;
+    issues.info += dns_issues.info;
 
     let score = calculate_score_from_issues(&issues);
     let (grade, grade_color) = calculate_grade(score);
@@ -532,6 +535,150 @@ async fn perform_quick_scan(pool: &SqlitePool, domain: &str) -> anyhow::Result<S
     save_domain_score(pool, &security_score).await?;
 
     Ok(security_score)
+}
+
+/// Check DNS security records (SPF, DKIM, DMARC, CAA)
+async fn check_dns_security(domain: &str) -> SecurityIssues {
+    use tokio::process::Command;
+
+    let mut issues = SecurityIssues::default();
+
+    // Check SPF record using dig
+    let spf_result = Command::new("dig")
+        .args(["+short", "TXT", domain])
+        .output()
+        .await;
+
+    let has_spf = match spf_result {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            stdout.contains("v=spf1")
+        }
+        Err(_) => false,
+    };
+
+    if !has_spf {
+        issues.medium += 1; // No SPF record - medium severity
+        log::debug!("Domain {} is missing SPF record", domain);
+    }
+
+    // Check DMARC record
+    let dmarc_domain = format!("_dmarc.{}", domain);
+    let dmarc_result = Command::new("dig")
+        .args(["+short", "TXT", &dmarc_domain])
+        .output()
+        .await;
+
+    let has_dmarc = match dmarc_result {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            stdout.contains("v=DMARC1")
+        }
+        Err(_) => false,
+    };
+
+    if !has_dmarc {
+        issues.medium += 1; // No DMARC record - medium severity
+        log::debug!("Domain {} is missing DMARC record", domain);
+    } else {
+        // Check DMARC policy strength
+        if let Ok(output) = Command::new("dig")
+            .args(["+short", "TXT", &dmarc_domain])
+            .output()
+            .await
+        {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            if stdout.contains("p=none") {
+                issues.low += 1; // DMARC policy is 'none' - weak
+                log::debug!("Domain {} has weak DMARC policy (p=none)", domain);
+            }
+        }
+    }
+
+    // Check DKIM selector (common selectors: default, google, selector1, selector2, s1, s2)
+    let common_selectors = ["default", "google", "selector1", "selector2", "s1", "s2", "k1"];
+    let mut has_dkim = false;
+
+    for selector in &common_selectors {
+        let dkim_domain = format!("{}._domainkey.{}", selector, domain);
+        let dkim_result = Command::new("dig")
+            .args(["+short", "TXT", &dkim_domain])
+            .output()
+            .await;
+
+        if let Ok(output) = dkim_result {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            if stdout.contains("v=DKIM1") || stdout.contains("p=") {
+                has_dkim = true;
+                break;
+            }
+        }
+    }
+
+    if !has_dkim {
+        issues.low += 1; // No DKIM record found - low severity (may use different selector)
+        log::debug!("Domain {} has no DKIM record found with common selectors", domain);
+    }
+
+    // Check CAA record (Certificate Authority Authorization)
+    let caa_result = Command::new("dig")
+        .args(["+short", "CAA", domain])
+        .output()
+        .await;
+
+    let has_caa = match caa_result {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            !stdout.trim().is_empty() && stdout.contains("issue")
+        }
+        Err(_) => false,
+    };
+
+    if !has_caa {
+        issues.low += 1; // No CAA record - allows any CA to issue certs
+        log::debug!("Domain {} is missing CAA record", domain);
+    }
+
+    // Check MX records exist (for email-enabled domains)
+    let mx_result = Command::new("dig")
+        .args(["+short", "MX", domain])
+        .output()
+        .await;
+
+    let has_mx = match mx_result {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            !stdout.trim().is_empty()
+        }
+        Err(_) => false,
+    };
+
+    // If domain has MX records but no email security, flag it
+    if has_mx && !has_spf && !has_dmarc {
+        issues.high += 1; // Has email but no email authentication - high severity
+        log::debug!("Domain {} has MX records but no SPF/DMARC", domain);
+    }
+
+    // Check DNSSEC
+    let dnssec_result = Command::new("dig")
+        .args(["+short", "DNSKEY", domain])
+        .output()
+        .await;
+
+    let has_dnssec = match dnssec_result {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            !stdout.trim().is_empty()
+        }
+        Err(_) => false,
+    };
+
+    if !has_dnssec {
+        issues.info += 1; // No DNSSEC - informational
+        log::debug!("Domain {} does not have DNSSEC enabled", domain);
+    }
+
+    issues
 }
 
 // ============================================================================

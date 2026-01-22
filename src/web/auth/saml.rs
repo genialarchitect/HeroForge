@@ -8,11 +8,14 @@ use anyhow::{Result, anyhow};
 use chrono::{DateTime, Utc, Duration};
 use std::collections::HashMap;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
-use sha2::{Sha256, Digest};
+use sha2::{Sha256, Sha1, Digest};
 use flate2::write::DeflateEncoder;
 use flate2::read::DeflateDecoder;
 use flate2::Compression;
 use std::io::{Write, Read};
+use x509_parser::prelude::*;
+use rsa::{RsaPublicKey, pkcs1v15::VerifyingKey, signature::Verifier};
+use rsa::pkcs8::DecodePublicKey;
 
 /// SAML 2.0 Service Provider configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -330,9 +333,144 @@ impl SamlResponseParser {
         self.parse_xml_response(&xml)
     }
 
-    fn parse_xml_response(&self, xml: &str) -> Result<SamlAssertion> {
-        // Simple XML parsing (in production, use a proper XML library)
+    /// Validate XML-DSig signature on the SAML response/assertion
+    /// This is CRITICAL for security - without signature validation,
+    /// an attacker could forge SAML assertions
+    fn validate_signature(&self, xml: &str) -> Result<()> {
+        // Parse the IdP's X.509 certificate from PEM format
+        let cert_pem = self.config.certificate.trim();
 
+        // Handle both raw base64 and PEM format
+        let cert_der = if cert_pem.starts_with("-----BEGIN CERTIFICATE-----") {
+            // Parse PEM format
+            let pem_lines: Vec<&str> = cert_pem
+                .lines()
+                .filter(|line| !line.starts_with("-----"))
+                .collect();
+            let cert_b64 = pem_lines.join("");
+            BASE64.decode(&cert_b64)
+                .map_err(|e| anyhow!("Failed to decode certificate base64: {}", e))?
+        } else {
+            // Assume raw base64
+            BASE64.decode(cert_pem)
+                .map_err(|e| anyhow!("Failed to decode certificate: {}", e))?
+        };
+
+        // Parse the X.509 certificate
+        let (_, cert) = X509Certificate::from_der(&cert_der)
+            .map_err(|e| anyhow!("Failed to parse X.509 certificate: {:?}", e))?;
+
+        // Extract the public key from the certificate
+        let public_key_der = cert.public_key().raw;
+
+        // Extract SignatureValue from XML
+        let signature_value = extract_xml_value(xml, "SignatureValue")
+            .or_else(|| extract_xml_value(xml, "ds:SignatureValue"))
+            .ok_or_else(|| anyhow!("Missing SignatureValue in SAML response - response is not signed"))?;
+
+        // Clean up base64 (remove whitespace)
+        let signature_b64: String = signature_value.chars().filter(|c| !c.is_whitespace()).collect();
+        let signature_bytes = BASE64.decode(&signature_b64)
+            .map_err(|e| anyhow!("Failed to decode signature: {}", e))?;
+
+        // Extract SignedInfo element for verification
+        let signed_info = extract_signed_info(xml)?;
+
+        // Determine the signature algorithm
+        let sig_algorithm = extract_xml_attribute(xml, "SignatureMethod", "Algorithm")
+            .or_else(|| extract_xml_attribute(xml, "ds:SignatureMethod", "Algorithm"))
+            .unwrap_or_default();
+
+        // Canonicalize SignedInfo (exclusive C14N)
+        let canonical_signed_info = canonicalize_xml(&signed_info);
+
+        // Verify based on algorithm
+        if sig_algorithm.contains("rsa-sha256") || sig_algorithm.contains("rsa-sha1") {
+            // Parse RSA public key
+            let rsa_public_key = RsaPublicKey::from_public_key_der(public_key_der)
+                .map_err(|e| anyhow!("Failed to parse RSA public key: {}", e))?;
+
+            if sig_algorithm.contains("sha256") {
+                // RSA-SHA256
+                let verifying_key: VerifyingKey<Sha256> = VerifyingKey::new(rsa_public_key);
+                let signature = rsa::pkcs1v15::Signature::try_from(signature_bytes.as_slice())
+                    .map_err(|e| anyhow!("Invalid signature format: {}", e))?;
+
+                verifying_key.verify(canonical_signed_info.as_bytes(), &signature)
+                    .map_err(|_| anyhow!("SAML signature verification FAILED - response may be forged"))?;
+            } else {
+                // RSA-SHA1 (legacy but still common)
+                let verifying_key: VerifyingKey<Sha1> = VerifyingKey::new(rsa_public_key);
+                let signature = rsa::pkcs1v15::Signature::try_from(signature_bytes.as_slice())
+                    .map_err(|e| anyhow!("Invalid signature format: {}", e))?;
+
+                verifying_key.verify(canonical_signed_info.as_bytes(), &signature)
+                    .map_err(|_| anyhow!("SAML signature verification FAILED - response may be forged"))?;
+            }
+        } else {
+            return Err(anyhow!("Unsupported signature algorithm: {}. Supported: RSA-SHA256, RSA-SHA1", sig_algorithm));
+        }
+
+        // Also verify the digest of the signed content (Assertion or Response)
+        self.verify_digest(xml)?;
+
+        log::info!("SAML signature validated successfully");
+        Ok(())
+    }
+
+    /// Verify the digest value in the signature matches the actual content
+    fn verify_digest(&self, xml: &str) -> Result<()> {
+        // Extract DigestValue
+        let digest_value = extract_xml_value(xml, "DigestValue")
+            .or_else(|| extract_xml_value(xml, "ds:DigestValue"))
+            .ok_or_else(|| anyhow!("Missing DigestValue in signature"))?;
+
+        let digest_b64: String = digest_value.chars().filter(|c| !c.is_whitespace()).collect();
+        let expected_digest = BASE64.decode(&digest_b64)
+            .map_err(|e| anyhow!("Failed to decode DigestValue: {}", e))?;
+
+        // Extract the Reference URI to find what was signed
+        let reference_uri = extract_xml_attribute(xml, "Reference", "URI")
+            .or_else(|| extract_xml_attribute(xml, "ds:Reference", "URI"))
+            .unwrap_or_default();
+
+        // Find the signed element (usually the Assertion)
+        let signed_content = if reference_uri.starts_with('#') {
+            let id = &reference_uri[1..]; // Remove leading #
+            extract_element_by_id(xml, id)?
+        } else {
+            // If no URI, the entire Response is signed
+            xml.to_string()
+        };
+
+        // Canonicalize the signed content
+        let canonical_content = canonicalize_xml(&signed_content);
+
+        // Determine digest algorithm
+        let digest_algorithm = extract_xml_attribute(xml, "DigestMethod", "Algorithm")
+            .or_else(|| extract_xml_attribute(xml, "ds:DigestMethod", "Algorithm"))
+            .unwrap_or_default();
+
+        // Compute digest
+        let computed_digest = if digest_algorithm.contains("sha256") {
+            let mut hasher = Sha256::new();
+            hasher.update(canonical_content.as_bytes());
+            hasher.finalize().to_vec()
+        } else {
+            // SHA-1 (legacy)
+            let mut hasher = Sha1::new();
+            hasher.update(canonical_content.as_bytes());
+            hasher.finalize().to_vec()
+        };
+
+        if computed_digest != expected_digest {
+            return Err(anyhow!("SAML digest verification FAILED - signed content may have been tampered"));
+        }
+
+        Ok(())
+    }
+
+    fn parse_xml_response(&self, xml: &str) -> Result<SamlAssertion> {
         // Check for success status
         if !xml.contains("urn:oasis:names:tc:SAML:2.0:status:Success") {
             // Try to extract error message
@@ -340,6 +478,11 @@ impl SamlResponseParser {
                 return Err(anyhow!("SAML authentication failed: {}", msg));
             }
             return Err(anyhow!("SAML authentication failed with unknown status"));
+        }
+
+        // CRITICAL: Validate XML signature if configured
+        if self.config.want_assertions_signed {
+            self.validate_signature(xml)?;
         }
 
         // Extract assertion ID
@@ -526,6 +669,194 @@ fn extract_saml_attribute(xml: &str, name: &str) -> Option<String> {
     }
 
     None
+}
+
+/// Extract the SignedInfo element from XML for signature verification
+fn extract_signed_info(xml: &str) -> Result<String> {
+    // Find SignedInfo element (with or without namespace prefix)
+    let start_markers = ["<SignedInfo", "<ds:SignedInfo"];
+    let end_markers = ["</SignedInfo>", "</ds:SignedInfo>"];
+
+    for (start_marker, end_marker) in start_markers.iter().zip(end_markers.iter()) {
+        if let Some(start) = xml.find(start_marker) {
+            if let Some(end_offset) = xml[start..].find(end_marker) {
+                let end = start + end_offset + end_marker.len();
+                return Ok(xml[start..end].to_string());
+            }
+        }
+    }
+
+    Err(anyhow!("SignedInfo element not found in SAML response"))
+}
+
+/// Extract an XML element by its ID attribute
+fn extract_element_by_id(xml: &str, id: &str) -> Result<String> {
+    // Look for elements with ID or AssertionID attribute matching the given id
+    let id_patterns = [
+        format!("ID=\"{}\"", id),
+        format!("AssertionID=\"{}\"", id),
+        format!("Id=\"{}\"", id),
+    ];
+
+    for pattern in &id_patterns {
+        if let Some(attr_pos) = xml.find(pattern.as_str()) {
+            // Find the start of this element
+            let element_start = xml[..attr_pos].rfind('<')
+                .ok_or_else(|| anyhow!("Malformed XML: no opening tag before ID"))?;
+
+            // Determine the element name
+            let tag_end = xml[element_start..].find(|c: char| c.is_whitespace() || c == '>')
+                .ok_or_else(|| anyhow!("Malformed XML: incomplete tag"))?;
+            let element_name = &xml[element_start + 1..element_start + tag_end];
+
+            // Find the closing tag
+            let close_tag = format!("</{}>", element_name);
+            let close_pos = xml[attr_pos..].find(&close_tag)
+                .ok_or_else(|| anyhow!("Malformed XML: no closing tag for {}", element_name))?;
+
+            let element_end = attr_pos + close_pos + close_tag.len();
+            return Ok(xml[element_start..element_end].to_string());
+        }
+    }
+
+    Err(anyhow!("Element with ID '{}' not found", id))
+}
+
+/// Canonicalize XML using exclusive C14N (simplified version)
+/// This is a simplified implementation that handles the most common cases
+/// A full implementation would use a proper C14N library
+fn canonicalize_xml(xml: &str) -> String {
+    let mut result = String::new();
+    let mut in_tag = false;
+    let mut current_tag = String::new();
+    let mut attrs: Vec<(String, String)> = Vec::new();
+
+    let chars: Vec<char> = xml.chars().collect();
+    let mut i = 0;
+
+    while i < chars.len() {
+        let c = chars[i];
+
+        match c {
+            '<' => {
+                in_tag = true;
+                current_tag.clear();
+                attrs.clear();
+                i += 1;
+            }
+            '>' => {
+                if in_tag {
+                    // Process the tag
+                    let is_closing = current_tag.starts_with('/');
+                    let is_self_closing = current_tag.ends_with('/');
+
+                    if is_closing {
+                        // Closing tag
+                        result.push('<');
+                        result.push_str(&current_tag);
+                        result.push('>');
+                    } else {
+                        // Opening or self-closing tag
+                        // Parse tag name and attributes
+                        let parts: Vec<&str> = current_tag.split_whitespace().collect();
+                        if !parts.is_empty() {
+                            let tag_name = parts[0].trim_end_matches('/');
+
+                            // Parse attributes
+                            let attr_str = current_tag[tag_name.len()..].trim();
+                            let parsed_attrs = parse_attributes(attr_str);
+
+                            // Sort attributes lexicographically (C14N requirement)
+                            let mut sorted_attrs: Vec<_> = parsed_attrs.into_iter().collect();
+                            sorted_attrs.sort_by(|a, b| a.0.cmp(&b.0));
+
+                            // Build canonical tag
+                            result.push('<');
+                            result.push_str(tag_name);
+                            for (name, value) in sorted_attrs {
+                                result.push(' ');
+                                result.push_str(&name);
+                                result.push_str("=\"");
+                                result.push_str(&escape_xml_attr(&value));
+                                result.push('"');
+                            }
+                            if is_self_closing {
+                                result.push_str("></");
+                                result.push_str(tag_name);
+                            }
+                            result.push('>');
+                        }
+                    }
+                    in_tag = false;
+                } else {
+                    result.push(c);
+                }
+                i += 1;
+            }
+            _ => {
+                if in_tag {
+                    current_tag.push(c);
+                } else {
+                    result.push(c);
+                }
+                i += 1;
+            }
+        }
+    }
+
+    // Normalize line endings and remove unnecessary whitespace
+    result
+        .replace("\r\n", "\n")
+        .replace('\r', "\n")
+}
+
+/// Parse XML attributes from a string
+fn parse_attributes(attr_str: &str) -> Vec<(String, String)> {
+    let mut attrs = Vec::new();
+    let mut remaining = attr_str.trim();
+
+    while !remaining.is_empty() && !remaining.starts_with('/') {
+        // Find attribute name
+        if let Some(eq_pos) = remaining.find('=') {
+            let name = remaining[..eq_pos].trim().to_string();
+            remaining = remaining[eq_pos + 1..].trim();
+
+            // Find attribute value (quoted)
+            if remaining.starts_with('"') {
+                if let Some(end_quote) = remaining[1..].find('"') {
+                    let value = remaining[1..end_quote + 1].to_string();
+                    attrs.push((name, value));
+                    remaining = remaining[end_quote + 2..].trim();
+                } else {
+                    break;
+                }
+            } else if remaining.starts_with('\'') {
+                if let Some(end_quote) = remaining[1..].find('\'') {
+                    let value = remaining[1..end_quote + 1].to_string();
+                    attrs.push((name, value));
+                    remaining = remaining[end_quote + 2..].trim();
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        } else {
+            break;
+        }
+    }
+
+    attrs
+}
+
+/// Escape special characters in XML attribute values (C14N compliant)
+fn escape_xml_attr(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('"', "&quot;")
+        .replace('\t', "&#x9;")
+        .replace('\n', "&#xA;")
+        .replace('\r', "&#xD;")
 }
 
 // Public API functions for backwards compatibility

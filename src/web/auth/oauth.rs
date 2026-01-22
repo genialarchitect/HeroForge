@@ -8,7 +8,11 @@ use anyhow::{Result, anyhow};
 use chrono::{DateTime, Utc, Duration};
 use std::collections::HashMap;
 use sha2::{Sha256, Digest};
-use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+use base64::{Engine as _, engine::general_purpose::{URL_SAFE_NO_PAD, STANDARD as BASE64}};
+use jsonwebtoken::{decode, decode_header, DecodingKey, Validation, Algorithm};
+use std::sync::Arc;
+use tokio::sync::RwLock;
+use std::time::Instant;
 
 /// OAuth 2.0 provider configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -259,6 +263,7 @@ pub struct OAuthUserInfo {
 pub struct OAuthClient {
     config: OAuthConfig,
     http_client: reqwest::Client,
+    jwks_cache: Arc<RwLock<Option<CachedJWKS>>>,
 }
 
 impl OAuthClient {
@@ -267,6 +272,7 @@ impl OAuthClient {
         Self {
             config,
             http_client: reqwest::Client::new(),
+            jwks_cache: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -413,9 +419,138 @@ impl OAuthClient {
         Ok(())
     }
 
-    /// Validate ID token (basic validation)
-    pub fn validate_id_token(&self, id_token: &str, nonce: &str) -> Result<IDTokenClaims> {
-        // Decode JWT without verification (verification would require JWKS)
+    /// Validate ID token with FULL signature verification
+    /// This is CRITICAL for security - without signature validation,
+    /// an attacker could forge ID tokens
+    pub async fn validate_id_token(&self, id_token: &str, nonce: &str) -> Result<IDTokenClaims> {
+        // Decode header to get key ID (kid) and algorithm
+        let header = decode_header(id_token)
+            .map_err(|e| anyhow!("Failed to decode JWT header: {}", e))?;
+
+        let kid = header.kid.as_deref();
+        let algorithm = header.alg;
+
+        // Get the decoding key from JWKS
+        let decoding_key = self.get_decoding_key(kid, algorithm).await?;
+
+        // Set up validation
+        let mut validation = Validation::new(algorithm);
+        validation.set_audience(&[&self.config.client_id]);
+        if let Some(ref issuer) = self.config.issuer {
+            validation.set_issuer(&[issuer]);
+        }
+        // Allow some clock skew (60 seconds)
+        validation.leeway = 60;
+
+        // Decode and verify the token
+        let token_data = decode::<IDTokenClaims>(id_token, &decoding_key, &validation)
+            .map_err(|e| anyhow!("JWT signature verification FAILED: {} - token may be forged", e))?;
+
+        let claims = token_data.claims;
+
+        // Validate nonce (OIDC requirement)
+        if let Some(ref token_nonce) = claims.nonce {
+            if token_nonce != nonce {
+                return Err(anyhow!("Nonce mismatch - possible replay attack"));
+            }
+        } else {
+            // Nonce should be present if we requested it
+            log::warn!("ID token missing nonce claim");
+        }
+
+        log::info!("ID token signature validated successfully for subject: {}", claims.sub);
+        Ok(claims)
+    }
+
+    /// Fetch JWKS from provider and extract decoding key
+    async fn get_decoding_key(&self, kid: Option<&str>, algorithm: Algorithm) -> Result<DecodingKey> {
+        // Check if we have a JWKS URI
+        let jwks_uri = self.config.jwks_uri.as_ref()
+            .ok_or_else(|| anyhow!("Provider does not have JWKS URI - cannot verify signatures"))?;
+
+        // Check cache first
+        {
+            let cache = self.jwks_cache.read().await;
+            if let Some(ref cached) = *cache {
+                if !cached.is_expired() {
+                    return self.extract_key_from_jwks(&cached.jwks, kid, algorithm);
+                }
+            }
+        }
+
+        // Fetch fresh JWKS
+        log::info!("Fetching JWKS from {}", jwks_uri);
+        let response = self.http_client
+            .get(jwks_uri)
+            .send()
+            .await
+            .map_err(|e| anyhow!("Failed to fetch JWKS: {}", e))?;
+
+        if !response.status().is_success() {
+            return Err(anyhow!("JWKS fetch failed with status: {}", response.status()));
+        }
+
+        let jwks: JWKS = response.json().await
+            .map_err(|e| anyhow!("Failed to parse JWKS: {}", e))?;
+
+        // Cache the JWKS
+        {
+            let mut cache = self.jwks_cache.write().await;
+            *cache = Some(CachedJWKS {
+                jwks: jwks.clone(),
+                fetched_at: Instant::now(),
+            });
+        }
+
+        self.extract_key_from_jwks(&jwks, kid, algorithm)
+    }
+
+    /// Extract the appropriate key from JWKS
+    fn extract_key_from_jwks(&self, jwks: &JWKS, kid: Option<&str>, algorithm: Algorithm) -> Result<DecodingKey> {
+        // Find the key that matches the kid (if provided)
+        let key = if let Some(kid) = kid {
+            jwks.keys.iter()
+                .find(|k| k.kid.as_deref() == Some(kid))
+                .ok_or_else(|| anyhow!("Key with kid '{}' not found in JWKS", kid))?
+        } else {
+            // If no kid, use the first signing key
+            jwks.keys.iter()
+                .find(|k| k.use_.as_deref() == Some("sig") || k.use_.is_none())
+                .ok_or_else(|| anyhow!("No suitable signing key found in JWKS"))?
+        };
+
+        // Convert JWK to DecodingKey based on key type
+        match key.kty.as_str() {
+            "RSA" => {
+                let n = key.n.as_ref()
+                    .ok_or_else(|| anyhow!("RSA key missing 'n' (modulus)"))?;
+                let e = key.e.as_ref()
+                    .ok_or_else(|| anyhow!("RSA key missing 'e' (exponent)"))?;
+
+                DecodingKey::from_rsa_components(n, e)
+                    .map_err(|e| anyhow!("Failed to create RSA decoding key: {}", e))
+            }
+            "EC" => {
+                // For EC keys, we need to construct the public key from x, y coordinates
+                let x = key.x.as_ref()
+                    .ok_or_else(|| anyhow!("EC key missing 'x' coordinate"))?;
+                let y = key.y.as_ref()
+                    .ok_or_else(|| anyhow!("EC key missing 'y' coordinate"))?;
+
+                DecodingKey::from_ec_components(x, y)
+                    .map_err(|e| anyhow!("Failed to create EC decoding key: {}", e))
+            }
+            _ => Err(anyhow!("Unsupported key type: {}", key.kty))
+        }
+    }
+
+    /// Validate ID token synchronously (for backwards compatibility)
+    /// WARNING: This version cannot verify signatures and should only be used
+    /// in contexts where async is not available
+    pub fn validate_id_token_unverified(&self, id_token: &str, nonce: &str) -> Result<IDTokenClaims> {
+        log::warn!("Using UNVERIFIED token validation - signature not checked!");
+
+        // Decode JWT without verification
         let parts: Vec<&str> = id_token.split('.').collect();
         if parts.len() != 3 {
             return Err(anyhow!("Invalid ID token format"));
@@ -477,6 +612,41 @@ pub struct IDTokenClaims {
     pub name: Option<String>,
     #[serde(flatten)]
     pub additional_claims: HashMap<String, serde_json::Value>,
+}
+
+/// JSON Web Key Set (JWKS) for signature verification
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JWKS {
+    pub keys: Vec<JWK>,
+}
+
+/// Individual JSON Web Key
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JWK {
+    pub kty: String,
+    pub kid: Option<String>,
+    #[serde(rename = "use")]
+    pub use_: Option<String>,
+    pub alg: Option<String>,
+    pub n: Option<String>,  // RSA modulus (base64url)
+    pub e: Option<String>,  // RSA exponent (base64url)
+    pub x: Option<String>,  // EC x coordinate (for EC keys)
+    pub y: Option<String>,  // EC y coordinate (for EC keys)
+    pub crv: Option<String>, // EC curve name
+}
+
+/// Cached JWKS with expiration
+#[derive(Debug)]
+struct CachedJWKS {
+    jwks: JWKS,
+    fetched_at: Instant,
+}
+
+impl CachedJWKS {
+    fn is_expired(&self) -> bool {
+        // Cache JWKS for 1 hour
+        self.fetched_at.elapsed().as_secs() > 3600
+    }
 }
 
 // Legacy function wrappers for backwards compatibility

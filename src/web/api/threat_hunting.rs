@@ -25,10 +25,11 @@ use crate::threat_hunting::{
         CreatePlaybookRequest, StartSessionRequest, AddFindingRequest,
     },
     retrospective::{
-        CreateSearchRequest,
+        CreateSearchRequest, SearchStatus, SearchResult, SearchSourceType, MatchContext,
         RetrospectiveSearchEngine,
     },
 };
+use log::warn;
 use crate::web::auth::Claims;
 
 // ============================================================================
@@ -798,8 +799,201 @@ pub async fn create_retrospective_search(
             actix_web::error::ErrorInternalServerError("Failed to create search")
         })?;
 
-    // In a real implementation, we would start an async task to perform the search
-    // For now, we just create the search record
+    // Spawn background task to perform the retrospective search
+    let search_id = search.id.clone();
+    let pool_clone = pool.get_ref().clone();
+    let search_request = body.into_inner();
+
+    tokio::spawn(async move {
+        info!("Starting retrospective search task: {}", search_id);
+
+        // Update search status to running
+        if let Err(e) = db::threat_hunting::update_search_status(&pool_clone, &search_id, SearchStatus::Running, None, None).await {
+            error!("Failed to update search status to running: {}", e);
+            return;
+        }
+
+        let mut total_matches = 0u32;
+        let mut progress: u8 = 0;
+
+        // Collect IOC values to search for
+        let ioc_values: Vec<String> = search_request.ioc_values
+            .unwrap_or_default()
+            .into_iter()
+            .map(|ioc| ioc.value)
+            .collect();
+
+        // Also get IOCs by ID if provided
+        let mut all_iocs = ioc_values;
+        if let Some(ioc_ids) = &search_request.ioc_ids {
+            for ioc_id in ioc_ids {
+                if let Ok(Some(ioc)) = db::threat_hunting::get_ioc_by_id(&pool_clone, ioc_id).await {
+                    all_iocs.push(ioc.value);
+                }
+            }
+        }
+
+        // Search through various data sources
+        let sources = search_request.sources.unwrap_or_else(|| vec![
+            "siem_logs".to_string(),
+            "scan_results".to_string(),
+            "network_flows".to_string(),
+        ]);
+
+        let sources_count = sources.len();
+        for (idx, source) in sources.iter().enumerate() {
+            info!("Searching source '{}' for {} IOCs", source, all_iocs.len());
+
+            // Search each data source for IOC matches
+            // This searches local database tables for matches
+            match source.as_str() {
+                "siem_logs" => {
+                    // Search siem_events table for IOC values
+                    for ioc in &all_iocs {
+                        let query_result: Result<Vec<(String,)>, _> = sqlx::query_as(
+                            r#"SELECT id FROM siem_events
+                               WHERE raw_log LIKE ? OR source_ip LIKE ? OR dest_ip LIKE ?
+                               LIMIT 100"#
+                        )
+                        .bind(format!("%{}%", ioc))
+                        .bind(format!("%{}%", ioc))
+                        .bind(format!("%{}%", ioc))
+                        .fetch_all(&pool_clone)
+                        .await;
+
+                        if let Ok(matches) = query_result {
+                            for (event_id,) in matches {
+                                let result = SearchResult {
+                                    id: uuid::Uuid::new_v4().to_string(),
+                                    search_id: search_id.clone(),
+                                    matched_ioc: ioc.clone(),
+                                    ioc_type: IocType::Ip, // Default type
+                                    source_type: SearchSourceType::SiemLogs,
+                                    source_id: event_id.clone(),
+                                    match_timestamp: chrono::Utc::now(),
+                                    context: MatchContext {
+                                        source_ip: None,
+                                        dest_ip: None,
+                                        hostname: None,
+                                        user: None,
+                                        process: None,
+                                        raw_data: Some(format!("Found in SIEM event {}", event_id)),
+                                        scan_id: None,
+                                        vulnerability_id: None,
+                                        additional_fields: None,
+                                    },
+                                    severity: "medium".to_string(),
+                                    metadata: None,
+                                };
+                                let _ = db::threat_hunting::store_search_result(&pool_clone, &result).await;
+                                total_matches += 1;
+                            }
+                        }
+                    }
+                }
+                "scan_results" => {
+                    // Search scan_results for IOC values (IPs, hostnames)
+                    for ioc in &all_iocs {
+                        let query_result: Result<Vec<(String, String)>, _> = sqlx::query_as(
+                            r#"SELECT id, target FROM scan_results
+                               WHERE target LIKE ?
+                               LIMIT 100"#
+                        )
+                        .bind(format!("%{}%", ioc))
+                        .fetch_all(&pool_clone)
+                        .await;
+
+                        if let Ok(matches) = query_result {
+                            for (found_scan_id, target) in matches {
+                                let result = SearchResult {
+                                    id: uuid::Uuid::new_v4().to_string(),
+                                    search_id: search_id.clone(),
+                                    matched_ioc: ioc.clone(),
+                                    ioc_type: IocType::Ip,
+                                    source_type: SearchSourceType::ScanResults,
+                                    source_id: found_scan_id.clone(),
+                                    match_timestamp: chrono::Utc::now(),
+                                    context: MatchContext {
+                                        source_ip: Some(target.clone()),
+                                        dest_ip: None,
+                                        hostname: None,
+                                        user: None,
+                                        process: None,
+                                        raw_data: Some(format!("Found in scan {} targeting {}", found_scan_id, target)),
+                                        scan_id: Some(found_scan_id),
+                                        vulnerability_id: None,
+                                        additional_fields: None,
+                                    },
+                                    severity: "medium".to_string(),
+                                    metadata: None,
+                                };
+                                let _ = db::threat_hunting::store_search_result(&pool_clone, &result).await;
+                                total_matches += 1;
+                            }
+                        }
+                    }
+                }
+                "network_flows" => {
+                    // Search netflow_flows for IOC values
+                    for ioc in &all_iocs {
+                        let query_result: Result<Vec<(String,)>, _> = sqlx::query_as(
+                            r#"SELECT id FROM netflow_flows
+                               WHERE src_ip LIKE ? OR dst_ip LIKE ?
+                               LIMIT 100"#
+                        )
+                        .bind(format!("%{}%", ioc))
+                        .bind(format!("%{}%", ioc))
+                        .fetch_all(&pool_clone)
+                        .await;
+
+                        if let Ok(matches) = query_result {
+                            for (flow_id,) in matches {
+                                let result = SearchResult {
+                                    id: uuid::Uuid::new_v4().to_string(),
+                                    search_id: search_id.clone(),
+                                    matched_ioc: ioc.clone(),
+                                    ioc_type: IocType::Ip,
+                                    source_type: SearchSourceType::NetworkFlows,
+                                    source_id: flow_id.clone(),
+                                    match_timestamp: chrono::Utc::now(),
+                                    context: MatchContext {
+                                        source_ip: None,
+                                        dest_ip: None,
+                                        hostname: None,
+                                        user: None,
+                                        process: None,
+                                        raw_data: Some(format!("Found in network flow {}", flow_id)),
+                                        scan_id: None,
+                                        vulnerability_id: None,
+                                        additional_fields: None,
+                                    },
+                                    severity: "medium".to_string(),
+                                    metadata: None,
+                                };
+                                let _ = db::threat_hunting::store_search_result(&pool_clone, &result).await;
+                                total_matches += 1;
+                            }
+                        }
+                    }
+                }
+                _ => {
+                    warn!("Unknown search source: {}", source);
+                }
+            }
+
+            // Update progress
+            progress = ((idx + 1) * 100 / sources_count) as u8;
+            let _ = db::threat_hunting::update_search_progress(&pool_clone, &search_id, progress).await;
+        }
+
+        // Mark search as completed
+        if let Err(e) = db::threat_hunting::update_search_status(&pool_clone, &search_id, SearchStatus::Completed, Some(total_matches), None).await {
+            error!("Failed to complete search: {}", e);
+            let _ = db::threat_hunting::update_search_status(&pool_clone, &search_id, SearchStatus::Failed, None, Some(e.to_string())).await;
+        } else {
+            info!("Retrospective search {} completed: {} matches found", search_id, total_matches);
+        }
+    });
 
     Ok(HttpResponse::Created().json(search))
 }

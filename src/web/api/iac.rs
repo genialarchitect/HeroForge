@@ -1311,10 +1311,9 @@ pub async fn scan_terraform_state(
         })));
     }
 
-    // If we have backend config, we would need backend content (HCL) to analyze
-    // For now, backend analysis requires the actual backend configuration from .tf files
-    // This is a simplified version that just analyzes the state content
-    let backend_analysis: Option<BackendAnalysisInfo> = None;
+    // Analyze backend configuration if provided
+    let backend_analysis: Option<BackendAnalysisInfo> = request.backend_config.as_ref()
+        .map(|config| analyze_backend_config(config));
 
     // If we have state content, analyze it
     if let Some(ref state_content) = request.state_content {
@@ -1468,6 +1467,206 @@ pub async fn list_platforms() -> Result<HttpResponse> {
 /// Seed builtin rules on startup
 pub async fn seed_builtin_rules(pool: &SqlitePool) -> anyhow::Result<()> {
     iac::seed_builtin_rules(pool).await
+}
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/// Analyze Terraform backend configuration for security issues
+fn analyze_backend_config(backend_config: &BackendConfigRequest) -> BackendAnalysisInfo {
+    let backend_type = backend_config.backend_type.to_lowercase();
+    let config = &backend_config.config;
+    let mut findings: Vec<String> = Vec::new();
+
+    let (encryption_enabled, locking_enabled, versioning_enabled) = match backend_type.as_str() {
+        "s3" => {
+            // S3 backend analysis
+            let encrypt = config.get("encrypt")
+                .map(|v| v.to_lowercase() == "true")
+                .unwrap_or(false);
+
+            if !encrypt {
+                findings.push("S3 backend encryption is not enabled. Add 'encrypt = true' to encrypt state at rest.".to_string());
+            }
+
+            let has_kms = config.contains_key("kms_key_id") || config.contains_key("sse_customer_key");
+            if !has_kms && encrypt {
+                findings.push("Consider using a KMS key for encryption instead of default AES-256. Add 'kms_key_id' parameter.".to_string());
+            }
+
+            let has_locking = config.contains_key("dynamodb_table");
+            if !has_locking {
+                findings.push("DynamoDB state locking is not configured. Add 'dynamodb_table' to prevent concurrent modifications.".to_string());
+            }
+
+            let has_versioning = config.get("versioning")
+                .map(|v| v.to_lowercase() == "true")
+                .unwrap_or(false);
+            // Note: versioning is typically enabled on the bucket itself, not in backend config
+            // We check if it's explicitly set
+
+            // Check for public bucket settings
+            if let Some(acl) = config.get("acl") {
+                if acl == "public-read" || acl == "public-read-write" {
+                    findings.push("CRITICAL: S3 bucket ACL allows public access. State files may contain sensitive data.".to_string());
+                }
+            }
+
+            (encrypt, has_locking, has_versioning)
+        }
+
+        "azurerm" => {
+            // Azure backend analysis
+            let use_azuread = config.get("use_azuread_auth")
+                .map(|v| v.to_lowercase() == "true")
+                .unwrap_or(false);
+
+            if !use_azuread {
+                findings.push("Consider using Azure AD authentication (use_azuread_auth = true) instead of access keys.".to_string());
+            }
+
+            // Azure Storage encrypts at rest by default
+            let encryption = true;
+
+            // Check for SAS token usage (less secure than RBAC)
+            if config.contains_key("sas_token") {
+                findings.push("Using SAS token for authentication. Consider using Azure AD RBAC for better security.".to_string());
+            }
+
+            // Azure blob storage doesn't have built-in locking like DynamoDB
+            // Terraform uses blob leases for locking by default
+            let locking = true;
+
+            // Check if container access is public
+            if let Some(container_access) = config.get("container_access_type") {
+                if container_access != "private" {
+                    findings.push("CRITICAL: Azure container access is not private. State files may be publicly accessible.".to_string());
+                }
+            }
+
+            let versioning = config.get("versioning")
+                .map(|v| v.to_lowercase() == "true")
+                .unwrap_or(false);
+
+            (encryption, locking, versioning)
+        }
+
+        "gcs" => {
+            // Google Cloud Storage backend analysis
+            let encryption_key = config.contains_key("encryption_key");
+
+            // GCS encrypts at rest by default, but customer-managed keys are better
+            let encryption = true;
+            if !encryption_key {
+                findings.push("Consider using a customer-managed encryption key (encryption_key parameter) for additional control.".to_string());
+            }
+
+            // GCS has built-in locking by default
+            let locking = true;
+
+            // Check for versioning
+            let versioning = config.get("versioning")
+                .map(|v| v.to_lowercase() == "true")
+                .unwrap_or(false);
+
+            // Check for public access (prefix implies structured access)
+            if config.get("prefix").is_none() {
+                findings.push("Consider using a prefix to organize state files and enable better access control.".to_string());
+            }
+
+            (encryption, locking, versioning)
+        }
+
+        "consul" => {
+            // Consul backend analysis
+            let has_token = config.contains_key("access_token") || config.contains_key("token");
+            if !has_token {
+                findings.push("No Consul ACL token configured. This may allow unauthorized access to state.".to_string());
+            }
+
+            let scheme = config.get("scheme").map(|s| s.as_str()).unwrap_or("http");
+            if scheme != "https" {
+                findings.push("CRITICAL: Consul backend not using HTTPS. State data transmitted in cleartext.".to_string());
+            }
+
+            let gzip = config.get("gzip")
+                .map(|v| v.to_lowercase() == "true")
+                .unwrap_or(false);
+            if !gzip {
+                findings.push("Consider enabling gzip compression for better performance.".to_string());
+            }
+
+            // Consul has built-in locking
+            let locking = true;
+            // Consul doesn't have native encryption at rest
+            let encryption = scheme == "https";
+            let versioning = false;
+
+            (encryption, locking, versioning)
+        }
+
+        "http" => {
+            // HTTP backend analysis
+            let address = config.get("address").map(|s| s.as_str()).unwrap_or("");
+            if !address.starts_with("https://") {
+                findings.push("CRITICAL: HTTP backend not using HTTPS. State data transmitted in cleartext.".to_string());
+            }
+
+            if !config.contains_key("username") && !config.contains_key("password") {
+                findings.push("No authentication configured for HTTP backend.".to_string());
+            }
+
+            let lock_address = config.contains_key("lock_address");
+            if !lock_address {
+                findings.push("No lock_address configured. State locking may not be available.".to_string());
+            }
+
+            (address.starts_with("https://"), lock_address, false)
+        }
+
+        "local" => {
+            // Local backend - generally not recommended for teams
+            findings.push("Using local backend. State is not shared with team members and may be lost.".to_string());
+            findings.push("Consider using a remote backend (S3, Azure, GCS) for team collaboration and state protection.".to_string());
+            (false, false, false)
+        }
+
+        "remote" => {
+            // Terraform Cloud/Enterprise backend
+            // Generally well-configured by default
+            findings.push("Using Terraform Cloud/Enterprise remote backend - encryption and locking handled by the service.".to_string());
+            (true, true, true)
+        }
+
+        "pg" | "postgres" => {
+            // PostgreSQL backend
+            let conn_str = config.get("conn_str").map(|s| s.as_str()).unwrap_or("");
+            if !conn_str.contains("sslmode=") || conn_str.contains("sslmode=disable") {
+                findings.push("PostgreSQL connection may not be using SSL. Add sslmode=require or higher.".to_string());
+            }
+            // PostgreSQL handles locking via table locks
+            (conn_str.contains("sslmode=") && !conn_str.contains("sslmode=disable"), true, false)
+        }
+
+        _ => {
+            findings.push(format!("Unknown backend type '{}'. Unable to assess security configuration.", backend_type));
+            (false, false, false)
+        }
+    };
+
+    // Common recommendations
+    if !versioning_enabled {
+        findings.push("State versioning not detected. Enable versioning to recover from accidental state corruption.".to_string());
+    }
+
+    BackendAnalysisInfo {
+        backend_type: backend_config.backend_type.clone(),
+        encryption_enabled,
+        locking_enabled,
+        versioning_enabled,
+        findings,
+    }
 }
 
 // ============================================================================

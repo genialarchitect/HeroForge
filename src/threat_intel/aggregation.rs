@@ -130,51 +130,94 @@ static SECRET_PATTERNS: Lazy<Vec<(Regex, &'static str)>> = Lazy::new(|| {
 });
 
 /// Aggregate IOCs from multiple threat feeds
+///
+/// This function gracefully handles individual feed failures - if one feed
+/// fails to fetch, it logs a warning and continues with other feeds rather
+/// than failing the entire aggregation.
 pub async fn aggregate_feeds(feeds: Vec<ThreatFeed>) -> Result<Vec<serde_json::Value>> {
     let mut aggregated_iocs: HashMap<String, AggregatedIoc> = HashMap::new();
+    let mut successful_feeds = 0;
+    let mut failed_feeds = Vec::new();
 
-    for feed in feeds {
+    for feed in &feeds {
         if !feed.enabled {
             continue;
         }
 
-        // Fetch and parse feed based on type
-        let iocs = fetch_feed(&feed).await?;
+        // Fetch and parse feed based on type - gracefully handle failures
+        match fetch_feed(feed).await {
+            Ok(iocs) => {
+                successful_feeds += 1;
+                info!("Successfully fetched {} IOCs from feed '{}'", iocs.len(), feed.name);
 
-        // Merge IOCs
-        for ioc in iocs {
-            let key = format!("{}:{}", ioc.ioc_type, ioc.value);
+                // Merge IOCs
+                for ioc in iocs {
+                    let key = format!("{}:{}", ioc.ioc_type, ioc.value);
 
-            if let Some(existing) = aggregated_iocs.get_mut(&key) {
-                // Update existing IOC
-                if !existing.sources.contains(&feed.name) {
-                    existing.sources.push(feed.name.clone());
-                }
-                if ioc.first_seen < existing.first_seen {
-                    existing.first_seen = ioc.first_seen;
-                }
-                if ioc.last_seen > existing.last_seen {
-                    existing.last_seen = ioc.last_seen;
-                }
-                // Increase confidence based on multiple sources
-                existing.confidence = (existing.confidence + ioc.confidence) / 2.0;
-                existing.confidence = (existing.confidence * existing.sources.len() as f64 / 3.0).min(1.0);
-                // Merge tags
-                for tag in ioc.tags {
-                    if !existing.tags.contains(&tag) {
-                        existing.tags.push(tag);
+                    if let Some(existing) = aggregated_iocs.get_mut(&key) {
+                        // Update existing IOC
+                        if !existing.sources.contains(&feed.name) {
+                            existing.sources.push(feed.name.clone());
+                        }
+                        if ioc.first_seen < existing.first_seen {
+                            existing.first_seen = ioc.first_seen;
+                        }
+                        if ioc.last_seen > existing.last_seen {
+                            existing.last_seen = ioc.last_seen;
+                        }
+                        // Increase confidence based on multiple sources
+                        existing.confidence = (existing.confidence + ioc.confidence) / 2.0;
+                        existing.confidence = (existing.confidence * existing.sources.len() as f64 / 3.0).min(1.0);
+                        // Merge tags
+                        for tag in ioc.tags {
+                            if !existing.tags.contains(&tag) {
+                                existing.tags.push(tag);
+                            }
+                        }
+                    } else {
+                        aggregated_iocs.insert(key, ioc);
                     }
                 }
-            } else {
-                aggregated_iocs.insert(key, ioc);
+            }
+            Err(e) => {
+                // Log failure but continue with other feeds
+                warn!("Failed to fetch feed '{}': {} - continuing with other feeds", feed.name, e);
+                failed_feeds.push(feed.name.clone());
             }
         }
     }
 
-    // Convert to JSON values
+    // Log aggregation summary
+    let total_enabled = feeds.iter().filter(|f| f.enabled).count();
+    if failed_feeds.is_empty() {
+        info!("Successfully aggregated IOCs from all {} feeds", successful_feeds);
+    } else {
+        warn!(
+            "Aggregation completed with {} successful, {} failed feeds: {:?}",
+            successful_feeds, failed_feeds.len(), failed_feeds
+        );
+    }
+
+    // Return error only if ALL feeds failed
+    if successful_feeds == 0 && total_enabled > 0 {
+        return Err(anyhow::anyhow!(
+            "All {} enabled feeds failed to fetch: {:?}",
+            total_enabled, failed_feeds
+        ));
+    }
+
+    // Convert to JSON values with proper error handling
     let results: Vec<serde_json::Value> = aggregated_iocs
         .into_values()
-        .map(|ioc| serde_json::to_value(ioc).unwrap_or_default())
+        .filter_map(|ioc| {
+            match serde_json::to_value(&ioc) {
+                Ok(v) => Some(v),
+                Err(e) => {
+                    warn!("Failed to serialize IOC {}: {}", ioc.value, e);
+                    None
+                }
+            }
+        })
         .collect();
 
     Ok(results)
@@ -666,7 +709,47 @@ fn normalize_ioc_type(ioc_type: &str) -> String {
 }
 
 /// Monitor dark web for threats
+///
+/// # Important: Infrastructure Requirements
+///
+/// Real dark web monitoring requires:
+/// - Tor SOCKS5 proxy (typically on port 9050)
+/// - Known .onion addresses for forums/markets/paste sites
+/// - Site-specific parsing logic
+/// - Rate limiting and operational security considerations
+///
+/// Without Tor infrastructure configured, this function returns an empty result
+/// with a status indicator explaining the limitation.
+///
+/// # Alternative Approaches
+///
+/// For production use, consider:
+/// - Third-party dark web monitoring services (Recorded Future, DarkOwl, etc.)
+/// - Have I Been Pwned API for breach database monitoring
+/// - Commercial threat intelligence feeds with dark web coverage
 pub async fn monitor_dark_web() -> Result<Vec<serde_json::Value>> {
+    // Check if Tor proxy is available
+    let tor_available = check_tor_availability().await;
+
+    if !tor_available {
+        warn!("⚠️ Dark web monitoring requires Tor infrastructure (SOCKS5 proxy on localhost:9050)");
+        warn!("⚠️ No real dark web monitoring can be performed without Tor connectivity");
+        info!("Configure TOR_PROXY_HOST and TOR_PROXY_PORT environment variables for Tor access");
+
+        // Return status indicator instead of empty results
+        return Ok(vec![serde_json::json!({
+            "status": "unavailable",
+            "reason": "Tor infrastructure not configured",
+            "message": "Dark web monitoring requires Tor SOCKS5 proxy. Configure TOR_PROXY_HOST and TOR_PROXY_PORT environment variables.",
+            "alternatives": [
+                "Use third-party dark web monitoring services (Recorded Future, DarkOwl, Flashpoint)",
+                "Use Have I Been Pwned API for breach database monitoring",
+                "Configure Tor proxy for actual dark web access"
+            ],
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        })]);
+    }
+
     let mut findings = Vec::new();
 
     // Dark web sources to monitor
@@ -697,83 +780,144 @@ pub async fn monitor_dark_web() -> Result<Vec<serde_json::Value>> {
     Ok(findings)
 }
 
-/// Monitor dark web forums
+/// Check if Tor proxy is available for dark web access
+async fn check_tor_availability() -> bool {
+    let tor_host = std::env::var("TOR_PROXY_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
+    let tor_port: u16 = std::env::var("TOR_PROXY_PORT")
+        .unwrap_or_else(|_| "9050".to_string())
+        .parse()
+        .unwrap_or(9050);
+
+    // Try to connect to the Tor SOCKS5 proxy
+    let addr = format!("{}:{}", tor_host, tor_port);
+    match tokio::net::TcpStream::connect(&addr).await {
+        Ok(stream) => {
+            // Basic SOCKS5 handshake check
+            drop(stream);
+            info!("Tor proxy detected at {}", addr);
+            true
+        }
+        Err(_) => {
+            debug!("Tor proxy not available at {}", addr);
+            false
+        }
+    }
+}
+
+/// Monitor dark web forums via Tor
+///
+/// # Requirements
+/// - Active Tor SOCKS5 proxy
+/// - Known forum .onion addresses
+/// - Forum-specific parsing logic
+///
+/// # Known Forums (for reference)
+/// Forum scraping requires site-specific implementations as each forum
+/// has different structures, authentication, and rate limiting.
 async fn monitor_dark_web_forums() -> Result<Vec<DarkWebFinding>> {
     let findings = Vec::new();
 
-    // In production, this would connect via Tor and scrape known forums
-    // For now, we simulate with common forum patterns
-
-    // Check configured monitoring keywords
     let keywords = get_monitoring_keywords();
 
-    // Simulate forum monitoring results
-    // In production: connect to Tor, scrape forums, search for keywords
-    debug!("Monitoring dark web forums for {} keywords", keywords.len());
+    // TODO: Implement actual Tor-based forum monitoring
+    // This requires:
+    // 1. SOCKS5 proxy connection through Tor
+    // 2. Forum-specific scraping logic
+    // 3. Keyword matching across posts/threads
+    // 4. Rate limiting to avoid detection
+    debug!("Dark web forum monitoring: {} keywords configured (implementation pending)", keywords.len());
 
-    // Example finding structure (would come from actual scraping)
     if !keywords.is_empty() {
-        // Log that monitoring is active
-        info!("Dark web forum monitoring active for {} keywords", keywords.len());
+        info!("Dark web forum monitoring configured for {} keywords - requires Tor implementation", keywords.len());
     }
 
     Ok(findings)
 }
 
-/// Monitor dark web marketplaces
+/// Monitor dark web marketplaces via Tor
+///
+/// # Requirements
+/// - Active Tor SOCKS5 proxy
+/// - Known marketplace .onion addresses
+/// - Marketplace-specific parsing logic
+///
+/// # Monitoring Targets
+/// - Stolen credentials for sale
+/// - Company data listings
+/// - Exploit sales mentioning target technologies
+/// - RaaS offerings
+/// - Initial access broker listings
 async fn monitor_dark_web_markets() -> Result<Vec<DarkWebFinding>> {
     let findings = Vec::new();
 
-    // In production, would monitor for:
-    // - Stolen credentials for sale
-    // - Company data listings
-    // - Exploit sales mentioning target technologies
-    // - RaaS offerings
-    // - Initial access broker listings
-
     let keywords = get_monitoring_keywords();
 
-    debug!("Monitoring dark web markets for {} keywords", keywords.len());
-
-    // Simulate market monitoring
-    // In production: connect via Tor, check known markets, search listings
+    // TODO: Implement actual Tor-based marketplace monitoring
+    // This requires:
+    // 1. SOCKS5 proxy connection through Tor
+    // 2. Marketplace-specific scraping/API logic
+    // 3. Product listing search and parsing
+    // 4. Seller reputation tracking
+    debug!("Dark web marketplace monitoring: {} keywords configured (implementation pending)", keywords.len());
 
     Ok(findings)
 }
 
-/// Monitor .onion paste sites
+/// Monitor .onion paste sites via Tor
+///
+/// # Requirements
+/// - Active Tor SOCKS5 proxy
+/// - Known .onion paste site addresses
+///
+/// # Known Onion Paste Services
+/// - Stronghold paste variants
+/// - Zerobin clones on Tor
+/// - Other Tor-based paste services
 async fn monitor_onion_paste_sites() -> Result<Vec<DarkWebFinding>> {
     let findings = Vec::new();
 
-    // Known .onion paste sites to monitor:
-    // - stronghold paste variants
-    // - zerobin clones
-    // - other Tor-based paste services
-
     let keywords = get_monitoring_keywords();
 
-    debug!("Monitoring onion paste sites for {} keywords", keywords.len());
-
-    // In production: connect via Tor, scrape paste sites
+    // TODO: Implement actual Tor-based paste site monitoring
+    // This requires:
+    // 1. SOCKS5 proxy connection through Tor
+    // 2. Paste site scraping with pagination
+    // 3. Content analysis for keyword matching
+    debug!("Onion paste site monitoring: {} keywords configured (implementation pending)", keywords.len());
 
     Ok(findings)
 }
 
-/// Monitor breach databases
+/// Monitor breach databases for organization data
+///
+/// # Alternative: Have I Been Pwned API
+///
+/// For legitimate breach monitoring without dark web access, consider using
+/// the Have I Been Pwned API (https://haveibeenpwned.com/API/v3) which provides:
+/// - Domain search for breached accounts
+/// - Email breach lookup
+/// - Password compromise checking (k-Anonymity model)
+///
+/// # Dark Web Sources (require Tor)
+/// - Known breach compilation sites
+/// - Combo list aggregators
+/// - Database dump forums
+/// - Leak sites
 async fn monitor_breach_databases() -> Result<Vec<DarkWebFinding>> {
     let findings = Vec::new();
 
-    // Sources to check:
-    // - Known breach compilation sites
-    // - Combo list aggregators
-    // - Database dump forums/sites
-    // - Leak sites
-
     let domains = get_monitored_domains();
 
-    debug!("Monitoring breach databases for {} domains", domains.len());
+    // TODO: Implement breach database monitoring
+    // Options:
+    // 1. Have I Been Pwned API (clear web, requires API key)
+    // 2. Direct dark web monitoring (requires Tor)
+    // 3. Commercial breach intelligence feeds
+    debug!("Breach database monitoring: {} domains configured (implementation pending)", domains.len());
 
-    // In production: check breach databases for organization domains
+    if !domains.is_empty() {
+        info!("Breach monitoring configured for {} domains - consider using HIBP API for production", domains.len());
+    }
 
     Ok(findings)
 }

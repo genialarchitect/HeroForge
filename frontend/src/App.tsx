@@ -41,10 +41,12 @@ const AcademyQuizPage = lazy(() => import('./pages/AcademyQuizPage'));
 const AcademyAdminPage = lazy(() => import('./pages/AcademyAdminPage'));
 const CertificateVerifyPage = lazy(() => import('./pages/CertificateVerifyPage'));
 const FreeToolsPage = lazy(() => import('./pages/FreeToolsPage'));
+const ReferralDashboardPage = lazy(() => import('./pages/ReferralDashboardPage'));
 const SecurityBadgePage = lazy(() => import('./pages/SecurityBadgePage'));
 const ComparePage = lazy(() => import('./pages/ComparePage'));
 const StatusPage = lazy(() => import('./pages/StatusPage'));
 const RoadmapPage = lazy(() => import('./pages/RoadmapPage'));
+const DemosPage = lazy(() => import('./pages/DemosPage'));
 const NewsletterPage = lazy(() => import('./pages/NewsletterPage'));
 const CertificationPage = lazy(() => import('./pages/CertificationPage'));
 const DeveloperPortalPage = lazy(() => import('./pages/DeveloperPortalPage'));
@@ -296,12 +298,21 @@ function App() {
           <Route path="/certificates/verify" element={<CertificateVerifyPage />} />
           <Route path="/certificates/verify/:number" element={<CertificateVerifyPage />} />
           <Route path="/tools" element={<FreeToolsPage />} />
+          <Route
+            path="/referrals"
+            element={
+              <ProtectedRoute>
+                <ReferralDashboardPage />
+              </ProtectedRoute>
+            }
+          />
           <Route path="/security" element={<SecurityBadgePage />} />
           <Route path="/security/:domain" element={<SecurityBadgePage />} />
           <Route path="/status" element={<StatusPage />} />
           <Route path="/vs" element={<ComparePage />} />
           <Route path="/vs/:competitor" element={<ComparePage />} />
           <Route path="/roadmap" element={<RoadmapPage />} />
+          <Route path="/demos" element={<DemosPage />} />
           <Route path="/newsletter" element={<NewsletterPage />} />
           <Route path="/certifications" element={<CertificationPage />} />
           <Route path="/developers" element={<DeveloperPortalPage />} />

@@ -157,6 +157,11 @@ pub mod finding_lifecycle;
 pub mod passive_recon;
 // Academy LMS module
 pub mod academy;
+// Public pages
+pub mod roadmap;
+pub mod status;
+pub mod free_tools;
+pub mod referrals;
 
 #[cfg(test)]
 mod tests;
