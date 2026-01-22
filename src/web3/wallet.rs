@@ -378,33 +378,73 @@ async fn get_approval_events(address: &str, topic: &str) -> Vec<ApprovalEvent> {
 
 /// Check if contract is unverified on Etherscan
 async fn is_unverified_contract(address: &str) -> bool {
-    // Query Etherscan API for contract verification status
-    // This is a simplified check - in production would use Etherscan API key
-
-    // Check if it's a contract first
+    // First check if it's actually a contract
     if let Ok(bytecode) = get_contract_bytecode(address) {
         if bytecode.is_empty() || bytecode == "0x" {
-            return false; // Not a contract
+            return false; // Not a contract (EOA)
+        }
+    } else {
+        return false; // Can't determine, assume not unverified
+    }
+
+    // Try to check Etherscan API for verification status
+    if let Some(api_key) = std::env::var("ETHERSCAN_API_KEY").ok() {
+        // Use Etherscan API to check if contract source code is verified
+        let url = format!(
+            "https://api.etherscan.io/v2/api?chainid=1&module=contract&action=getsourcecode&address={}&apikey={}",
+            address, api_key
+        );
+
+        if let Ok(client) = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .build()
+        {
+            if let Ok(response) = client.get(&url).send().await {
+                if let Ok(json) = response.json::<serde_json::Value>().await {
+                    // Check if contract has verified source code
+                    if let Some(result) = json.get("result").and_then(|r| r.as_array()) {
+                        if let Some(first) = result.first() {
+                            // If SourceCode is empty, contract is not verified
+                            if let Some(source_code) = first.get("SourceCode").and_then(|s| s.as_str()) {
+                                if source_code.is_empty() {
+                                    log::debug!("Contract {} is NOT verified on Etherscan", address);
+                                    return true; // Unverified
+                                } else {
+                                    log::debug!("Contract {} is verified on Etherscan", address);
+                                    return false; // Verified
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        log::warn!("Could not verify contract {} via Etherscan API", address);
+    } else {
+        log::debug!("ETHERSCAN_API_KEY not set, using bytecode heuristics for contract verification check");
+    }
+
+    // Fallback: Use bytecode heuristics when API is unavailable
+    // This is less reliable but provides some indication
+    if let Ok(bytecode) = get_contract_bytecode(address) {
+        // Very short bytecode (< 100 chars / 50 bytes) is suspicious
+        // Most legitimate contracts have substantial bytecode
+        if bytecode.len() < 100 {
+            return true;
         }
 
-        // Check for common verified contract patterns
-        // Verified contracts usually have constructor arguments appended
-        // and consistent bytecode patterns
+        // Check for common verified contract patterns (Solidity compiler output)
         let verified_patterns = [
-            "6080604052",  // Solidity 0.8.x
-            "608060405234", // Solidity with payable constructor
+            "6080604052",     // Solidity 0.8.x standard
+            "608060405234",   // Solidity with payable constructor
             "60806040526004", // Common proxy pattern
         ];
 
-        for pattern in &verified_patterns {
-            if bytecode.contains(pattern) {
-                // Has standard pattern, likely verified
-                return false;
-            }
+        // If none of these patterns are present, might be obfuscated/unverified
+        let has_standard_pattern = verified_patterns.iter().any(|p| bytecode.contains(p));
+        if !has_standard_pattern {
+            return true;
         }
-
-        // If bytecode exists but doesn't match patterns, might be unverified
-        return bytecode.len() < 100; // Very short bytecode is suspicious
     }
 
     false

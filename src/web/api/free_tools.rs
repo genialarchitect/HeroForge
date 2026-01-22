@@ -1096,11 +1096,11 @@ fn extract_cvss_from_json(metrics: &serde_json::Value) -> (Option<f32>, String) 
 // ============================================================================
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
-    cfg.route("/tools/security-headers", web::get().to(check_security_headers))
-        .route("/tools/ssl-analyzer", web::get().to(analyze_ssl))
-        .route("/tools/dns-security", web::get().to(scan_dns_security))
-        .route("/tools/subdomains", web::get().to(find_subdomains))
-        .route("/tools/port-scan", web::get().to(scan_ports))
-        .route("/tools/whois", web::get().to(whois_lookup))
-        .route("/tools/cve-lookup", web::get().to(cve_lookup));
+    cfg.route("/security-headers", web::get().to(check_security_headers))
+        .route("/ssl-analyzer", web::get().to(analyze_ssl))
+        .route("/dns-security", web::get().to(scan_dns_security))
+        .route("/subdomains", web::get().to(find_subdomains))
+        .route("/port-scan", web::get().to(scan_ports))
+        .route("/whois", web::get().to(whois_lookup))
+        .route("/cve-lookup", web::get().to(cve_lookup));
 }

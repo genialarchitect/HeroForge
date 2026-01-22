@@ -524,6 +524,7 @@ async fn build_llm_config_for_user(pool: &SqlitePool, user_id: &str) -> LLMConfi
                 ollama_model: ollama_model.or_else(|| std::env::var("OLLAMA_MODEL").ok()),
                 openai_api_key: openai_key.or_else(|| std::env::var("OPENAI_API_KEY").ok()),
                 openai_model: model,
+                openai_org_id: std::env::var("OPENAI_ORG_ID").ok(),
             }
         }
         None => LLMConfig::from_env(),

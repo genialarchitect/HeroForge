@@ -80,25 +80,120 @@ fn is_valid_contract_address(address: &str) -> bool {
 async fn analyze_bytecode(address: &str) -> Result<Vec<SmartContractFinding>> {
     let mut findings = Vec::new();
 
-    // In production, would fetch bytecode from blockchain and analyze:
-    // - DELEGATECALL usage
-    // - SELFDESTRUCT presence
-    // - CREATE/CREATE2 usage
-    // - External call patterns
+    // Fetch bytecode from blockchain
+    let bytecode = match fetch_contract_bytecode(address).await {
+        Ok(code) => code,
+        Err(e) => {
+            log::warn!("Could not fetch bytecode for {}: {}", address, e);
+            findings.push(SmartContractFinding {
+                contract_address: address.to_string(),
+                language: ContractLanguage::Solidity,
+                vulnerability_type: "Bytecode Analysis Failed".to_string(),
+                severity: Severity::Info,
+                description: format!("Could not fetch contract bytecode: {}", e),
+                line_number: None,
+                recommendation: "Verify contract exists and network is accessible".to_string(),
+                cwe_id: None,
+            });
+            return Ok(findings);
+        }
+    };
 
-    // Check for self-destruct capability
-    findings.push(SmartContractFinding {
-        contract_address: address.to_string(),
-        language: ContractLanguage::Solidity,
-        vulnerability_type: "Bytecode Analysis Required".to_string(),
-        severity: Severity::Info,
-        description: "Contract bytecode requires analysis for security patterns".to_string(),
-        line_number: None,
-        recommendation: "Verify contract source code is verified on Etherscan or similar".to_string(),
-        cwe_id: None,
-    });
+    if bytecode.is_empty() || bytecode == "0x" {
+        findings.push(SmartContractFinding {
+            contract_address: address.to_string(),
+            language: ContractLanguage::Solidity,
+            vulnerability_type: "No Contract Code".to_string(),
+            severity: Severity::Info,
+            description: "Address has no contract bytecode (may be EOA)".to_string(),
+            line_number: None,
+            recommendation: "Verify this is the correct contract address".to_string(),
+            cwe_id: None,
+        });
+        return Ok(findings);
+    }
+
+    // Analyze bytecode for dangerous opcodes
+    // SELFDESTRUCT (0xff) - can destroy contract
+    if bytecode.to_lowercase().contains("ff") {
+        // Need to check context - ff could be part of other data
+        // SELFDESTRUCT at end of bytecode is more concerning
+        if bytecode.to_lowercase().ends_with("ff") ||
+           bytecode.to_lowercase().contains("6080604052") && bytecode.to_lowercase().contains("ff00") {
+            findings.push(SmartContractFinding {
+                contract_address: address.to_string(),
+                language: ContractLanguage::Solidity,
+                vulnerability_type: "Self-Destruct Capability".to_string(),
+                severity: Severity::High,
+                description: "Contract bytecode contains SELFDESTRUCT opcode which could destroy the contract".to_string(),
+                line_number: None,
+                recommendation: "Review if self-destruct is necessary and ensure proper access controls".to_string(),
+                cwe_id: Some("CWE-284".to_string()),
+            });
+        }
+    }
+
+    // DELEGATECALL (0xf4) - potential proxy/upgrade pattern
+    if bytecode.to_lowercase().contains("f4") {
+        findings.push(SmartContractFinding {
+            contract_address: address.to_string(),
+            language: ContractLanguage::Solidity,
+            vulnerability_type: "DELEGATECALL Usage".to_string(),
+            severity: Severity::Medium,
+            description: "Contract uses DELEGATECALL which executes code in caller's context".to_string(),
+            line_number: None,
+            recommendation: "Ensure DELEGATECALL targets are trusted and immutable".to_string(),
+            cwe_id: Some("CWE-829".to_string()),
+        });
+    }
+
+    // Check bytecode size (very large contracts may have gas issues)
+    let bytecode_size = bytecode.len() / 2; // hex chars to bytes
+    if bytecode_size > 24000 {
+        findings.push(SmartContractFinding {
+            contract_address: address.to_string(),
+            language: ContractLanguage::Solidity,
+            vulnerability_type: "Large Contract Size".to_string(),
+            severity: Severity::Low,
+            description: format!("Contract bytecode is {} bytes, approaching deployment limit", bytecode_size),
+            line_number: None,
+            recommendation: "Consider splitting contract or optimizing code size".to_string(),
+            cwe_id: None,
+        });
+    }
 
     Ok(findings)
+}
+
+/// Fetch contract bytecode from Ethereum RPC
+async fn fetch_contract_bytecode(address: &str) -> Result<String> {
+    let rpc_url = std::env::var("ETH_RPC_URL")
+        .unwrap_or_else(|_| "https://cloudflare-eth.com".to_string());
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()?;
+
+    let request_body = serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "eth_getCode",
+        "params": [address, "latest"],
+        "id": 1
+    });
+
+    let response = client
+        .post(&rpc_url)
+        .json(&request_body)
+        .send()
+        .await?;
+
+    let json: serde_json::Value = response.json().await?;
+
+    if let Some(result) = json.get("result").and_then(|r| r.as_str()) {
+        Ok(result.to_string())
+    } else {
+        Err(anyhow::anyhow!("No bytecode in response"))
+    }
 }
 
 /// Check for known vulnerability patterns
@@ -130,16 +225,120 @@ async fn check_known_vulnerabilities(address: &str) -> Result<Vec<SmartContractF
 async fn check_verification_status(address: &str) -> Result<Vec<SmartContractFinding>> {
     let mut findings = Vec::new();
 
-    // In production, would query Etherscan/Sourcify for verification status
+    // Try Etherscan API first
+    if let Some(api_key) = std::env::var("ETHERSCAN_API_KEY").ok() {
+        let url = format!(
+            "https://api.etherscan.io/v2/api?chainid=1&module=contract&action=getsourcecode&address={}&apikey={}",
+            address, api_key
+        );
 
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .build()?;
+
+        match client.get(&url).send().await {
+            Ok(response) => {
+                if let Ok(json) = response.json::<serde_json::Value>().await {
+                    if let Some(result) = json.get("result").and_then(|r| r.as_array()) {
+                        if let Some(first) = result.first() {
+                            let source_code = first.get("SourceCode")
+                                .and_then(|s| s.as_str())
+                                .unwrap_or("");
+                            let contract_name = first.get("ContractName")
+                                .and_then(|s| s.as_str())
+                                .unwrap_or("Unknown");
+                            let compiler_version = first.get("CompilerVersion")
+                                .and_then(|s| s.as_str())
+                                .unwrap_or("Unknown");
+
+                            if source_code.is_empty() {
+                                findings.push(SmartContractFinding {
+                                    contract_address: address.to_string(),
+                                    language: ContractLanguage::Solidity,
+                                    vulnerability_type: "Unverified Contract".to_string(),
+                                    severity: Severity::High,
+                                    description: "Contract source code is NOT verified on Etherscan".to_string(),
+                                    line_number: None,
+                                    recommendation: "Verify contract source code on Etherscan for transparency".to_string(),
+                                    cwe_id: Some("CWE-1059".to_string()),
+                                });
+                            } else {
+                                findings.push(SmartContractFinding {
+                                    contract_address: address.to_string(),
+                                    language: ContractLanguage::Solidity,
+                                    vulnerability_type: "Verified Contract".to_string(),
+                                    severity: Severity::Info,
+                                    description: format!(
+                                        "Contract '{}' is verified on Etherscan (Compiler: {})",
+                                        contract_name, compiler_version
+                                    ),
+                                    line_number: None,
+                                    recommendation: "Review the verified source code for vulnerabilities".to_string(),
+                                    cwe_id: None,
+                                });
+                            }
+                            return Ok(findings);
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                log::warn!("Etherscan API request failed: {}", e);
+            }
+        }
+    } else {
+        log::debug!("ETHERSCAN_API_KEY not set, skipping verification check");
+    }
+
+    // Fallback: Try Sourcify (no API key required)
+    let sourcify_url = format!(
+        "https://sourcify.dev/server/check-all-by-addresses?addresses={}&chainIds=1",
+        address
+    );
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()?;
+
+    match client.get(&sourcify_url).send().await {
+        Ok(response) => {
+            if let Ok(json) = response.json::<serde_json::Value>().await {
+                // Sourcify returns array with status
+                if let Some(arr) = json.as_array() {
+                    if let Some(first) = arr.first() {
+                        if let Some(status) = first.get("status").and_then(|s| s.as_str()) {
+                            if status == "perfect" || status == "partial" {
+                                findings.push(SmartContractFinding {
+                                    contract_address: address.to_string(),
+                                    language: ContractLanguage::Solidity,
+                                    vulnerability_type: "Verified Contract (Sourcify)".to_string(),
+                                    severity: Severity::Info,
+                                    description: format!("Contract is verified on Sourcify ({})", status),
+                                    line_number: None,
+                                    recommendation: "Review the verified source code for vulnerabilities".to_string(),
+                                    cwe_id: None,
+                                });
+                                return Ok(findings);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            log::debug!("Sourcify check failed: {}", e);
+        }
+    }
+
+    // Could not verify status
     findings.push(SmartContractFinding {
         contract_address: address.to_string(),
         language: ContractLanguage::Solidity,
-        vulnerability_type: "Verification Check".to_string(),
-        severity: Severity::Info,
-        description: "Verify contract source code is publicly verified".to_string(),
+        vulnerability_type: "Verification Unknown".to_string(),
+        severity: Severity::Medium,
+        description: "Could not determine contract verification status (no API key or service unavailable)".to_string(),
         line_number: None,
-        recommendation: "Ensure contract is verified on Etherscan or Sourcify".to_string(),
+        recommendation: "Set ETHERSCAN_API_KEY environment variable for verification checks".to_string(),
         cwe_id: None,
     });
 

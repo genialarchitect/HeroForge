@@ -43,9 +43,10 @@ pub struct LLMConfig {
     pub ollama_base_url: Option<String>,
     pub ollama_model: Option<String>,
 
-    /// OpenAI settings (future)
+    /// OpenAI settings
     pub openai_api_key: Option<String>,
     pub openai_model: Option<String>,
+    pub openai_org_id: Option<String>,
 }
 
 impl Default for LLMConfig {
@@ -59,6 +60,7 @@ impl Default for LLMConfig {
             ollama_model: Some("llama3:8b".to_string()),
             openai_api_key: None,
             openai_model: Some("gpt-4-turbo".to_string()),
+            openai_org_id: None,
         }
     }
 }
@@ -84,6 +86,7 @@ impl LLMConfig {
             ollama_model: std::env::var("OLLAMA_MODEL").ok(),
             openai_api_key: std::env::var("OPENAI_API_KEY").ok(),
             openai_model: std::env::var("OPENAI_MODEL").ok(),
+            openai_org_id: std::env::var("OPENAI_ORG_ID").ok(),
         }
     }
 
@@ -315,6 +318,26 @@ pub async fn get_all_provider_status(config: &LLMConfig) -> Vec<ProviderStatus> 
                 max_context_tokens: caps.max_context_tokens,
             },
         });
+    }
+
+    // Check OpenAI
+    if config.openai_api_key.is_some() || std::env::var("OPENAI_API_KEY").is_ok() {
+        if let Ok(provider) = create_provider(LLMProviderType::OpenAI, config) {
+            let caps = provider.capabilities();
+            statuses.push(ProviderStatus {
+                provider_type: LLMProviderType::OpenAI,
+                name: provider.name().to_string(),
+                model: provider.default_model().to_string(),
+                available: provider.is_available().await,
+                capabilities: ProviderCapabilitiesInfo {
+                    streaming: caps.streaming,
+                    system_prompts: caps.system_prompts,
+                    function_calling: caps.function_calling,
+                    vision: caps.vision,
+                    max_context_tokens: caps.max_context_tokens,
+                },
+            });
+        }
     }
 
     statuses

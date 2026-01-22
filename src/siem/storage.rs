@@ -150,107 +150,29 @@ impl LogStorage {
         Ok(stored)
     }
 
-    /// Query log entries
+    /// Query log entries with proper parameter binding
     pub async fn query(&self, query: &LogQuery) -> Result<LogQueryResult> {
         let start = std::time::Instant::now();
 
-        let mut sql = String::from(
-            "SELECT id, source_id, timestamp, received_at, severity, facility, format,
-                    source_ip, destination_ip, source_port, destination_port, protocol,
-                    hostname, application, pid, message_id, structured_data, message,
-                    raw, category, action, outcome, user, tags, alerted, alert_ids,
-                    partition_date
-             FROM siem_log_entries WHERE 1=1",
-        );
-
-        let mut count_sql = String::from("SELECT COUNT(*) FROM siem_log_entries WHERE 1=1");
-
-        // Build WHERE clause
-        let mut conditions = Vec::new();
-
-        if !query.source_ids.is_empty() {
-            let placeholders: Vec<&str> = query.source_ids.iter().map(|_| "?").collect();
-            conditions.push(format!("source_id IN ({})", placeholders.join(",")));
-        }
-
-        if let Some(min_sev) = query.min_severity {
-            conditions.push(format!(
-                "severity IN ({})",
-                get_severity_levels_above(min_sev)
-            ));
-        }
-
-        if !query.categories.is_empty() {
-            let placeholders: Vec<&str> = query.categories.iter().map(|_| "?").collect();
-            conditions.push(format!("category IN ({})", placeholders.join(",")));
-        }
-
-        if let Some(ref source_ip) = query.source_ip {
-            conditions.push("source_ip = ?".to_string());
-            let _ = source_ip; // Used in bind
-        }
-
-        if let Some(ref dest_ip) = query.destination_ip {
-            conditions.push("destination_ip = ?".to_string());
-            let _ = dest_ip;
-        }
-
-        if let Some(ref hostname) = query.hostname {
-            conditions.push("hostname LIKE ?".to_string());
-            let _ = hostname;
-        }
-
-        if let Some(ref app) = query.application {
-            conditions.push("application LIKE ?".to_string());
-            let _ = app;
-        }
-
-        if let Some(ref user) = query.user {
-            conditions.push("user = ?".to_string());
-            let _ = user;
-        }
-
-        if let Some(ref start_time) = query.start_time {
-            conditions.push("timestamp >= ?".to_string());
-            let _ = start_time;
-        }
-
-        if let Some(ref end_time) = query.end_time {
-            conditions.push("timestamp < ?".to_string());
-            let _ = end_time;
-        }
-
-        if let Some(alerted) = query.alerted {
-            conditions.push("alerted = ?".to_string());
-            let _ = alerted;
-        }
-
-        if let Some(ref search) = query.query {
-            conditions.push("(message LIKE ? OR raw LIKE ?)".to_string());
-            let _ = search;
-        }
-
-        // Append conditions
-        for condition in &conditions {
-            sql.push_str(" AND ");
-            sql.push_str(condition);
-            count_sql.push_str(" AND ");
-            count_sql.push_str(condition);
-        }
-
-        // Add ORDER BY
+        // Validate sort field (whitelist to prevent SQL injection)
+        let allowed_sort_fields = [
+            "id", "source_id", "timestamp", "received_at", "severity", "facility",
+            "format", "source_ip", "destination_ip", "source_port", "destination_port",
+            "protocol", "hostname", "application", "pid", "message_id", "message",
+            "category", "action", "outcome", "user", "alerted", "partition_date"
+        ];
         let sort_field = query.sort_by.as_deref().unwrap_or("timestamp");
+        let validated_sort_field = if allowed_sort_fields.contains(&sort_field) {
+            sort_field
+        } else {
+            log::warn!("Invalid sort field '{}' requested, defaulting to 'timestamp'", sort_field);
+            "timestamp"
+        };
         let sort_order = if query.sort_asc { "ASC" } else { "DESC" };
-        sql.push_str(&format!(" ORDER BY {} {}", sort_field, sort_order));
 
-        // Add pagination
-        sql.push_str(&format!(" LIMIT {} OFFSET {}", query.limit, query.offset));
-
-        // Execute query (simplified - in production would use proper parameter binding)
-        let entries: Vec<LogEntryRow> = sqlx::query_as(&sql).fetch_all(&self.pool).await?;
-
-        // Get total count
-        let total_count: (i64,) = sqlx::query_as(&count_sql).fetch_one(&self.pool).await?;
+        // Build query with proper parameter binding
+        let entries = self.execute_log_query(query, validated_sort_field, sort_order).await?;
+        let total_count = self.execute_count_query(query).await?;
 
         let query_time_ms = start.elapsed().as_millis() as u64;
 
@@ -261,6 +183,226 @@ impl LogStorage {
             offset: query.offset,
             limit: query.limit,
         })
+    }
+
+    /// Execute the main log query with proper parameter binding
+    async fn execute_log_query(
+        &self,
+        query: &LogQuery,
+        sort_field: &str,
+        sort_order: &str,
+    ) -> Result<Vec<LogEntryRow>> {
+        // Build base query
+        let base_sql = format!(
+            "SELECT id, source_id, timestamp, received_at, severity, facility, format,
+                    source_ip, destination_ip, source_port, destination_port, protocol,
+                    hostname, application, pid, message_id, structured_data, message,
+                    raw, category, action, outcome, user, tags, alerted, alert_ids,
+                    partition_date
+             FROM siem_log_entries WHERE 1=1 {} ORDER BY {} {} LIMIT {} OFFSET {}",
+            self.build_where_clause(query),
+            sort_field,
+            sort_order,
+            query.limit,
+            query.offset
+        );
+
+        // Execute with bound parameters
+        let mut sqlx_query = sqlx::query_as::<_, LogEntryRow>(&base_sql);
+        sqlx_query = self.bind_query_params(sqlx_query, query);
+
+        Ok(sqlx_query.fetch_all(&self.pool).await?)
+    }
+
+    /// Execute count query with proper parameter binding
+    async fn execute_count_query(&self, query: &LogQuery) -> Result<(i64,)> {
+        let count_sql = format!(
+            "SELECT COUNT(*) FROM siem_log_entries WHERE 1=1 {}",
+            self.build_where_clause(query)
+        );
+
+        let mut sqlx_query = sqlx::query_as::<_, (i64,)>(&count_sql);
+        sqlx_query = self.bind_count_params(sqlx_query, query);
+
+        Ok(sqlx_query.fetch_one(&self.pool).await?)
+    }
+
+    /// Build WHERE clause conditions (returns SQL fragment without values)
+    fn build_where_clause(&self, query: &LogQuery) -> String {
+        let mut conditions = Vec::new();
+
+        if !query.source_ids.is_empty() {
+            let placeholders: Vec<&str> = query.source_ids.iter().map(|_| "?").collect();
+            conditions.push(format!("source_id IN ({})", placeholders.join(",")));
+        }
+
+        if let Some(min_sev) = query.min_severity {
+            // Severity uses enum values, not user input - safe to inline
+            conditions.push(format!("severity IN ({})", get_severity_levels_above(min_sev)));
+        }
+
+        if !query.categories.is_empty() {
+            let placeholders: Vec<&str> = query.categories.iter().map(|_| "?").collect();
+            conditions.push(format!("category IN ({})", placeholders.join(",")));
+        }
+
+        if query.source_ip.is_some() {
+            conditions.push("source_ip = ?".to_string());
+        }
+
+        if query.destination_ip.is_some() {
+            conditions.push("destination_ip = ?".to_string());
+        }
+
+        if query.hostname.is_some() {
+            conditions.push("hostname LIKE ?".to_string());
+        }
+
+        if query.application.is_some() {
+            conditions.push("application LIKE ?".to_string());
+        }
+
+        if query.user.is_some() {
+            conditions.push("user = ?".to_string());
+        }
+
+        if query.start_time.is_some() {
+            conditions.push("timestamp >= ?".to_string());
+        }
+
+        if query.end_time.is_some() {
+            conditions.push("timestamp < ?".to_string());
+        }
+
+        if query.alerted.is_some() {
+            conditions.push("alerted = ?".to_string());
+        }
+
+        if query.query.is_some() {
+            conditions.push("(message LIKE ? OR raw LIKE ?)".to_string());
+        }
+
+        if conditions.is_empty() {
+            String::new()
+        } else {
+            format!(" AND {}", conditions.join(" AND "))
+        }
+    }
+
+    /// Bind parameters to the log entry query
+    fn bind_query_params<'q>(
+        &self,
+        mut sqlx_query: sqlx::query::QueryAs<'q, sqlx::Sqlite, LogEntryRow, sqlx::sqlite::SqliteArguments<'q>>,
+        query: &'q LogQuery,
+    ) -> sqlx::query::QueryAs<'q, sqlx::Sqlite, LogEntryRow, sqlx::sqlite::SqliteArguments<'q>> {
+        // Bind source_ids
+        for source_id in &query.source_ids {
+            sqlx_query = sqlx_query.bind(source_id);
+        }
+
+        // Bind categories
+        for category in &query.categories {
+            sqlx_query = sqlx_query.bind(category);
+        }
+
+        // Bind optional filters in order
+        if let Some(ref ip) = query.source_ip {
+            sqlx_query = sqlx_query.bind(ip.to_string());
+        }
+
+        if let Some(ref ip) = query.destination_ip {
+            sqlx_query = sqlx_query.bind(ip.to_string());
+        }
+
+        if let Some(ref hostname) = query.hostname {
+            sqlx_query = sqlx_query.bind(format!("%{}%", hostname));
+        }
+
+        if let Some(ref app) = query.application {
+            sqlx_query = sqlx_query.bind(format!("%{}%", app));
+        }
+
+        if let Some(ref user) = query.user {
+            sqlx_query = sqlx_query.bind(user);
+        }
+
+        if let Some(ref start_time) = query.start_time {
+            sqlx_query = sqlx_query.bind(start_time.to_rfc3339());
+        }
+
+        if let Some(ref end_time) = query.end_time {
+            sqlx_query = sqlx_query.bind(end_time.to_rfc3339());
+        }
+
+        if let Some(alerted) = query.alerted {
+            sqlx_query = sqlx_query.bind(alerted);
+        }
+
+        if let Some(ref search) = query.query {
+            let search_pattern = format!("%{}%", search);
+            sqlx_query = sqlx_query.bind(search_pattern.clone());
+            sqlx_query = sqlx_query.bind(search_pattern);
+        }
+
+        sqlx_query
+    }
+
+    /// Bind parameters to the count query
+    fn bind_count_params<'q>(
+        &self,
+        mut sqlx_query: sqlx::query::QueryAs<'q, sqlx::Sqlite, (i64,), sqlx::sqlite::SqliteArguments<'q>>,
+        query: &'q LogQuery,
+    ) -> sqlx::query::QueryAs<'q, sqlx::Sqlite, (i64,), sqlx::sqlite::SqliteArguments<'q>> {
+        // Bind source_ids
+        for source_id in &query.source_ids {
+            sqlx_query = sqlx_query.bind(source_id);
+        }
+
+        // Bind categories
+        for category in &query.categories {
+            sqlx_query = sqlx_query.bind(category);
+        }
+
+        // Bind optional filters in order
+        if let Some(ref ip) = query.source_ip {
+            sqlx_query = sqlx_query.bind(ip.to_string());
+        }
+
+        if let Some(ref ip) = query.destination_ip {
+            sqlx_query = sqlx_query.bind(ip.to_string());
+        }
+
+        if let Some(ref hostname) = query.hostname {
+            sqlx_query = sqlx_query.bind(format!("%{}%", hostname));
+        }
+
+        if let Some(ref app) = query.application {
+            sqlx_query = sqlx_query.bind(format!("%{}%", app));
+        }
+
+        if let Some(ref user) = query.user {
+            sqlx_query = sqlx_query.bind(user);
+        }
+
+        if let Some(ref start_time) = query.start_time {
+            sqlx_query = sqlx_query.bind(start_time.to_rfc3339());
+        }
+
+        if let Some(ref end_time) = query.end_time {
+            sqlx_query = sqlx_query.bind(end_time.to_rfc3339());
+        }
+
+        if let Some(alerted) = query.alerted {
+            sqlx_query = sqlx_query.bind(alerted);
+        }
+
+        if let Some(ref search) = query.query {
+            let search_pattern = format!("%{}%", search);
+            sqlx_query = sqlx_query.bind(search_pattern.clone());
+            sqlx_query = sqlx_query.bind(search_pattern);
+        }
+
+        sqlx_query
     }
 
     /// Get a single log entry by ID

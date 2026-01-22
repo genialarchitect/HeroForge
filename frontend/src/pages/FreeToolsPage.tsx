@@ -228,11 +228,11 @@ const SecurityHeadersChecker: React.FC = () => {
       }
 
       // Map API response to component format
-      const mappedResults: HeaderResult[] = data.data.headers.map((h: { name: string; value: string | null; present: boolean; recommendation: string }) => ({
+      const mappedResults: HeaderResult[] = data.data.headers.map((h: { name: string; value: string | null; status: string; recommendation: string | null }) => ({
         header: h.name,
         value: h.value,
-        status: h.present ? 'good' : (h.name === 'X-XSS-Protection' ? 'warning' : 'missing'),
-        recommendation: h.recommendation,
+        status: h.status === 'present' ? 'good' : (h.name === 'X-XSS-Protection' ? 'warning' : 'missing'),
+        recommendation: h.recommendation || '',
       }));
 
       setScore(data.data.score);
@@ -334,9 +334,9 @@ const SSLAnalyzer: React.FC = () => {
         valid: cert.valid,
         issuer: cert.issuer || 'Unknown',
         subject: cert.subject || cleanDomain,
-        validFrom: cert.not_before || 'Unknown',
-        validTo: cert.not_after || 'Unknown',
-        daysRemaining: cert.days_until_expiry || 0,
+        validFrom: cert.validFrom || 'Unknown',
+        validTo: cert.validTo || 'Unknown',
+        daysRemaining: cert.daysUntilExpiry || 0,
         protocol: cert.protocol || 'Unknown',
         cipher: cert.cipher || 'Unknown',
         grade: cert.grade || 'F',
@@ -517,23 +517,38 @@ const WHOISLookup: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<WHOISResult | null>(null);
 
+  const [error, setError] = useState<string | null>(null);
+
   const handleLookup = async () => {
     if (!domain) return;
     setLoading(true);
+    setError(null);
 
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    try {
+      let cleanDomain = domain.replace(/^https?:\/\//, '').split('/')[0];
 
-    const mockResult: WHOISResult = {
-      domainName: domain.toUpperCase(),
-      registrar: 'GoDaddy.com, LLC',
-      createdDate: '1995-08-14',
-      expiryDate: '2025-08-13',
-      nameServers: ['NS1.EXAMPLE.COM', 'NS2.EXAMPLE.COM'],
-      status: ['clientDeleteProhibited', 'clientTransferProhibited', 'clientUpdateProhibited'],
-    };
+      const response = await fetch(`/api/tools/whois?domain=${encodeURIComponent(cleanDomain)}`);
+      const data = await response.json();
 
-    setResult(mockResult);
-    setLoading(false);
+      if (!data.success) {
+        throw new Error(data.error || 'WHOIS lookup failed');
+      }
+
+      const w = data.data;
+      setResult({
+        domainName: w.domain || cleanDomain.toUpperCase(),
+        registrar: w.registrar || 'Unknown',
+        createdDate: w.creation_date || 'Unknown',
+        expiryDate: w.expiration_date || 'Unknown',
+        nameServers: w.nameservers || [],
+        status: w.status || [],
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'WHOIS lookup failed');
+      setResult(null);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -554,6 +569,12 @@ const WHOISLookup: React.FC = () => {
           {loading ? 'Looking up...' : 'WHOIS Lookup'}
         </button>
       </div>
+
+      {error && (
+        <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-4 text-red-400 text-sm">
+          {error}
+        </div>
+      )}
 
       {result && (
         <div className="space-y-3">
@@ -726,41 +747,42 @@ const CVELookup: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<CVEResult[] | null>(null);
 
+  const [error, setError] = useState<string | null>(null);
+
   const handleSearch = async () => {
     if (!query) return;
     setLoading(true);
+    setError(null);
 
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    try {
+      // Ensure query is in CVE format
+      let cveId = query.trim().toUpperCase();
+      if (!cveId.startsWith('CVE-')) {
+        cveId = 'CVE-' + cveId;
+      }
 
-    const mockResults: CVEResult[] = [
-      {
-        id: 'CVE-2024-1234',
-        description: 'Remote code execution vulnerability in OpenSSL due to buffer overflow in certificate parsing.',
-        cvss: 9.8,
-        severity: 'critical',
-        publishedDate: '2024-01-15',
-        references: ['https://nvd.nist.gov/vuln/detail/CVE-2024-1234'],
-      },
-      {
-        id: 'CVE-2024-1235',
-        description: 'Authentication bypass in SSH daemon allows unauthorized access to systems.',
-        cvss: 8.1,
-        severity: 'high',
-        publishedDate: '2024-01-10',
-        references: ['https://nvd.nist.gov/vuln/detail/CVE-2024-1235'],
-      },
-      {
-        id: 'CVE-2024-1236',
-        description: 'Information disclosure vulnerability in web server error handling.',
-        cvss: 5.3,
-        severity: 'medium',
-        publishedDate: '2024-01-05',
-        references: ['https://nvd.nist.gov/vuln/detail/CVE-2024-1236'],
-      },
-    ];
+      const response = await fetch(`/api/tools/cve-lookup?cve_id=${encodeURIComponent(cveId)}`);
+      const data = await response.json();
 
-    setResults(mockResults);
-    setLoading(false);
+      if (!data.success) {
+        throw new Error(data.error || 'CVE lookup failed');
+      }
+
+      const cve = data.data;
+      setResults([{
+        id: cve.cve_id,
+        description: cve.description,
+        cvss: cve.cvss_score || 0,
+        severity: (cve.severity || 'unknown').toLowerCase() as 'critical' | 'high' | 'medium' | 'low',
+        publishedDate: cve.published_date ? cve.published_date.split('T')[0] : 'Unknown',
+        references: cve.references || [],
+      }]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'CVE lookup failed');
+      setResults(null);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const getSeverityColor = (severity: string) => {
@@ -780,7 +802,7 @@ const CVELookup: React.FC = () => {
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search CVE ID or keyword (e.g., CVE-2024-1234, OpenSSL)"
+          placeholder="Enter CVE ID (e.g., CVE-2021-44228)"
           className="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500"
         />
         <button
@@ -791,6 +813,12 @@ const CVELookup: React.FC = () => {
           {loading ? 'Searching...' : 'Search CVE'}
         </button>
       </div>
+
+      {error && (
+        <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-4 text-red-400 text-sm">
+          {error}
+        </div>
+      )}
 
       {results && (
         <div className="space-y-3">

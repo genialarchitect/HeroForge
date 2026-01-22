@@ -272,8 +272,17 @@ pub async fn get_engagement_ato_map(
 }
 
 /// Generate sample/demo ATO map data
+///
+/// NOTE: This endpoint returns randomly generated demo data for UI testing
+/// and demonstrations. This data is NOT from real assessments.
 pub async fn get_sample_ato_map() -> Result<HttpResponse> {
-    let sample_data = generate_sample_ato_map();
+    log::warn!("⚠️ ATO Map sample endpoint called - returning DEMO DATA");
+    let mut sample_data = generate_sample_ato_map();
+    // Add clear demo indicator to system name
+    sample_data.system_name = "⚠️ [DEMO] Sample Information System".to_string();
+    if let Some(org) = &sample_data.organization {
+        sample_data.organization = Some(format!("⚠️ [DEMO] {}", org));
+    }
     Ok(HttpResponse::Ok().json(sample_data))
 }
 

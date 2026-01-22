@@ -231,6 +231,16 @@ fn find_connected_components(graph: &HashMap<String, Vec<IocRelationship>>) -> V
     let mut visited: HashSet<String> = HashSet::new();
     let mut components = Vec::new();
 
+    // Build undirected adjacency list (add reverse edges for bidirectional traversal)
+    let mut adjacency: HashMap<String, HashSet<String>> = HashMap::new();
+    for (source, relationships) in graph {
+        adjacency.entry(source.clone()).or_default();
+        for rel in relationships {
+            adjacency.entry(source.clone()).or_default().insert(rel.target_ioc.clone());
+            adjacency.entry(rel.target_ioc.clone()).or_default().insert(source.clone());
+        }
+    }
+
     for node in graph.keys() {
         if !visited.contains(node) {
             let mut component = Vec::new();
@@ -243,10 +253,11 @@ fn find_connected_components(graph: &HashMap<String, Vec<IocRelationship>>) -> V
                 visited.insert(current.clone());
                 component.push(current.clone());
 
-                if let Some(relationships) = graph.get(&current) {
-                    for rel in relationships {
-                        if !visited.contains(&rel.target_ioc) {
-                            stack.push(rel.target_ioc.clone());
+                // Use undirected adjacency for traversal
+                if let Some(neighbors) = adjacency.get(&current) {
+                    for neighbor in neighbors {
+                        if !visited.contains(neighbor) {
+                            stack.push(neighbor.clone());
                         }
                     }
                 }

@@ -1,6 +1,31 @@
 //! Memory dump format parsing
 //!
 //! Parses various memory dump formats to extract analyzable regions.
+//!
+//! # Supported Formats
+//!
+//! | Format | Support Level | Notes |
+//! |--------|---------------|-------|
+//! | Windows Crash Dump (PAGEDUMP/PAGEDU64) | Full | 32-bit and 64-bit support |
+//! | LiME (Linux Memory Extractor) | Full | Standard Linux memory capture format |
+//! | VMware .vmem | Full | Raw memory dump from VM |
+//! | Raw dumps | Full | Treated as contiguous memory |
+//! | Windows Hibernation | Partial | Header parsing only; decompression not implemented |
+//! | EWF/E01 (EnCase) | Stub | Format detection only; full parsing requires libewf |
+//!
+//! # Limitations
+//!
+//! - **Hibernation files**: Windows hiberfil.sys files are compressed using Xpress/LZ77.
+//!   Full decompression would require implementing Windows' compression algorithm.
+//!   For hibernation analysis, consider using Volatility or converting with tools like `hibernate-unpack`.
+//!
+//! - **EWF format**: Expert Witness Format is a complex container format with compression,
+//!   checksums, and split file support. Full support would require the libewf library.
+//!   For EWF images, convert to raw format first using `ewfexport` from libewf-tools.
+//!
+//! - **Memory profiles**: This parser provides raw access to memory regions. For higher-level
+//!   analysis (process lists, network connections, etc.), you need OS-specific profiles.
+//!   The `memory_native` module provides Windows and Linux structure parsing.
 
 use anyhow::{anyhow, Result};
 use memmap2::Mmap;

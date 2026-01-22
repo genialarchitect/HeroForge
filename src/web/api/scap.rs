@@ -669,13 +669,12 @@ async fn simulate_oval_check(rule_id: &str, target: &str) -> (ScapRuleResult, Op
     } else if rule_lower.contains("permission") || rule_lower.contains("mode") {
         execute_remote_check(target, "ls -la /etc/passwd /etc/shadow /etc/group 2>/dev/null").await
     } else {
-        // For unrecognized rules, use deterministic simulation based on rule content
-        let hash_val: u32 = rule_id.bytes().map(|b| b as u32).sum();
-        match hash_val % 10 {
-            0..=5 => (ScapRuleResult::Pass, Some("Check passed (simulated)".to_string())),
-            6..=8 => (ScapRuleResult::Fail, Some("Check failed - remediation required (simulated)".to_string())),
-            _ => (ScapRuleResult::NotApplicable, Some("Check not applicable (simulated)".to_string())),
-        }
+        // Unrecognized rule pattern - return error instead of fake result
+        log::warn!("OVAL check {} - unrecognized rule pattern, cannot evaluate", rule_id);
+        (ScapRuleResult::Error, Some(format!(
+            "Rule '{}' pattern not recognized. Manual check required or use OpenSCAP for full OVAL evaluation.",
+            rule_id
+        )))
     }
 }
 
@@ -812,21 +811,25 @@ async fn simulate_script_check(rule_id: &str, target: &str) -> (ScapRuleResult, 
 
     // For remote targets or when local check fails, provide meaningful response
     let hash_val: u32 = rule_id.bytes().map(|b| b as u32).sum();
-    match hash_val % 4 {
-        0..=1 => (ScapRuleResult::Pass, Some("Script check passed (simulated)".to_string())),
-        2 => (ScapRuleResult::Fail, Some("Script check failed - see details (simulated)".to_string())),
-        _ => (ScapRuleResult::Error, Some("Script execution requires remote access".to_string())),
-    }
+    log::warn!("Script check {} cannot be executed - no remote access to target", rule_id);
+    (ScapRuleResult::Error, Some(format!(
+        "Script check '{}' cannot be executed: No SSH/WinRM access. Configure remote credentials for script execution.",
+        rule_id
+    )))
 }
 
 /// Generic check evaluation
-async fn simulate_generic_check(rule_id: &str, _target: &str) -> (ScapRuleResult, Option<String>) {
-    let hash_val: u32 = rule_id.bytes().map(|b| b as u32).sum();
-    match hash_val % 5 {
-        0..=2 => (ScapRuleResult::Pass, Some("Check passed (simulated)".to_string())),
-        3 => (ScapRuleResult::Fail, Some("Generic check failed (simulated)".to_string())),
-        _ => (ScapRuleResult::NotApplicable, Some("Check not applicable".to_string())),
-    }
+///
+/// Returns Error status when check cannot be performed.
+/// For real compliance assessments, configure SSH credentials or use an actual SCAP scanner
+/// like OpenSCAP, Tenable, or Qualys.
+async fn simulate_generic_check(rule_id: &str, target: &str) -> (ScapRuleResult, Option<String>) {
+    log::warn!("SCAP rule {} cannot be evaluated - no remote access to {}", rule_id, target);
+
+    (ScapRuleResult::Error, Some(format!(
+        "Check cannot be performed: No SSH/WinRM access to target {}. Configure remote access credentials or use OpenSCAP on the target system.",
+        target
+    )))
 }
 
 /// Generate ARF (Asset Reporting Format) XML report

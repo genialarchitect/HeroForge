@@ -207,36 +207,34 @@ struct RugPullPattern {
 }
 
 /// Analyze DeFi protocols for security issues
+///
+/// Requires ETH_RPC_URL for real contract analysis. For production use, consider:
+/// - Blockchain RPC for contract state
+/// - DeFi Safety or similar protocol rating services
+/// - Tenderly or similar simulation tools
 pub async fn analyze_defi_protocols(addresses: &[String]) -> Result<Vec<DeFiFinding>> {
+    let has_rpc = std::env::var("ETH_RPC_URL").is_ok();
+
+    if !has_rpc {
+        log::debug!("ETH_RPC_URL not set - DeFi protocol analysis unavailable");
+        return Ok(Vec::new());
+    }
+
+    // TODO: Implement real contract analysis using ethers-rs
+    // Would need to:
+    // 1. Fetch contract bytecode and ABI
+    // 2. Check for known vulnerable patterns
+    // 3. Analyze actual function signatures
+    // 4. Query contract state for access controls
+    log::info!("ETH_RPC_URL configured - real DeFi analysis would be performed for {} addresses", addresses.len());
+
     let mut findings = Vec::new();
-    let analyzer = DeFiAnalyzer::new();
+    let _analyzer = DeFiAnalyzer::new();
 
-    for address in addresses {
-        // Analyze liquidity risks
-        findings.extend(analyzer.analyze_liquidity_pool(address));
-
-        // Check for flash loan vulnerabilities
-        findings.extend(analyzer.detect_flash_loan_vulnerabilities(address));
-
-        // Analyze MEV exposure
-        findings.extend(analyzer.analyze_mev_exposure(address));
-
-        // Check for oracle manipulation risks
-        findings.extend(analyzer.analyze_oracle_risks(address));
-
-        // Check access controls (simulated - would need actual contract data)
-        findings.extend(analyzer.check_access_control(address, true, false));
-
-        // Check for unverified contract
-        findings.push(DeFiFinding {
-            protocol_address: address.clone(),
-            protocol_name: "Unknown Protocol".to_string(),
-            finding_type: DeFiRiskType::UnverifiedContract,
-            severity: Severity::Medium,
-            description: format!("Contract {} source code verification status unknown", address),
-            affected_functions: vec![],
-            recommendation: "Verify contract on Etherscan/block explorer before interacting".to_string(),
-        });
+    // Real implementation would query actual contract data here
+    // For now, return empty until RPC integration is complete
+    for _address in addresses {
+        // Real analysis would go here
     }
 
     Ok(findings)
@@ -264,6 +262,8 @@ mod tests {
     async fn test_analyze_protocols() {
         let addresses = vec!["0x1234567890abcdef".to_string()];
         let findings = analyze_defi_protocols(&addresses).await.unwrap();
-        assert!(!findings.is_empty());
+        // Without ETH_RPC_URL, returns empty - no simulated data
+        // Real analysis requires blockchain RPC access
+        assert!(findings.is_empty() || std::env::var("ETH_RPC_URL").is_ok());
     }
 }

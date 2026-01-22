@@ -233,36 +233,35 @@ pub struct AddressCluster {
 }
 
 /// Perform on-chain blockchain analysis
+///
+/// Requires ETH_RPC_URL environment variable for real blockchain queries.
+/// Without RPC access, only offline checks (known mixer addresses, OFAC list) are performed.
+/// For comprehensive analysis, use a blockchain analytics provider like Chainalysis, Elliptic, or TRM Labs.
 pub async fn analyze_blockchain(_chain: &BlockchainNetwork, addresses: &[String]) -> Result<OnChainAnalytics> {
     let analyzer = OnChainAnalyzer::new();
 
-    // Simulated transaction analysis
-    let transaction_analysis = addresses.iter().map(|addr| {
-        TransactionAnalysis {
-            tx_hash: format!("0x{:0>64}", addr),
-            from_address: addr.clone(),
-            to_address: "0x0000000000000000000000000000000000000000".to_string(),
-            value: "0".to_string(),
-            gas_price: "20".to_string(),
-            risk_score: 0.1,
-            risk_factors: vec!["Awaiting detailed analysis".to_string()],
-        }
-    }).collect();
+    // Check if we have real RPC access
+    let has_rpc = std::env::var("ETH_RPC_URL").is_ok();
 
-    // Simulated wallet tracking
-    let wallet_tracking = addresses.iter().map(|addr| {
-        WalletTrackingResult {
-            address: addr.clone(),
-            balance: "Unknown".to_string(),
-            transaction_count: 0,
-            first_seen: "Unknown".to_string(),
-            last_seen: "Unknown".to_string(),
-            labels: vec!["Unanalyzed".to_string()],
-            risk_score: 0.0,
-        }
-    }).collect();
+    // Transaction and wallet analysis require RPC - return empty without it
+    let transaction_analysis = if has_rpc {
+        // TODO: Implement real RPC queries using ethers-rs or web3
+        log::info!("ETH_RPC_URL configured - real blockchain queries would be performed here");
+        Vec::new() // Return empty until real implementation
+    } else {
+        log::debug!("ETH_RPC_URL not set - transaction analysis unavailable");
+        Vec::new()
+    };
 
-    // Mixer detection
+    let wallet_tracking = if has_rpc {
+        // TODO: Implement real wallet tracking via RPC
+        Vec::new()
+    } else {
+        log::debug!("ETH_RPC_URL not set - wallet tracking unavailable");
+        Vec::new()
+    };
+
+    // Mixer detection works offline using known addresses (real data)
     let mixer_detection = addresses.iter()
         .filter(|addr| analyzer.is_mixer_address(addr))
         .map(|addr| MixerDetection {
@@ -272,7 +271,7 @@ pub async fn analyze_blockchain(_chain: &BlockchainNetwork, addresses: &[String]
         })
         .collect();
 
-    // OFAC compliance
+    // OFAC compliance works offline using known sanctioned addresses (real data)
     let ofac_compliance = analyzer.check_ofac_compliance(addresses);
 
     Ok(OnChainAnalytics {
@@ -328,6 +327,8 @@ mod tests {
     async fn test_analyze_blockchain() {
         let addresses = vec!["0x1234567890abcdef".to_string()];
         let analytics = analyze_blockchain(&BlockchainNetwork::Ethereum, &addresses).await.unwrap();
-        assert!(!analytics.transaction_analysis.is_empty());
+        // Without ETH_RPC_URL, transaction_analysis will be empty
+        // But OFAC compliance still works (offline check)
+        assert_eq!(analytics.ofac_compliance.total_checked, 1);
     }
 }

@@ -31,11 +31,13 @@
 pub mod types;
 pub mod anthropic;
 pub mod ollama;
+pub mod openai;
 pub mod config;
 
 pub use types::*;
 pub use anthropic::AnthropicProvider;
 pub use ollama::OllamaProvider;
+pub use openai::OpenAIProvider;
 pub use config::{LLMConfig, get_config, get_provider, get_provider_for_org};
 
 use anyhow::Result;
@@ -203,8 +205,24 @@ pub fn create_provider(provider_type: LLMProviderType, config: &LLMConfig) -> Re
             Ok(Arc::new(OllamaProvider::new(base_url, model)))
         }
         LLMProviderType::OpenAI => {
-            // OpenAI provider planned for future implementation
-            Err(LLMError::NotConfigured("OpenAI provider not yet implemented".to_string()))
+            let api_key = config.openai_api_key.clone()
+                .or_else(|| std::env::var("OPENAI_API_KEY").ok())
+                .ok_or_else(|| LLMError::NotConfigured("OPENAI_API_KEY not set".to_string()))?;
+
+            let model = config.openai_model.clone()
+                .or_else(|| std::env::var("OPENAI_MODEL").ok())
+                .unwrap_or_else(|| "gpt-4-turbo".to_string());
+
+            let org_id = config.openai_org_id.clone()
+                .or_else(|| std::env::var("OPENAI_ORG_ID").ok());
+
+            let provider = if let Some(org) = org_id {
+                OpenAIProvider::with_organization(api_key, model, org)
+            } else {
+                OpenAIProvider::new(api_key, model)
+            };
+
+            Ok(Arc::new(provider))
         }
     }
 }
