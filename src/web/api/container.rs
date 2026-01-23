@@ -44,8 +44,6 @@ pub struct CreateScanRequest {
     pub manifest_content: Option<String>,
     pub k8s_context: Option<String>,
     pub k8s_namespace: Option<String>,
-    #[serde(default)]
-    pub demo_mode: bool,
     pub customer_id: Option<String>,
     pub engagement_id: Option<String>,
 }
@@ -88,11 +86,7 @@ pub async fn create_scan(
     claims: web::ReqData<auth::Claims>,
     request: web::Json<CreateScanRequest>,
 ) -> Result<HttpResponse> {
-    log::info!(
-        "Creating container scan for user {} - demo_mode: {}",
-        claims.sub,
-        request.demo_mode
-    );
+    log::info!("Creating container scan for user {}", claims.sub);
 
     // Parse scan types, default to All if empty
     let scan_types: Vec<String> = if request.scan_types.is_empty() {
@@ -105,7 +99,6 @@ pub async fn create_scan(
     let db_request = CreateContainerScanRequest {
         name: request.name.clone(),
         scan_types: scan_types.clone(),
-        demo_mode: request.demo_mode,
         customer_id: request.customer_id.clone(),
         engagement_id: request.engagement_id.clone(),
     };
@@ -132,7 +125,6 @@ pub async fn create_scan(
     let manifest_content = request.manifest_content.clone();
     let k8s_context = request.k8s_context.clone();
     let k8s_namespace = request.k8s_namespace.clone();
-    let demo_mode = request.demo_mode;
     let name = request.name.clone();
     let customer_id = request.customer_id.clone();
     let engagement_id = request.engagement_id.clone();
@@ -172,7 +164,6 @@ pub async fn create_scan(
             manifest_content,
             k8s_context,
             k8s_namespace,
-            demo_mode,
             customer_id,
             engagement_id,
         };
@@ -509,7 +500,7 @@ pub async fn analyze_dockerfile(
         return Err(actix_web::error::ErrorBadRequest("Dockerfile content is required"));
     }
 
-    let analysis = crate::scanner::container::dockerfile::analyze_dockerfile(&request.content, false)
+    let analysis = crate::scanner::container::dockerfile::analyze_dockerfile(&request.content)
         .await
         .map_err(|e| {
             log::error!("Failed to analyze Dockerfile: {}", e);
@@ -532,7 +523,7 @@ pub async fn analyze_manifest(
         return Err(actix_web::error::ErrorBadRequest("Manifest content is required"));
     }
 
-    let analysis = crate::scanner::container::k8s_manifest::analyze_manifest(&request.content, false)
+    let analysis = crate::scanner::container::k8s_manifest::analyze_manifest(&request.content)
         .await
         .map_err(|e| {
             log::error!("Failed to analyze K8s manifest: {}", e);

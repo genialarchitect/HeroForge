@@ -3,7 +3,6 @@
 #![allow(dead_code)]
 
 pub mod input_validation;
-pub mod penetration_testing;
 pub mod secrets_detection;
 pub mod security_headers;
 
@@ -11,7 +10,6 @@ use anyhow::Result;
 use std::path::Path;
 
 use crate::hardening::input_validation::InputValidator;
-use crate::hardening::penetration_testing::PenetrationTestHelper;
 use crate::hardening::secrets_detection::{SecretsScanner, SecretsSummary, SecretFinding, SecretSeverity};
 use crate::hardening::security_headers::SecurityHeaders;
 
@@ -22,8 +20,6 @@ pub struct HardeningConfig {
     pub scan_directory: Option<String>,
     /// File extensions to scan for secrets
     pub scan_extensions: Vec<String>,
-    /// Whether to run penetration tests
-    pub run_pentest: bool,
     /// Target URL for security header checks
     pub target_url: Option<String>,
     /// Skip files matching these patterns
@@ -40,7 +36,6 @@ impl Default for HardeningConfig {
                 "yaml".to_string(), "yml".to_string(), "json".to_string(), "toml".to_string(),
                 "env".to_string(), "conf".to_string(), "config".to_string(), "ini".to_string(),
             ],
-            run_pentest: false,
             target_url: None,
             skip_patterns: vec![
                 "node_modules".to_string(),
@@ -59,7 +54,6 @@ pub struct HardeningChecker {
     config: HardeningConfig,
     secrets_scanner: SecretsScanner,
     input_validator: InputValidator,
-    pentest_helper: PenetrationTestHelper,
 }
 
 impl HardeningChecker {
@@ -68,7 +62,6 @@ impl HardeningChecker {
             config: HardeningConfig::default(),
             secrets_scanner: SecretsScanner::new(),
             input_validator: InputValidator::new(),
-            pentest_helper: PenetrationTestHelper::new(),
         }
     }
 
@@ -78,7 +71,6 @@ impl HardeningChecker {
             config,
             secrets_scanner: SecretsScanner::new(),
             input_validator: InputValidator::new(),
-            pentest_helper: PenetrationTestHelper::new(),
         }
     }
 
@@ -103,18 +95,7 @@ impl HardeningChecker {
         report.secrets_summary = self.secrets_scanner.get_summary(&secrets_result.findings);
         report.secret_findings = secrets_result.findings;
 
-        // 4. Run penetration tests if configured
-        if self.config.run_pentest {
-            log::info!("Running automated penetration tests...");
-            let pentest_result = self.pentest_helper.run_automated_pentest().await?;
-            report.penetration_test_passed = pentest_result.critical == 0 && pentest_result.high == 0;
-            report.pentest_details = Some(pentest_result);
-        } else {
-            report.penetration_test_passed = true; // Not run, assumed passing
-            report.pentest_details = None;
-        }
-
-        // 5. Calculate overall score
+        // 4. Calculate overall score
         report.overall_score = self.calculate_score(&report);
         report.recommendations = self.generate_recommendations(&report);
 
@@ -332,13 +313,6 @@ impl HardeningChecker {
         score = score.saturating_sub((high_secrets * 10) as u32);
         score = score.saturating_sub((medium_secrets * 5) as u32);
 
-        // Deduct for failed penetration tests
-        if let Some(ref pentest) = report.pentest_details {
-            score = score.saturating_sub((pentest.critical * 20) as u32);
-            score = score.saturating_sub((pentest.high * 10) as u32);
-            score = score.saturating_sub((pentest.medium * 5) as u32);
-        }
-
         score.min(100)
     }
 
@@ -378,16 +352,6 @@ impl HardeningChecker {
             );
         }
 
-        // Penetration test recommendations
-        if let Some(ref pentest) = report.pentest_details {
-            if pentest.critical > 0 || pentest.high > 0 {
-                recommendations.push(format!(
-                    "Address {} critical and {} high severity vulnerabilities found in penetration testing",
-                    pentest.critical, pentest.high
-                ));
-            }
-        }
-
         // General recommendations
         if report.overall_score < 70 {
             recommendations.push(
@@ -418,8 +382,6 @@ pub struct HardeningReport {
     pub secrets_detected: usize,
     pub secrets_summary: SecretsSummary,
     pub secret_findings: Vec<SecretFinding>,
-    pub penetration_test_passed: bool,
-    pub pentest_details: Option<penetration_testing::PentestReport>,
     pub overall_score: u32,
     pub recommendations: Vec<String>,
 }

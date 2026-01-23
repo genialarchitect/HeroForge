@@ -13,6 +13,7 @@ pub mod exchange;
 pub mod staking;
 pub mod threat_intel;
 pub mod types;
+pub mod eth_rpc;
 
 pub use types::*;
 use anyhow::Result;

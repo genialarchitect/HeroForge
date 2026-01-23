@@ -236,30 +236,117 @@ pub struct AddressCluster {
 ///
 /// Requires ETH_RPC_URL environment variable for real blockchain queries.
 /// Without RPC access, only offline checks (known mixer addresses, OFAC list) are performed.
-/// For comprehensive analysis, use a blockchain analytics provider like Chainalysis, Elliptic, or TRM Labs.
 pub async fn analyze_blockchain(_chain: &BlockchainNetwork, addresses: &[String]) -> Result<OnChainAnalytics> {
     let analyzer = OnChainAnalyzer::new();
 
-    // Check if we have real RPC access
-    let has_rpc = std::env::var("ETH_RPC_URL").is_ok();
+    let mut transaction_analysis = Vec::new();
+    let mut wallet_tracking = Vec::new();
 
-    // Transaction and wallet analysis require RPC - return empty without it
-    let transaction_analysis = if has_rpc {
-        // TODO: Implement real RPC queries using ethers-rs or web3
-        log::info!("ETH_RPC_URL configured - real blockchain queries would be performed here");
-        Vec::new() // Return empty until real implementation
-    } else {
-        log::debug!("ETH_RPC_URL not set - transaction analysis unavailable");
-        Vec::new()
-    };
+    // Try real RPC queries if ETH_RPC_URL is configured
+    match super::eth_rpc::EthRpcClient::from_env() {
+        Ok(rpc) => {
+            for address in addresses {
+                // Get real balance
+                let balance = match rpc.eth_get_balance(address).await {
+                    Ok(hex_bal) => {
+                        let eth = super::eth_rpc::wei_hex_to_eth(&hex_bal);
+                        format!("{:.6} ETH", eth)
+                    }
+                    Err(e) => {
+                        log::debug!("Failed to get balance for {}: {}", address, e);
+                        "unknown".to_string()
+                    }
+                };
 
-    let wallet_tracking = if has_rpc {
-        // TODO: Implement real wallet tracking via RPC
-        Vec::new()
-    } else {
-        log::debug!("ETH_RPC_URL not set - wallet tracking unavailable");
-        Vec::new()
-    };
+                // Get real transaction count
+                let tx_count = rpc.eth_get_transaction_count(address).await.unwrap_or(0);
+
+                // Get recent logs (Transfer events) for the address
+                let block_num = rpc.eth_block_number().await.unwrap_or(0);
+                let from_block = format!("0x{:x}", block_num.saturating_sub(10000));
+                let to_block = "latest".to_string();
+
+                // ERC-20 Transfer event topic
+                let transfer_topic = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef".to_string();
+                let logs = rpc.eth_get_logs(
+                    address,
+                    &from_block,
+                    &to_block,
+                    Some(vec![Some(transfer_topic)]),
+                ).await.unwrap_or_default();
+
+                // Build transaction list from logs
+                let mut transactions = Vec::new();
+                for log_entry in logs.iter().take(50) {
+                    if let Some(topics) = log_entry.get("topics").and_then(|t| t.as_array()) {
+                        let from_addr = topics.get(1)
+                            .and_then(|t| t.as_str())
+                            .filter(|s| s.len() >= 26)
+                            .map(|s| format!("0x{}", &s[26..]))
+                            .unwrap_or_default();
+                        let to_addr = topics.get(2)
+                            .and_then(|t| t.as_str())
+                            .filter(|s| s.len() >= 26)
+                            .map(|s| format!("0x{}", &s[26..]))
+                            .unwrap_or_default();
+                        let tx_hash = log_entry.get("transactionHash")
+                            .and_then(|h| h.as_str())
+                            .unwrap_or("")
+                            .to_string();
+
+                        transactions.push(Transaction {
+                            tx_hash,
+                            from_address: from_addr,
+                            to_address: to_addr,
+                            value: "0".to_string(),
+                            gas_price: "0".to_string(),
+                            block_number: log_entry.get("blockNumber")
+                                .and_then(|b| b.as_str())
+                                .and_then(|s| u64::from_str_radix(s.trim_start_matches("0x"), 16).ok())
+                                .unwrap_or(0),
+                        });
+                    }
+                }
+
+                // Build per-transaction analysis with risk scoring
+                for tx in &transactions {
+                    let mut risk_score: f64 = 0.0;
+                    let mut risk_factors = Vec::new();
+
+                    if analyzer.is_mixer_address(&tx.to_address) {
+                        risk_score += 0.8;
+                        risk_factors.push("mixer_destination".to_string());
+                    }
+                    if analyzer.is_sanctioned(&tx.to_address) {
+                        risk_score += 1.0;
+                        risk_factors.push("ofac_sanctioned_destination".to_string());
+                    }
+
+                    if !risk_factors.is_empty() {
+                        transaction_analysis.push(TransactionAnalysis {
+                            tx_hash: tx.tx_hash.clone(),
+                            from_address: tx.from_address.clone(),
+                            to_address: tx.to_address.clone(),
+                            value: tx.value.clone(),
+                            gas_price: tx.gas_price.clone(),
+                            risk_score: risk_score.min(1.0),
+                            risk_factors,
+                        });
+                    }
+                }
+
+                // Build wallet tracking result
+                let tracking = analyzer.track_wallet(address, &transactions);
+                let mut real_tracking = tracking;
+                real_tracking.balance = balance;
+                real_tracking.transaction_count = tx_count;
+                wallet_tracking.push(real_tracking);
+            }
+        }
+        Err(e) => {
+            log::debug!("ETH_RPC_URL not available: {} - only offline analysis", e);
+        }
+    }
 
     // Mixer detection works offline using known addresses (real data)
     let mixer_detection = addresses.iter()

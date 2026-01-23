@@ -1791,17 +1791,16 @@ async fn execute_action_test(
             }
         }
         _ => {
-            // For unknown action types, return a simulated result
             return (
                 ActionTestResult {
-                    success: true,
-                    message: format!("Action '{}' validated successfully (simulated - no direct executor)", action_name),
+                    success: false,
+                    message: format!("Unsupported action type '{}'. Available: notification, create_ticket, script, http_request, enrich_ioc, block_ip, isolate", action_name),
                 },
                 serde_json::json!({
-                    "simulated": true,
+                    "error": "unsupported_action_type",
                     "action_type": action_type,
                     "integration": integration,
-                    "note": "This action type doesn't have a direct test executor. Input was validated against schema."
+                    "available_actions": ["notification", "create_ticket", "script", "http_request", "enrich_ioc", "block_ip", "isolate"]
                 }),
             );
         }

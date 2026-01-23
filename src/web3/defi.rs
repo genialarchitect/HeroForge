@@ -208,33 +208,108 @@ struct RugPullPattern {
 
 /// Analyze DeFi protocols for security issues
 ///
-/// Requires ETH_RPC_URL for real contract analysis. For production use, consider:
-/// - Blockchain RPC for contract state
-/// - DeFi Safety or similar protocol rating services
-/// - Tenderly or similar simulation tools
+/// Requires ETH_RPC_URL for real contract analysis.
 pub async fn analyze_defi_protocols(addresses: &[String]) -> Result<Vec<DeFiFinding>> {
-    let has_rpc = std::env::var("ETH_RPC_URL").is_ok();
-
-    if !has_rpc {
-        log::debug!("ETH_RPC_URL not set - DeFi protocol analysis unavailable");
-        return Ok(Vec::new());
-    }
-
-    // TODO: Implement real contract analysis using ethers-rs
-    // Would need to:
-    // 1. Fetch contract bytecode and ABI
-    // 2. Check for known vulnerable patterns
-    // 3. Analyze actual function signatures
-    // 4. Query contract state for access controls
-    log::info!("ETH_RPC_URL configured - real DeFi analysis would be performed for {} addresses", addresses.len());
+    let rpc = match super::eth_rpc::EthRpcClient::from_env() {
+        Ok(r) => r,
+        Err(e) => {
+            log::debug!("ETH_RPC_URL not available: {} - DeFi analysis unavailable", e);
+            return Ok(Vec::new());
+        }
+    };
 
     let mut findings = Vec::new();
-    let _analyzer = DeFiAnalyzer::new();
+    let analyzer = DeFiAnalyzer::new();
 
-    // Real implementation would query actual contract data here
-    // For now, return empty until RPC integration is complete
-    for _address in addresses {
-        // Real analysis would go here
+    for address in addresses {
+        // 1. Verify contract exists by fetching bytecode
+        let code = match rpc.eth_get_code(address).await {
+            Ok(c) => c,
+            Err(e) => {
+                log::debug!("Failed to get code for {}: {}", address, e);
+                continue;
+            }
+        };
+
+        if code == "0x" || code.is_empty() {
+            findings.push(DeFiFinding {
+                protocol_address: address.clone(),
+                protocol_name: "Unknown".to_string(),
+                finding_type: DeFiRiskType::UnverifiedContract,
+                severity: Severity::Info,
+                description: format!("Address {} is not a contract (EOA or empty)", address),
+                affected_functions: vec![],
+                recommendation: "Verify the contract address is correct".to_string(),
+            });
+            continue;
+        }
+
+        // 2. Check for known DeFi patterns in bytecode
+        let bytecode_lower = code.to_lowercase();
+
+        // Check for known DEX patterns (Uniswap router selectors)
+        let has_swap = bytecode_lower.contains("38ed1739") || bytecode_lower.contains("7ff36ab5");
+        let has_liquidity = bytecode_lower.contains("e8e33700") || bytecode_lower.contains("baa2abde");
+
+        if has_swap || has_liquidity {
+            // It's a DEX-like contract - check for reentrancy patterns
+            if !bytecode_lower.contains("5c975abb") { // pausable check
+                findings.push(DeFiFinding {
+                    protocol_address: address.clone(),
+                    protocol_name: "DEX".to_string(),
+                    finding_type: DeFiRiskType::ReentrancyRisk,
+                    severity: Severity::Medium,
+                    description: "DEX contract may lack pause functionality".to_string(),
+                    affected_functions: vec!["swap".to_string()],
+                    recommendation: "Verify emergency pause mechanism exists".to_string(),
+                });
+            }
+        }
+
+        // 3. Query contract owner
+        let owner_selector = super::eth_rpc::function_selector("owner()");
+        match rpc.eth_call(address, &owner_selector).await {
+            Ok(owner_result) => {
+                if owner_result.len() >= 66 {
+                    let owner_addr = format!("0x{}", &owner_result[26..66]);
+                    // Check if owner is a single EOA (centralization risk)
+                    let owner_code = rpc.eth_get_code(&owner_addr).await.unwrap_or_default();
+                    if owner_code == "0x" || owner_code.is_empty() {
+                        findings.push(DeFiFinding {
+                            protocol_address: address.clone(),
+                            protocol_name: "Unknown".to_string(),
+                            finding_type: DeFiRiskType::AccessControlIssue,
+                            severity: Severity::High,
+                            description: format!("Contract owner is an EOA ({}), not a multisig", owner_addr),
+                            affected_functions: vec!["owner".to_string()],
+                            recommendation: "Transfer ownership to a multi-signature wallet or timelock".to_string(),
+                        });
+                    }
+                }
+            }
+            Err(_) => {
+                // No owner function - could be immutable or use different pattern
+            }
+        }
+
+        // 4. Check ERC-20 properties if applicable
+        let total_supply_selector = super::eth_rpc::function_selector("totalSupply()");
+        if let Ok(supply_result) = rpc.eth_call(address, &total_supply_selector).await {
+            if supply_result != "0x" && supply_result.len() > 2 {
+                // It's an ERC-20 token - run rug pull pattern detection
+                // Extract function selectors from bytecode for analysis
+                let mut detected_functions = Vec::new();
+                if bytecode_lower.contains("a9059cbb") { detected_functions.push("transfer".to_string()); }
+                if bytecode_lower.contains("23b872dd") { detected_functions.push("transferFrom".to_string()); }
+                if bytecode_lower.contains("095ea7b3") { detected_functions.push("approve".to_string()); }
+                if bytecode_lower.contains("40c10f19") { detected_functions.push("mint".to_string()); }
+                if bytecode_lower.contains("42966c68") { detected_functions.push("burn".to_string()); }
+                if bytecode_lower.contains("5c975abb") { detected_functions.push("paused".to_string()); }
+                if bytecode_lower.contains("8456cb59") { detected_functions.push("pause".to_string()); }
+                if bytecode_lower.contains("715018a6") { detected_functions.push("renounceOwnership".to_string()); }
+                findings.extend(analyzer.detect_rug_pull_indicators(address, &detected_functions));
+            }
+        }
     }
 
     Ok(findings)

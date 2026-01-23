@@ -197,9 +197,6 @@ pub struct ContainerScanConfig {
     pub k8s_context: Option<String>,
     /// Kubernetes namespace (default: all namespaces)
     pub k8s_namespace: Option<String>,
-    /// Whether to use demo mode with mock data
-    #[serde(default)]
-    pub demo_mode: bool,
     /// CRM customer reference
     pub customer_id: Option<String>,
     /// CRM engagement reference

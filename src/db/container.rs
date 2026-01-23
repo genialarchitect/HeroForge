@@ -162,8 +162,6 @@ impl ContainerFindingRow {
 pub struct CreateContainerScanRequest {
     pub name: String,
     pub scan_types: Vec<String>,
-    #[serde(default)]
-    pub demo_mode: bool,
     pub customer_id: Option<String>,
     pub engagement_id: Option<String>,
 }

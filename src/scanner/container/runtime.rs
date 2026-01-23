@@ -47,234 +47,6 @@ pub async fn scan_runtime(
     Ok(findings)
 }
 
-/// Generate demo runtime scan results
-pub async fn scan_runtime_demo(
-    _config: &ContainerScanConfig,
-) -> Result<Vec<ContainerFinding>> {
-    let scan_id = Uuid::new_v4().to_string();
-
-    let demo_findings = vec![
-        ContainerFinding {
-            id: Uuid::new_v4().to_string(),
-            scan_id: scan_id.clone(),
-            image_id: None,
-            resource_id: Some("container_web_app_1".to_string()),
-            finding_type: ContainerFindingType::PrivilegeEscalation,
-            severity: ContainerFindingSeverity::Critical,
-            title: "Container running in privileged mode".to_string(),
-            description: "The container 'web_app' is running with --privileged flag. \
-                This gives the container full access to the host system, effectively \
-                bypassing all container isolation.".to_string(),
-            cve_id: None,
-            cvss_score: None,
-            cwe_ids: vec!["CWE-250".to_string()],
-            package_name: None,
-            package_version: None,
-            fixed_version: None,
-            file_path: None,
-            line_number: None,
-            remediation: Some(
-                "Remove the --privileged flag. If specific capabilities are needed, \
-                use --cap-add to grant only the required capabilities.".to_string()
-            ),
-            references: vec![
-                "https://docs.docker.com/engine/reference/run/#runtime-privilege-and-linux-capabilities".to_string(),
-            ],
-            status: FindingStatus::Open,
-            created_at: Utc::now(),
-        },
-        ContainerFinding {
-            id: Uuid::new_v4().to_string(),
-            scan_id: scan_id.clone(),
-            image_id: None,
-            resource_id: Some("container_db_1".to_string()),
-            finding_type: ContainerFindingType::NetworkExposure,
-            severity: ContainerFindingSeverity::High,
-            title: "Container using host network mode".to_string(),
-            description: "The container 'db' is using --net=host, which shares the host's \
-                network namespace. This bypasses Docker's network isolation and exposes \
-                all host network interfaces.".to_string(),
-            cve_id: None,
-            cvss_score: None,
-            cwe_ids: vec!["CWE-668".to_string()],
-            package_name: None,
-            package_version: None,
-            fixed_version: None,
-            file_path: None,
-            line_number: None,
-            remediation: Some(
-                "Use Docker's bridge networking or create a custom network. \
-                Only expose necessary ports with -p flag.".to_string()
-            ),
-            references: vec![],
-            status: FindingStatus::Open,
-            created_at: Utc::now(),
-        },
-        ContainerFinding {
-            id: Uuid::new_v4().to_string(),
-            scan_id: scan_id.clone(),
-            image_id: None,
-            resource_id: Some("container_app_1".to_string()),
-            finding_type: ContainerFindingType::Misconfiguration,
-            severity: ContainerFindingSeverity::High,
-            title: "Dangerous capability: SYS_ADMIN".to_string(),
-            description: "The container has the SYS_ADMIN capability, which allows many \
-                privileged operations including mounting filesystems and loading kernel modules.".to_string(),
-            cve_id: None,
-            cvss_score: None,
-            cwe_ids: vec!["CWE-250".to_string()],
-            package_name: None,
-            package_version: None,
-            fixed_version: None,
-            file_path: None,
-            line_number: None,
-            remediation: Some(
-                "Remove SYS_ADMIN capability unless absolutely necessary. \
-                Consider using more specific capabilities.".to_string()
-            ),
-            references: vec![
-                "https://man7.org/linux/man-pages/man7/capabilities.7.html".to_string(),
-            ],
-            status: FindingStatus::Open,
-            created_at: Utc::now(),
-        },
-        ContainerFinding {
-            id: Uuid::new_v4().to_string(),
-            scan_id: scan_id.clone(),
-            image_id: None,
-            resource_id: Some("container_worker_1".to_string()),
-            finding_type: ContainerFindingType::Misconfiguration,
-            severity: ContainerFindingSeverity::High,
-            title: "Docker socket mounted in container".to_string(),
-            description: "The Docker socket (/var/run/docker.sock) is mounted inside the container. \
-                This allows the container to control the Docker daemon and potentially escape \
-                to the host.".to_string(),
-            cve_id: None,
-            cvss_score: None,
-            cwe_ids: vec!["CWE-250".to_string()],
-            package_name: None,
-            package_version: None,
-            fixed_version: None,
-            file_path: None,
-            line_number: None,
-            remediation: Some(
-                "Avoid mounting the Docker socket. If Docker-in-Docker is needed, \
-                consider using Docker's rootless mode or sysbox runtime.".to_string()
-            ),
-            references: vec![],
-            status: FindingStatus::Open,
-            created_at: Utc::now(),
-        },
-        ContainerFinding {
-            id: Uuid::new_v4().to_string(),
-            scan_id: scan_id.clone(),
-            image_id: None,
-            resource_id: Some("container_api_1".to_string()),
-            finding_type: ContainerFindingType::Misconfiguration,
-            severity: ContainerFindingSeverity::Medium,
-            title: "Container running as root user".to_string(),
-            description: "The container 'api' is running as root (UID 0). If the container \
-                is compromised, the attacker will have root privileges within the container.".to_string(),
-            cve_id: None,
-            cvss_score: None,
-            cwe_ids: vec!["CWE-250".to_string()],
-            package_name: None,
-            package_version: None,
-            fixed_version: None,
-            file_path: None,
-            line_number: None,
-            remediation: Some(
-                "Configure the container to run as a non-root user using the USER directive \
-                in Dockerfile or --user flag.".to_string()
-            ),
-            references: vec![],
-            status: FindingStatus::Open,
-            created_at: Utc::now(),
-        },
-        ContainerFinding {
-            id: Uuid::new_v4().to_string(),
-            scan_id: scan_id.clone(),
-            image_id: None,
-            resource_id: Some("container_cache_1".to_string()),
-            finding_type: ContainerFindingType::Misconfiguration,
-            severity: ContainerFindingSeverity::Medium,
-            title: "No memory limit configured".to_string(),
-            description: "The container 'cache' has no memory limit set. This could allow \
-                the container to consume all available host memory, affecting other containers \
-                and the host system.".to_string(),
-            cve_id: None,
-            cvss_score: None,
-            cwe_ids: vec!["CWE-770".to_string()],
-            package_name: None,
-            package_version: None,
-            fixed_version: None,
-            file_path: None,
-            line_number: None,
-            remediation: Some(
-                "Set memory limits using --memory flag or resources.limits in Docker Compose.".to_string()
-            ),
-            references: vec![],
-            status: FindingStatus::Open,
-            created_at: Utc::now(),
-        },
-        ContainerFinding {
-            id: Uuid::new_v4().to_string(),
-            scan_id: scan_id.clone(),
-            image_id: None,
-            resource_id: Some("container_debug_1".to_string()),
-            finding_type: ContainerFindingType::Misconfiguration,
-            severity: ContainerFindingSeverity::Medium,
-            title: "Container sharing host PID namespace".to_string(),
-            description: "The container is using --pid=host, which allows it to see and \
-                potentially interact with all processes on the host.".to_string(),
-            cve_id: None,
-            cvss_score: None,
-            cwe_ids: vec!["CWE-668".to_string()],
-            package_name: None,
-            package_version: None,
-            fixed_version: None,
-            file_path: None,
-            line_number: None,
-            remediation: Some(
-                "Remove the --pid=host flag unless absolutely necessary for debugging.".to_string()
-            ),
-            references: vec![],
-            status: FindingStatus::Open,
-            created_at: Utc::now(),
-        },
-        ContainerFinding {
-            id: Uuid::new_v4().to_string(),
-            scan_id: scan_id.clone(),
-            image_id: None,
-            resource_id: Some("container_legacy_1".to_string()),
-            finding_type: ContainerFindingType::Misconfiguration,
-            severity: ContainerFindingSeverity::Low,
-            title: "Seccomp profile disabled".to_string(),
-            description: "The container is running with --security-opt seccomp=unconfined, \
-                which disables the default syscall filtering.".to_string(),
-            cve_id: None,
-            cvss_score: None,
-            cwe_ids: vec![],
-            package_name: None,
-            package_version: None,
-            fixed_version: None,
-            file_path: None,
-            line_number: None,
-            remediation: Some(
-                "Remove the seccomp=unconfined option. Use the default profile or create \
-                a custom profile for your application.".to_string()
-            ),
-            references: vec![
-                "https://docs.docker.com/engine/security/seccomp/".to_string(),
-            ],
-            status: FindingStatus::Open,
-            created_at: Utc::now(),
-        },
-    ];
-
-    Ok(demo_findings)
-}
-
 /// Inspect a single container for security issues
 async fn inspect_container(
     container_id: &str,
@@ -539,7 +311,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_scan_runtime_demo() {
+    async fn test_scan_runtime() {
         let config = ContainerScanConfig {
             name: "Test".to_string(),
             scan_types: vec![],
@@ -551,17 +323,12 @@ mod tests {
             manifest_content: None,
             k8s_context: None,
             k8s_namespace: None,
-            demo_mode: true,
             customer_id: None,
             engagement_id: None,
         };
 
-        let findings = scan_runtime_demo(&config).await.unwrap();
-        assert!(!findings.is_empty());
-
-        // Check for various finding types
-        let has_privileged = findings.iter()
-            .any(|f| f.title.contains("privileged"));
-        assert!(has_privileged);
+        // Real scan - results depend on Docker availability
+        let result = scan_runtime(&config).await;
+        assert!(result.is_ok());
     }
 }

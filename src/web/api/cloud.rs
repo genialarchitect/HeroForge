@@ -37,8 +37,6 @@ pub struct CreateScanRequest {
     #[serde(default)]
     pub scan_types: Vec<String>,
     pub credentials_id: Option<String>,
-    #[serde(default)]
-    pub demo_mode: bool,
     pub customer_id: Option<String>,
     pub engagement_id: Option<String>,
 }
@@ -70,10 +68,9 @@ pub async fn create_scan(
     request: web::Json<CreateScanRequest>,
 ) -> Result<HttpResponse> {
     log::info!(
-        "Creating cloud scan for user {} - provider: {}, demo_mode: {}",
+        "Creating cloud scan for user {} - provider: {}",
         claims.sub,
-        request.provider,
-        request.demo_mode
+        request.provider
     );
 
     // Validate provider
@@ -112,7 +109,6 @@ pub async fn create_scan(
             .map(|s| s.to_lowercase())
             .collect(),
         credentials_id: request.credentials_id.clone(),
-        demo_mode: request.demo_mode,
         customer_id: request.customer_id.clone(),
         engagement_id: request.engagement_id.clone(),
     };
@@ -132,7 +128,6 @@ pub async fn create_scan(
     let pool_clone = pool.get_ref().clone();
     let scan_id_clone = scan_id.clone();
     let regions = request.regions.clone();
-    let demo_mode = request.demo_mode;
 
     // Spawn background task to run the scan
     tokio::spawn(async move {
@@ -192,7 +187,6 @@ pub async fn create_scan(
             },
             scan_types,
             credentials_id,
-            demo_mode,
         };
 
         // Run the scan

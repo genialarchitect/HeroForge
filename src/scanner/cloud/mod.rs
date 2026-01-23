@@ -23,7 +23,6 @@
 //!     regions: vec!["us-east-1".to_string()],
 //!     scan_types: vec![CloudScanType::All],
 //!     credentials_id: None,
-//!     demo_mode: true,
 //! };
 //!
 //! let (resources, findings) = run_cloud_scan(&config).await?;
@@ -76,15 +75,14 @@ pub async fn run_cloud_scan(
     config: &CloudScanConfig,
 ) -> Result<(Vec<CloudResource>, Vec<CloudFinding>)> {
     log::info!(
-        "Starting cloud scan for provider: {} with demo_mode={}",
-        config.provider,
-        config.demo_mode
+        "Starting cloud scan for provider: {}",
+        config.provider
     );
 
     let scanner: Box<dyn CloudScanner> = match config.provider {
-        CloudProvider::Aws => Box::new(AwsScanner::new(config.demo_mode)),
-        CloudProvider::Azure => Box::new(AzureScanner::new(config.demo_mode)),
-        CloudProvider::Gcp => Box::new(GcpScanner::new(config.demo_mode)),
+        CloudProvider::Aws => Box::new(AwsScanner::new()),
+        CloudProvider::Azure => Box::new(AzureScanner::new()),
+        CloudProvider::Gcp => Box::new(GcpScanner::new()),
     };
 
     scanner.run_scan(config).await
@@ -135,51 +133,52 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_run_cloud_scan_aws_demo() {
+    async fn test_run_cloud_scan_aws() {
         let config = CloudScanConfig {
             provider: CloudProvider::Aws,
             regions: vec!["us-east-1".to_string()],
             scan_types: vec![CloudScanType::All],
             credentials_id: None,
-            demo_mode: true,
         };
 
-        let (resources, findings) = run_cloud_scan(&config).await.unwrap();
-
-        assert!(!resources.is_empty());
-        assert!(!findings.is_empty());
+        // Real scan - results depend on AWS credentials being configured
+        let result = run_cloud_scan(&config).await;
+        // Without credentials, the AWS SDK will return an error
+        if std::env::var("AWS_ACCESS_KEY_ID").is_err() {
+            assert!(result.is_err());
+        }
     }
 
     #[tokio::test]
-    async fn test_run_cloud_scan_azure_demo() {
+    async fn test_run_cloud_scan_azure() {
         let config = CloudScanConfig {
             provider: CloudProvider::Azure,
             regions: vec!["eastus".to_string()],
             scan_types: vec![CloudScanType::All],
             credentials_id: None,
-            demo_mode: true,
         };
 
-        let (resources, findings) = run_cloud_scan(&config).await.unwrap();
-
-        assert!(!resources.is_empty());
-        assert!(!findings.is_empty());
+        // Without Azure credentials, should return error
+        if std::env::var("AZURE_SUBSCRIPTION_ID").is_err() {
+            let result = run_cloud_scan(&config).await;
+            assert!(result.is_err());
+        }
     }
 
     #[tokio::test]
-    async fn test_run_cloud_scan_gcp_demo() {
+    async fn test_run_cloud_scan_gcp() {
         let config = CloudScanConfig {
             provider: CloudProvider::Gcp,
             regions: vec!["us-central1".to_string()],
             scan_types: vec![CloudScanType::All],
             credentials_id: None,
-            demo_mode: true,
         };
 
-        let (resources, findings) = run_cloud_scan(&config).await.unwrap();
-
-        assert!(!resources.is_empty());
-        assert!(!findings.is_empty());
+        // Without GCP credentials, should return error
+        if std::env::var("GCP_PROJECT_ID").is_err() {
+            let result = run_cloud_scan(&config).await;
+            assert!(result.is_err());
+        }
     }
 
     #[test]

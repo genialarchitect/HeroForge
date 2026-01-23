@@ -22,7 +22,6 @@ use super::types::{
 /// Analyze a Dockerfile for security issues
 pub async fn analyze_dockerfile(
     content: &str,
-    _demo_mode: bool,
 ) -> Result<DockerfileAnalysis> {
     let instructions = parse_dockerfile(content)?;
     let findings = analyze_instructions(&instructions, content)?;

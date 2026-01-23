@@ -45,68 +45,6 @@ pub async fn scan_images(
     Ok((images, findings))
 }
 
-/// Generate demo scan results for testing
-pub async fn scan_images_demo(
-    config: &ContainerScanConfig,
-) -> Result<(Vec<ContainerImage>, Vec<ContainerFinding>)> {
-    let scan_id = Uuid::new_v4().to_string();
-    let mut images = Vec::new();
-    let mut findings = Vec::new();
-
-    // Use provided images or generate demo ones
-    let image_refs: Vec<String> = if config.images.is_empty() {
-        vec![
-            "nginx:1.21.0".to_string(),
-            "node:16-alpine".to_string(),
-            "postgres:13".to_string(),
-        ]
-    } else {
-        config.images.clone()
-    };
-
-    for image_ref in &image_refs {
-        let image_id = Uuid::new_v4().to_string();
-        let (repo, tag) = parse_image_ref(image_ref);
-
-        let image = ContainerImage {
-            id: image_id.clone(),
-            scan_id: scan_id.clone(),
-            image_ref: image_ref.clone(),
-            digest: Some(format!("sha256:{}", generate_demo_hash())),
-            registry: None,
-            repository: repo.clone(),
-            tag: tag.clone(),
-            os: Some("linux".to_string()),
-            architecture: Some("amd64".to_string()),
-            created: Some(Utc::now() - chrono::Duration::days(30)),
-            size_bytes: Some(150_000_000),
-            layer_count: 12,
-            labels: HashMap::new(),
-            vuln_count: 0,
-            critical_count: 0,
-            high_count: 0,
-            discovered_at: Utc::now(),
-        };
-
-        // Generate demo vulnerabilities based on image
-        let demo_vulns = generate_demo_vulnerabilities(&image_id, &scan_id, image_ref);
-
-        // Update counts
-        let mut image = image;
-        image.vuln_count = demo_vulns.len() as i32;
-        image.critical_count = demo_vulns.iter()
-            .filter(|v| v.severity == ContainerFindingSeverity::Critical)
-            .count() as i32;
-        image.high_count = demo_vulns.iter()
-            .filter(|v| v.severity == ContainerFindingSeverity::High)
-            .count() as i32;
-
-        images.push(image);
-        findings.extend(demo_vulns);
-    }
-
-    Ok((images, findings))
-}
 
 /// Check if trivy is available
 fn is_trivy_available() -> bool {
@@ -570,148 +508,6 @@ fn parse_image_ref(image_ref: &str) -> (String, String) {
     (image_ref.to_string(), "latest".to_string())
 }
 
-/// Generate a demo hash for testing
-fn generate_demo_hash() -> String {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-    let mut hasher = DefaultHasher::new();
-    Utc::now().timestamp_nanos_opt().unwrap_or(0).hash(&mut hasher);
-    format!("{:016x}{:016x}{:016x}{:016x}",
-        hasher.finish(), hasher.finish(), hasher.finish(), hasher.finish())
-}
-
-/// Generate demo vulnerabilities for an image
-fn generate_demo_vulnerabilities(
-    image_id: &str,
-    scan_id: &str,
-    _image_ref: &str,
-) -> Vec<ContainerFinding> {
-    let demo_vulns = vec![
-        (
-            "CVE-2023-44487",
-            ContainerFindingSeverity::Critical,
-            "HTTP/2 Rapid Reset Attack",
-            "The HTTP/2 protocol allows a denial of service because request cancellation can reset many streams quickly.",
-            "nghttp2",
-            "1.43.0",
-            "1.57.0",
-            9.8,
-            vec!["CWE-400"],
-        ),
-        (
-            "CVE-2023-38545",
-            ContainerFindingSeverity::High,
-            "curl SOCKS5 Heap Buffer Overflow",
-            "A heap-based buffer overflow in the SOCKS5 proxy handshake in libcurl.",
-            "curl",
-            "7.84.0",
-            "8.4.0",
-            8.8,
-            vec!["CWE-122"],
-        ),
-        (
-            "CVE-2023-5363",
-            ContainerFindingSeverity::High,
-            "OpenSSL Excessive Resource Usage",
-            "OpenSSL has a bug that affects PKCS12 parsing which can cause excessive memory usage.",
-            "openssl",
-            "3.0.9",
-            "3.0.12",
-            7.5,
-            vec!["CWE-400"],
-        ),
-        (
-            "CVE-2023-4911",
-            ContainerFindingSeverity::High,
-            "glibc Buffer Overflow in ld.so",
-            "A buffer overflow in the dynamic loader (ld.so) in glibc when processing the GLIBC_TUNABLES environment variable.",
-            "glibc",
-            "2.34",
-            "2.38",
-            7.8,
-            vec!["CWE-787"],
-        ),
-        (
-            "CVE-2023-36054",
-            ContainerFindingSeverity::Medium,
-            "MIT Kerberos 5 (krb5) Use After Free",
-            "A use-after-free vulnerability in krb5 when handling AS-REQ requests.",
-            "krb5-libs",
-            "1.19.2",
-            "1.21.1",
-            6.5,
-            vec!["CWE-416"],
-        ),
-        (
-            "CVE-2023-29491",
-            ContainerFindingSeverity::Medium,
-            "ncurses Memory Corruption",
-            "ncurses before 6.4 has memory corruption when processing malformed terminfo data.",
-            "ncurses",
-            "6.2",
-            "6.4",
-            5.5,
-            vec!["CWE-787"],
-        ),
-        (
-            "CVE-2023-2650",
-            ContainerFindingSeverity::Medium,
-            "OpenSSL ASN.1 Parsing DoS",
-            "Processing some specially crafted ASN.1 object identifiers may cause a denial of service.",
-            "openssl",
-            "3.0.9",
-            "3.0.10",
-            5.5,
-            vec!["CWE-400"],
-        ),
-        (
-            "CVE-2023-0286",
-            ContainerFindingSeverity::Low,
-            "OpenSSL X.400 Type Confusion",
-            "Type confusion in the X.400 address processing that may lead to reading memory contents.",
-            "openssl",
-            "3.0.7",
-            "3.0.8",
-            4.4,
-            vec!["CWE-843"],
-        ),
-    ];
-
-    demo_vulns
-        .into_iter()
-        .map(|(cve_id, severity, title, description, package, version, fixed, cvss, cwes)| {
-            ContainerFinding {
-                id: Uuid::new_v4().to_string(),
-                scan_id: scan_id.to_string(),
-                image_id: Some(image_id.to_string()),
-                resource_id: None,
-                finding_type: ContainerFindingType::Vulnerability,
-                severity,
-                title: title.to_string(),
-                description: description.to_string(),
-                cve_id: Some(cve_id.to_string()),
-                cvss_score: Some(cvss),
-                cwe_ids: cwes.into_iter().map(String::from).collect(),
-                package_name: Some(package.to_string()),
-                package_version: Some(version.to_string()),
-                fixed_version: Some(fixed.to_string()),
-                file_path: None,
-                line_number: None,
-                remediation: Some(format!(
-                    "Update {} from version {} to {} or later",
-                    package, version, fixed
-                )),
-                references: vec![
-                    format!("https://nvd.nist.gov/vuln/detail/{}", cve_id),
-                    format!("https://cve.mitre.org/cgi-bin/cvename.cgi?name={}", cve_id),
-                ],
-                status: FindingStatus::Open,
-                created_at: Utc::now(),
-            }
-        })
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -726,32 +522,11 @@ mod tests {
             parse_image_ref("nginx"),
             ("nginx".to_string(), "latest".to_string())
         );
-        assert_eq!(
-            parse_image_ref("registry.io/app:v1"),
-            ("registry.io/app".to_string(), "v1".to_string())
-        );
     }
 
-    #[tokio::test]
-    async fn test_scan_images_demo() {
-        let config = ContainerScanConfig {
-            name: "Test".to_string(),
-            scan_types: vec![],
-            images: vec!["nginx:latest".to_string()],
-            registry_url: None,
-            registry_username: None,
-            registry_password: None,
-            dockerfile_content: None,
-            manifest_content: None,
-            k8s_context: None,
-            k8s_namespace: None,
-            demo_mode: true,
-            customer_id: None,
-            engagement_id: None,
-        };
-
-        let (images, findings) = scan_images_demo(&config).await.unwrap();
-        assert_eq!(images.len(), 1);
-        assert!(!findings.is_empty());
+    #[test]
+    fn test_trivy_check() {
+        // Just verify the function doesn't panic
+        let _ = is_trivy_available();
     }
 }

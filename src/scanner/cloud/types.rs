@@ -390,9 +390,6 @@ pub struct CloudScanConfig {
     pub scan_types: Vec<CloudScanType>,
     /// Credentials ID to use (references stored credentials)
     pub credentials_id: Option<String>,
-    /// Whether to use mock/demo mode (for testing without credentials)
-    #[serde(default)]
-    pub demo_mode: bool,
 }
 
 /// A cloud scan record

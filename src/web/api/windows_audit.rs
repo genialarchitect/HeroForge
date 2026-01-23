@@ -30,7 +30,6 @@ fn encrypt_sensitive(value: &str) -> String {
 }
 
 /// Decrypt sensitive field from storage
-#[allow(dead_code)]
 fn decrypt_sensitive(encrypted: &str) -> String {
     if let Some(encoded) = encrypted.strip_prefix("enc:") {
         if let Ok(encryption_key) = std::env::var("TOTP_ENCRYPTION_KEY") {
@@ -707,7 +706,7 @@ async fn run_windows_audit_scan(
     .fetch_optional(pool)
     .await;
 
-    let (username, _encrypted_password, domain, _auth_type) = match creds {
+    let (username, encrypted_password, domain, _auth_type) = match creds {
         Ok(Some(c)) => c,
         Ok(None) => {
             log::error!("Credential {} not found for scan {}", credential_id, scan_id);
@@ -721,10 +720,10 @@ async fn run_windows_audit_scan(
         }
     };
 
-    // Execute Windows audit checks
-    // In production, this would use WMI/WinRM to connect and run STIG checks
-    // For now, we simulate the audit process
-    let audit_results = execute_windows_checks(target_host, &username, domain.as_deref(), stig_profile).await;
+    let password = decrypt_sensitive(&encrypted_password);
+
+    // Execute Windows audit checks via WinRM
+    let audit_results = execute_windows_checks(target_host, &username, &password, domain.as_deref(), stig_profile).await;
 
     match audit_results {
         Ok(results) => {
@@ -834,100 +833,498 @@ struct AuditCheckResult {
     remediation: Option<String>,
 }
 
-/// Execute Windows STIG checks against target
-async fn execute_windows_checks(
-    _target_host: &str,
-    _username: &str,
-    _domain: Option<&str>,
-    _stig_profile: Option<&str>,
-) -> Result<Vec<AuditCheckResult>, anyhow::Error> {
-    // In production, this would connect via WMI/WinRM and execute actual checks
-    // For now, return sample STIG compliance checks
+/// STIG check definition: maps a STIG ID to a PowerShell command and expected result
+struct StigCheckDef {
+    check_id: &'static str,
+    stig_id: &'static str,
+    title: &'static str,
+    category: &'static str,
+    powershell_cmd: &'static str,
+    expected_value: &'static str,
+    remediation: &'static str,
+}
 
-    let checks = vec![
-        AuditCheckResult {
-            check_id: "V-254239".to_string(),
-            stig_id: Some("WN10-CC-000005".to_string()),
-            title: "Camera access from the lock screen must be disabled".to_string(),
-            category: "CAT II".to_string(),
-            status: "pass".to_string(),
-            actual_value: Some("0".to_string()),
-            expected_value: Some("0".to_string()),
-            remediation: None,
+/// Get STIG checks for the specified profile
+fn get_stig_checks(profile: Option<&str>) -> Vec<StigCheckDef> {
+    let _profile = profile.unwrap_or("windows10");
+
+    vec![
+        StigCheckDef {
+            check_id: "V-254239",
+            stig_id: "WN10-CC-000005",
+            title: "Camera access from the lock screen must be disabled",
+            category: "CAT II",
+            powershell_cmd: r#"(Get-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization' -Name 'NoLockScreenCamera' -ErrorAction SilentlyContinue).NoLockScreenCamera"#,
+            expected_value: "1",
+            remediation: "Set NoLockScreenCamera to 1 in HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Personalization",
         },
-        AuditCheckResult {
-            check_id: "V-254240".to_string(),
-            stig_id: Some("WN10-CC-000010".to_string()),
-            title: "IPv6 source routing must be configured to the highest protection level".to_string(),
-            category: "CAT II".to_string(),
-            status: "pass".to_string(),
-            actual_value: Some("2".to_string()),
-            expected_value: Some("2".to_string()),
-            remediation: None,
+        StigCheckDef {
+            check_id: "V-254240",
+            stig_id: "WN10-CC-000010",
+            title: "IPv6 source routing must be configured to highest protection level",
+            category: "CAT II",
+            powershell_cmd: r#"(Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters' -Name 'DisableIPSourceRouting' -ErrorAction SilentlyContinue).DisableIPSourceRouting"#,
+            expected_value: "2",
+            remediation: "Set DisableIPSourceRouting to 2 in HKLM\\SYSTEM\\CurrentControlSet\\Services\\Tcpip6\\Parameters",
         },
-        AuditCheckResult {
-            check_id: "V-254241".to_string(),
-            stig_id: Some("WN10-CC-000020".to_string()),
-            title: "The Windows Remote Management (WinRM) client must not use Basic authentication".to_string(),
-            category: "CAT I".to_string(),
-            status: "fail".to_string(),
-            actual_value: Some("1".to_string()),
-            expected_value: Some("0".to_string()),
-            remediation: Some("Set AllowBasic to 0 in HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Client".to_string()),
+        StigCheckDef {
+            check_id: "V-254241",
+            stig_id: "WN10-CC-000020",
+            title: "WinRM client must not use Basic authentication",
+            category: "CAT I",
+            powershell_cmd: r#"(Get-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WinRM\Client' -Name 'AllowBasic' -ErrorAction SilentlyContinue).AllowBasic"#,
+            expected_value: "0",
+            remediation: "Set AllowBasic to 0 in HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Client",
         },
-        AuditCheckResult {
-            check_id: "V-254242".to_string(),
-            stig_id: Some("WN10-SO-000030".to_string()),
-            title: "The system must be configured to audit Account Logon - Credential Validation successes".to_string(),
-            category: "CAT II".to_string(),
-            status: "pass".to_string(),
-            actual_value: Some("Success".to_string()),
-            expected_value: Some("Success".to_string()),
-            remediation: None,
+        StigCheckDef {
+            check_id: "V-254242",
+            stig_id: "WN10-SO-000030",
+            title: "Audit Account Logon - Credential Validation successes",
+            category: "CAT II",
+            powershell_cmd: r#"(auditpol /get /subcategory:'Credential Validation' /r | ConvertFrom-Csv | Select-Object -ExpandProperty 'Inclusion Setting')"#,
+            expected_value: "Success",
+            remediation: "Configure audit policy: Credential Validation to include Success",
         },
-        AuditCheckResult {
-            check_id: "V-254243".to_string(),
-            stig_id: Some("WN10-SO-000040".to_string()),
-            title: "Windows 10 must be configured to audit Logon/Logoff - Logon successes".to_string(),
-            category: "CAT II".to_string(),
-            status: "pass".to_string(),
-            actual_value: Some("Success".to_string()),
-            expected_value: Some("Success".to_string()),
-            remediation: None,
+        StigCheckDef {
+            check_id: "V-254243",
+            stig_id: "WN10-SO-000040",
+            title: "Audit Logon/Logoff - Logon successes",
+            category: "CAT II",
+            powershell_cmd: r#"(auditpol /get /subcategory:'Logon' /r | ConvertFrom-Csv | Select-Object -ExpandProperty 'Inclusion Setting')"#,
+            expected_value: "Success",
+            remediation: "Configure audit policy: Logon to include Success",
         },
-        AuditCheckResult {
-            check_id: "V-254244".to_string(),
-            stig_id: Some("WN10-AC-000005".to_string()),
-            title: "Windows 10 account lockout duration must be configured to 15 minutes or greater".to_string(),
-            category: "CAT II".to_string(),
-            status: "fail".to_string(),
-            actual_value: Some("10".to_string()),
-            expected_value: Some("15".to_string()),
-            remediation: Some("Configure the policy value for Computer Configuration >> Windows Settings >> Security Settings >> Account Policies >> Account Lockout Policy >> Account lockout duration to 15 or greater.".to_string()),
+        StigCheckDef {
+            check_id: "V-254244",
+            stig_id: "WN10-AC-000005",
+            title: "Account lockout duration must be 15 minutes or greater",
+            category: "CAT II",
+            powershell_cmd: r#"(net accounts | Select-String 'Lockout duration').ToString().Split(':')[1].Trim()"#,
+            expected_value: ">=15",
+            remediation: "Set Account Lockout Duration to 15 or greater in Account Lockout Policy",
         },
-        AuditCheckResult {
-            check_id: "V-254245".to_string(),
-            stig_id: Some("WN10-AC-000010".to_string()),
-            title: "The number of allowed bad logon attempts must be configured to 3 or less".to_string(),
-            category: "CAT II".to_string(),
-            status: "pass".to_string(),
-            actual_value: Some("3".to_string()),
-            expected_value: Some("3".to_string()),
-            remediation: None,
+        StigCheckDef {
+            check_id: "V-254245",
+            stig_id: "WN10-AC-000010",
+            title: "Bad logon attempts must be configured to 3 or less",
+            category: "CAT II",
+            powershell_cmd: r#"(net accounts | Select-String 'Lockout threshold').ToString().Split(':')[1].Trim()"#,
+            expected_value: "<=3",
+            remediation: "Set Account Lockout Threshold to 3 or less in Account Lockout Policy",
         },
-        AuditCheckResult {
-            check_id: "V-254246".to_string(),
-            stig_id: Some("WN10-PK-000005".to_string()),
-            title: "The DoD Root CA certificates must be installed in the Trusted Root Store".to_string(),
-            category: "CAT II".to_string(),
-            status: "fail".to_string(),
-            actual_value: Some("Not Found".to_string()),
-            expected_value: Some("Installed".to_string()),
-            remediation: Some("Install the DoD Root CA certificates using the InstallRoot tool or by importing them manually into the Trusted Root Certification Authorities store.".to_string()),
+        StigCheckDef {
+            check_id: "V-254246",
+            stig_id: "WN10-CC-000030",
+            title: "Autoplay must be turned off for all drives",
+            category: "CAT II",
+            powershell_cmd: r#"(Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer' -Name 'NoDriveTypeAutoRun' -ErrorAction SilentlyContinue).NoDriveTypeAutoRun"#,
+            expected_value: "255",
+            remediation: "Set NoDriveTypeAutoRun to 255 in Explorer policies",
         },
+        StigCheckDef {
+            check_id: "V-254247",
+            stig_id: "WN10-CC-000035",
+            title: "Windows Defender SmartScreen must be enabled",
+            category: "CAT II",
+            powershell_cmd: r#"(Get-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\System' -Name 'EnableSmartScreen' -ErrorAction SilentlyContinue).EnableSmartScreen"#,
+            expected_value: "1",
+            remediation: "Set EnableSmartScreen to 1 in HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\System",
+        },
+        StigCheckDef {
+            check_id: "V-254248",
+            stig_id: "WN10-SO-000050",
+            title: "Windows Firewall must be enabled for Domain profile",
+            category: "CAT I",
+            powershell_cmd: r#"(Get-NetFirewallProfile -Profile Domain).Enabled"#,
+            expected_value: "True",
+            remediation: "Enable Windows Firewall for the Domain profile",
+        },
+    ]
+}
+
+/// Execute a PowerShell command on the target via WinRM (WSMan SOAP protocol)
+async fn winrm_execute(
+    target_host: &str,
+    username: &str,
+    password: &str,
+    domain: Option<&str>,
+    command: &str,
+) -> Result<String, String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .danger_accept_invalid_certs(true) // Internal network targets may use self-signed certs
+        .build()
+        .map_err(|e| format!("HTTP client creation failed: {}", e))?;
+
+    // Try HTTPS (5986) first, then HTTP (5985)
+    let urls = vec![
+        format!("https://{}:5986/wsman", target_host),
+        format!("http://{}:5985/wsman", target_host),
     ];
 
-    Ok(checks)
+    let mut last_error = String::from("No WinRM endpoint reachable");
+
+    for url in &urls {
+        // Encode the PowerShell command in base64 for -EncodedCommand
+        let ps_bytes: Vec<u8> = command.encode_utf16()
+            .flat_map(|c| c.to_le_bytes())
+            .collect();
+        use base64::{Engine, engine::general_purpose::STANDARD};
+        let encoded_cmd = STANDARD.encode(&ps_bytes);
+
+        // Build the WinRM SOAP envelope to create a shell and run a command
+        let message_id = uuid::Uuid::new_v4().to_string();
+        let shell_id = uuid::Uuid::new_v4().to_string().to_uppercase();
+
+        // Step 1: Create shell
+        let create_shell_soap = format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope"
+            xmlns:wsa="http://schemas.xmlsoap.org/ws/2004/08/addressing"
+            xmlns:wsman="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd"
+            xmlns:rsp="http://schemas.microsoft.com/wbem/wsman/1/windows/shell">
+  <s:Header>
+    <wsa:To>{url}</wsa:To>
+    <wsman:ResourceURI>http://schemas.microsoft.com/wbem/wsman/1/windows/shell/cmd</wsman:ResourceURI>
+    <wsa:Action>http://schemas.xmlsoap.org/ws/2004/09/transfer/Create</wsa:Action>
+    <wsa:MessageID>uuid:{message_id}</wsa:MessageID>
+    <wsa:ReplyTo><wsa:Address>http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous</wsa:Address></wsa:ReplyTo>
+    <wsman:OperationTimeout>PT60S</wsman:OperationTimeout>
+  </s:Header>
+  <s:Body>
+    <rsp:Shell ShellId="{shell_id}">
+      <rsp:InputStreams>stdin</rsp:InputStreams>
+      <rsp:OutputStreams>stdout stderr</rsp:OutputStreams>
+    </rsp:Shell>
+  </s:Body>
+</s:Envelope>"#,
+            url = url, message_id = message_id, shell_id = shell_id
+        );
+
+        // Build auth header
+        let auth_user = if let Some(dom) = domain {
+            format!("{}\\{}", dom, username)
+        } else {
+            username.to_string()
+        };
+
+        let auth_header = format!("Basic {}", STANDARD.encode(format!("{}:{}", auth_user, password)));
+
+        // Create shell
+        let create_resp = match client.post(url)
+            .header("Content-Type", "application/soap+xml;charset=UTF-8")
+            .header("Authorization", &auth_header)
+            .body(create_shell_soap)
+            .send()
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                last_error = format!("WinRM connection to {} failed: {}", url, e);
+                continue;
+            }
+        };
+
+        if !create_resp.status().is_success() {
+            let status = create_resp.status();
+            let body = create_resp.text().await.unwrap_or_default();
+            last_error = format!("WinRM shell creation failed (HTTP {}): {}", status, &body[..body.len().min(200)]);
+            continue;
+        }
+
+        let shell_body = create_resp.text().await.unwrap_or_default();
+
+        // Extract actual ShellId from response (server may assign different ID)
+        let actual_shell_id = extract_xml_value(&shell_body, "ShellId")
+            .unwrap_or_else(|| shell_id.clone());
+
+        // Step 2: Execute command
+        let cmd_id = uuid::Uuid::new_v4().to_string().to_uppercase();
+        let exec_msg_id = uuid::Uuid::new_v4().to_string();
+
+        let execute_soap = format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope"
+            xmlns:wsa="http://schemas.xmlsoap.org/ws/2004/08/addressing"
+            xmlns:wsman="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd"
+            xmlns:rsp="http://schemas.microsoft.com/wbem/wsman/1/windows/shell">
+  <s:Header>
+    <wsa:To>{url}</wsa:To>
+    <wsman:ResourceURI>http://schemas.microsoft.com/wbem/wsman/1/windows/shell/cmd</wsman:ResourceURI>
+    <wsa:Action>http://schemas.microsoft.com/wbem/wsman/1/windows/shell/Command</wsa:Action>
+    <wsa:MessageID>uuid:{msg_id}</wsa:MessageID>
+    <wsa:ReplyTo><wsa:Address>http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous</wsa:Address></wsa:ReplyTo>
+    <wsman:SelectorSet><wsman:Selector Name="ShellId">{shell_id}</wsman:Selector></wsman:SelectorSet>
+    <wsman:OperationTimeout>PT60S</wsman:OperationTimeout>
+  </s:Header>
+  <s:Body>
+    <rsp:CommandLine CommandId="{cmd_id}">
+      <rsp:Command>powershell.exe</rsp:Command>
+      <rsp:Arguments>-NoProfile -NonInteractive -EncodedCommand {encoded_cmd}</rsp:Arguments>
+    </rsp:CommandLine>
+  </s:Body>
+</s:Envelope>"#,
+            url = url, msg_id = exec_msg_id, shell_id = actual_shell_id,
+            cmd_id = cmd_id, encoded_cmd = encoded_cmd
+        );
+
+        let exec_resp = match client.post(url)
+            .header("Content-Type", "application/soap+xml;charset=UTF-8")
+            .header("Authorization", &auth_header)
+            .body(execute_soap)
+            .send()
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                last_error = format!("WinRM command execution failed: {}", e);
+                // Try to delete shell
+                let _ = winrm_delete_shell(&client, url, &auth_header, &actual_shell_id).await;
+                continue;
+            }
+        };
+
+        if !exec_resp.status().is_success() {
+            let status = exec_resp.status();
+            last_error = format!("WinRM command failed (HTTP {})", status);
+            let _ = winrm_delete_shell(&client, url, &auth_header, &actual_shell_id).await;
+            continue;
+        }
+
+        // Step 3: Receive output
+        let recv_msg_id = uuid::Uuid::new_v4().to_string();
+        let receive_soap = format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope"
+            xmlns:wsa="http://schemas.xmlsoap.org/ws/2004/08/addressing"
+            xmlns:wsman="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd"
+            xmlns:rsp="http://schemas.microsoft.com/wbem/wsman/1/windows/shell">
+  <s:Header>
+    <wsa:To>{url}</wsa:To>
+    <wsman:ResourceURI>http://schemas.microsoft.com/wbem/wsman/1/windows/shell/cmd</wsman:ResourceURI>
+    <wsa:Action>http://schemas.microsoft.com/wbem/wsman/1/windows/shell/Receive</wsa:Action>
+    <wsa:MessageID>uuid:{msg_id}</wsa:MessageID>
+    <wsa:ReplyTo><wsa:Address>http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous</wsa:Address></wsa:ReplyTo>
+    <wsman:SelectorSet><wsman:Selector Name="ShellId">{shell_id}</wsman:Selector></wsman:SelectorSet>
+    <wsman:OperationTimeout>PT60S</wsman:OperationTimeout>
+  </s:Header>
+  <s:Body>
+    <rsp:Receive>
+      <rsp:DesiredStream CommandId="{cmd_id}">stdout stderr</rsp:DesiredStream>
+    </rsp:Receive>
+  </s:Body>
+</s:Envelope>"#,
+            url = url, msg_id = recv_msg_id, shell_id = actual_shell_id, cmd_id = cmd_id
+        );
+
+        let recv_resp = client.post(url)
+            .header("Content-Type", "application/soap+xml;charset=UTF-8")
+            .header("Authorization", &auth_header)
+            .body(receive_soap)
+            .send()
+            .await;
+
+        // Step 4: Delete shell (cleanup)
+        let _ = winrm_delete_shell(&client, url, &auth_header, &actual_shell_id).await;
+
+        match recv_resp {
+            Ok(r) if r.status().is_success() => {
+                let body = r.text().await.unwrap_or_default();
+                // Extract stdout from the SOAP response
+                let output = extract_stream_output(&body);
+                return Ok(output);
+            }
+            Ok(r) => {
+                last_error = format!("WinRM receive failed (HTTP {})", r.status());
+                continue;
+            }
+            Err(e) => {
+                last_error = format!("WinRM receive error: {}", e);
+                continue;
+            }
+        }
+    }
+
+    Err(last_error)
+}
+
+/// Delete a WinRM shell (cleanup)
+async fn winrm_delete_shell(
+    client: &reqwest::Client,
+    url: &str,
+    auth_header: &str,
+    shell_id: &str,
+) -> Result<(), ()> {
+    let msg_id = uuid::Uuid::new_v4().to_string();
+    let delete_soap = format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope"
+            xmlns:wsa="http://schemas.xmlsoap.org/ws/2004/08/addressing"
+            xmlns:wsman="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd">
+  <s:Header>
+    <wsa:To>{url}</wsa:To>
+    <wsman:ResourceURI>http://schemas.microsoft.com/wbem/wsman/1/windows/shell/cmd</wsman:ResourceURI>
+    <wsa:Action>http://schemas.xmlsoap.org/ws/2004/09/transfer/Delete</wsa:Action>
+    <wsa:MessageID>uuid:{msg_id}</wsa:MessageID>
+    <wsman:SelectorSet><wsman:Selector Name="ShellId">{shell_id}</wsman:Selector></wsman:SelectorSet>
+  </s:Header>
+  <s:Body/>
+</s:Envelope>"#,
+        url = url, msg_id = msg_id, shell_id = shell_id
+    );
+
+    client.post(url)
+        .header("Content-Type", "application/soap+xml;charset=UTF-8")
+        .header("Authorization", auth_header)
+        .body(delete_soap)
+        .send()
+        .await
+        .map(|_| ())
+        .map_err(|_| ())
+}
+
+/// Extract a value from XML by tag name (simple text extraction)
+fn extract_xml_value(xml: &str, tag: &str) -> Option<String> {
+    // Look for <tag>value</tag> or <ns:tag>value</ns:tag>
+    let patterns = vec![
+        format!("<{}>", tag),
+        format!("<rsp:{}>", tag),
+        format!("<wsman:{}>", tag),
+    ];
+
+    for start_tag in &patterns {
+        if let Some(start) = xml.find(start_tag.as_str()) {
+            let value_start = start + start_tag.len();
+            let end_patterns = vec![
+                format!("</{}>", tag),
+                format!("</rsp:{}>", tag),
+                format!("</wsman:{}>", tag),
+            ];
+            for end_tag in &end_patterns {
+                if let Some(end) = xml[value_start..].find(end_tag.as_str()) {
+                    return Some(xml[value_start..value_start + end].to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Extract stdout stream output from WinRM Receive response
+fn extract_stream_output(xml: &str) -> String {
+    use base64::{Engine, engine::general_purpose::STANDARD};
+
+    let mut output = String::new();
+
+    // Find all <rsp:Stream Name="stdout" ...>base64data</rsp:Stream>
+    let stdout_marker = "Name=\"stdout\"";
+    let mut search_from = 0;
+
+    while let Some(pos) = xml[search_from..].find(stdout_marker) {
+        let abs_pos = search_from + pos + stdout_marker.len();
+        // Find the closing > of the Stream tag
+        if let Some(tag_end) = xml[abs_pos..].find('>') {
+            let content_start = abs_pos + tag_end + 1;
+            // Find closing </rsp:Stream>
+            if let Some(content_end) = xml[content_start..].find("</rsp:Stream>") {
+                let b64_data = &xml[content_start..content_start + content_end];
+                let b64_clean: String = b64_data.chars().filter(|c| !c.is_whitespace()).collect();
+                if let Ok(decoded) = STANDARD.decode(&b64_clean) {
+                    if let Ok(text) = String::from_utf8(decoded) {
+                        output.push_str(&text);
+                    }
+                }
+                search_from = content_start + content_end;
+            } else {
+                break;
+            }
+        } else {
+            break;
+        }
+    }
+
+    output.trim().to_string()
+}
+
+/// Evaluate a STIG check result against expected value
+fn evaluate_stig_result(actual: &str, expected: &str) -> bool {
+    let actual_trimmed = actual.trim();
+
+    // Handle comparison operators
+    if let Some(val) = expected.strip_prefix(">=") {
+        if let (Ok(a), Ok(e)) = (actual_trimmed.parse::<i64>(), val.trim().parse::<i64>()) {
+            return a >= e;
+        }
+    }
+    if let Some(val) = expected.strip_prefix("<=") {
+        if let (Ok(a), Ok(e)) = (actual_trimmed.parse::<i64>(), val.trim().parse::<i64>()) {
+            return a <= e;
+        }
+    }
+
+    // Handle "contains" check
+    if let Some(val) = expected.strip_prefix("contains:") {
+        return actual_trimmed.to_lowercase().contains(&val.to_lowercase());
+    }
+
+    // Direct comparison (case-insensitive)
+    actual_trimmed.eq_ignore_ascii_case(expected.trim())
+}
+
+/// Execute Windows STIG checks against target via WinRM
+async fn execute_windows_checks(
+    target_host: &str,
+    username: &str,
+    password: &str,
+    domain: Option<&str>,
+    stig_profile: Option<&str>,
+) -> Result<Vec<AuditCheckResult>, anyhow::Error> {
+    let checks = get_stig_checks(stig_profile);
+    let mut results = Vec::new();
+
+    for check in &checks {
+        let result = match winrm_execute(target_host, username, password, domain, check.powershell_cmd).await {
+            Ok(output) => {
+                let actual = output.trim().to_string();
+                let passed = evaluate_stig_result(&actual, check.expected_value);
+
+                AuditCheckResult {
+                    check_id: check.check_id.to_string(),
+                    stig_id: Some(check.stig_id.to_string()),
+                    title: check.title.to_string(),
+                    category: check.category.to_string(),
+                    status: if passed { "pass".to_string() } else { "fail".to_string() },
+                    actual_value: Some(if actual.is_empty() { "Not Configured".to_string() } else { actual }),
+                    expected_value: Some(check.expected_value.to_string()),
+                    remediation: if passed { None } else { Some(check.remediation.to_string()) },
+                }
+            }
+            Err(e) => {
+                log::warn!("WinRM check {} failed: {}", check.check_id, e);
+                AuditCheckResult {
+                    check_id: check.check_id.to_string(),
+                    stig_id: Some(check.stig_id.to_string()),
+                    title: check.title.to_string(),
+                    category: check.category.to_string(),
+                    status: "error".to_string(),
+                    actual_value: Some(format!("Error: {}", e)),
+                    expected_value: Some(check.expected_value.to_string()),
+                    remediation: Some(check.remediation.to_string()),
+                }
+            }
+        };
+
+        results.push(result);
+    }
+
+    if results.is_empty() {
+        return Err(anyhow::anyhow!(
+            "WinRM connection failed on ports 5985/5986 for target {}. Ensure WinRM is enabled and credentials are correct.",
+            target_host
+        ));
+    }
+
+    Ok(results)
 }
 
 // ============================================================================

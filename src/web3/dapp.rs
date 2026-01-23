@@ -256,8 +256,9 @@ pub async fn scan_dapps(urls: &[String]) -> Result<Vec<DAppFinding>> {
         // Check for phishing
         findings.extend(scanner.detect_phishing(url, None));
 
-        // Analyze certificate (simulated)
-        findings.extend(scanner.analyze_certificate(url, url.starts_with("https://"), None));
+        // Analyze certificate with real TLS check
+        let (has_valid_ssl, cert_issuer) = check_real_tls(url).await;
+        findings.extend(scanner.analyze_certificate(url, has_valid_ssl, cert_issuer.as_deref()));
 
         // Check frontend vulnerabilities
         findings.extend(scanner.scan_frontend_vulnerabilities(url));
@@ -277,6 +278,63 @@ pub async fn scan_dapps(urls: &[String]) -> Result<Vec<DAppFinding>> {
     }
 
     Ok(findings)
+}
+
+/// Check real TLS certificate for a URL
+async fn check_real_tls(url: &str) -> (bool, Option<String>) {
+    // Extract domain from URL
+    let domain = match url::Url::parse(url) {
+        Ok(parsed) => match parsed.host_str() {
+            Some(h) => h.to_string(),
+            None => return (false, None),
+        },
+        Err(_) => return (false, None),
+    };
+
+    if !url.starts_with("https://") {
+        return (false, None);
+    }
+
+    let domain_clone = domain.clone();
+    let result = tokio::task::spawn_blocking(move || -> (bool, Option<String>) {
+        use std::net::TcpStream;
+
+        let addr = format!("{}:443", domain_clone);
+        let tcp = match TcpStream::connect(&addr) {
+            Ok(s) => s,
+            Err(_) => return (false, None),
+        };
+        tcp.set_read_timeout(Some(std::time::Duration::from_secs(10))).ok();
+
+        let connector = match native_tls::TlsConnector::new() {
+            Ok(c) => c,
+            Err(_) => return (false, None),
+        };
+
+        match connector.connect(&domain_clone, tcp) {
+            Ok(tls_stream) => {
+                // Valid SSL connection established
+                let issuer = tls_stream.peer_certificate()
+                    .ok()
+                    .flatten()
+                    .and_then(|cert| {
+                        cert.to_der().ok().and_then(|der| {
+                            x509_parser::parse_x509_certificate(&der).ok().map(|(_, c)| {
+                                c.issuer().iter_common_name()
+                                    .next()
+                                    .and_then(|cn| cn.as_str().ok())
+                                    .unwrap_or("Unknown")
+                                    .to_string()
+                            })
+                        })
+                    });
+                (true, issuer)
+            }
+            Err(_) => (false, Some("connection-failed".to_string())),
+        }
+    }).await.unwrap_or((false, None));
+
+    result
 }
 
 #[cfg(test)]

@@ -194,33 +194,147 @@ enum ERCStandard {
 
 /// Scan NFT contracts for security issues
 ///
-/// Requires ETH_RPC_URL for real contract analysis. For production NFT security audits,
-/// configure blockchain RPC access and consider manual contract review.
+/// Requires ETH_RPC_URL for real contract analysis.
 pub async fn scan_nft_contracts(addresses: &[String]) -> Result<Vec<NFTFinding>> {
-    let has_rpc = std::env::var("ETH_RPC_URL").is_ok();
-
-    if !has_rpc {
-        log::debug!("ETH_RPC_URL not set - NFT contract analysis unavailable");
-        return Ok(Vec::new());
-    }
-
-    // TODO: Implement real NFT contract analysis using ethers-rs
-    // Would need to:
-    // 1. Query tokenURI for metadata location
-    // 2. Check ERC-721/ERC-1155 compliance
-    // 3. Analyze minting functions and access control
-    // 4. Verify ERC-2981 royalty implementation
-    log::info!("ETH_RPC_URL configured - real NFT analysis would be performed for {} contracts", addresses.len());
+    let rpc = match super::eth_rpc::EthRpcClient::from_env() {
+        Ok(r) => r,
+        Err(e) => {
+            log::debug!("ETH_RPC_URL not available: {} - NFT analysis unavailable", e);
+            return Ok(Vec::new());
+        }
+    };
 
     let mut findings = Vec::new();
-    let _scanner = NFTScanner::new();
+    let scanner = NFTScanner::new();
 
-    // Real implementation would query actual contract data here
-    for _address in addresses {
-        // Real analysis would go here
+    for address in addresses {
+        // Verify it's a contract
+        let code = match rpc.eth_get_code(address).await {
+            Ok(c) if c != "0x" && !c.is_empty() => c,
+            _ => continue,
+        };
+
+        // ERC-165 interface detection
+        // Check ERC-721 (0x80ac58cd)
+        let erc721_check = format!(
+            "{}{}",
+            super::eth_rpc::function_selector("supportsInterface(bytes4)"),
+            "80ac58cd00000000000000000000000000000000000000000000000000000000"
+        );
+
+        let is_erc721 = rpc.eth_call(address, &erc721_check).await
+            .map(|r| r.ends_with("0000000000000000000000000000000000000000000000000000000000000001"))
+            .unwrap_or(false);
+
+        // Check ERC-1155 (0xd9b67a26)
+        let erc1155_check = format!(
+            "{}{}",
+            super::eth_rpc::function_selector("supportsInterface(bytes4)"),
+            "d9b67a2600000000000000000000000000000000000000000000000000000000"
+        );
+
+        let is_erc1155 = rpc.eth_call(address, &erc1155_check).await
+            .map(|r| r.ends_with("0000000000000000000000000000000000000000000000000000000000000001"))
+            .unwrap_or(false);
+
+        if !is_erc721 && !is_erc1155 {
+            findings.push(NFTFinding {
+                contract_address: address.clone(),
+                collection_name: "Unknown".to_string(),
+                finding_type: NFTRiskType::UnverifiedContract,
+                severity: Severity::Medium,
+                description: "Contract does not implement ERC-721 or ERC-1155 interface".to_string(),
+                recommendation: "Verify contract implements standard NFT interfaces".to_string(),
+            });
+            continue;
+        }
+
+        // Query tokenURI/uri for metadata location
+        let metadata_url = if is_erc721 {
+            let selector = format!(
+                "{}{}",
+                super::eth_rpc::function_selector("tokenURI(uint256)"),
+                super::eth_rpc::abi_encode_uint256(1)
+            );
+            rpc.eth_call(address, &selector).await.ok()
+        } else {
+            let selector = format!(
+                "{}{}",
+                super::eth_rpc::function_selector("uri(uint256)"),
+                super::eth_rpc::abi_encode_uint256(1)
+            );
+            rpc.eth_call(address, &selector).await.ok()
+        };
+
+        // Decode and analyze metadata URL
+        let decoded_uri = metadata_url.and_then(|raw| decode_abi_string(&raw));
+        findings.extend(scanner.analyze_metadata(address, decoded_uri.as_deref()));
+
+        // Check ERC-2981 royalty support
+        let royalty_check = format!(
+            "{}{}",
+            super::eth_rpc::function_selector("supportsInterface(bytes4)"),
+            "2a55205a00000000000000000000000000000000000000000000000000000000"
+        );
+
+        let has_royalties = rpc.eth_call(address, &royalty_check).await
+            .map(|r| r.ends_with("0000000000000000000000000000000000000000000000000000000000000001"))
+            .unwrap_or(false);
+
+        if !has_royalties {
+            findings.push(NFTFinding {
+                contract_address: address.clone(),
+                collection_name: "Unknown".to_string(),
+                finding_type: NFTRiskType::UnverifiedContract,
+                severity: Severity::Low,
+                description: "Contract does not implement ERC-2981 royalty standard".to_string(),
+                recommendation: "Consider implementing on-chain royalty enforcement".to_string(),
+            });
+        }
+
+        // Check for owner/access control
+        let owner_selector = super::eth_rpc::function_selector("owner()");
+        if rpc.eth_call(address, &owner_selector).await.is_err() {
+            // No owner function - check for AccessControl pattern
+            let bytecode_lower = code.to_lowercase();
+            if !bytecode_lower.contains("248a9ca3") { // getRoleAdmin selector
+                findings.push(NFTFinding {
+                    contract_address: address.clone(),
+                    collection_name: "Unknown".to_string(),
+                    finding_type: NFTRiskType::UnverifiedContract,
+                    severity: Severity::Medium,
+                    description: "No access control mechanism detected".to_string(),
+                    recommendation: "Verify minting is properly access-controlled".to_string(),
+                });
+            }
+        }
     }
 
     Ok(findings)
+}
+
+/// Attempt to decode an ABI-encoded string response
+fn decode_abi_string(hex_data: &str) -> Option<String> {
+    let data = hex_data.trim_start_matches("0x");
+    if data.len() < 128 {
+        return None;
+    }
+
+    // ABI string encoding: offset (32 bytes) + length (32 bytes) + data
+    let length_hex = &data[64..128];
+    let length = usize::from_str_radix(length_hex, 16).ok()?;
+
+    if length == 0 || data.len() < 128 + length * 2 {
+        return None;
+    }
+
+    let string_hex = &data[128..128 + length * 2];
+    let bytes: Vec<u8> = (0..string_hex.len())
+        .step_by(2)
+        .filter_map(|i| u8::from_str_radix(&string_hex[i..i + 2], 16).ok())
+        .collect();
+
+    String::from_utf8(bytes).ok()
 }
 
 #[cfg(test)]

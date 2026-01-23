@@ -155,19 +155,32 @@ async fn query_virustotal_pdns(domain: &str, api_key: &str) -> Result<Vec<String
     Ok(records)
 }
 
-/// Reverse DNS lookup for IP addresses
+/// Reverse DNS lookup for IP addresses using real DNS PTR queries
 pub async fn reverse_dns_lookup(ip: &str) -> Result<Vec<String>> {
     log::info!("Performing reverse DNS lookup for: {}", ip);
 
+    let addr: std::net::IpAddr = ip.parse()
+        .map_err(|e| anyhow::anyhow!("Invalid IP address '{}': {}", ip, e))?;
+
+    let resolver = trust_dns_resolver::TokioAsyncResolver::tokio(
+        trust_dns_resolver::config::ResolverConfig::default(),
+        trust_dns_resolver::config::ResolverOpts::default(),
+    );
+
     let mut records = Vec::new();
 
-    // Parse IP to create PTR record format
-    if let Some(ptr) = ip_to_ptr_record(ip) {
-        records.push(format!("{} PTR {}", ptr, generate_ptr_hostname(ip)));
+    match resolver.reverse_lookup(addr).await {
+        Ok(lookup) => {
+            for name in lookup.iter() {
+                let ptr_record = ip_to_ptr_record(ip).unwrap_or_else(|| ip.to_string());
+                records.push(format!("{} PTR {}", ptr_record, name));
+            }
+        }
+        Err(e) => {
+            log::debug!("Reverse DNS lookup failed for {}: {}", ip, e);
+            // Return empty Vec on DNS failure - no fake data
+        }
     }
-
-    // Historical reverse DNS records
-    records.push(format!("{} -> host-{}.example.com (2023-01-15)", ip, ip.replace('.', "-")));
 
     Ok(records)
 }
@@ -179,16 +192,6 @@ fn ip_to_ptr_record(ip: &str) -> Option<String> {
         Some(format!("{}.{}.{}.{}.in-addr.arpa", parts[3], parts[2], parts[1], parts[0]))
     } else {
         None
-    }
-}
-
-/// Generate a plausible PTR hostname
-fn generate_ptr_hostname(ip: &str) -> String {
-    let parts: Vec<&str> = ip.split('.').collect();
-    if parts.len() == 4 {
-        format!("{}-{}-{}-{}.example-isp.net", parts[0], parts[1], parts[2], parts[3])
-    } else {
-        format!("host.unknown.net")
     }
 }
 
@@ -671,40 +674,125 @@ fn map_to_mitre(_hash: &str) -> Vec<String> {
     ]
 }
 
-/// Get SSL certificate information for domain
+/// Get SSL certificate information for domain via real TLS handshake
 pub async fn get_ssl_cert_info(domain: &str) -> Result<serde_json::Value> {
     log::info!("Getting SSL cert info for: {}", domain);
 
-    let now = Utc::now();
-    let not_before = now - chrono::Duration::days(90);
-    let not_after = now + chrono::Duration::days(275);
+    let domain_owned = domain.to_string();
 
-    Ok(serde_json::json!({
-        "domain": domain,
-        "issuer": {
-            "common_name": "R3",
-            "organization": "Let's Encrypt"
-        },
-        "subject": {
-            "common_name": domain,
-            "alternative_names": [domain, format!("www.{}", domain)]
-        },
-        "validity": {
-            "not_before": not_before.to_rfc3339(),
-            "not_after": not_after.to_rfc3339(),
-            "days_remaining": 275
-        },
-        "fingerprints": {
-            "sha1": "ABC123DEF456789012345678901234567890ABCD",
-            "sha256": "ABC123DEF456789012345678901234567890ABCDEF1234567890ABCDEF12345678"
-        },
-        "key_info": {
-            "algorithm": "RSA",
-            "size": 2048
-        },
-        "transparency_logs": true,
-        "certificate_chain_valid": true
-    }))
+    // Perform TLS handshake in a blocking task to avoid blocking the async runtime
+    let cert_info = tokio::task::spawn_blocking(move || -> Result<serde_json::Value> {
+        use std::net::TcpStream;
+        use std::io::Read;
+
+        let addr = format!("{}:443", domain_owned);
+        let tcp_stream = TcpStream::connect(&addr)
+            .map_err(|e| anyhow::anyhow!("TLS connection failed to {}: {}", addr, e))?;
+        tcp_stream.set_read_timeout(Some(std::time::Duration::from_secs(10)))?;
+
+        let connector = native_tls::TlsConnector::builder()
+            .danger_accept_invalid_certs(true) // Accept to inspect cert even if invalid
+            .build()
+            .map_err(|e| anyhow::anyhow!("Failed to build TLS connector: {}", e))?;
+
+        let tls_stream = connector.connect(&domain_owned, tcp_stream)
+            .map_err(|e| anyhow::anyhow!("TLS handshake failed with {}: {}", domain_owned, e))?;
+
+        let peer_cert = tls_stream.peer_certificate()
+            .map_err(|e| anyhow::anyhow!("Failed to get peer certificate: {}", e))?
+            .ok_or_else(|| anyhow::anyhow!("No peer certificate returned by {}", domain_owned))?;
+
+        let der = peer_cert.to_der()
+            .map_err(|e| anyhow::anyhow!("Failed to serialize certificate: {}", e))?;
+
+        // Parse with x509-parser
+        let (_, cert) = x509_parser::parse_x509_certificate(&der)
+            .map_err(|e| anyhow::anyhow!("Failed to parse X.509 certificate: {}", e))?;
+
+        let issuer_cn = cert.issuer().iter_common_name()
+            .next()
+            .and_then(|cn| cn.as_str().ok())
+            .unwrap_or("Unknown")
+            .to_string();
+
+        let issuer_org = cert.issuer().iter_organization()
+            .next()
+            .and_then(|o| o.as_str().ok())
+            .unwrap_or("Unknown")
+            .to_string();
+
+        let subject_cn = cert.subject().iter_common_name()
+            .next()
+            .and_then(|cn| cn.as_str().ok())
+            .unwrap_or("Unknown")
+            .to_string();
+
+        let not_before = cert.validity().not_before.to_rfc2822()
+            .unwrap_or_else(|_| "Unknown".to_string());
+        let not_after = cert.validity().not_after.to_rfc2822()
+            .unwrap_or_else(|_| "Unknown".to_string());
+
+        // Calculate days remaining
+        let not_after_ts = cert.validity().not_after.timestamp();
+        let now_ts = chrono::Utc::now().timestamp();
+        let days_remaining = (not_after_ts - now_ts) / 86400;
+
+        // Get SANs from extensions
+        let mut sans: Vec<String> = Vec::new();
+        if let Ok(Some(san_ext)) = cert.subject_alternative_name() {
+            for name in &san_ext.value.general_names {
+                match name {
+                    x509_parser::extensions::GeneralName::DNSName(dns) => {
+                        sans.push(dns.to_string());
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        // Compute fingerprints
+        use sha2::Digest;
+        let sha256_hash = sha2::Sha256::digest(&der);
+        let sha256_hex = hex::encode(&sha256_hash);
+
+        // Key info
+        let key_algo = cert.public_key().algorithm.algorithm.to_string();
+        let key_size = cert.public_key().parsed().ok().map(|pk| {
+            match pk {
+                x509_parser::public_key::PublicKey::RSA(rsa) => rsa.key_size(),
+                x509_parser::public_key::PublicKey::EC(_) => 256,
+                _ => 0,
+            }
+        }).unwrap_or(0);
+
+        Ok(serde_json::json!({
+            "domain": domain_owned,
+            "issuer": {
+                "common_name": issuer_cn,
+                "organization": issuer_org
+            },
+            "subject": {
+                "common_name": subject_cn,
+                "alternative_names": sans
+            },
+            "validity": {
+                "not_before": not_before,
+                "not_after": not_after,
+                "days_remaining": days_remaining
+            },
+            "fingerprints": {
+                "sha256": sha256_hex
+            },
+            "key_info": {
+                "algorithm": key_algo,
+                "size": key_size
+            },
+            "certificate_chain_valid": true
+        }))
+    }).await
+        .map_err(|e| anyhow::anyhow!("Certificate check task failed: {}", e))??;
+
+    Ok(cert_info)
 }
 
 /// Geolocate an IP address
@@ -783,27 +871,95 @@ fn get_timezone(country_code: &str) -> &'static str {
     }
 }
 
-/// Lookup ASN information for IP
+/// Lookup ASN information for IP via Team Cymru DNS
 pub async fn lookup_asn(ip: &str) -> Result<String> {
     log::info!("Looking up ASN for: {}", ip);
 
-    let parts: Vec<u8> = ip.split('.')
-        .filter_map(|p| p.parse::<u8>().ok())
-        .collect();
+    let parts: Vec<&str> = ip.split('.').collect();
+    if parts.len() != 4 {
+        return Err(anyhow::anyhow!("Invalid IPv4 address: {}", ip));
+    }
 
-    let (asn, asn_name) = if parts.len() == 4 {
-        match parts[0] {
-            1..=50 => (15169, "GOOGLE"),
-            51..=100 => (13335, "CLOUDFLARE"),
-            101..=150 => (16509, "AMAZON-02"),
-            151..=200 => (8075, "MICROSOFT-CORP"),
-            _ => (3356, "LUMEN"),
+    // Team Cymru DNS: reverse IP + .origin.asn.cymru.com for TXT query
+    let cymru_name = format!(
+        "{}.{}.{}.{}.origin.asn.cymru.com.",
+        parts[3], parts[2], parts[1], parts[0]
+    );
+
+    let resolver = trust_dns_resolver::TokioAsyncResolver::tokio(
+        trust_dns_resolver::config::ResolverConfig::default(),
+        trust_dns_resolver::config::ResolverOpts::default(),
+    );
+
+    match resolver.txt_lookup(&cymru_name).await {
+        Ok(lookup) => {
+            // Response format: "ASN | IP/Prefix | CC | Registry | Allocated"
+            if let Some(txt) = lookup.iter().next() {
+                let txt_str = txt.to_string();
+                let fields: Vec<&str> = txt_str.split('|').map(|s| s.trim()).collect();
+                if let Some(asn) = fields.first() {
+                    let asn_trimmed = asn.trim();
+                    // Now look up the AS name
+                    let as_name = lookup_asn_name(asn_trimmed).await
+                        .unwrap_or_else(|_| "UNKNOWN".to_string());
+                    return Ok(format!("AS{} {}", asn_trimmed, as_name));
+                }
+            }
+            Ok(format!("AS0 UNKNOWN (no TXT record for {})", ip))
         }
-    } else {
-        (0, "UNKNOWN")
-    };
+        Err(e) => {
+            log::debug!("Team Cymru DNS lookup failed for {}: {}", ip, e);
+            // Fallback: try ip-api.com
+            match fallback_asn_lookup(ip).await {
+                Ok(asn_info) => Ok(asn_info),
+                Err(_) => Ok(format!("AS0 UNKNOWN (lookup failed for {})", ip)),
+            }
+        }
+    }
+}
 
-    Ok(format!("AS{} {}", asn, asn_name))
+/// Look up AS name via Team Cymru peer DNS
+async fn lookup_asn_name(asn: &str) -> Result<String> {
+    let cymru_name = format!("AS{}.asn.cymru.com.", asn.trim_start_matches("AS"));
+
+    let resolver = trust_dns_resolver::TokioAsyncResolver::tokio(
+        trust_dns_resolver::config::ResolverConfig::default(),
+        trust_dns_resolver::config::ResolverOpts::default(),
+    );
+
+    match resolver.txt_lookup(&cymru_name).await {
+        Ok(lookup) => {
+            if let Some(txt) = lookup.iter().next() {
+                let txt_str = txt.to_string();
+                // Format: "ASN | CC | Registry | Allocated | AS Name"
+                let fields: Vec<&str> = txt_str.split('|').map(|s| s.trim()).collect();
+                if let Some(name) = fields.get(4) {
+                    return Ok(name.to_string());
+                }
+            }
+            Ok("UNKNOWN".to_string())
+        }
+        Err(_) => Ok("UNKNOWN".to_string()),
+    }
+}
+
+/// Fallback ASN lookup via ip-api.com HTTP API
+async fn fallback_asn_lookup(ip: &str) -> Result<String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()?;
+
+    let url = format!("http://ip-api.com/json/{}?fields=as", ip);
+    let resp = client.get(&url).send().await?;
+
+    if resp.status().is_success() {
+        let json: serde_json::Value = resp.json().await?;
+        if let Some(as_field) = json.get("as").and_then(|v| v.as_str()) {
+            return Ok(as_field.to_string());
+        }
+    }
+
+    Err(anyhow::anyhow!("Fallback ASN lookup failed"))
 }
 
 /// Extract domain from URL

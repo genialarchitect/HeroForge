@@ -16,15 +16,12 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 /// AWS Cloud Scanner implementation
-pub struct AwsScanner {
-    /// Whether to use demo/mock mode (no real API calls)
-    demo_mode: bool,
-}
+pub struct AwsScanner;
 
 impl AwsScanner {
     /// Create a new AWS scanner
-    pub fn new(demo_mode: bool) -> Self {
-        Self { demo_mode }
+    pub fn new() -> Self {
+        Self
     }
 
     /// Load AWS configuration and create SDK clients
@@ -949,234 +946,6 @@ impl AwsScanner {
         Ok((resources, findings))
     }
 
-    // Demo mode generation methods (keeping existing implementation for testing)
-    fn generate_demo_iam_resources(&self) -> (Vec<CloudResource>, Vec<CloudFinding>) {
-        let mut resources = Vec::new();
-        let mut findings = Vec::new();
-        let now = Utc::now();
-
-        // Demo IAM User with issues
-        let user_id = Uuid::new_v4().to_string();
-        resources.push(CloudResource {
-            id: user_id.clone(),
-            resource_id: "AIDAEXAMPLE123".to_string(),
-            resource_type: CloudResourceType::IamUser,
-            provider: CloudProvider::Aws,
-            region: Some("global".to_string()),
-            name: Some("legacy-admin-user".to_string()),
-            arn: Some("arn:aws:iam::123456789012:user/legacy-admin-user".to_string()),
-            tags: HashMap::new(),
-            metadata: serde_json::json!({
-                "has_mfa": false,
-                "access_key_age_days": 365,
-                "has_console_access": true,
-                "attached_policies": ["AdministratorAccess"]
-            }),
-            state: Some("Active".to_string()),
-            discovered_at: now,
-        });
-
-        findings.push(CloudFinding {
-            id: Uuid::new_v4().to_string(),
-            scan_id: String::new(),
-            resource_id: Some(user_id.clone()),
-            finding_type: FindingType::Misconfiguration,
-            severity: FindingSeverity::Critical,
-            title: "IAM User Without MFA".to_string(),
-            description: "IAM user 'legacy-admin-user' has console access but MFA is not enabled.".to_string(),
-            remediation: Some("Enable MFA for all IAM users with console access.".to_string()),
-            compliance_mappings: vec![
-                ComplianceMapping {
-                    framework: "CIS AWS".to_string(),
-                    control_id: "1.10".to_string(),
-                    control_title: Some("Ensure multi-factor authentication (MFA) is enabled for all IAM users".to_string()),
-                },
-            ],
-            affected_resource_arn: Some("arn:aws:iam::123456789012:user/legacy-admin-user".to_string()),
-            evidence: Some(FindingEvidence {
-                description: "User has console access but no MFA device configured".to_string(),
-                raw_data: Some(serde_json::json!({"mfa_devices": [], "password_enabled": true})),
-                expected: Some("MFA enabled".to_string()),
-                actual: Some("No MFA configured".to_string()),
-                collected_at: now,
-            }),
-            status: FindingStatus::Open,
-            created_at: now,
-        });
-
-        (resources, findings)
-    }
-
-    fn generate_demo_storage_resources(&self) -> (Vec<CloudResource>, Vec<CloudFinding>) {
-        let mut resources = Vec::new();
-        let mut findings = Vec::new();
-        let now = Utc::now();
-
-        let bucket_id = Uuid::new_v4().to_string();
-        resources.push(CloudResource {
-            id: bucket_id.clone(),
-            resource_id: "customer-data-backup".to_string(),
-            resource_type: CloudResourceType::S3Bucket,
-            provider: CloudProvider::Aws,
-            region: Some("us-east-1".to_string()),
-            name: Some("customer-data-backup".to_string()),
-            arn: Some("arn:aws:s3:::customer-data-backup".to_string()),
-            tags: HashMap::new(),
-            metadata: serde_json::json!({
-                "public_access_block": {"block_public_acls": false},
-                "versioning": false,
-                "encryption": "none"
-            }),
-            state: Some("Available".to_string()),
-            discovered_at: now,
-        });
-
-        findings.push(CloudFinding {
-            id: Uuid::new_v4().to_string(),
-            scan_id: String::new(),
-            resource_id: Some(bucket_id.clone()),
-            finding_type: FindingType::Exposure,
-            severity: FindingSeverity::Critical,
-            title: "S3 Bucket with Public Access Enabled".to_string(),
-            description: "S3 bucket 'customer-data-backup' has public access block settings disabled.".to_string(),
-            remediation: Some("Enable S3 Block Public Access settings.".to_string()),
-            compliance_mappings: vec![],
-            affected_resource_arn: Some("arn:aws:s3:::customer-data-backup".to_string()),
-            evidence: None,
-            status: FindingStatus::Open,
-            created_at: now,
-        });
-
-        (resources, findings)
-    }
-
-    fn generate_demo_compute_resources(&self) -> (Vec<CloudResource>, Vec<CloudFinding>) {
-        let mut resources = Vec::new();
-        let mut findings = Vec::new();
-        let now = Utc::now();
-
-        let instance_id = Uuid::new_v4().to_string();
-        resources.push(CloudResource {
-            id: instance_id.clone(),
-            resource_id: "i-0abc123def456789".to_string(),
-            resource_type: CloudResourceType::Ec2Instance,
-            provider: CloudProvider::Aws,
-            region: Some("us-east-1".to_string()),
-            name: Some("web-server-prod-01".to_string()),
-            arn: Some("arn:aws:ec2:us-east-1:123456789012:instance/i-0abc123def456789".to_string()),
-            tags: HashMap::new(),
-            metadata: serde_json::json!({
-                "imdsv2_required": false,
-                "public_ip": "203.0.113.45"
-            }),
-            state: Some("running".to_string()),
-            discovered_at: now,
-        });
-
-        findings.push(CloudFinding {
-            id: Uuid::new_v4().to_string(),
-            scan_id: String::new(),
-            resource_id: Some(instance_id.clone()),
-            finding_type: FindingType::Misconfiguration,
-            severity: FindingSeverity::High,
-            title: "EC2 Instance Metadata Service v1 Enabled".to_string(),
-            description: "EC2 instance has IMDSv1 enabled, vulnerable to SSRF attacks.".to_string(),
-            remediation: Some("Require IMDSv2 by setting HttpTokens to 'required'.".to_string()),
-            compliance_mappings: vec![],
-            affected_resource_arn: Some("arn:aws:ec2:us-east-1:123456789012:instance/i-0abc123def456789".to_string()),
-            evidence: None,
-            status: FindingStatus::Open,
-            created_at: now,
-        });
-
-        (resources, findings)
-    }
-
-    fn generate_demo_network_resources(&self) -> (Vec<CloudResource>, Vec<CloudFinding>) {
-        let mut resources = Vec::new();
-        let mut findings = Vec::new();
-        let now = Utc::now();
-
-        let sg_id = Uuid::new_v4().to_string();
-        resources.push(CloudResource {
-            id: sg_id.clone(),
-            resource_id: "sg-0abc123def456789".to_string(),
-            resource_type: CloudResourceType::SecurityGroup,
-            provider: CloudProvider::Aws,
-            region: Some("us-east-1".to_string()),
-            name: Some("web-server-sg".to_string()),
-            arn: Some("arn:aws:ec2:us-east-1:123456789012:security-group/sg-0abc123def456789".to_string()),
-            tags: HashMap::new(),
-            metadata: serde_json::json!({
-                "inbound_rules": [
-                    {"protocol": "tcp", "from_port": 22, "to_port": 22, "source": "0.0.0.0/0"}
-                ]
-            }),
-            state: Some("Available".to_string()),
-            discovered_at: now,
-        });
-
-        findings.push(CloudFinding {
-            id: Uuid::new_v4().to_string(),
-            scan_id: String::new(),
-            resource_id: Some(sg_id.clone()),
-            finding_type: FindingType::Exposure,
-            severity: FindingSeverity::Critical,
-            title: "Security Group Allows SSH from Any IP".to_string(),
-            description: "Security group allows inbound SSH (port 22) from 0.0.0.0/0.".to_string(),
-            remediation: Some("Restrict SSH access to specific IP addresses.".to_string()),
-            compliance_mappings: vec![],
-            affected_resource_arn: Some("arn:aws:ec2:us-east-1:123456789012:security-group/sg-0abc123def456789".to_string()),
-            evidence: None,
-            status: FindingStatus::Open,
-            created_at: now,
-        });
-
-        (resources, findings)
-    }
-
-    fn generate_demo_database_resources(&self) -> (Vec<CloudResource>, Vec<CloudFinding>) {
-        let mut resources = Vec::new();
-        let mut findings = Vec::new();
-        let now = Utc::now();
-
-        let rds_id = Uuid::new_v4().to_string();
-        resources.push(CloudResource {
-            id: rds_id.clone(),
-            resource_id: "production-db".to_string(),
-            resource_type: CloudResourceType::RdsInstance,
-            provider: CloudProvider::Aws,
-            region: Some("us-east-1".to_string()),
-            name: Some("production-db".to_string()),
-            arn: Some("arn:aws:rds:us-east-1:123456789012:db:production-db".to_string()),
-            tags: HashMap::new(),
-            metadata: serde_json::json!({
-                "publicly_accessible": true,
-                "storage_encrypted": false,
-                "backup_retention_period": 0
-            }),
-            state: Some("available".to_string()),
-            discovered_at: now,
-        });
-
-        findings.push(CloudFinding {
-            id: Uuid::new_v4().to_string(),
-            scan_id: String::new(),
-            resource_id: Some(rds_id.clone()),
-            finding_type: FindingType::Exposure,
-            severity: FindingSeverity::Critical,
-            title: "RDS Instance Publicly Accessible".to_string(),
-            description: "RDS instance 'production-db' is configured as publicly accessible.".to_string(),
-            remediation: Some("Disable public accessibility for the RDS instance.".to_string()),
-            compliance_mappings: vec![],
-            affected_resource_arn: Some("arn:aws:rds:us-east-1:123456789012:db:production-db".to_string()),
-            evidence: None,
-            status: FindingStatus::Open,
-            created_at: now,
-        });
-
-        (resources, findings)
-    }
 }
 
 #[async_trait::async_trait]
@@ -1186,95 +955,34 @@ impl CloudScanner for AwsScanner {
     }
 
     async fn scan_iam(&self, config: &CloudScanConfig) -> Result<(Vec<CloudResource>, Vec<CloudFinding>)> {
-        if self.demo_mode {
-            log::warn!("⚠️ AWS IAM scan running in DEMO MODE - data is SIMULATED and NOT from real AWS APIs");
-            return Ok(Self::mark_as_demo_data(self.generate_demo_iam_resources()));
-        }
-
         log::info!("AWS IAM scan running with real AWS SDK");
         self.scan_iam_real(&config.regions).await
     }
 
     async fn scan_storage(&self, config: &CloudScanConfig) -> Result<(Vec<CloudResource>, Vec<CloudFinding>)> {
-        if self.demo_mode {
-            log::warn!("⚠️ AWS Storage scan running in DEMO MODE - data is SIMULATED and NOT from real AWS APIs");
-            return Ok(Self::mark_as_demo_data(self.generate_demo_storage_resources()));
-        }
-
         log::info!("AWS Storage scan running with real AWS SDK");
         self.scan_storage_real(&config.regions).await
     }
 
     async fn scan_compute(&self, config: &CloudScanConfig) -> Result<(Vec<CloudResource>, Vec<CloudFinding>)> {
-        if self.demo_mode {
-            log::warn!("⚠️ AWS Compute scan running in DEMO MODE - data is SIMULATED and NOT from real AWS APIs");
-            return Ok(Self::mark_as_demo_data(self.generate_demo_compute_resources()));
-        }
-
         log::info!("AWS Compute scan running with real AWS SDK");
         self.scan_compute_real(&config.regions).await
     }
 
     async fn scan_network(&self, config: &CloudScanConfig) -> Result<(Vec<CloudResource>, Vec<CloudFinding>)> {
-        if self.demo_mode {
-            log::warn!("⚠️ AWS Network scan running in DEMO MODE - data is SIMULATED and NOT from real AWS APIs");
-            return Ok(Self::mark_as_demo_data(self.generate_demo_network_resources()));
-        }
-
         log::info!("AWS Network scan running with real AWS SDK");
         self.scan_network_real(&config.regions).await
     }
 
     async fn scan_database(&self, config: &CloudScanConfig) -> Result<(Vec<CloudResource>, Vec<CloudFinding>)> {
-        if self.demo_mode {
-            log::warn!("⚠️ AWS Database scan running in DEMO MODE - data is SIMULATED and NOT from real AWS APIs");
-            return Ok(Self::mark_as_demo_data(self.generate_demo_database_resources()));
-        }
-
         log::info!("AWS Database scan running with real AWS SDK");
         self.scan_database_real(&config.regions).await
-    }
-}
-
-impl AwsScanner {
-    /// Mark all resources and findings as demo data
-    /// This is critical to ensure users know the data is not from real cloud APIs
-    fn mark_as_demo_data(mut data: (Vec<CloudResource>, Vec<CloudFinding>)) -> (Vec<CloudResource>, Vec<CloudFinding>) {
-        for resource in &mut data.0 {
-            // Add demo warning to metadata
-            if let Some(obj) = resource.metadata.as_object_mut() {
-                obj.insert("_demo_warning".to_string(),
-                    serde_json::json!("⚠️ DEMO DATA - This resource is simulated and does not represent real cloud infrastructure"));
-            }
-        }
-        for finding in &mut data.1 {
-            // Prepend warning to description
-            finding.description = format!("⚠️ [DEMO DATA - NOT REAL] {}", finding.description);
-        }
-        data
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[tokio::test]
-    async fn test_aws_demo_scan() {
-        let scanner = AwsScanner::new(true);
-        let config = CloudScanConfig {
-            provider: CloudProvider::Aws,
-            regions: vec!["us-east-1".to_string()],
-            scan_types: vec![CloudScanType::All],
-            credentials_id: None,
-            demo_mode: true,
-        };
-
-        let (resources, findings) = scanner.run_scan(&config).await.unwrap();
-
-        assert!(!resources.is_empty(), "Demo scan should return resources");
-        assert!(!findings.is_empty(), "Demo scan should return findings");
-    }
 
     #[test]
     fn test_provider_display() {

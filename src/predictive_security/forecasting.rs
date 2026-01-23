@@ -1,56 +1,88 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use chrono::{Utc, Duration, Datelike, Weekday};
+use chrono::{Utc, Duration};
 use std::collections::HashMap;
 use once_cell::sync::Lazy;
 use std::sync::{Arc, RwLock};
 
-/// Historical metrics for forecasting
+/// Historical metrics for forecasting - loaded from real database
 static HISTORICAL_METRICS: Lazy<Arc<RwLock<HistoricalMetrics>>> = Lazy::new(|| {
-    Arc::new(RwLock::new(HistoricalMetrics::default()))
+    Arc::new(RwLock::new(HistoricalMetrics { daily_incidents: Vec::new() }))
 });
 
 #[derive(Debug, Clone)]
 struct HistoricalMetrics {
     daily_incidents: Vec<DailyMetric>,
-    staffing_utilization: Vec<StaffingMetric>,
-    infrastructure_usage: Vec<InfrastructureMetric>,
-    attack_surface_data: Vec<AttackSurfaceMetric>,
-    budget_history: Vec<BudgetMetric>,
 }
 
-impl Default for HistoricalMetrics {
-    fn default() -> Self {
-        // Initialize with simulated historical data
-        let mut daily_incidents = Vec::new();
-        let now = Utc::now();
+/// Load historical metrics from the real database
+async fn load_metrics_from_db() -> Vec<DailyMetric> {
+    let db_url = std::env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "sqlite:./heroforge.db".to_string());
 
-        // Generate 90 days of historical data
-        for i in 0..90 {
-            let date = now - Duration::days(90 - i);
-            let base = 40.0;
-            let dow_factor = match date.weekday() {
-                Weekday::Sat | Weekday::Sun => 0.5,
-                Weekday::Mon => 1.2,
-                _ => 1.0,
-            };
-            let noise = ((i as f64 * 13.0) % 20.0 - 10.0) / 100.0;
-            let count = (base * dow_factor * (1.0 + noise)) as i32;
+    use sqlx::sqlite::SqlitePoolOptions;
+    use sqlx::Row;
 
-            daily_incidents.push(DailyMetric {
-                date,
-                value: count as f64,
-                category: "total".to_string(),
-            });
+    let pool = match SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect(&db_url)
+        .await
+    {
+        Ok(p) => p,
+        Err(e) => {
+            log::debug!("Forecasting: could not connect to DB: {}", e);
+            return Vec::new();
         }
+    };
 
-        Self {
-            daily_incidents,
-            staffing_utilization: Vec::new(),
-            infrastructure_usage: Vec::new(),
-            attack_surface_data: Vec::new(),
-            budget_history: Vec::new(),
+    let mut metrics = Vec::new();
+
+    // Query daily incident counts from scan_results for last 90 days
+    let sql = "SELECT DATE(created_at) as day, COUNT(*) as count \
+               FROM scan_results \
+               WHERE created_at >= datetime('now', '-90 days') \
+               GROUP BY DATE(created_at) \
+               ORDER BY day";
+
+    match sqlx::query(sql).fetch_all(&pool).await {
+        Ok(rows) => {
+            for row in rows {
+                let day_str: String = row.try_get("day").unwrap_or_default();
+                let count: i64 = row.try_get("count").unwrap_or(0);
+
+                if let Ok(date) = chrono::NaiveDate::parse_from_str(&day_str, "%Y-%m-%d") {
+                    let dt = date.and_hms_opt(0, 0, 0)
+                        .map(|naive| chrono::DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc));
+                    if let Some(dt) = dt {
+                        metrics.push(DailyMetric {
+                            date: dt,
+                            value: count as f64,
+                            category: "scan_results".to_string(),
+                        });
+                    }
+                }
+            }
         }
+        Err(e) => {
+            log::debug!("Forecasting: scan_results query failed: {}", e);
+        }
+    }
+
+    pool.close().await;
+    metrics
+}
+
+/// Ensure metrics are loaded from DB before use
+async fn ensure_metrics_loaded() {
+    let needs_load = {
+        let metrics = HISTORICAL_METRICS.read().unwrap();
+        metrics.daily_incidents.is_empty()
+    };
+
+    if needs_load {
+        let db_metrics = load_metrics_from_db().await;
+        let mut metrics = HISTORICAL_METRICS.write().unwrap();
+        metrics.daily_incidents = db_metrics;
     }
 }
 
@@ -59,40 +91,6 @@ struct DailyMetric {
     date: chrono::DateTime<Utc>,
     value: f64,
     category: String,
-}
-
-#[derive(Debug, Clone)]
-struct StaffingMetric {
-    date: chrono::DateTime<Utc>,
-    analysts_on_duty: i32,
-    tickets_handled: i32,
-    avg_resolution_hours: f64,
-}
-
-#[derive(Debug, Clone)]
-struct InfrastructureMetric {
-    date: chrono::DateTime<Utc>,
-    cpu_utilization: f64,
-    memory_utilization: f64,
-    storage_used_tb: f64,
-    network_throughput_gbps: f64,
-}
-
-#[derive(Debug, Clone)]
-struct AttackSurfaceMetric {
-    date: chrono::DateTime<Utc>,
-    total_assets: i32,
-    internet_facing: i32,
-    vulnerabilities: i32,
-    critical_vulns: i32,
-}
-
-#[derive(Debug, Clone)]
-struct BudgetMetric {
-    month: String,
-    allocated: f64,
-    spent: f64,
-    categories: HashMap<String, f64>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -108,6 +106,7 @@ pub struct ResourceForecast {
 
 /// Forecast SOC analyst staffing requirements
 pub async fn forecast_soc_staffing(horizon_days: i32) -> Result<ResourceForecast> {
+    ensure_metrics_loaded().await;
     let metrics = HISTORICAL_METRICS.read().unwrap();
 
     // Calculate current capacity and workload

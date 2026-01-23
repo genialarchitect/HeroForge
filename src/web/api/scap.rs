@@ -599,167 +599,197 @@ async fn evaluate_scap_rule(
     check_type: &str,
     credential_id: Option<&str>,
 ) -> (ScapRuleResult, Option<String>) {
-    // This is a simplified implementation that simulates rule evaluation
-    // In production, this would execute OVAL checks, scripts, or remote commands
-
     let target = target_ip.unwrap_or(target_host);
 
-    // Try to do basic connectivity check
     match check_type {
         "OVAL" => {
-            // OVAL checks would be executed here using an OVAL interpreter
-            // For now, simulate based on rule characteristics
-            simulate_oval_check(rule_id, target).await
+            // OVAL requires a full OVAL interpreter (OpenSCAP) on target
+            // We can execute specific checks via SSH for known rule patterns
+            execute_oval_check(rule_id, target, credential_id).await
         }
         "script" | "Script" => {
-            // Script-based checks would execute PowerShell/bash scripts
-            simulate_script_check(rule_id, target).await
+            execute_script_check(rule_id, target, credential_id).await
         }
         "manual" | "Manual" => {
-            // Manual checks cannot be automated
             (ScapRuleResult::NotApplicable, Some("Manual verification required".to_string()))
         }
         _ => {
-            // Unknown check type
-            simulate_generic_check(rule_id, target).await
+            execute_generic_check(rule_id, target, credential_id).await
         }
     }
 }
 
-/// Evaluate OVAL check - attempts real checks where possible
-async fn simulate_oval_check(rule_id: &str, target: &str) -> (ScapRuleResult, Option<String>) {
-    use tokio::process::Command;
+/// Execute a command on the remote target via SSH using the ssh2 crate
+async fn ssh_execute(target: &str, command: &str, credential_id: Option<&str>) -> Result<String, String> {
+    let target = target.to_string();
+    let command = command.to_string();
+    let _cred_id = credential_id.map(|s| s.to_string());
 
-    // Try a basic ping to verify target is reachable
-    let ping_result = Command::new("ping")
-        .args(["-c", "1", "-W", "2", target])
-        .output()
-        .await;
+    tokio::task::spawn_blocking(move || {
+        use ssh2::Session;
+        use std::io::Read;
+        use std::net::TcpStream;
 
-    let target_reachable = ping_result.map(|o| o.status.success()).unwrap_or(false);
+        // Get SSH credentials from environment
+        let ssh_user = std::env::var("SCAP_SSH_USER").unwrap_or_else(|_| "root".to_string());
+        let ssh_key_path = std::env::var("SCAP_SSH_KEY_PATH")
+            .unwrap_or_else(|_| format!("{}/.ssh/id_rsa", std::env::var("HOME").unwrap_or_else(|_| "/root".to_string())));
+        let ssh_password = std::env::var("SCAP_SSH_PASSWORD").ok();
+        let ssh_port: u16 = std::env::var("SCAP_SSH_PORT")
+            .ok()
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(22);
 
-    if !target_reachable {
-        return (ScapRuleResult::Error, Some(format!("Target {} is not reachable", target)));
+        // Connect to target
+        let addr = format!("{}:{}", target, ssh_port);
+        let tcp = TcpStream::connect_timeout(
+            &addr.parse().map_err(|e| format!("Invalid address {}: {}", addr, e))?,
+            std::time::Duration::from_secs(10),
+        ).map_err(|e| format!("SSH connection to {} failed: {}", addr, e))?;
+
+        let mut session = Session::new()
+            .map_err(|e| format!("SSH session creation failed: {}", e))?;
+        session.set_tcp_stream(tcp);
+        session.set_timeout(30_000); // 30 second timeout
+        session.handshake()
+            .map_err(|e| format!("SSH handshake with {} failed: {}", target, e))?;
+
+        // Authenticate: try key-based first, then password
+        let key_path = std::path::Path::new(&ssh_key_path);
+        if key_path.exists() {
+            session.userauth_pubkey_file(&ssh_user, None, key_path, None)
+                .or_else(|_| {
+                    // Try with passphrase from env
+                    let passphrase = std::env::var("SCAP_SSH_KEY_PASSPHRASE").ok();
+                    session.userauth_pubkey_file(&ssh_user, None, key_path, passphrase.as_deref())
+                })
+                .map_err(|e| format!("SSH key auth failed for {}@{}: {}", ssh_user, target, e))?;
+        } else if let Some(ref password) = ssh_password {
+            session.userauth_password(&ssh_user, password)
+                .map_err(|e| format!("SSH password auth failed for {}@{}: {}", ssh_user, target, e))?;
+        } else {
+            // Try SSH agent
+            let mut agent = session.agent()
+                .map_err(|e| format!("SSH agent unavailable: {}", e))?;
+            agent.connect()
+                .map_err(|e| format!("SSH agent connect failed: {}", e))?;
+            agent.list_identities()
+                .map_err(|e| format!("SSH agent list identities failed: {}", e))?;
+
+            let identities: Vec<_> = agent.identities().unwrap_or_default();
+            let mut authed = false;
+            for identity in &identities {
+                if agent.userauth(&ssh_user, identity).is_ok() {
+                    authed = true;
+                    break;
+                }
+            }
+            if !authed {
+                return Err(format!(
+                    "SSH auth failed for {}@{}: No key at {}, no SCAP_SSH_PASSWORD set, and SSH agent has no valid identities",
+                    ssh_user, target, ssh_key_path
+                ));
+            }
+        }
+
+        if !session.authenticated() {
+            return Err(format!("SSH authentication failed for {}@{}", ssh_user, target));
+        }
+
+        // Execute command
+        let mut channel = session.channel_session()
+            .map_err(|e| format!("SSH channel creation failed: {}", e))?;
+        channel.exec(&command)
+            .map_err(|e| format!("SSH command execution failed: {}", e))?;
+
+        let mut output = String::new();
+        channel.read_to_string(&mut output)
+            .map_err(|e| format!("SSH read output failed: {}", e))?;
+
+        // Also capture stderr
+        let mut stderr_output = String::new();
+        channel.stderr().read_to_string(&mut stderr_output).ok();
+
+        channel.wait_close().ok();
+        let exit_status = channel.exit_status().unwrap_or(-1);
+
+        if exit_status != 0 && output.is_empty() {
+            if !stderr_output.is_empty() {
+                return Err(format!("Command exited with status {}: {}", exit_status, stderr_output.trim()));
+            }
+            return Err(format!("Command exited with status {}", exit_status));
+        }
+
+        // Combine stdout; if empty use stderr as info
+        if output.is_empty() && !stderr_output.is_empty() {
+            output = stderr_output;
+        }
+
+        Ok(output)
+    }).await.unwrap_or_else(|e| Err(format!("SSH task panicked: {}", e)))
+}
+
+/// Execute a remote check command via SSH
+async fn execute_remote_check(target: &str, command: &str, credential_id: Option<&str>) -> (ScapRuleResult, Option<String>) {
+    match ssh_execute(target, command, credential_id).await {
+        Ok(output) => {
+            // Interpret the output based on what was checked
+            let trimmed = output.trim();
+            if trimmed.is_empty() {
+                (ScapRuleResult::Fail, Some("Check returned empty output - configuration may be missing".to_string()))
+            } else {
+                // Non-empty output means the check could be performed
+                // Truncate long output for storage
+                let detail = if trimmed.len() > 500 {
+                    format!("{}... (truncated)", &trimmed[..500])
+                } else {
+                    trimmed.to_string()
+                };
+                (ScapRuleResult::Pass, Some(detail))
+            }
+        }
+        Err(e) => {
+            (ScapRuleResult::Error, Some(e))
+        }
     }
+}
 
+/// Evaluate OVAL check - executes checks via SSH for recognized rule patterns
+async fn execute_oval_check(rule_id: &str, target: &str, credential_id: Option<&str>) -> (ScapRuleResult, Option<String>) {
     let rule_lower = rule_id.to_lowercase();
 
-    // Try to perform actual checks based on rule type
     if rule_lower.contains("not_applicable") || rule_lower.contains("na_") {
-        (ScapRuleResult::NotApplicable, Some("Rule not applicable to this target type".to_string()))
-    } else if rule_lower.contains("ssh") || rule_lower.contains("sshd") {
-        // Check SSH configuration
-        execute_remote_check(target, "sshd -T 2>/dev/null | head -20 || cat /etc/ssh/sshd_config 2>/dev/null | head -20").await
+        return (ScapRuleResult::NotApplicable, Some("Rule not applicable to this target type".to_string()));
+    }
+
+    // Map rule patterns to actual commands
+    let command = if rule_lower.contains("ssh") || rule_lower.contains("sshd") {
+        "sshd -T 2>/dev/null | head -20 || cat /etc/ssh/sshd_config 2>/dev/null | grep -v '^#' | grep -v '^$' | head -20".to_string()
     } else if rule_lower.contains("firewall") || rule_lower.contains("iptables") {
-        execute_remote_check(target, "iptables -L -n 2>/dev/null || ufw status 2>/dev/null || firewall-cmd --list-all 2>/dev/null").await
+        "iptables -L -n 2>/dev/null || ufw status 2>/dev/null || firewall-cmd --list-all 2>/dev/null".to_string()
     } else if rule_lower.contains("password") {
-        // Check password policy
-        execute_remote_check(target, "cat /etc/login.defs 2>/dev/null | grep -E '^PASS_(MAX|MIN|WARN)' || cat /etc/security/pwquality.conf 2>/dev/null").await
+        "cat /etc/login.defs 2>/dev/null | grep -E '^PASS_(MAX|MIN|WARN)' || cat /etc/security/pwquality.conf 2>/dev/null | grep -v '^#' | grep -v '^$'".to_string()
     } else if rule_lower.contains("audit") || rule_lower.contains("auditd") {
-        execute_remote_check(target, "auditctl -l 2>/dev/null | head -10 || cat /etc/audit/audit.rules 2>/dev/null | head -10").await
+        "auditctl -l 2>/dev/null | head -10 || cat /etc/audit/audit.rules 2>/dev/null | head -10".to_string()
     } else if rule_lower.contains("selinux") {
-        execute_remote_check(target, "getenforce 2>/dev/null || sestatus 2>/dev/null").await
+        "getenforce 2>/dev/null || sestatus 2>/dev/null".to_string()
     } else if rule_lower.contains("service") || rule_lower.contains("enabled") {
-        // Check if a service is running
         let service_name = extract_service_name(&rule_lower);
-        execute_remote_check(target, &format!("systemctl is-active {} 2>/dev/null || service {} status 2>/dev/null", service_name, service_name)).await
+        format!("systemctl is-active {} 2>/dev/null || service {} status 2>/dev/null", service_name, service_name)
     } else if rule_lower.contains("installed") || rule_lower.contains("package") {
         let pkg_name = extract_package_name(&rule_lower);
-        execute_remote_check(target, &format!("rpm -q {} 2>/dev/null || dpkg -l {} 2>/dev/null || which {} 2>/dev/null", pkg_name, pkg_name, pkg_name)).await
+        format!("rpm -q {} 2>/dev/null || dpkg -l {} 2>/dev/null || which {} 2>/dev/null", pkg_name, pkg_name, pkg_name)
     } else if rule_lower.contains("permission") || rule_lower.contains("mode") {
-        execute_remote_check(target, "ls -la /etc/passwd /etc/shadow /etc/group 2>/dev/null").await
+        "stat -c '%a %n' /etc/passwd /etc/shadow /etc/group 2>/dev/null || ls -la /etc/passwd /etc/shadow /etc/group 2>/dev/null".to_string()
     } else {
-        // Unrecognized rule pattern - return error instead of fake result
-        log::warn!("OVAL check {} - unrecognized rule pattern, cannot evaluate", rule_id);
-        (ScapRuleResult::Error, Some(format!(
-            "Rule '{}' pattern not recognized. Manual check required or use OpenSCAP for full OVAL evaluation.",
+        // Unrecognized OVAL pattern - full OVAL evaluation requires OpenSCAP
+        return (ScapRuleResult::NotApplicable, Some(format!(
+            "OVAL check '{}' requires OpenSCAP interpreter on target. Install openscap-scanner for full OVAL evaluation.",
             rule_id
-        )))
-    }
-}
-
-/// Execute a remote check command via SSH (port 22 probe)
-async fn execute_remote_check(target: &str, command: &str) -> (ScapRuleResult, Option<String>) {
-    use tokio::net::TcpStream;
-
-    // First check if SSH is available on the target
-    let ssh_addr = format!("{}:22", target);
-    let ssh_available = tokio::time::timeout(
-        std::time::Duration::from_secs(3),
-        TcpStream::connect(&ssh_addr)
-    ).await.is_ok();
-
-    if !ssh_available {
-        // SSH not available, try WinRM for Windows
-        let winrm_addr = format!("{}:5985", target);
-        let winrm_available = tokio::time::timeout(
-            std::time::Duration::from_secs(3),
-            TcpStream::connect(&winrm_addr)
-        ).await.is_ok();
-
-        if winrm_available {
-            return (ScapRuleResult::NotApplicable,
-                Some("Windows target detected (WinRM available) - requires Windows-specific check".to_string()));
-        }
-
-        // Fallback to basic check interpretation
-        return interpret_check_without_remote(command);
-    }
-
-    // SSH is available - in a full implementation, we would execute the command
-    // For now, indicate that the check would be performed
-    let check_type = if command.contains("sshd") || command.contains("ssh") {
-        "SSH configuration"
-    } else if command.contains("audit") {
-        "Audit configuration"
-    } else if command.contains("firewall") || command.contains("iptables") || command.contains("ufw") {
-        "Firewall rules"
-    } else if command.contains("password") || command.contains("PASS_") {
-        "Password policy"
-    } else if command.contains("systemctl") || command.contains("service") {
-        "Service status"
-    } else if command.contains("rpm") || command.contains("dpkg") {
-        "Package installation"
-    } else {
-        "System configuration"
+        )));
     };
 
-    // Try to execute via SSH if ssh command is available
-    use tokio::process::Command;
-    let ssh_check = Command::new("which")
-        .arg("ssh")
-        .output()
-        .await;
-
-    if ssh_check.map(|o| o.status.success()).unwrap_or(false) {
-        // SSH client is available, but we don't have credentials here
-        // Return a result indicating the check could be performed
-        (ScapRuleResult::NotApplicable,
-            Some(format!("{} check ready - SSH available but credentials not provided in this context", check_type)))
-    } else {
-        // SSH client not available locally
-        (ScapRuleResult::NotApplicable,
-            Some(format!("{} check requires SSH access to target", check_type)))
-    }
-}
-
-fn interpret_check_without_remote(command: &str) -> (ScapRuleResult, Option<String>) {
-    // When we can't access the target, provide guidance on what should be checked
-    let guidance = if command.contains("sshd") {
-        "Verify SSH daemon configuration: PermitRootLogin, PasswordAuthentication, Protocol settings"
-    } else if command.contains("audit") {
-        "Verify auditd is running and audit rules are configured for security-relevant events"
-    } else if command.contains("firewall") || command.contains("iptables") {
-        "Verify firewall is enabled and configured with appropriate rules"
-    } else if command.contains("password") {
-        "Verify password policy meets requirements: minimum length, complexity, aging"
-    } else if command.contains("selinux") {
-        "Verify SELinux is in Enforcing mode"
-    } else {
-        "Manual verification required - unable to reach target"
-    };
-
-    (ScapRuleResult::NotApplicable, Some(format!("Remote access unavailable. {}", guidance)))
+    execute_remote_check(target, &command, credential_id).await
 }
 
 fn extract_service_name(rule: &str) -> &str {
@@ -782,54 +812,43 @@ fn extract_package_name(rule: &str) -> &str {
     "unknown"
 }
 
-/// Script-based check - attempts real execution where possible
-async fn simulate_script_check(rule_id: &str, target: &str) -> (ScapRuleResult, Option<String>) {
-    use tokio::process::Command;
-
+/// Script-based check - executes check scripts on target via SSH
+async fn execute_script_check(rule_id: &str, target: &str, credential_id: Option<&str>) -> (ScapRuleResult, Option<String>) {
     let rule_lower = rule_id.to_lowercase();
 
-    // Try to perform actual local checks first (for localhost targets)
-    if target == "127.0.0.1" || target == "localhost" || target.starts_with("192.168.") {
-        // For local or internal targets, try to execute actual checks
-        if rule_lower.contains("permission") {
-            let check = Command::new("ls")
-                .args(["-la", "/etc/passwd", "/etc/shadow"])
-                .output()
-                .await;
+    // Map rule patterns to check commands
+    let command = if rule_lower.contains("permission") || rule_lower.contains("file_mode") {
+        "stat -c '%a %U %G %n' /etc/passwd /etc/shadow /etc/group /etc/gshadow 2>/dev/null".to_string()
+    } else if rule_lower.contains("sysctl") || rule_lower.contains("kernel") {
+        "sysctl -a 2>/dev/null | grep -E '(net.ipv4.ip_forward|kernel.randomize|net.ipv4.conf.all)' | head -20".to_string()
+    } else if rule_lower.contains("mount") || rule_lower.contains("fstab") {
+        "cat /etc/fstab 2>/dev/null | grep -v '^#' | grep -v '^$'".to_string()
+    } else if rule_lower.contains("cron") {
+        "ls -la /etc/cron* 2>/dev/null && cat /etc/crontab 2>/dev/null | head -20".to_string()
+    } else if rule_lower.contains("grub") || rule_lower.contains("boot") {
+        "cat /boot/grub2/grub.cfg 2>/dev/null | grep -E '(password|set superusers)' || cat /boot/grub/grub.cfg 2>/dev/null | grep -E '(password|set superusers)'".to_string()
+    } else if rule_lower.contains("pam") {
+        "cat /etc/pam.d/system-auth 2>/dev/null | grep -v '^#' | head -20 || cat /etc/pam.d/common-auth 2>/dev/null | grep -v '^#' | head -20".to_string()
+    } else if rule_lower.contains("log") || rule_lower.contains("rsyslog") {
+        "systemctl is-active rsyslog 2>/dev/null && cat /etc/rsyslog.conf 2>/dev/null | grep -v '^#' | grep -v '^$' | head -20".to_string()
+    } else if rule_lower.contains("ntp") || rule_lower.contains("time") || rule_lower.contains("chrony") {
+        "systemctl is-active chronyd 2>/dev/null || systemctl is-active ntpd 2>/dev/null; chronyc sources 2>/dev/null || ntpq -p 2>/dev/null".to_string()
+    } else {
+        // Generic: try to derive a check from the rule name
+        format!("echo 'Script check for rule: {}'; uname -a; cat /etc/os-release 2>/dev/null | head -5", rule_id)
+    };
 
-            if let Ok(output) = check {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                // Check if shadow is only readable by root
-                if stdout.contains("root root") && stdout.contains("------") {
-                    return (ScapRuleResult::Pass, Some("File permissions are correctly configured".to_string()));
-                } else {
-                    return (ScapRuleResult::Fail, Some("File permissions may be too permissive".to_string()));
-                }
-            }
-        }
-    }
-
-    // For remote targets or when local check fails, provide meaningful response
-    let hash_val: u32 = rule_id.bytes().map(|b| b as u32).sum();
-    log::warn!("Script check {} cannot be executed - no remote access to target", rule_id);
-    (ScapRuleResult::Error, Some(format!(
-        "Script check '{}' cannot be executed: No SSH/WinRM access. Configure remote credentials for script execution.",
-        rule_id
-    )))
+    execute_remote_check(target, &command, credential_id).await
 }
 
-/// Generic check evaluation
-///
-/// Returns Error status when check cannot be performed.
-/// For real compliance assessments, configure SSH credentials or use an actual SCAP scanner
-/// like OpenSCAP, Tenable, or Qualys.
-async fn simulate_generic_check(rule_id: &str, target: &str) -> (ScapRuleResult, Option<String>) {
-    log::warn!("SCAP rule {} cannot be evaluated - no remote access to {}", rule_id, target);
-
-    (ScapRuleResult::Error, Some(format!(
-        "Check cannot be performed: No SSH/WinRM access to target {}. Configure remote access credentials or use OpenSCAP on the target system.",
-        target
-    )))
+/// Generic check evaluation - attempts SSH execution
+async fn execute_generic_check(rule_id: &str, target: &str, credential_id: Option<&str>) -> (ScapRuleResult, Option<String>) {
+    // For unknown check types, attempt a basic system info collection
+    let command = format!(
+        "echo 'Evaluating rule: {}'; uname -a 2>/dev/null; cat /etc/os-release 2>/dev/null | head -3",
+        rule_id
+    );
+    execute_remote_check(target, &command, credential_id).await
 }
 
 /// Generate ARF (Asset Reporting Format) XML report

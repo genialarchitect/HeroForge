@@ -284,97 +284,25 @@ pub struct PipelineResult {
     pub errors: Vec<String>,
 }
 
-/// Process batch analytics query
+/// Process batch analytics query using real SQLite data
 pub async fn process_batch_query(query: &AnalyticsQuery) -> Result<AnalyticsResult> {
     let start = std::time::Instant::now();
 
-    // In a production system, this would:
-    // 1. Query historical data from data warehouse
-    // 2. Apply MapReduce-style processing
-    // 3. Aggregate results across partitions
+    let db_url = std::env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "sqlite:./heroforge.db".to_string());
 
-    let mut rows: Vec<HashMap<String, serde_json::Value>> = Vec::new();
-
-    // Simulate batch processing of security data
-    // In reality, this would connect to Spark/Flink/etc.
-
-    // Process time range if specified
-    if let Some(ref time_range) = query.time_range {
-        log::debug!("Processing batch for time range: {:?} to {:?}",
-            time_range.start, time_range.end);
-
-        // Calculate time buckets for aggregation
-        let duration = (time_range.end - time_range.start).num_hours();
-        let bucket_hours = if duration <= 24 { 1 } else if duration <= 168 { 4 } else { 24 };
-
-        let mut current = time_range.start;
-        while current < time_range.end {
-            let bucket_end = current + chrono::Duration::hours(bucket_hours);
-
-            let mut row = HashMap::new();
-            row.insert("time_bucket".to_string(), serde_json::json!(current.to_rfc3339()));
-            row.insert("bucket_end".to_string(), serde_json::json!(bucket_end.to_rfc3339()));
-
-            // Simulate aggregated metrics for each bucket
-            for agg in &query.parameters.aggregations {
-                let value = match &agg.function {
-                    AggregationFunction::Count => rand_value(100.0, 10000.0),
-                    AggregationFunction::Sum => rand_value(1000.0, 100000.0),
-                    AggregationFunction::Average => rand_value(10.0, 100.0),
-                    AggregationFunction::Min => rand_value(1.0, 10.0),
-                    AggregationFunction::Max => rand_value(100.0, 1000.0),
-                    _ => rand_value(0.0, 100.0),
-                };
-                row.insert(agg.alias.clone(), serde_json::json!(value));
-            }
-
-            rows.push(row);
-            current = bucket_end;
+    let rows = match execute_batch_sql(&db_url, query).await {
+        Ok(r) => r,
+        Err(e) => {
+            log::debug!("Batch query DB execution failed ({}), returning empty results", e);
+            Vec::new()
         }
-    } else {
-        // No time range - return summary statistics
-        let mut row = HashMap::new();
-        row.insert("period".to_string(), serde_json::json!("all_time"));
+    };
 
-        for agg in &query.parameters.aggregations {
-            let value = match &agg.function {
-                AggregationFunction::Count => rand_value(10000.0, 1000000.0),
-                AggregationFunction::Sum => rand_value(100000.0, 10000000.0),
-                AggregationFunction::Average => rand_value(10.0, 100.0),
-                _ => rand_value(0.0, 100.0),
-            };
-            row.insert(agg.alias.clone(), serde_json::json!(value));
-        }
+    let total_count = rows.len();
 
-        rows.push(row);
-    }
-
-    // Apply filters
-    let filtered_rows: Vec<_> = rows.into_iter()
-        .filter(|row| {
-            query.parameters.filters.iter().all(|filter| {
-                row.get(&filter.field).map_or(false, |value| {
-                    match filter.operator {
-                        FilterOperator::Equals => value == &filter.value,
-                        FilterOperator::GreaterThan => {
-                            value.as_f64().zip(filter.value.as_f64())
-                                .map_or(false, |(a, b)| a > b)
-                        }
-                        FilterOperator::LessThan => {
-                            value.as_f64().zip(filter.value.as_f64())
-                                .map_or(false, |(a, b)| a < b)
-                        }
-                        _ => true,
-                    }
-                })
-            })
-        })
-        .collect();
-
-    let total_count = filtered_rows.len();
-
-    // Apply sorting
-    let mut sorted_rows = filtered_rows;
+    // Apply client-side sorting
+    let mut sorted_rows = rows;
     for sort in &query.parameters.sorting {
         sorted_rows.sort_by(|a, b| {
             let a_val = a.get(&sort.field).and_then(|v| v.as_f64()).unwrap_or(0.0);
@@ -413,20 +341,193 @@ pub async fn process_batch_query(query: &AnalyticsQuery) -> Result<AnalyticsResu
         total_count,
         metadata: ResultMetadata {
             columns,
-            scanned_bytes: total_count * 256, // Estimate
+            scanned_bytes: total_count * 256,
             cached: false,
         },
     })
 }
 
-/// Generate random value for simulation
-fn rand_value(min: f64, max: f64) -> f64 {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .subsec_nanos() as f64;
-    min + (nanos / 1_000_000_000.0) * (max - min)
+/// Execute batch analytics SQL against the real database
+async fn execute_batch_sql(
+    db_url: &str,
+    query: &AnalyticsQuery,
+) -> Result<Vec<HashMap<String, serde_json::Value>>> {
+    use sqlx::sqlite::SqlitePoolOptions;
+    use sqlx::{Row, Column};
+
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect(db_url)
+        .await?;
+
+    let mut rows = Vec::new();
+
+    // Build SQL based on aggregation requests
+    if query.parameters.aggregations.is_empty() {
+        // No aggregations - just return count from scan_results
+        let time_clause = if let Some(ref tr) = query.time_range {
+            format!(
+                " WHERE created_at BETWEEN '{}' AND '{}'",
+                tr.start.to_rfc3339(),
+                tr.end.to_rfc3339()
+            )
+        } else {
+            String::new()
+        };
+
+        let sql = format!("SELECT COUNT(*) as total_count FROM scan_results{}", time_clause);
+        if let Ok(result) = sqlx::query(&sql).fetch_optional(&pool).await {
+            if let Some(row) = result {
+                let mut map = HashMap::new();
+                map.insert("period".to_string(), serde_json::json!("all_time"));
+                let count: i64 = row.try_get("total_count").unwrap_or(0);
+                map.insert("total_count".to_string(), serde_json::json!(count));
+                rows.push(map);
+            }
+        }
+    } else {
+        // Build aggregation query
+        let agg_exprs: Vec<String> = query.parameters.aggregations.iter().map(|agg| {
+            let sql_fn = match &agg.function {
+                AggregationFunction::Count => "COUNT".to_string(),
+                AggregationFunction::Sum => "SUM".to_string(),
+                AggregationFunction::Average => "AVG".to_string(),
+                AggregationFunction::Min => "MIN".to_string(),
+                AggregationFunction::Max => "MAX".to_string(),
+                _ => "COUNT".to_string(),
+            };
+
+            let field = if agg.field == "*" || agg.field.is_empty() {
+                "*".to_string()
+            } else {
+                format!("\"{}\"", agg.field)
+            };
+
+            // COUNT(*) is always valid, others need a real column
+            if sql_fn == "COUNT" {
+                format!("{}({}) as \"{}\"", sql_fn, field, agg.alias)
+            } else {
+                format!("{}(CAST({} AS REAL)) as \"{}\"", sql_fn, field, agg.alias)
+            }
+        }).collect();
+
+        let select_clause = agg_exprs.join(", ");
+
+        // Determine table based on field names
+        let table = determine_table_for_fields(&query.parameters.aggregations);
+
+        if let Some(ref time_range) = query.time_range {
+            // Time-bucketed query
+            let duration = (time_range.end - time_range.start).num_hours();
+            let bucket_hours = if duration <= 24 { 1 } else if duration <= 168 { 4 } else { 24 };
+
+            let sql = format!(
+                "SELECT strftime('%Y-%m-%dT%H:00:00Z', created_at, 'utc') as time_bucket, {} \
+                 FROM {} \
+                 WHERE created_at BETWEEN ?1 AND ?2 \
+                 GROUP BY strftime('%Y-%m-%dT%H:00:00Z', created_at, 'utc') \
+                 ORDER BY time_bucket",
+                select_clause,
+                table
+            );
+
+            // For larger buckets, adjust the strftime grouping
+            let group_sql = if bucket_hours > 1 {
+                format!(
+                    "SELECT strftime('%Y-%m-%d', created_at) as time_bucket, {} \
+                     FROM {} \
+                     WHERE created_at BETWEEN ?1 AND ?2 \
+                     GROUP BY strftime('%Y-%m-%d', created_at) \
+                     ORDER BY time_bucket",
+                    select_clause,
+                    table
+                )
+            } else {
+                sql
+            };
+
+            let start_str = time_range.start.to_rfc3339();
+            let end_str = time_range.end.to_rfc3339();
+
+            match sqlx::query(&group_sql)
+                .bind(&start_str)
+                .bind(&end_str)
+                .fetch_all(&pool)
+                .await
+            {
+                Ok(db_rows) => {
+                    for row in db_rows {
+                        let mut map = HashMap::new();
+                        for col in row.columns() {
+                            let name = col.name().to_string();
+                            let val = if let Ok(v) = row.try_get::<f64, _>(col.ordinal()) {
+                                serde_json::json!(v)
+                            } else if let Ok(v) = row.try_get::<i64, _>(col.ordinal()) {
+                                serde_json::json!(v)
+                            } else if let Ok(v) = row.try_get::<String, _>(col.ordinal()) {
+                                serde_json::json!(v)
+                            } else {
+                                serde_json::Value::Null
+                            };
+                            map.insert(name, val);
+                        }
+                        rows.push(map);
+                    }
+                }
+                Err(e) => {
+                    log::debug!("Batch aggregation query failed: {}", e);
+                }
+            }
+        } else {
+            // Summary query without time range
+            let sql = format!("SELECT {} FROM {}", select_clause, table);
+
+            match sqlx::query(&sql).fetch_optional(&pool).await {
+                Ok(Some(row)) => {
+                    let mut map = HashMap::new();
+                    map.insert("period".to_string(), serde_json::json!("all_time"));
+                    for col in row.columns() {
+                        let name = col.name().to_string();
+                        let val = if let Ok(v) = row.try_get::<f64, _>(col.ordinal()) {
+                            serde_json::json!(v)
+                        } else if let Ok(v) = row.try_get::<i64, _>(col.ordinal()) {
+                            serde_json::json!(v)
+                        } else if let Ok(v) = row.try_get::<String, _>(col.ordinal()) {
+                            serde_json::json!(v)
+                        } else {
+                            serde_json::Value::Null
+                        };
+                        map.insert(name, val);
+                    }
+                    rows.push(map);
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    log::debug!("Batch summary query failed: {}", e);
+                }
+            }
+        }
+    }
+
+    pool.close().await;
+    Ok(rows)
+}
+
+/// Determine which table to query based on aggregation field names
+fn determine_table_for_fields(aggregations: &[Aggregation]) -> &'static str {
+    for agg in aggregations {
+        let field_lower = agg.field.to_lowercase();
+        if field_lower.contains("incident") || field_lower.contains("alert") {
+            return "incidents";
+        }
+        if field_lower.contains("vuln") {
+            return "vulnerabilities";
+        }
+        if field_lower.contains("asset") {
+            return "assets";
+        }
+    }
+    "scan_results"
 }
 
 #[cfg(test)]

@@ -17,7 +17,6 @@
 //!     name: "My Container Scan".to_string(),
 //!     scan_types: vec![ContainerScanType::DockerImage],
 //!     images: vec!["nginx:latest".to_string()],
-//!     demo_mode: true,
 //!     ..Default::default()
 //! };
 //!
@@ -64,17 +63,9 @@ use std::collections::HashMap;
 pub async fn run_container_scan(
     config: &ContainerScanConfig,
 ) -> Result<(Vec<ContainerImage>, Vec<K8sResource>, Vec<ContainerFinding>)> {
-    if config.demo_mode {
-        log::warn!("⚠️ Container scan running in DEMO MODE - data is SIMULATED and NOT from real container runtime");
-        log::warn!("⚠️ Demo data should NOT be used for actual security assessments");
-    }
+    log::info!("Starting container scan");
 
-    log::info!(
-        "Starting container scan with demo_mode={}",
-        config.demo_mode
-    );
-
-    let scanner = DefaultContainerScanner::new(config.demo_mode);
+    let scanner = DefaultContainerScanner::new();
     let mut all_images = Vec::new();
     let mut all_resources = Vec::new();
     let mut all_findings = Vec::new();
@@ -95,7 +86,7 @@ pub async fn run_container_scan(
     for scan_type in scan_types {
         match scan_type {
             ContainerScanType::DockerImage => {
-                if !config.images.is_empty() || config.demo_mode {
+                if !config.images.is_empty() {
                     log::info!("Scanning Docker images...");
                     let (images, findings) = scanner.scan_images(config).await?;
                     all_images.extend(images);
@@ -106,18 +97,6 @@ pub async fn run_container_scan(
                 if let Some(content) = &config.dockerfile_content {
                     log::info!("Analyzing Dockerfile...");
                     let analysis = scanner.analyze_dockerfile(content).await?;
-                    all_findings.extend(analysis.findings);
-                } else if config.demo_mode {
-                    // Generate demo Dockerfile findings
-                    let demo_dockerfile = r#"FROM ubuntu:latest
-RUN apt-get update && apt-get install -y curl
-COPY . /app
-RUN chmod 777 /app
-USER root
-EXPOSE 22 80 443
-ENV API_KEY=sk-secret123
-CMD ["./app"]"#;
-                    let analysis = scanner.analyze_dockerfile(demo_dockerfile).await?;
                     all_findings.extend(analysis.findings);
                 }
             }
@@ -132,16 +111,10 @@ CMD ["./app"]"#;
                     let analysis = scanner.analyze_manifest(content).await?;
                     all_resources.extend(analysis.resources);
                     all_findings.extend(analysis.findings);
-                } else if config.demo_mode {
-                    // Generate demo K8s manifest findings
-                    let demo_manifest = "";
-                    let analysis = scanner.analyze_manifest(demo_manifest).await?;
-                    all_resources.extend(analysis.resources);
-                    all_findings.extend(analysis.findings);
                 }
             }
             ContainerScanType::K8sCluster => {
-                if config.k8s_context.is_some() || config.demo_mode {
+                if config.k8s_context.is_some() {
                     log::info!("Scanning Kubernetes cluster...");
                     let (resources, findings) = scanner.scan_cluster(config).await?;
                     all_resources.extend(resources);
@@ -160,13 +133,6 @@ CMD ["./app"]"#;
         all_resources.len(),
         all_findings.len()
     );
-
-    // Mark findings as demo data if in demo mode
-    if config.demo_mode {
-        for finding in &mut all_findings {
-            finding.description = format!("⚠️ [DEMO DATA - NOT REAL] {}", finding.description);
-        }
-    }
 
     Ok((all_images, all_resources, all_findings))
 }
@@ -247,13 +213,11 @@ pub fn calculate_scan_summary(
 }
 
 /// Default container scanner implementation
-pub struct DefaultContainerScanner {
-    demo_mode: bool,
-}
+pub struct DefaultContainerScanner;
 
 impl DefaultContainerScanner {
-    pub fn new(demo_mode: bool) -> Self {
-        Self { demo_mode }
+    pub fn new() -> Self {
+        Self
     }
 }
 
@@ -263,47 +227,35 @@ impl ContainerScanner for DefaultContainerScanner {
         &self,
         config: &ContainerScanConfig,
     ) -> Result<(Vec<ContainerImage>, Vec<ContainerFinding>)> {
-        if self.demo_mode {
-            image::scan_images_demo(config).await
-        } else {
-            image::scan_images(config).await
-        }
+        image::scan_images(config).await
     }
 
     async fn analyze_dockerfile(
         &self,
         content: &str,
     ) -> Result<DockerfileAnalysis> {
-        dockerfile::analyze_dockerfile(content, self.demo_mode).await
+        dockerfile::analyze_dockerfile(content).await
     }
 
     async fn scan_runtime(
         &self,
         config: &ContainerScanConfig,
     ) -> Result<Vec<ContainerFinding>> {
-        if self.demo_mode {
-            runtime::scan_runtime_demo(config).await
-        } else {
-            runtime::scan_runtime(config).await
-        }
+        runtime::scan_runtime(config).await
     }
 
     async fn analyze_manifest(
         &self,
         content: &str,
     ) -> Result<K8sManifestAnalysis> {
-        k8s_manifest::analyze_manifest(content, self.demo_mode).await
+        k8s_manifest::analyze_manifest(content).await
     }
 
     async fn scan_cluster(
         &self,
         config: &ContainerScanConfig,
     ) -> Result<(Vec<K8sResource>, Vec<ContainerFinding>)> {
-        if self.demo_mode {
-            k8s_cluster::scan_cluster_demo(config).await
-        } else {
-            k8s_cluster::scan_cluster(config).await
-        }
+        k8s_cluster::scan_cluster(config).await
     }
 }
 
@@ -312,7 +264,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_run_container_scan_demo() {
+    async fn test_run_container_scan() {
         let config = ContainerScanConfig {
             name: "Test Scan".to_string(),
             scan_types: vec![ContainerScanType::DockerImage],
@@ -324,15 +276,13 @@ mod tests {
             manifest_content: None,
             k8s_context: None,
             k8s_namespace: None,
-            demo_mode: true,
             customer_id: None,
             engagement_id: None,
         };
 
-        let (images, _resources, findings) = run_container_scan(&config).await.unwrap();
-
-        assert!(!images.is_empty());
-        assert!(!findings.is_empty());
+        // Real scan - results depend on trivy/grype/docker availability
+        let result = run_container_scan(&config).await;
+        assert!(result.is_ok());
     }
 
     #[test]

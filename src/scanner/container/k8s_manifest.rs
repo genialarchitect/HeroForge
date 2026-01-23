@@ -22,12 +22,7 @@ use super::types::{
 /// Analyze Kubernetes manifests for security issues
 pub async fn analyze_manifest(
     content: &str,
-    demo_mode: bool,
 ) -> Result<K8sManifestAnalysis> {
-    if content.is_empty() && demo_mode {
-        return generate_demo_manifest_analysis().await;
-    }
-
     let scan_id = Uuid::new_v4().to_string();
     let mut resources = Vec::new();
     let mut findings = Vec::new();
@@ -953,135 +948,6 @@ fn analyze_configmap(
     }
 
     findings
-}
-
-/// Generate demo manifest analysis results
-async fn generate_demo_manifest_analysis() -> Result<K8sManifestAnalysis> {
-    let scan_id = Uuid::new_v4().to_string();
-
-    // Create demo resources
-    let resources = vec![
-        K8sResource {
-            id: Uuid::new_v4().to_string(),
-            scan_id: scan_id.clone(),
-            resource_type: K8sResourceType::Deployment,
-            api_version: "apps/v1".to_string(),
-            name: "web-app".to_string(),
-            namespace: Some("default".to_string()),
-            labels: HashMap::from([("app".to_string(), "web".to_string())]),
-            annotations: HashMap::new(),
-            manifest: serde_json::json!({}),
-            finding_count: 5,
-            discovered_at: Utc::now(),
-        },
-        K8sResource {
-            id: Uuid::new_v4().to_string(),
-            scan_id: scan_id.clone(),
-            resource_type: K8sResourceType::Service,
-            api_version: "v1".to_string(),
-            name: "web-service".to_string(),
-            namespace: Some("default".to_string()),
-            labels: HashMap::new(),
-            annotations: HashMap::new(),
-            manifest: serde_json::json!({}),
-            finding_count: 1,
-            discovered_at: Utc::now(),
-        },
-        K8sResource {
-            id: Uuid::new_v4().to_string(),
-            scan_id: scan_id.clone(),
-            resource_type: K8sResourceType::ClusterRole,
-            api_version: "rbac.authorization.k8s.io/v1".to_string(),
-            name: "admin-role".to_string(),
-            namespace: None,
-            labels: HashMap::new(),
-            annotations: HashMap::new(),
-            manifest: serde_json::json!({}),
-            finding_count: 2,
-            discovered_at: Utc::now(),
-        },
-    ];
-
-    // Create demo findings
-    let findings = vec![
-        ContainerFinding {
-            id: Uuid::new_v4().to_string(),
-            scan_id: scan_id.clone(),
-            image_id: None,
-            resource_id: Some(resources[0].id.clone()),
-            finding_type: ContainerFindingType::PrivilegeEscalation,
-            severity: ContainerFindingSeverity::Critical,
-            title: "Container runs in privileged mode".to_string(),
-            description: "Container 'app' in Deployment 'web-app' has privileged: true.".to_string(),
-            cve_id: None,
-            cvss_score: None,
-            cwe_ids: vec!["CWE-250".to_string()],
-            package_name: None,
-            package_version: None,
-            fixed_version: None,
-            file_path: None,
-            line_number: None,
-            remediation: Some("Set privileged: false in the container's securityContext.".to_string()),
-            references: vec![],
-            status: FindingStatus::Open,
-            created_at: Utc::now(),
-        },
-        ContainerFinding {
-            id: Uuid::new_v4().to_string(),
-            scan_id: scan_id.clone(),
-            image_id: None,
-            resource_id: Some(resources[0].id.clone()),
-            finding_type: ContainerFindingType::Misconfiguration,
-            severity: ContainerFindingSeverity::Medium,
-            title: "Container may run as root".to_string(),
-            description: "Container doesn't enforce runAsNonRoot: true.".to_string(),
-            cve_id: None,
-            cvss_score: None,
-            cwe_ids: vec![],
-            package_name: None,
-            package_version: None,
-            fixed_version: None,
-            file_path: None,
-            line_number: None,
-            remediation: Some("Add runAsNonRoot: true to securityContext.".to_string()),
-            references: vec![],
-            status: FindingStatus::Open,
-            created_at: Utc::now(),
-        },
-        ContainerFinding {
-            id: Uuid::new_v4().to_string(),
-            scan_id: scan_id.clone(),
-            image_id: None,
-            resource_id: Some(resources[2].id.clone()),
-            finding_type: ContainerFindingType::PolicyViolation,
-            severity: ContainerFindingSeverity::Critical,
-            title: "Role has wildcard permissions".to_string(),
-            description: "ClusterRole 'admin-role' grants '*' verbs on all resources.".to_string(),
-            cve_id: None,
-            cvss_score: None,
-            cwe_ids: vec!["CWE-250".to_string()],
-            package_name: None,
-            package_version: None,
-            fixed_version: None,
-            file_path: None,
-            line_number: None,
-            remediation: Some("Specify exact verbs and resources needed.".to_string()),
-            references: vec![],
-            status: FindingStatus::Open,
-            created_at: Utc::now(),
-        },
-    ];
-
-    Ok(K8sManifestAnalysis {
-        resources,
-        findings,
-        resource_counts: HashMap::from([
-            ("deployment".to_string(), 1),
-            ("service".to_string(), 1),
-            ("clusterrole".to_string(), 1),
-        ]),
-        namespaces: vec!["default".to_string()],
-    })
 }
 
 #[cfg(test)]

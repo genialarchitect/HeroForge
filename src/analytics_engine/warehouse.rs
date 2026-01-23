@@ -340,11 +340,10 @@ impl WarehouseClient {
     }
 
     /// Execute PostgreSQL query (shared by Redshift)
-    async fn execute_postgres_query(&self, _connection_string: &str, query: &str) -> Result<Vec<HashMap<String, serde_json::Value>>> {
-        // In production, would use sqlx::PgPool
-        // For now, simulate with empty results
-        log::debug!("Would execute PostgreSQL query: {}", &query[..query.len().min(50)]);
-        Ok(Vec::new())
+    async fn execute_postgres_query(&self, _connection_string: &str, _query: &str) -> Result<Vec<HashMap<String, serde_json::Value>>> {
+        Err(anyhow::anyhow!(
+            "Redshift/PostgreSQL warehouse not configured. Set connection credentials in warehouse config."
+        ))
     }
 
     /// Execute Azure Synapse query
@@ -723,57 +722,6 @@ impl WarehouseClient {
         Ok(response)
     }
 
-    /// Simulate query execution for development/testing
-    async fn simulate_query_execution(&self, query: &str) -> Result<Vec<HashMap<String, serde_json::Value>>> {
-        // Parse query to determine expected output
-        let query_lower = query.to_lowercase();
-
-        let mut rows = Vec::new();
-
-        // Generate sample data based on query type
-        if query_lower.contains("select") {
-            let num_rows = if query_lower.contains("limit") {
-                // Extract limit value
-                query_lower
-                    .split("limit")
-                    .nth(1)
-                    .and_then(|s| s.trim().split_whitespace().next())
-                    .and_then(|s| s.parse::<usize>().ok())
-                    .unwrap_or(10)
-            } else {
-                10
-            };
-
-            // Generate sample security data
-            for i in 0..num_rows {
-                let mut row = HashMap::new();
-                row.insert("id".to_string(), serde_json::json!(i + 1));
-                row.insert("timestamp".to_string(), serde_json::json!(chrono::Utc::now().to_rfc3339()));
-
-                if query_lower.contains("alert") || query_lower.contains("security") {
-                    row.insert("severity".to_string(), serde_json::json!(["critical", "high", "medium", "low"][i % 4]));
-                    row.insert("source".to_string(), serde_json::json!(format!("source_{}", i % 5)));
-                    row.insert("count".to_string(), serde_json::json!(rand_int(1, 1000)));
-                }
-
-                if query_lower.contains("event") {
-                    row.insert("event_type".to_string(), serde_json::json!(["login", "logout", "access", "modify"][i % 4]));
-                    row.insert("user".to_string(), serde_json::json!(format!("user_{}", i % 10)));
-                }
-
-                if query_lower.contains("network") || query_lower.contains("traffic") {
-                    row.insert("bytes".to_string(), serde_json::json!(rand_int(1000, 1000000)));
-                    row.insert("packets".to_string(), serde_json::json!(rand_int(10, 10000)));
-                    row.insert("protocol".to_string(), serde_json::json!(["TCP", "UDP", "HTTP", "HTTPS"][i % 4]));
-                }
-
-                rows.push(row);
-            }
-        }
-
-        Ok(rows)
-    }
-
     /// Get list of available tables
     pub async fn list_tables(&self) -> Result<Vec<String>> {
         let tables = match self.config.warehouse_type {
@@ -842,20 +790,21 @@ impl WarehouseClient {
 
     /// Test warehouse connection
     pub async fn test_connection(&self) -> Result<bool> {
-        // Execute a simple query to test connection
-        let test_query = match self.config.warehouse_type {
-            WarehouseType::Snowflake => "SELECT 1",
-            WarehouseType::BigQuery => "SELECT 1",
-            WarehouseType::Redshift => "SELECT 1",
-            WarehouseType::Synapse => "SELECT 1",
-            WarehouseType::Databricks => "SELECT 1",
-            WarehouseType::ClickHouse => "SELECT 1",
-            WarehouseType::Local => "SELECT 1",
-        };
-
-        match self.simulate_query_execution(test_query).await {
-            Ok(_) => Ok(true),
-            Err(_) => Ok(false),
+        match self.config.warehouse_type {
+            WarehouseType::Local => {
+                // Local SQLite - try executing a test query
+                match self.execute_local("SELECT 1").await {
+                    Ok(_) => Ok(true),
+                    Err(_) => Ok(false),
+                }
+            }
+            _ => {
+                // Remote warehouses require configuration
+                Err(anyhow::anyhow!(
+                    "Warehouse type {:?} not configured. Set the appropriate connection credentials.",
+                    self.config.warehouse_type
+                ))
+            }
         }
     }
 
@@ -986,16 +935,6 @@ pub async fn query_warehouse(config: &WarehouseConfig, query: &str) -> Result<An
             cached: false,
         },
     })
-}
-
-/// Generate random integer for simulation
-fn rand_int(min: i64, max: i64) -> i64 {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .subsec_nanos() as i64;
-    min + (nanos % (max - min))
 }
 
 #[cfg(test)]

@@ -195,8 +195,6 @@ pub struct CreateCloudScanRequest {
     pub regions: Vec<String>,
     pub scan_types: Vec<String>,
     pub credentials_id: Option<String>,
-    #[serde(default)]
-    pub demo_mode: bool,
     pub customer_id: Option<String>,
     pub engagement_id: Option<String>,
 }
