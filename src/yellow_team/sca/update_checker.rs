@@ -480,8 +480,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_update_checker_creation() {
-        let checker = UpdateChecker::new();
-        // Just verify it can be created
-        assert!(true);
+        let _checker = UpdateChecker::new();
+        // Verify it can be created without panicking
     }
 }

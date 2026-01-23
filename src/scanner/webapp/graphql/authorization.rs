@@ -542,7 +542,6 @@ mod tests {
     #[tokio::test]
     async fn test_send_graphql_query() {
         // This test would require a mock server
-        // Just test that the function compiles correctly
-        assert!(true);
+        // Just verify the module compiles correctly
     }
 }

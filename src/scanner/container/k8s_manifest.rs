@@ -972,7 +972,7 @@ spec:
           privileged: true
 "#;
 
-        let analysis = analyze_manifest(manifest, false).await.unwrap();
+        let analysis = analyze_manifest(manifest).await.unwrap();
 
         assert_eq!(analysis.resources.len(), 1);
         assert!(!analysis.findings.is_empty());
@@ -983,10 +983,9 @@ spec:
     }
 
     #[tokio::test]
-    async fn test_demo_analysis() {
-        let analysis = analyze_manifest("", true).await.unwrap();
+    async fn test_empty_manifest() {
+        let analysis = analyze_manifest("").await.unwrap();
 
-        assert!(!analysis.resources.is_empty());
-        assert!(!analysis.findings.is_empty());
+        assert!(analysis.resources.is_empty());
     }
 }

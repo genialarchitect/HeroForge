@@ -344,7 +344,6 @@ mod tests {
 
     #[test]
     fn test_origins_list() {
-        assert!(!TEST_ORIGINS.is_empty());
         assert!(TEST_ORIGINS.iter().any(|o| o.contains("evil.com")));
     }
 }

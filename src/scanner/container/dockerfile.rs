@@ -592,7 +592,7 @@ USER root
 EXPOSE 80
 "#;
 
-        let analysis = analyze_dockerfile(dockerfile, false).await.unwrap();
+        let analysis = analyze_dockerfile(dockerfile).await.unwrap();
 
         assert_eq!(analysis.base_image, Some("nginx".to_string()));
         assert_eq!(analysis.base_image_tag, Some("latest".to_string()));
@@ -611,7 +611,7 @@ ENV API_KEY=sk-secret123
 ENV DB_PASSWORD=supersecret
 "#;
 
-        let analysis = analyze_dockerfile(dockerfile, false).await.unwrap();
+        let analysis = analyze_dockerfile(dockerfile).await.unwrap();
 
         let secret_findings: Vec<_> = analysis.findings.iter()
             .filter(|f| f.finding_type == ContainerFindingType::SecretExposure)
@@ -627,7 +627,7 @@ FROM alpine:3.14
 RUN chmod 777 /app
 "#;
 
-        let analysis = analyze_dockerfile(dockerfile, false).await.unwrap();
+        let analysis = analyze_dockerfile(dockerfile).await.unwrap();
 
         let permission_findings: Vec<_> = analysis.findings.iter()
             .filter(|f| f.title.contains("777"))

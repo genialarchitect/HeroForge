@@ -890,22 +890,6 @@ impl AzureScanner {
 
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_azure_api_available() {
-        let scanner = AzureScanner::new();
-        // Without environment variables set, api_available should reflect credential state
-        let has_creds = std::env::var("AZURE_SUBSCRIPTION_ID").is_ok()
-            && std::env::var("AZURE_TENANT_ID").is_ok()
-            && std::env::var("AZURE_CLIENT_ID").is_ok()
-            && std::env::var("AZURE_CLIENT_SECRET").is_ok();
-        assert_eq!(scanner.api_available(), has_creds);
-    }
-}
-
 #[async_trait::async_trait]
 impl CloudScanner for AzureScanner {
     fn provider(&self) -> CloudProvider {
@@ -950,5 +934,20 @@ impl CloudScanner for AzureScanner {
         }
         info!("Azure Database scanning using REST API");
         self.scan_database_api().await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_azure_api_available() {
+        let scanner = AzureScanner::new();
+        let has_creds = std::env::var("AZURE_SUBSCRIPTION_ID").is_ok()
+            && std::env::var("AZURE_TENANT_ID").is_ok()
+            && std::env::var("AZURE_CLIENT_ID").is_ok()
+            && std::env::var("AZURE_CLIENT_SECRET").is_ok();
+        assert_eq!(scanner.api_available(), has_creds);
     }
 }

@@ -698,7 +698,6 @@ mod tests {
 
     #[test]
     fn test_default_udp_ports() {
-        assert!(!DEFAULT_UDP_PORTS.is_empty());
         assert!(DEFAULT_UDP_PORTS.contains(&53)); // DNS
         assert!(DEFAULT_UDP_PORTS.contains(&161)); // SNMP
     }

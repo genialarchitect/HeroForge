@@ -1007,7 +1007,7 @@ mod tests {
         let result = executor.run_test(&test);
         // The test validates that a test can be executed and produces a result
         // The simple query matching may not match the nested EventData structure
-        assert!(result.execution_time_ms >= 0);
+        let _ = result.execution_time_ms;
         assert_eq!(result.actual_alert_count, result.actual_alerts.len() as u32);
     }
 

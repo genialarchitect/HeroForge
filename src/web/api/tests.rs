@@ -3,6 +3,7 @@
 //! This module contains integration tests for the authentication, scan, and
 //! vulnerability management endpoints.
 
+#[allow(clippy::module_inception)]
 #[cfg(test)]
 mod tests {
     use actix_web::{test, web, App, http::StatusCode};

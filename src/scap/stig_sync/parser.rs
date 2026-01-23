@@ -278,8 +278,7 @@ mod tests {
 
     #[test]
     fn test_parser_creation() {
-        let parser = StigParser::new();
-        // Parser should be created successfully
-        assert!(true);
+        let _parser = StigParser::new();
+        // Parser should be created successfully without panicking
     }
 }
