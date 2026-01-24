@@ -114,72 +114,215 @@ pub async fn load_model(model_id: &str) -> Result<MLModel> {
 }
 
 /// Train an ML model on provided training data
+///
+/// Expects JSON training data in the format:
+/// ```json
+/// {
+///   "features": [[f1, f2, ...], [f1, f2, ...], ...],
+///   "labels": ["class1", "class2", ...]
+/// }
+/// ```
+///
+/// Training uses mini-batch stochastic gradient descent on a logistic regression
+/// model with softmax output. The learned weights are saved alongside model metadata.
 pub async fn train_model(data: &[u8], model_type: ModelType) -> Result<MLModel> {
     log::info!("Training new {:?} model with {} bytes of data", model_type, data.len());
 
-    // Validate training data
     if data.is_empty() {
         return Err(anyhow::anyhow!("Training data cannot be empty"));
     }
 
-    // Parse training data (expecting JSON format)
-    let training_samples: Vec<serde_json::Value> = serde_json::from_slice(data)
-        .unwrap_or_else(|_| {
-            log::warn!("Could not parse training data as JSON, using raw data");
-            vec![]
-        });
+    // Parse training data
+    let training_data: models::TrainingData = serde_json::from_slice(data)
+        .map_err(|e| anyhow::anyhow!("Invalid training data format: {}. Expected {{\"features\": [[...]], \"labels\": [...]}}", e))?;
 
-    let sample_count = training_samples.len().max(data.len() / 100); // Estimate samples
+    if training_data.features.is_empty() || training_data.labels.is_empty() {
+        return Err(anyhow::anyhow!("Training data must contain at least one sample"));
+    }
 
-    // Generate a unique model ID
+    if training_data.features.len() != training_data.labels.len() {
+        return Err(anyhow::anyhow!(
+            "Feature count ({}) must match label count ({})",
+            training_data.features.len(),
+            training_data.labels.len()
+        ));
+    }
+
+    let sample_count = training_data.features.len();
+    let feature_dim = training_data.features[0].len();
+
+    log::info!("Training with {} samples, {} features", sample_count, feature_dim);
+
+    // Identify unique classes
+    let mut classes: Vec<String> = training_data.labels.iter().cloned().collect();
+    classes.sort();
+    classes.dedup();
+    let num_classes = classes.len();
+
+    if num_classes < 2 {
+        return Err(anyhow::anyhow!("Training data must contain at least 2 distinct classes"));
+    }
+
+    // Compute feature statistics for normalization
+    let mut feature_means = vec![0.0f32; feature_dim];
+    let mut feature_stds = vec![0.0f32; feature_dim];
+
+    for features in &training_data.features {
+        for (i, &f) in features.iter().enumerate() {
+            if i < feature_dim {
+                feature_means[i] += f;
+            }
+        }
+    }
+    for mean in feature_means.iter_mut() {
+        *mean /= sample_count as f32;
+    }
+
+    for features in &training_data.features {
+        for (i, &f) in features.iter().enumerate() {
+            if i < feature_dim {
+                feature_stds[i] += (f - feature_means[i]).powi(2);
+            }
+        }
+    }
+    for std in feature_stds.iter_mut() {
+        *std = (*std / sample_count as f32).sqrt().max(1e-6);
+    }
+
+    // Initialize weights (small random values) and biases
+    let mut weights: Vec<Vec<f32>> = (0..num_classes)
+        .map(|i| {
+            (0..feature_dim)
+                .map(|j| ((i * feature_dim + j) as f32 * 0.1).sin() * 0.01)
+                .collect()
+        })
+        .collect();
+    let mut biases: Vec<f32> = vec![0.0; num_classes];
+
+    // Training hyperparameters
+    let learning_rate = 0.01f32;
+    let epochs = 100;
+    let lambda = 0.001f32; // L2 regularization
+
+    // Stochastic gradient descent
+    for epoch in 0..epochs {
+        let mut total_loss = 0.0f32;
+
+        for (sample_idx, features) in training_data.features.iter().enumerate() {
+            // Normalize features
+            let normalized: Vec<f32> = features.iter().enumerate()
+                .map(|(i, &f)| {
+                    if i < feature_dim { (f - feature_means[i]) / feature_stds[i] } else { 0.0 }
+                })
+                .take(feature_dim)
+                .collect();
+
+            // Forward pass: compute logits
+            let logits: Vec<f32> = (0..num_classes)
+                .map(|c| {
+                    let dot: f32 = weights[c].iter().zip(normalized.iter()).map(|(w, x)| w * x).sum();
+                    dot + biases[c]
+                })
+                .collect();
+
+            // Softmax
+            let max_logit = logits.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+            let exp_logits: Vec<f32> = logits.iter().map(|&l| (l - max_logit).exp()).collect();
+            let sum_exp: f32 = exp_logits.iter().sum();
+            let probs: Vec<f32> = exp_logits.iter().map(|&e| e / sum_exp).collect();
+
+            // One-hot encode true label
+            let true_class = classes.iter().position(|c| c == &training_data.labels[sample_idx]).unwrap_or(0);
+
+            // Cross-entropy loss
+            total_loss -= probs[true_class].max(1e-10).ln();
+
+            // Backward pass: compute gradients and update
+            for c in 0..num_classes {
+                let error = probs[c] - if c == true_class { 1.0 } else { 0.0 };
+
+                for j in 0..feature_dim {
+                    let grad = error * normalized[j] + lambda * weights[c][j];
+                    weights[c][j] -= learning_rate * grad;
+                }
+                biases[c] -= learning_rate * error;
+            }
+        }
+
+        if (epoch + 1) % 25 == 0 {
+            log::debug!("Epoch {}/{}: loss = {:.4}", epoch + 1, epochs, total_loss / sample_count as f32);
+        }
+    }
+
+    // Evaluate accuracy on training data
+    let mut correct = 0;
+    for (sample_idx, features) in training_data.features.iter().enumerate() {
+        let normalized: Vec<f32> = features.iter().enumerate()
+            .map(|(i, &f)| {
+                if i < feature_dim { (f - feature_means[i]) / feature_stds[i] } else { 0.0 }
+            })
+            .take(feature_dim)
+            .collect();
+
+        let logits: Vec<f32> = (0..num_classes)
+            .map(|c| {
+                let dot: f32 = weights[c].iter().zip(normalized.iter()).map(|(w, x)| w * x).sum();
+                dot + biases[c]
+            })
+            .collect();
+
+        let predicted = logits.iter().enumerate()
+            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
+            .map(|(i, _)| i)
+            .unwrap_or(0);
+
+        let true_class = classes.iter().position(|c| c == &training_data.labels[sample_idx]).unwrap_or(0);
+        if predicted == true_class {
+            correct += 1;
+        }
+    }
+
+    let accuracy = correct as f32 / sample_count as f32;
+
+    // Save model with learned weights
     let model_id = uuid::Uuid::new_v4().to_string();
-
-    // Simulate training process with progress logging
-    log::info!("Starting model training with {} samples", sample_count);
-
-    // Simulate training time based on data size
-    let training_duration = std::time::Duration::from_millis(
-        (data.len() as u64 / 1000).max(100).min(5000)
-    );
-    tokio::time::sleep(training_duration).await;
-
-    // Calculate simulated accuracy based on sample count
-    // More samples typically lead to better accuracy
-    let base_accuracy = match model_type {
-        ModelType::ThreatClassification => 0.85,
-        ModelType::AnomalyDetection => 0.82,
-        ModelType::RiskPrediction => 0.78,
-        ModelType::PatternRecognition => 0.80,
-    };
-
-    // Accuracy improves with more samples (logarithmic improvement)
-    let sample_bonus = (sample_count as f32).log10() / 20.0;
-    let accuracy = (base_accuracy + sample_bonus).min(0.99);
-
-    let model = MLModel {
-        id: model_id.clone(),
-        name: format!("{:?} Model", model_type),
-        model_type: model_type.clone(),
-        version: "1.0.0".to_string(),
-        accuracy,
-        trained_at: chrono::Utc::now(),
-    };
-
-    // Save the model to disk
     let model_dir = std::path::Path::new(MODELS_DIR);
     if !model_dir.exists() {
         tokio::fs::create_dir_all(model_dir).await?;
     }
+
+    // Save weights separately
+    let learned_weights = serde_json::json!({
+        "classes": classes,
+        "weights": weights,
+        "biases": biases,
+        "feature_means": feature_means,
+        "feature_stds": feature_stds,
+        "feature_dim": feature_dim,
+        "training_samples": sample_count,
+        "training_accuracy": accuracy,
+    });
+
+    let weights_path = model_dir.join(format!("{}_weights.json", model_id));
+    let weights_json = serde_json::to_string_pretty(&learned_weights)?;
+    tokio::fs::write(&weights_path, weights_json).await?;
+
+    let model = MLModel {
+        id: model_id.clone(),
+        name: format!("{:?} Model", model_type),
+        model_type,
+        version: "1.0.0".to_string(),
+        accuracy,
+        trained_at: chrono::Utc::now(),
+    };
 
     let model_path = model_dir.join(format!("{}.json", model_id));
     let model_json = serde_json::to_string_pretty(&model)?;
     tokio::fs::write(&model_path, model_json).await?;
 
     log::info!(
-        "Model training complete. ID: {}, Accuracy: {:.2}%, Saved to: {:?}",
-        model_id,
-        accuracy * 100.0,
-        model_path
+        "Training complete. ID: {}, Accuracy: {:.1}% ({}/{} correct), Classes: {:?}",
+        model_id, accuracy * 100.0, correct, sample_count, classes
     );
 
     Ok(model)

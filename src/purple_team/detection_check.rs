@@ -5,6 +5,7 @@
 use anyhow::Result;
 use chrono::{DateTime, Duration, Utc};
 use sqlx::SqlitePool;
+use uuid;
 
 use super::types::*;
 use crate::db::models::SiemSettings;
@@ -123,11 +124,12 @@ impl DetectionChecker {
         end_time: DateTime<Utc>,
         target: &str,
     ) -> Result<Vec<MatchedAlert>> {
-        // Build Splunk query for detection
-        let _query = format!(
-            r#"search index=* earliest="{}" latest="{}"
-            (mitre_attack_id="{}" OR technique_id="{}" OR dest="{}" OR src="{}")
-            | table _time, rule_name, severity, description"#,
+        if !settings.enabled {
+            return Ok(vec![]);
+        }
+
+        let query = format!(
+            r#"search index=* earliest="{}" latest="{}" (mitre_attack_id="{}" OR technique_id="{}" OR dest="{}" OR src="{}") | table _time, rule_name, severity, description"#,
             start_time.format("%Y-%m-%dT%H:%M:%S"),
             end_time.format("%Y-%m-%dT%H:%M:%S"),
             technique_id,
@@ -136,14 +138,75 @@ impl DetectionChecker {
             target,
         );
 
-        // In production, would make actual Splunk API call
-        // For now, return simulated results based on settings
-        if settings.enabled {
-            // Simulate some detection
-            Ok(vec![])
-        } else {
-            Ok(vec![])
+        let client = reqwest::Client::builder()
+            .danger_accept_invalid_certs(true)
+            .timeout(std::time::Duration::from_secs(30))
+            .build()?;
+
+        // Create search job via Splunk REST API
+        let search_url = format!("{}/services/search/jobs", settings.endpoint_url.trim_end_matches('/'));
+
+        let mut headers = reqwest::header::HeaderMap::new();
+        if let Some(ref api_key) = settings.api_key {
+            headers.insert(
+                reqwest::header::AUTHORIZATION,
+                reqwest::header::HeaderValue::from_str(&format!("Bearer {}", api_key))
+                    .unwrap_or_else(|_| reqwest::header::HeaderValue::from_static("")),
+            );
         }
+        headers.insert(
+            reqwest::header::CONTENT_TYPE,
+            reqwest::header::HeaderValue::from_static("application/x-www-form-urlencoded"),
+        );
+
+        let response = client
+            .post(&search_url)
+            .headers(headers.clone())
+            .form(&[
+                ("search", query.as_str()),
+                ("output_mode", "json"),
+                ("exec_mode", "oneshot"),
+                ("count", "50"),
+            ])
+            .send()
+            .await;
+
+        let response = match response {
+            Ok(r) => r,
+            Err(e) => {
+                log::warn!("Failed to query Splunk at {}: {}", search_url, e);
+                return Ok(vec![]);
+            }
+        };
+
+        if !response.status().is_success() {
+            log::warn!("Splunk query returned status {}", response.status());
+            return Ok(vec![]);
+        }
+
+        let body: serde_json::Value = response.json().await.unwrap_or_default();
+
+        // Parse Splunk JSON response
+        let mut alerts = Vec::new();
+        if let Some(results) = body.get("results").and_then(|r| r.as_array()) {
+            for result in results {
+                let timestamp_str = result.get("_time").and_then(|t| t.as_str()).unwrap_or("");
+                let timestamp = chrono::DateTime::parse_from_rfc3339(timestamp_str)
+                    .map(|dt| dt.with_timezone(&Utc))
+                    .unwrap_or_else(|_| Utc::now());
+
+                alerts.push(MatchedAlert {
+                    alert_id: uuid::Uuid::new_v4().to_string(),
+                    rule_name: result.get("rule_name").and_then(|r| r.as_str()).unwrap_or("unknown").to_string(),
+                    severity: result.get("severity").and_then(|s| s.as_str()).unwrap_or("medium").to_string(),
+                    timestamp,
+                    description: result.get("description").and_then(|d| d.as_str()).unwrap_or("").to_string(),
+                });
+            }
+        }
+
+        log::info!("Splunk query returned {} alerts for technique {}", alerts.len(), technique_id);
+        Ok(alerts)
     }
 
     async fn query_elasticsearch(
@@ -154,8 +217,12 @@ impl DetectionChecker {
         end_time: DateTime<Utc>,
         target: &str,
     ) -> Result<Vec<MatchedAlert>> {
-        // Build Elasticsearch query
-        let _query = serde_json::json!({
+        if !settings.enabled {
+            return Ok(vec![]);
+        }
+
+        let query = serde_json::json!({
+            "size": 50,
             "query": {
                 "bool": {
                     "must": [
@@ -170,20 +237,91 @@ impl DetectionChecker {
                     ],
                     "should": [
                         { "match": { "mitre.technique.id": technique_id } },
+                        { "match": { "threat.technique.id": technique_id } },
                         { "match": { "destination.ip": target } },
                         { "match": { "source.ip": target } }
                     ],
                     "minimum_should_match": 1
                 }
-            }
+            },
+            "sort": [{ "@timestamp": { "order": "desc" } }]
         });
 
-        // In production, would make actual Elasticsearch API call
-        if settings.enabled {
-            Ok(vec![])
-        } else {
-            Ok(vec![])
+        let client = reqwest::Client::builder()
+            .danger_accept_invalid_certs(true)
+            .timeout(std::time::Duration::from_secs(30))
+            .build()?;
+
+        let search_url = format!("{}/_search", settings.endpoint_url.trim_end_matches('/'));
+
+        let mut request = client.post(&search_url)
+            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .json(&query);
+
+        if let Some(ref api_key) = settings.api_key {
+            request = request.header(reqwest::header::AUTHORIZATION, format!("ApiKey {}", api_key));
         }
+
+        let response = match request.send().await {
+            Ok(r) => r,
+            Err(e) => {
+                log::warn!("Failed to query Elasticsearch at {}: {}", search_url, e);
+                return Ok(vec![]);
+            }
+        };
+
+        if !response.status().is_success() {
+            log::warn!("Elasticsearch query returned status {}", response.status());
+            return Ok(vec![]);
+        }
+
+        let body: serde_json::Value = response.json().await.unwrap_or_default();
+
+        // Parse Elasticsearch response
+        let mut alerts = Vec::new();
+        if let Some(hits) = body.get("hits").and_then(|h| h.get("hits")).and_then(|h| h.as_array()) {
+            for hit in hits {
+                let source = hit.get("_source").unwrap_or(&serde_json::Value::Null);
+
+                let timestamp_str = source.get("@timestamp")
+                    .and_then(|t| t.as_str())
+                    .unwrap_or("");
+                let timestamp = chrono::DateTime::parse_from_rfc3339(timestamp_str)
+                    .map(|dt| dt.with_timezone(&Utc))
+                    .unwrap_or_else(|_| Utc::now());
+
+                let rule_name = source.get("rule")
+                    .and_then(|r| r.get("name"))
+                    .and_then(|n| n.as_str())
+                    .or_else(|| source.get("event").and_then(|e| e.get("action")).and_then(|a| a.as_str()))
+                    .unwrap_or("unknown")
+                    .to_string();
+
+                let severity = source.get("event")
+                    .and_then(|e| e.get("severity"))
+                    .and_then(|s| s.as_str())
+                    .or_else(|| source.get("log").and_then(|l| l.get("level")).and_then(|l| l.as_str()))
+                    .unwrap_or("medium")
+                    .to_string();
+
+                let description = source.get("message")
+                    .and_then(|m| m.as_str())
+                    .or_else(|| source.get("event").and_then(|e| e.get("original")).and_then(|o| o.as_str()))
+                    .unwrap_or("")
+                    .to_string();
+
+                alerts.push(MatchedAlert {
+                    alert_id: hit.get("_id").and_then(|i| i.as_str()).unwrap_or("").to_string(),
+                    rule_name,
+                    severity,
+                    timestamp,
+                    description,
+                });
+            }
+        }
+
+        log::info!("Elasticsearch query returned {} alerts for technique {}", alerts.len(), technique_id);
+        Ok(alerts)
     }
 
     fn is_full_detection(&self, alerts: &[MatchedAlert], attack_result: &PurpleAttackResult) -> bool {

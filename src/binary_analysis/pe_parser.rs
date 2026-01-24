@@ -6,7 +6,7 @@
 use super::entropy::calculate_entropy;
 use super::types::*;
 use anyhow::{Context, Result};
-use chrono::{TimeZone, Utc};
+use chrono::{DateTime, TimeZone, Utc};
 use goblin::pe::PE;
 
 /// Parse a PE file and extract analysis information
@@ -231,25 +231,783 @@ fn calculate_pe_checksum(data: &[u8]) -> u32 {
     (checksum as u32).wrapping_add(data.len() as u32)
 }
 
-/// Extract PE resources (simplified)
-fn extract_pe_resources(_data: &[u8], _pe: &PE) -> Vec<PeResource> {
-    // Resource parsing is complex - for now return empty
-    // Full implementation would parse the resource directory
-    Vec::new()
+/// Extract PE resources from the resource directory
+fn extract_pe_resources(data: &[u8], pe: &PE) -> Vec<PeResource> {
+    let mut resources = Vec::new();
+
+    // Get the resource directory RVA from data directories
+    let (res_va, _res_size) = match pe.header.optional_header.map(|oh| {
+        oh.data_directories.get_resource_table().map(|d| (d.virtual_address, d.size))
+    }).flatten() {
+        Some((va, sz)) if va > 0 && sz > 0 => (va, sz),
+        _ => return resources,
+    };
+
+    // Convert RVA to file offset
+    let res_rva = res_va as u64;
+    let res_offset = match rva_to_offset(res_rva, &pe.sections) {
+        Some(off) => off as usize,
+        None => return resources,
+    };
+
+    // Parse the root resource directory
+    if res_offset + 16 > data.len() {
+        return resources;
+    }
+
+    let num_named = u16::from_le_bytes([data[res_offset + 12], data[res_offset + 13]]) as usize;
+    let num_id = u16::from_le_bytes([data[res_offset + 14], data[res_offset + 15]]) as usize;
+    let total_entries = num_named + num_id;
+
+    // Each entry is 8 bytes after the 16-byte directory header
+    for i in 0..total_entries.min(64) {
+        let entry_offset = res_offset + 16 + (i * 8);
+        if entry_offset + 8 > data.len() {
+            break;
+        }
+
+        let name_or_id = u32::from_le_bytes([
+            data[entry_offset], data[entry_offset + 1],
+            data[entry_offset + 2], data[entry_offset + 3],
+        ]);
+        let offset_to_data = u32::from_le_bytes([
+            data[entry_offset + 4], data[entry_offset + 5],
+            data[entry_offset + 6], data[entry_offset + 7],
+        ]);
+
+        let resource_type = get_resource_type_name(name_or_id);
+
+        // If high bit is set, it points to another directory (subdirectory)
+        if offset_to_data & 0x80000000 != 0 {
+            let sub_offset = res_offset + (offset_to_data & 0x7FFFFFFF) as usize;
+            parse_resource_subdirectory(data, res_offset, sub_offset, &resource_type, &mut resources);
+        }
+    }
+
+    resources
 }
 
-/// Extract version info from resources
-fn extract_version_info(_data: &[u8], _pe: &PE) -> Option<VersionInfo> {
-    // Version info is in VS_VERSIONINFO resource
-    // Full implementation would parse the version resource
+/// Parse a resource subdirectory (level 2 - name/ID entries)
+fn parse_resource_subdirectory(
+    data: &[u8],
+    res_base: usize,
+    dir_offset: usize,
+    resource_type: &str,
+    resources: &mut Vec<PeResource>,
+) {
+    if dir_offset + 16 > data.len() {
+        return;
+    }
+
+    let num_named = u16::from_le_bytes([data[dir_offset + 12], data[dir_offset + 13]]) as usize;
+    let num_id = u16::from_le_bytes([data[dir_offset + 14], data[dir_offset + 15]]) as usize;
+    let total = num_named + num_id;
+
+    for i in 0..total.min(256) {
+        let entry_offset = dir_offset + 16 + (i * 8);
+        if entry_offset + 8 > data.len() {
+            break;
+        }
+
+        let name_or_id = u32::from_le_bytes([
+            data[entry_offset], data[entry_offset + 1],
+            data[entry_offset + 2], data[entry_offset + 3],
+        ]);
+        let offset_to_data = u32::from_le_bytes([
+            data[entry_offset + 4], data[entry_offset + 5],
+            data[entry_offset + 6], data[entry_offset + 7],
+        ]);
+
+        let name = if name_or_id & 0x80000000 != 0 {
+            // Named resource - read unicode string
+            let name_offset = res_base + (name_or_id & 0x7FFFFFFF) as usize;
+            read_resource_name(data, name_offset)
+        } else {
+            format!("#{}", name_or_id)
+        };
+
+        // Follow to language directory (level 3)
+        if offset_to_data & 0x80000000 != 0 {
+            let lang_dir_offset = res_base + (offset_to_data & 0x7FFFFFFF) as usize;
+            parse_resource_language_dir(data, res_base, lang_dir_offset, resource_type, &name, resources);
+        } else {
+            // Direct data entry
+            let data_entry_offset = res_base + offset_to_data as usize;
+            if let Some(res) = read_resource_data_entry(data, data_entry_offset, resource_type, &name, 0) {
+                resources.push(res);
+            }
+        }
+    }
+}
+
+/// Parse the language subdirectory (level 3) to get actual resource data entries
+fn parse_resource_language_dir(
+    data: &[u8],
+    res_base: usize,
+    dir_offset: usize,
+    resource_type: &str,
+    name: &str,
+    resources: &mut Vec<PeResource>,
+) {
+    if dir_offset + 16 > data.len() {
+        return;
+    }
+
+    let num_named = u16::from_le_bytes([data[dir_offset + 12], data[dir_offset + 13]]) as usize;
+    let num_id = u16::from_le_bytes([data[dir_offset + 14], data[dir_offset + 15]]) as usize;
+    let total = num_named + num_id;
+
+    for i in 0..total.min(64) {
+        let entry_offset = dir_offset + 16 + (i * 8);
+        if entry_offset + 8 > data.len() {
+            break;
+        }
+
+        let language_id = u32::from_le_bytes([
+            data[entry_offset], data[entry_offset + 1],
+            data[entry_offset + 2], data[entry_offset + 3],
+        ]);
+        let offset_to_data = u32::from_le_bytes([
+            data[entry_offset + 4], data[entry_offset + 5],
+            data[entry_offset + 6], data[entry_offset + 7],
+        ]);
+
+        // This should be a leaf node pointing to IMAGE_RESOURCE_DATA_ENTRY
+        if offset_to_data & 0x80000000 == 0 {
+            let data_entry_offset = res_base + offset_to_data as usize;
+            if let Some(res) = read_resource_data_entry(data, data_entry_offset, resource_type, name, language_id) {
+                resources.push(res);
+            }
+        }
+    }
+}
+
+/// Read an IMAGE_RESOURCE_DATA_ENTRY and create a PeResource
+fn read_resource_data_entry(
+    data: &[u8],
+    entry_offset: usize,
+    resource_type: &str,
+    name: &str,
+    language: u32,
+) -> Option<PeResource> {
+    if entry_offset + 16 > data.len() {
+        return None;
+    }
+
+    let _data_rva = u32::from_le_bytes([
+        data[entry_offset], data[entry_offset + 1],
+        data[entry_offset + 2], data[entry_offset + 3],
+    ]);
+    let size = u32::from_le_bytes([
+        data[entry_offset + 4], data[entry_offset + 5],
+        data[entry_offset + 6], data[entry_offset + 7],
+    ]);
+
+    Some(PeResource {
+        resource_type: resource_type.to_string(),
+        name: name.to_string(),
+        language,
+        size: size as u64,
+        entropy: 0.0, // Would need to resolve RVA to calculate
+    })
+}
+
+/// Read a unicode resource name
+fn read_resource_name(data: &[u8], offset: usize) -> String {
+    if offset + 2 > data.len() {
+        return String::new();
+    }
+    let len = u16::from_le_bytes([data[offset], data[offset + 1]]) as usize;
+    let chars_start = offset + 2;
+    let mut name = String::with_capacity(len);
+    for i in 0..len.min(256) {
+        let char_offset = chars_start + (i * 2);
+        if char_offset + 2 > data.len() {
+            break;
+        }
+        let ch = u16::from_le_bytes([data[char_offset], data[char_offset + 1]]);
+        if let Some(c) = char::from_u32(ch as u32) {
+            name.push(c);
+        }
+    }
+    name
+}
+
+/// Convert resource type ID to human-readable name
+fn get_resource_type_name(id: u32) -> String {
+    if id & 0x80000000 != 0 {
+        return "Named".to_string();
+    }
+    match id {
+        1 => "RT_CURSOR".to_string(),
+        2 => "RT_BITMAP".to_string(),
+        3 => "RT_ICON".to_string(),
+        4 => "RT_MENU".to_string(),
+        5 => "RT_DIALOG".to_string(),
+        6 => "RT_STRING".to_string(),
+        7 => "RT_FONTDIR".to_string(),
+        8 => "RT_FONT".to_string(),
+        9 => "RT_ACCELERATOR".to_string(),
+        10 => "RT_RCDATA".to_string(),
+        11 => "RT_MESSAGETABLE".to_string(),
+        12 => "RT_GROUP_CURSOR".to_string(),
+        14 => "RT_GROUP_ICON".to_string(),
+        16 => "RT_VERSION".to_string(),
+        17 => "RT_DLGINCLUDE".to_string(),
+        19 => "RT_PLUGPLAY".to_string(),
+        20 => "RT_VXD".to_string(),
+        21 => "RT_ANICURSOR".to_string(),
+        22 => "RT_ANIICON".to_string(),
+        23 => "RT_HTML".to_string(),
+        24 => "RT_MANIFEST".to_string(),
+        _ => format!("RT_UNKNOWN({})", id),
+    }
+}
+
+/// Convert RVA to file offset using section table
+fn rva_to_offset(rva: u64, sections: &[goblin::pe::section_table::SectionTable]) -> Option<u64> {
+    for section in sections {
+        let section_start = section.virtual_address as u64;
+        let section_size = std::cmp::max(section.virtual_size, section.size_of_raw_data) as u64;
+        if rva >= section_start && rva < section_start + section_size {
+            let offset = rva - section_start + section.pointer_to_raw_data as u64;
+            return Some(offset);
+        }
+    }
     None
 }
 
-/// Extract digital certificates
-fn extract_certificates(_data: &[u8], _pe: &PE) -> Vec<CertificateInfo> {
-    // Certificates are in the security directory
-    // Full implementation would parse PKCS#7 data
-    Vec::new()
+/// Extract version info from the VS_VERSIONINFO resource
+fn extract_version_info(data: &[u8], pe: &PE) -> Option<VersionInfo> {
+    // Get the resource directory
+    let (res_va, res_sz) = pe.header.optional_header.map(|oh| {
+        oh.data_directories.get_resource_table().map(|d| (d.virtual_address, d.size))
+    }).flatten()?;
+
+    if res_va == 0 || res_sz == 0 {
+        return None;
+    }
+
+    let res_rva = res_va as u64;
+    let res_offset = rva_to_offset(res_rva, &pe.sections)? as usize;
+
+    // Find RT_VERSION (type 16) resource data
+    let version_data = find_resource_data(data, res_offset, 16, &pe.sections)?;
+
+    // Parse VS_VERSIONINFO structure
+    parse_version_info_data(&version_data)
+}
+
+/// Find resource data for a specific resource type
+fn find_resource_data(data: &[u8], res_base: usize, resource_type_id: u32, sections: &[goblin::pe::section_table::SectionTable]) -> Option<Vec<u8>> {
+    if res_base + 16 > data.len() {
+        return None;
+    }
+
+    let num_named = u16::from_le_bytes([data[res_base + 12], data[res_base + 13]]) as usize;
+    let num_id = u16::from_le_bytes([data[res_base + 14], data[res_base + 15]]) as usize;
+    let total = num_named + num_id;
+
+    // Search for the type entry
+    for i in 0..total.min(64) {
+        let entry_offset = res_base + 16 + (i * 8);
+        if entry_offset + 8 > data.len() {
+            break;
+        }
+
+        let type_id = u32::from_le_bytes([
+            data[entry_offset], data[entry_offset + 1],
+            data[entry_offset + 2], data[entry_offset + 3],
+        ]);
+        let offset_to_data = u32::from_le_bytes([
+            data[entry_offset + 4], data[entry_offset + 5],
+            data[entry_offset + 6], data[entry_offset + 7],
+        ]);
+
+        if type_id == resource_type_id && offset_to_data & 0x80000000 != 0 {
+            // Navigate subdirectory to find the first data entry
+            let sub_offset = res_base + (offset_to_data & 0x7FFFFFFF) as usize;
+            return find_first_leaf_data(data, res_base, sub_offset, sections);
+        }
+    }
+    None
+}
+
+/// Navigate resource directories to find the first leaf data entry
+fn find_first_leaf_data(data: &[u8], res_base: usize, dir_offset: usize, sections: &[goblin::pe::section_table::SectionTable]) -> Option<Vec<u8>> {
+    if dir_offset + 16 > data.len() {
+        return None;
+    }
+
+    let num_named = u16::from_le_bytes([data[dir_offset + 12], data[dir_offset + 13]]) as usize;
+    let num_id = u16::from_le_bytes([data[dir_offset + 14], data[dir_offset + 15]]) as usize;
+    let total = num_named + num_id;
+
+    if total == 0 {
+        return None;
+    }
+
+    let entry_offset = dir_offset + 16; // First entry
+    if entry_offset + 8 > data.len() {
+        return None;
+    }
+
+    let offset_to_data = u32::from_le_bytes([
+        data[entry_offset + 4], data[entry_offset + 5],
+        data[entry_offset + 6], data[entry_offset + 7],
+    ]);
+
+    if offset_to_data & 0x80000000 != 0 {
+        // Another subdirectory - recurse
+        let sub_offset = res_base + (offset_to_data & 0x7FFFFFFF) as usize;
+        return find_first_leaf_data(data, res_base, sub_offset, sections);
+    }
+
+    // Leaf node - IMAGE_RESOURCE_DATA_ENTRY
+    let data_entry_offset = res_base + offset_to_data as usize;
+    if data_entry_offset + 16 > data.len() {
+        return None;
+    }
+
+    let data_rva = u32::from_le_bytes([
+        data[data_entry_offset], data[data_entry_offset + 1],
+        data[data_entry_offset + 2], data[data_entry_offset + 3],
+    ]);
+    let size = u32::from_le_bytes([
+        data[data_entry_offset + 4], data[data_entry_offset + 5],
+        data[data_entry_offset + 6], data[data_entry_offset + 7],
+    ]) as usize;
+
+    let file_offset = rva_to_offset(data_rva as u64, sections)? as usize;
+    if file_offset + size > data.len() {
+        return None;
+    }
+
+    Some(data[file_offset..file_offset + size].to_vec())
+}
+
+/// Parse VS_VERSIONINFO binary data to extract version strings
+fn parse_version_info_data(data: &[u8]) -> Option<VersionInfo> {
+    if data.len() < 6 {
+        return None;
+    }
+
+    let mut info = VersionInfo {
+        file_version: None,
+        product_version: None,
+        company_name: None,
+        product_name: None,
+        file_description: None,
+        original_filename: None,
+        internal_name: None,
+        legal_copyright: None,
+    };
+
+    // Look for VS_FIXEDFILEINFO (signature 0xFEEF04BD)
+    if let Some(fixed_pos) = find_dword_in_data(data, 0xFEEF04BD) {
+        if fixed_pos + 52 <= data.len() {
+            // File version: dwFileVersionMS (offset +8), dwFileVersionLS (offset +12)
+            let ver_ms = u32::from_le_bytes([
+                data[fixed_pos + 8], data[fixed_pos + 9],
+                data[fixed_pos + 10], data[fixed_pos + 11],
+            ]);
+            let ver_ls = u32::from_le_bytes([
+                data[fixed_pos + 12], data[fixed_pos + 13],
+                data[fixed_pos + 14], data[fixed_pos + 15],
+            ]);
+            info.file_version = Some(format!(
+                "{}.{}.{}.{}",
+                ver_ms >> 16, ver_ms & 0xFFFF,
+                ver_ls >> 16, ver_ls & 0xFFFF
+            ));
+
+            // Product version: dwProductVersionMS (offset +16), dwProductVersionLS (offset +20)
+            let prod_ms = u32::from_le_bytes([
+                data[fixed_pos + 16], data[fixed_pos + 17],
+                data[fixed_pos + 18], data[fixed_pos + 19],
+            ]);
+            let prod_ls = u32::from_le_bytes([
+                data[fixed_pos + 20], data[fixed_pos + 21],
+                data[fixed_pos + 22], data[fixed_pos + 23],
+            ]);
+            info.product_version = Some(format!(
+                "{}.{}.{}.{}",
+                prod_ms >> 16, prod_ms & 0xFFFF,
+                prod_ls >> 16, prod_ls & 0xFFFF
+            ));
+        }
+    }
+
+    // Extract StringFileInfo values
+    let string_keys = [
+        ("CompanyName", &mut info.company_name as &mut Option<String>),
+        ("ProductName", &mut info.product_name),
+        ("FileDescription", &mut info.file_description),
+        ("OriginalFilename", &mut info.original_filename),
+        ("InternalName", &mut info.internal_name),
+        ("LegalCopyright", &mut info.legal_copyright),
+    ];
+
+    for (key, target) in string_keys {
+        if let Some(value) = find_version_string(data, key) {
+            *target = Some(value);
+        }
+    }
+
+    // Return None if we found nothing useful
+    if info.file_version.is_none() && info.company_name.is_none() && info.product_name.is_none() {
+        return None;
+    }
+
+    Some(info)
+}
+
+/// Find a unicode string key in VS_VERSIONINFO data and extract its value
+fn find_version_string(data: &[u8], key: &str) -> Option<String> {
+    // Convert key to UTF-16LE for searching
+    let key_utf16: Vec<u8> = key.encode_utf16()
+        .flat_map(|c| c.to_le_bytes())
+        .collect();
+
+    // Search for the key in the data
+    let key_len = key_utf16.len();
+    for i in 0..data.len().saturating_sub(key_len + 4) {
+        if data[i..i + key_len] == key_utf16[..] {
+            // Check null terminator after key
+            if i + key_len + 2 <= data.len()
+                && data[i + key_len] == 0 && data[i + key_len + 1] == 0
+            {
+                // Value follows after key + null + padding
+                let mut value_start = i + key_len + 2;
+                // Align to DWORD boundary
+                while value_start % 4 != 0 && value_start < data.len() {
+                    value_start += 1;
+                }
+                // Sometimes there's additional padding
+                while value_start < data.len().saturating_sub(1)
+                    && data[value_start] == 0 && data[value_start + 1] == 0
+                {
+                    value_start += 2;
+                    if value_start % 4 == 0 {
+                        break;
+                    }
+                }
+
+                // Read UTF-16LE string value
+                let value = read_utf16le_string(data, value_start);
+                if !value.is_empty() {
+                    return Some(value);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Read a null-terminated UTF-16LE string from data
+fn read_utf16le_string(data: &[u8], offset: usize) -> String {
+    let mut chars = Vec::new();
+    let mut pos = offset;
+    while pos + 1 < data.len() {
+        let ch = u16::from_le_bytes([data[pos], data[pos + 1]]);
+        if ch == 0 {
+            break;
+        }
+        chars.push(ch);
+        pos += 2;
+        if chars.len() > 512 {
+            break; // Safety limit
+        }
+    }
+    String::from_utf16_lossy(&chars)
+}
+
+/// Find a DWORD value in binary data
+fn find_dword_in_data(data: &[u8], value: u32) -> Option<usize> {
+    let needle = value.to_le_bytes();
+    for i in 0..data.len().saturating_sub(4) {
+        if data[i..i + 4] == needle {
+            return Some(i);
+        }
+    }
+    None
+}
+
+/// Extract digital certificate information from the security directory
+fn extract_certificates(data: &[u8], pe: &PE) -> Vec<CertificateInfo> {
+    let mut certs = Vec::new();
+
+    // Security directory entry (index 4) gives file offset (not RVA) and size
+    let (cert_va, cert_sz) = match pe.header.optional_header.map(|oh| {
+        oh.data_directories.get_certificate_table().map(|d| (d.virtual_address, d.size))
+    }).flatten() {
+        Some((va, sz)) if va > 0 && sz > 0 => (va, sz),
+        _ => return certs,
+    };
+
+    // For the security directory, virtual_address is actually a file offset
+    let cert_offset = cert_va as usize;
+    let cert_size = cert_sz as usize;
+
+    if cert_offset + cert_size > data.len() || cert_size < 8 {
+        return certs;
+    }
+
+    let cert_data = &data[cert_offset..cert_offset + cert_size];
+    let mut pos = 0;
+
+    // Parse WIN_CERTIFICATE structures
+    while pos + 8 < cert_data.len() {
+        // WIN_CERTIFICATE header
+        let length = u32::from_le_bytes([
+            cert_data[pos], cert_data[pos + 1],
+            cert_data[pos + 2], cert_data[pos + 3],
+        ]) as usize;
+        let revision = u16::from_le_bytes([cert_data[pos + 4], cert_data[pos + 5]]);
+        let cert_type = u16::from_le_bytes([cert_data[pos + 6], cert_data[pos + 7]]);
+
+        if length < 8 || pos + length > cert_data.len() {
+            break;
+        }
+
+        // WIN_CERT_TYPE_PKCS_SIGNED_DATA = 0x0002
+        if cert_type == 0x0002 && length > 8 {
+            let pkcs7_data = &cert_data[pos + 8..pos + length];
+            if let Some(cert_info) = parse_pkcs7_certificate_info(pkcs7_data, revision) {
+                certs.push(cert_info);
+            }
+        }
+
+        // Advance to next certificate (8-byte aligned)
+        pos += (length + 7) & !7;
+    }
+
+    certs
+}
+
+/// Parse certificate information from PKCS#7 signed data
+fn parse_pkcs7_certificate_info(pkcs7_data: &[u8], _revision: u16) -> Option<CertificateInfo> {
+    // PKCS#7 is ASN.1 DER encoded. We parse enough to extract subject/issuer info.
+    // Look for X.509 certificate within the PKCS#7 SignedData structure.
+
+    // Find certificate sequences by looking for common X.509 patterns
+    let subject = extract_asn1_string_field(pkcs7_data, "subject");
+    let issuer = extract_asn1_string_field(pkcs7_data, "issuer");
+    let serial = extract_serial_number(pkcs7_data);
+    let (not_before, not_after) = extract_validity_dates(pkcs7_data);
+    let sig_algo = extract_signature_algorithm(pkcs7_data);
+
+    // If we couldn't parse anything useful, still report a certificate exists
+    let subject = subject.unwrap_or_else(|| "Unknown Subject".to_string());
+    let issuer = issuer.unwrap_or_else(|| "Unknown Issuer".to_string());
+
+    Some(CertificateInfo {
+        subject,
+        issuer,
+        serial_number: serial.unwrap_or_else(|| "Unknown".to_string()),
+        not_before: not_before.unwrap_or_else(|| Utc.timestamp_opt(0, 0).unwrap()),
+        not_after: not_after.unwrap_or_else(|| Utc.timestamp_opt(0, 0).unwrap()),
+        is_valid: not_after.map(|d| d > Utc::now()).unwrap_or(false),
+        signature_algorithm: sig_algo.unwrap_or_else(|| "Unknown".to_string()),
+    })
+}
+
+/// Extract a human-readable string from ASN.1 DER data by scanning for common OID patterns
+fn extract_asn1_string_field(data: &[u8], field_type: &str) -> Option<String> {
+    // Common X.509 OIDs we search for:
+    // CN (Common Name): 2.5.4.3 = 55 04 03
+    // O (Organization): 2.5.4.10 = 55 04 0A
+    // OU (Org Unit):    2.5.4.11 = 55 04 0B
+    // C (Country):      2.5.4.6  = 55 04 06
+
+    let cn_oid: &[u8] = &[0x55, 0x04, 0x03]; // Common Name
+    let o_oid: &[u8] = &[0x55, 0x04, 0x0A];  // Organization
+
+    // For subject, search later in the data; for issuer, search earlier
+    let search_oid = cn_oid;
+    let mut found_strings: Vec<String> = Vec::new();
+
+    for i in 0..data.len().saturating_sub(5) {
+        if data[i..].starts_with(search_oid) {
+            // After OID, there should be a string type tag and length
+            let str_offset = i + search_oid.len();
+            if str_offset + 2 < data.len() {
+                let tag = data[str_offset];
+                let len = data[str_offset + 1] as usize;
+                // PrintableString (0x13), UTF8String (0x0C), IA5String (0x16), BMPString (0x1E)
+                if (tag == 0x13 || tag == 0x0C || tag == 0x16) && len > 0 && str_offset + 2 + len <= data.len() {
+                    let s = String::from_utf8_lossy(&data[str_offset + 2..str_offset + 2 + len]).to_string();
+                    if !s.is_empty() && s.len() < 256 {
+                        found_strings.push(s);
+                    }
+                }
+            }
+        }
+    }
+
+    // Also look for Organization
+    for i in 0..data.len().saturating_sub(5) {
+        if data[i..].starts_with(o_oid) {
+            let str_offset = i + o_oid.len();
+            if str_offset + 2 < data.len() {
+                let tag = data[str_offset];
+                let len = data[str_offset + 1] as usize;
+                if (tag == 0x13 || tag == 0x0C || tag == 0x16) && len > 0 && str_offset + 2 + len <= data.len() {
+                    let s = String::from_utf8_lossy(&data[str_offset + 2..str_offset + 2 + len]).to_string();
+                    if !s.is_empty() && s.len() < 256 && !found_strings.contains(&s) {
+                        found_strings.push(s);
+                    }
+                }
+            }
+        }
+    }
+
+    if found_strings.is_empty() {
+        return None;
+    }
+
+    // For issuer vs subject: issuer typically appears first in the certificate
+    // We return different occurrences for each
+    match field_type {
+        "issuer" => found_strings.first().cloned(),
+        "subject" => {
+            if found_strings.len() > 1 {
+                found_strings.last().cloned()
+            } else {
+                found_strings.first().cloned()
+            }
+        }
+        _ => found_strings.first().cloned(),
+    }
+}
+
+/// Extract serial number from ASN.1 data
+fn extract_serial_number(data: &[u8]) -> Option<String> {
+    // Serial number is an INTEGER (tag 0x02) early in the TBS certificate
+    // It follows the version field (which is context tag [0])
+    // Look for pattern: SEQUENCE > SEQUENCE > [0] version > INTEGER serial
+
+    for i in 0..data.len().saturating_sub(20) {
+        // Look for context tag [0] (version) followed by INTEGER
+        if data[i] == 0xA0 && i + 2 < data.len() {
+            let version_len = data[i + 1] as usize;
+            let serial_pos = i + 2 + version_len;
+            if serial_pos + 2 < data.len() && data[serial_pos] == 0x02 {
+                let serial_len = data[serial_pos + 1] as usize;
+                if serial_len > 0 && serial_len <= 20 && serial_pos + 2 + serial_len <= data.len() {
+                    let serial_bytes = &data[serial_pos + 2..serial_pos + 2 + serial_len];
+                    let hex: String = serial_bytes.iter()
+                        .map(|b| format!("{:02X}", b))
+                        .collect::<Vec<_>>()
+                        .join(":");
+                    return Some(hex);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Extract validity dates from ASN.1 data
+fn extract_validity_dates(data: &[u8]) -> (Option<DateTime<Utc>>, Option<DateTime<Utc>>) {
+    let mut dates: Vec<DateTime<Utc>> = Vec::new();
+
+    // UTCTime tag = 0x17, GeneralizedTime tag = 0x18
+    for i in 0..data.len().saturating_sub(15) {
+        if data[i] == 0x17 { // UTCTime
+            let len = data[i + 1] as usize;
+            if len >= 13 && i + 2 + len <= data.len() {
+                if let Some(dt) = parse_utc_time(&data[i + 2..i + 2 + len]) {
+                    dates.push(dt);
+                    if dates.len() >= 2 {
+                        break;
+                    }
+                }
+            }
+        } else if data[i] == 0x18 { // GeneralizedTime
+            let len = data[i + 1] as usize;
+            if len >= 15 && i + 2 + len <= data.len() {
+                if let Some(dt) = parse_generalized_time(&data[i + 2..i + 2 + len]) {
+                    dates.push(dt);
+                    if dates.len() >= 2 {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    let not_before = dates.first().copied();
+    let not_after = dates.get(1).copied();
+    (not_before, not_after)
+}
+
+/// Parse ASN.1 UTCTime (YYMMDDHHMMSSZ)
+fn parse_utc_time(data: &[u8]) -> Option<DateTime<Utc>> {
+    let s = std::str::from_utf8(data).ok()?;
+    if s.len() < 13 {
+        return None;
+    }
+    let year: i32 = s[0..2].parse().ok()?;
+    let year = if year >= 50 { 1900 + year } else { 2000 + year };
+    let month: u32 = s[2..4].parse().ok()?;
+    let day: u32 = s[4..6].parse().ok()?;
+    let hour: u32 = s[6..8].parse().ok()?;
+    let min: u32 = s[8..10].parse().ok()?;
+    let sec: u32 = s[10..12].parse().ok()?;
+
+    Utc.with_ymd_and_hms(year, month, day, hour, min, sec).single()
+}
+
+/// Parse ASN.1 GeneralizedTime (YYYYMMDDHHMMSSZ)
+fn parse_generalized_time(data: &[u8]) -> Option<DateTime<Utc>> {
+    let s = std::str::from_utf8(data).ok()?;
+    if s.len() < 15 {
+        return None;
+    }
+    let year: i32 = s[0..4].parse().ok()?;
+    let month: u32 = s[4..6].parse().ok()?;
+    let day: u32 = s[6..8].parse().ok()?;
+    let hour: u32 = s[8..10].parse().ok()?;
+    let min: u32 = s[10..12].parse().ok()?;
+    let sec: u32 = s[12..14].parse().ok()?;
+
+    Utc.with_ymd_and_hms(year, month, day, hour, min, sec).single()
+}
+
+/// Extract signature algorithm OID from certificate
+fn extract_signature_algorithm(data: &[u8]) -> Option<String> {
+    // Common signature algorithm OIDs
+    let known_oids: &[(&[u8], &str)] = &[
+        (&[0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x0B], "SHA256withRSA"),
+        (&[0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x0C], "SHA384withRSA"),
+        (&[0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x0D], "SHA512withRSA"),
+        (&[0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x05], "SHA1withRSA"),
+        (&[0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x04], "MD5withRSA"),
+        (&[0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x04, 0x03, 0x02], "SHA256withECDSA"),
+        (&[0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x04, 0x03, 0x03], "SHA384withECDSA"),
+        (&[0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x04, 0x03, 0x04], "SHA512withECDSA"),
+    ];
+
+    for (oid, name) in known_oids {
+        if find_bytes_in_data(data, oid).is_some() {
+            return Some(name.to_string());
+        }
+    }
+    None
+}
+
+/// Find a byte sequence in data
+fn find_bytes_in_data(data: &[u8], needle: &[u8]) -> Option<usize> {
+    if needle.is_empty() || data.len() < needle.len() {
+        return None;
+    }
+    for i in 0..=data.len() - needle.len() {
+        if data[i..i + needle.len()] == *needle {
+            return Some(i);
+        }
+    }
+    None
 }
 
 /// Compute import hash (imphash)

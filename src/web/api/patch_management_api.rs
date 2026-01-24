@@ -1,4 +1,5 @@
 use actix_web::{web, HttpResponse};
+use sqlx::SqlitePool;
 use crate::web::auth::Claims;
 use crate::patch_management;
 use serde::Deserialize;
@@ -30,23 +31,12 @@ pub async fn calculate_priority(
 /// Get patch analytics
 pub async fn get_analytics(
     _claims: Claims,
+    pool: web::Data<SqlitePool>,
 ) -> actix_web::Result<HttpResponse> {
-    let coverage = patch_management::analytics::get_patch_coverage().await
-        .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
-    let mttp = patch_management::analytics::calculate_mttp().await
-        .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
-    let success_rate = patch_management::analytics::get_patch_success_rate().await
+    let analytics = patch_management::analytics::get_analytics(pool.get_ref()).await
         .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
 
-    Ok(HttpResponse::Ok().json(patch_management::analytics::PatchAnalytics {
-        total_patches: 0,
-        deployed_patches: 0,
-        pending_patches: 0,
-        failed_patches: 0,
-        coverage_percentage: coverage,
-        mean_time_to_patch: mttp,
-        success_rate,
-    }))
+    Ok(HttpResponse::Ok().json(analytics))
 }
 
 #[derive(Deserialize)]

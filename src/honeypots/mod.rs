@@ -244,3 +244,537 @@ pub struct HoneypotStats {
     pub high_threat_attackers: usize,
     pub interactions_by_type: HashMap<String, usize>,
 }
+
+// =============================================================================
+// TCP/UDP HONEYPOT LISTENERS
+// =============================================================================
+
+use tokio::net::{TcpListener, UdpSocket};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// Global shutdown signal for honeypot listeners
+static SHUTDOWN: once_cell::sync::Lazy<Arc<AtomicBool>> =
+    once_cell::sync::Lazy::new(|| Arc::new(AtomicBool::new(false)));
+
+/// Start a honeypot listener for the given honeypot configuration.
+/// Returns a JoinHandle that can be used to stop the listener.
+pub async fn start_listener(honeypot_id: &str) -> Result<tokio::task::JoinHandle<()>> {
+    let state = HONEYPOT_STATE.read().await;
+    let honeypot = state.honeypots.get(honeypot_id)
+        .ok_or_else(|| anyhow!("Honeypot not found: {}", honeypot_id))?
+        .clone();
+    drop(state);
+
+    if !honeypot.is_active {
+        return Err(anyhow!("Honeypot {} is not active", honeypot_id));
+    }
+
+    let hp_id = honeypot.id.clone();
+    let log_addr = honeypot.ip_address.clone();
+    let handle = match honeypot.honeypot_type {
+        HoneypotType::SSH => {
+            tokio::spawn(run_ssh_honeypot(hp_id, honeypot.ip_address, honeypot.port))
+        }
+        HoneypotType::HTTP => {
+            tokio::spawn(run_http_honeypot(hp_id, honeypot.ip_address, honeypot.port))
+        }
+        HoneypotType::FTP => {
+            tokio::spawn(run_ftp_honeypot(hp_id, honeypot.ip_address, honeypot.port))
+        }
+        HoneypotType::Database => {
+            tokio::spawn(run_database_honeypot(hp_id, honeypot.ip_address, honeypot.port))
+        }
+        HoneypotType::Email => {
+            tokio::spawn(run_smtp_honeypot(hp_id, honeypot.ip_address, honeypot.port))
+        }
+    };
+
+    info!("Started {:?} honeypot listener on {}:{}", honeypot.honeypot_type, log_addr, honeypot.port);
+    Ok(handle)
+}
+
+/// Stop all honeypot listeners
+pub fn stop_all_listeners() {
+    SHUTDOWN.store(true, Ordering::SeqCst);
+    info!("Shutdown signal sent to all honeypot listeners");
+}
+
+/// Reset shutdown flag (for restarting listeners)
+pub fn reset_shutdown() {
+    SHUTDOWN.store(false, Ordering::SeqCst);
+}
+
+/// SSH honeypot - presents a fake SSH banner and logs credentials
+async fn run_ssh_honeypot(honeypot_id: String, bind_addr: String, port: u16) {
+    let addr = format!("{}:{}", bind_addr, port);
+    let listener = match TcpListener::bind(&addr).await {
+        Ok(l) => l,
+        Err(e) => {
+            log::error!("SSH honeypot failed to bind to {}: {}", addr, e);
+            return;
+        }
+    };
+
+    info!("SSH honeypot listening on {}", addr);
+
+    while !SHUTDOWN.load(Ordering::SeqCst) {
+        let accept = tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            listener.accept(),
+        ).await;
+
+        let (mut stream, peer_addr) = match accept {
+            Ok(Ok((s, a))) => (s, a),
+            Ok(Err(e)) => {
+                log::debug!("SSH honeypot accept error: {}", e);
+                continue;
+            }
+            Err(_) => continue, // timeout, check shutdown
+        };
+
+        let hp_id = honeypot_id.clone();
+        tokio::spawn(async move {
+            let source_ip = peer_addr.ip().to_string();
+
+            // Send SSH banner
+            let banner = b"SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.4\r\n";
+            let _ = stream.write_all(banner).await;
+
+            // Read client's version string
+            let mut buf = [0u8; 512];
+            let n = match tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                stream.read(&mut buf),
+            ).await {
+                Ok(Ok(n)) => n,
+                _ => 0,
+            };
+
+            let client_data = String::from_utf8_lossy(&buf[..n]).to_string();
+            let details = format!("SSH connection attempt. Client: {}", client_data.trim());
+
+            let _ = log_interaction(&hp_id, &source_ip, &details).await;
+
+            // Keep connection alive briefly to log more data
+            let mut total_read = Vec::new();
+            for _ in 0..3 {
+                let mut buf2 = [0u8; 1024];
+                match tokio::time::timeout(
+                    std::time::Duration::from_secs(5),
+                    stream.read(&mut buf2),
+                ).await {
+                    Ok(Ok(0)) => break,
+                    Ok(Ok(n)) => total_read.extend_from_slice(&buf2[..n]),
+                    _ => break,
+                }
+            }
+
+            if !total_read.is_empty() {
+                let extra = format!("Additional SSH data: {} bytes", total_read.len());
+                let _ = log_interaction(&hp_id, &source_ip, &extra).await;
+            }
+        });
+    }
+}
+
+/// HTTP honeypot - serves fake web pages and logs requests
+async fn run_http_honeypot(honeypot_id: String, bind_addr: String, port: u16) {
+    let addr = format!("{}:{}", bind_addr, port);
+    let listener = match TcpListener::bind(&addr).await {
+        Ok(l) => l,
+        Err(e) => {
+            log::error!("HTTP honeypot failed to bind to {}: {}", addr, e);
+            return;
+        }
+    };
+
+    info!("HTTP honeypot listening on {}", addr);
+
+    while !SHUTDOWN.load(Ordering::SeqCst) {
+        let accept = tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            listener.accept(),
+        ).await;
+
+        let (mut stream, peer_addr) = match accept {
+            Ok(Ok((s, a))) => (s, a),
+            Ok(Err(e)) => {
+                log::debug!("HTTP honeypot accept error: {}", e);
+                continue;
+            }
+            Err(_) => continue,
+        };
+
+        let hp_id = honeypot_id.clone();
+        tokio::spawn(async move {
+            let source_ip = peer_addr.ip().to_string();
+
+            // Read HTTP request
+            let mut buf = [0u8; 4096];
+            let n = match tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                stream.read(&mut buf),
+            ).await {
+                Ok(Ok(n)) => n,
+                _ => 0,
+            };
+
+            let request = String::from_utf8_lossy(&buf[..n]).to_string();
+
+            // Extract method and path from request
+            let first_line = request.lines().next().unwrap_or("");
+            let details = format!("HTTP request: {}", first_line);
+
+            let _ = log_interaction(&hp_id, &source_ip, &details).await;
+
+            // Log interesting headers
+            for line in request.lines().skip(1) {
+                let lower = line.to_lowercase();
+                if lower.starts_with("user-agent:") || lower.starts_with("authorization:") || lower.starts_with("cookie:") {
+                    let header_detail = format!("HTTP header: {}", line.trim());
+                    let _ = log_interaction(&hp_id, &source_ip, &header_detail).await;
+                }
+                if line.is_empty() { break; }
+            }
+
+            // Send fake response
+            let response_body = r#"<html><head><title>Login</title></head><body><h1>Admin Panel</h1><form method="POST"><input name="username" placeholder="Username"><input type="password" name="password" placeholder="Password"><button>Login</button></form></body></html>"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nServer: Apache/2.4.52\r\n\r\n{}",
+                response_body.len(),
+                response_body
+            );
+            let _ = stream.write_all(response.as_bytes()).await;
+        });
+    }
+}
+
+/// FTP honeypot - presents a fake FTP server and logs credentials
+async fn run_ftp_honeypot(honeypot_id: String, bind_addr: String, port: u16) {
+    let addr = format!("{}:{}", bind_addr, port);
+    let listener = match TcpListener::bind(&addr).await {
+        Ok(l) => l,
+        Err(e) => {
+            log::error!("FTP honeypot failed to bind to {}: {}", addr, e);
+            return;
+        }
+    };
+
+    info!("FTP honeypot listening on {}", addr);
+
+    while !SHUTDOWN.load(Ordering::SeqCst) {
+        let accept = tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            listener.accept(),
+        ).await;
+
+        let (mut stream, peer_addr) = match accept {
+            Ok(Ok((s, a))) => (s, a),
+            Ok(Err(e)) => {
+                log::debug!("FTP honeypot accept error: {}", e);
+                continue;
+            }
+            Err(_) => continue,
+        };
+
+        let hp_id = honeypot_id.clone();
+        tokio::spawn(async move {
+            let source_ip = peer_addr.ip().to_string();
+
+            // Send FTP banner
+            let _ = stream.write_all(b"220 FTP Server Ready\r\n").await;
+
+            let mut username = String::new();
+
+            // Read and respond to FTP commands
+            for _ in 0..10 {
+                let mut buf = [0u8; 512];
+                let n = match tokio::time::timeout(
+                    std::time::Duration::from_secs(30),
+                    stream.read(&mut buf),
+                ).await {
+                    Ok(Ok(0)) => break,
+                    Ok(Ok(n)) => n,
+                    _ => break,
+                };
+
+                let cmd = String::from_utf8_lossy(&buf[..n]).trim().to_string();
+                let cmd_upper = cmd.to_uppercase();
+
+                if cmd_upper.starts_with("USER ") {
+                    username = cmd[5..].trim().to_string();
+                    let _ = stream.write_all(b"331 Password required\r\n").await;
+                } else if cmd_upper.starts_with("PASS ") {
+                    let password = cmd[5..].trim().to_string();
+                    let details = format!("FTP login attempt: user='{}' pass='{}'", username, password);
+                    let _ = log_interaction(&hp_id, &source_ip, &details).await;
+                    let _ = stream.write_all(b"530 Login incorrect\r\n").await;
+                } else if cmd_upper.starts_with("QUIT") {
+                    let _ = stream.write_all(b"221 Goodbye\r\n").await;
+                    break;
+                } else {
+                    let details = format!("FTP command: {}", cmd);
+                    let _ = log_interaction(&hp_id, &source_ip, &details).await;
+                    let _ = stream.write_all(b"502 Command not implemented\r\n").await;
+                }
+            }
+        });
+    }
+}
+
+/// Database honeypot - emulates MySQL/PostgreSQL protocol handshake
+async fn run_database_honeypot(honeypot_id: String, bind_addr: String, port: u16) {
+    let addr = format!("{}:{}", bind_addr, port);
+    let listener = match TcpListener::bind(&addr).await {
+        Ok(l) => l,
+        Err(e) => {
+            log::error!("Database honeypot failed to bind to {}: {}", addr, e);
+            return;
+        }
+    };
+
+    info!("Database honeypot listening on {}", addr);
+
+    while !SHUTDOWN.load(Ordering::SeqCst) {
+        let accept = tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            listener.accept(),
+        ).await;
+
+        let (mut stream, peer_addr) = match accept {
+            Ok(Ok((s, a))) => (s, a),
+            Ok(Err(e)) => {
+                log::debug!("Database honeypot accept error: {}", e);
+                continue;
+            }
+            Err(_) => continue,
+        };
+
+        let hp_id = honeypot_id.clone();
+        let is_mysql = port == 3306;
+        tokio::spawn(async move {
+            let source_ip = peer_addr.ip().to_string();
+
+            if is_mysql {
+                // MySQL greeting packet (simplified)
+                let greeting = b"\x4a\x00\x00\x00\x0a5.7.42\x00\x01\x00\x00\x00\x3a\x64\x4c\x52\x2f\x43\x60\x68\x00\xff\xf7\x21\x02\x00\x7f\x80\x15\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x76\x3a\x52\x2a\x33\x56\x6e\x42\x22\x48\x74\x55\x00mysql_native_password\x00";
+                let _ = stream.write_all(greeting).await;
+            } else {
+                // PostgreSQL-like - wait for startup message
+            }
+
+            // Read client response (auth attempt)
+            let mut buf = [0u8; 2048];
+            let n = match tokio::time::timeout(
+                std::time::Duration::from_secs(15),
+                stream.read(&mut buf),
+            ).await {
+                Ok(Ok(n)) => n,
+                _ => 0,
+            };
+
+            if n > 0 {
+                let details = format!(
+                    "Database connection attempt ({} protocol): {} bytes received",
+                    if is_mysql { "MySQL" } else { "PostgreSQL" },
+                    n
+                );
+                let _ = log_interaction(&hp_id, &source_ip, &details).await;
+
+                // Try to extract username from the packet
+                let data = &buf[..n];
+                let printable: String = data.iter()
+                    .filter(|&&b| b >= 0x20 && b < 0x7f)
+                    .map(|&b| b as char)
+                    .collect();
+                if !printable.is_empty() {
+                    let cred_detail = format!("Database auth data (printable): {}", &printable[..printable.len().min(200)]);
+                    let _ = log_interaction(&hp_id, &source_ip, &cred_detail).await;
+                }
+            }
+
+            // Send access denied
+            if is_mysql {
+                let error = b"\x17\x00\x00\x02\xff\x15\x04#28000Access denied for user";
+                let _ = stream.write_all(error).await;
+            }
+        });
+    }
+}
+
+/// SMTP honeypot - fake mail server that logs email relay attempts
+async fn run_smtp_honeypot(honeypot_id: String, bind_addr: String, port: u16) {
+    let addr = format!("{}:{}", bind_addr, port);
+    let listener = match TcpListener::bind(&addr).await {
+        Ok(l) => l,
+        Err(e) => {
+            log::error!("SMTP honeypot failed to bind to {}: {}", addr, e);
+            return;
+        }
+    };
+
+    info!("SMTP honeypot listening on {}", addr);
+
+    while !SHUTDOWN.load(Ordering::SeqCst) {
+        let accept = tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            listener.accept(),
+        ).await;
+
+        let (mut stream, peer_addr) = match accept {
+            Ok(Ok((s, a))) => (s, a),
+            Ok(Err(e)) => {
+                log::debug!("SMTP honeypot accept error: {}", e);
+                continue;
+            }
+            Err(_) => continue,
+        };
+
+        let hp_id = honeypot_id.clone();
+        tokio::spawn(async move {
+            let source_ip = peer_addr.ip().to_string();
+
+            // Send SMTP banner
+            let _ = stream.write_all(b"220 mail.example.com ESMTP Postfix\r\n").await;
+
+            let mut mail_from = String::new();
+            let mut rcpt_to = Vec::new();
+
+            for _ in 0..20 {
+                let mut buf = [0u8; 1024];
+                let n = match tokio::time::timeout(
+                    std::time::Duration::from_secs(30),
+                    stream.read(&mut buf),
+                ).await {
+                    Ok(Ok(0)) => break,
+                    Ok(Ok(n)) => n,
+                    _ => break,
+                };
+
+                let cmd = String::from_utf8_lossy(&buf[..n]).trim().to_string();
+                let cmd_upper = cmd.to_uppercase();
+
+                if cmd_upper.starts_with("EHLO") || cmd_upper.starts_with("HELO") {
+                    let _ = stream.write_all(b"250-mail.example.com\r\n250-SIZE 10240000\r\n250 OK\r\n").await;
+                } else if cmd_upper.starts_with("MAIL FROM:") {
+                    mail_from = cmd[10..].trim().to_string();
+                    let _ = stream.write_all(b"250 OK\r\n").await;
+                } else if cmd_upper.starts_with("RCPT TO:") {
+                    let recipient = cmd[8..].trim().to_string();
+                    rcpt_to.push(recipient);
+                    let _ = stream.write_all(b"250 OK\r\n").await;
+                } else if cmd_upper.starts_with("DATA") {
+                    let _ = stream.write_all(b"354 Start mail input\r\n").await;
+
+                    // Read email body until ".\r\n"
+                    let mut email_body = Vec::new();
+                    loop {
+                        let mut data_buf = [0u8; 4096];
+                        let dn = match tokio::time::timeout(
+                            std::time::Duration::from_secs(30),
+                            stream.read(&mut data_buf),
+                        ).await {
+                            Ok(Ok(0)) => break,
+                            Ok(Ok(n)) => n,
+                            _ => break,
+                        };
+                        email_body.extend_from_slice(&data_buf[..dn]);
+                        if email_body.len() >= 5 {
+                            let tail = &email_body[email_body.len()-5..];
+                            if tail == b"\r\n.\r\n" {
+                                break;
+                            }
+                        }
+                        if email_body.len() > 100_000 { break; } // Limit
+                    }
+
+                    let details = format!(
+                        "SMTP relay attempt: FROM={} TO={:?} body_size={}",
+                        mail_from, rcpt_to, email_body.len()
+                    );
+                    let _ = log_interaction(&hp_id, &source_ip, &details).await;
+
+                    let _ = stream.write_all(b"250 OK: Message queued\r\n").await;
+                } else if cmd_upper.starts_with("QUIT") {
+                    let _ = stream.write_all(b"221 Bye\r\n").await;
+                    break;
+                } else if cmd_upper.starts_with("AUTH") {
+                    let details = format!("SMTP auth attempt: {}", cmd);
+                    let _ = log_interaction(&hp_id, &source_ip, &details).await;
+                    let _ = stream.write_all(b"535 Authentication failed\r\n").await;
+                } else {
+                    let _ = stream.write_all(b"502 Command not recognized\r\n").await;
+                }
+            }
+
+            if !mail_from.is_empty() || !rcpt_to.is_empty() {
+                let summary = format!("SMTP session: from={} recipients={}", mail_from, rcpt_to.len());
+                let _ = log_interaction(&hp_id, &source_ip, &summary).await;
+            }
+        });
+    }
+}
+
+/// Start a UDP honeypot (for DNS, SNMP, or other UDP services)
+pub async fn start_udp_listener(honeypot_id: &str, bind_addr: &str, port: u16) -> Result<tokio::task::JoinHandle<()>> {
+    let hp_id = honeypot_id.to_string();
+    let addr = format!("{}:{}", bind_addr, port);
+
+    let socket = UdpSocket::bind(&addr).await
+        .map_err(|e| anyhow!("UDP honeypot failed to bind to {}: {}", addr, e))?;
+
+    info!("UDP honeypot listening on {}", addr);
+
+    let handle = tokio::spawn(async move {
+        let mut buf = [0u8; 4096];
+
+        loop {
+            if SHUTDOWN.load(Ordering::SeqCst) {
+                break;
+            }
+
+            let recv = tokio::time::timeout(
+                std::time::Duration::from_secs(1),
+                socket.recv_from(&mut buf),
+            ).await;
+
+            let (n, peer_addr) = match recv {
+                Ok(Ok((n, a))) => (n, a),
+                Ok(Err(e)) => {
+                    log::debug!("UDP honeypot recv error: {}", e);
+                    continue;
+                }
+                Err(_) => continue,
+            };
+
+            let source_ip = peer_addr.ip().to_string();
+            let data = &buf[..n];
+
+            // Detect protocol based on content
+            let protocol = if n >= 12 && (data[2] & 0x80 == 0) {
+                "DNS" // DNS query (QR bit = 0)
+            } else if n >= 2 && data[0] == 0x30 {
+                "SNMP" // ASN.1 SEQUENCE
+            } else {
+                "Unknown UDP"
+            };
+
+            let details = format!("{} packet: {} bytes from port {}", protocol, n, peer_addr.port());
+            let _ = log_interaction(&hp_id, &source_ip, &details).await;
+
+            // Send minimal response to encourage further interaction
+            if protocol == "DNS" && n >= 12 {
+                // Send DNS NXDOMAIN response
+                let mut response = data[..n].to_vec();
+                if response.len() >= 4 {
+                    response[2] |= 0x80; // Set QR bit (response)
+                    response[3] = (response[3] & 0xF0) | 0x03; // NXDOMAIN
+                    let _ = socket.send_to(&response, peer_addr).await;
+                }
+            }
+        }
+    });
+
+    Ok(handle)
+}
