@@ -188,7 +188,7 @@ rsa = "0.9"                    # RSA signatures for GPG compatibility
 
 # WebAssembly runtime for plugin sandboxing
 wasmtime = "27.0"              # WASM runtime
-wasmtime-wasi = "27.0"         # WASI support for WASM
+wasmtime-wasi = "41.0"         # WASI support for WASM
 os_pipe = "1.2"                # Cross-platform pipes for I/O capture
 
 # Packet capture for wireless scanning
