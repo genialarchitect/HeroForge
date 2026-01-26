@@ -103,7 +103,7 @@ redis = { version = "1.0", features = ["tokio-comp", "connection-manager"] }
 byteorder = "1.5"  # Binary protocol parsing
 
 # LDAP for Active Directory assessment
-ldap3 = "0.11"
+ldap3 = "0.12"
 
 # TOTP-based Two-Factor Authentication
 totp-rs = { version = "5.7", features = ["gen_secret", "qr"] }
