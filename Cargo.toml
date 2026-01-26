@@ -150,7 +150,7 @@ aws-sdk-rds = "1.121"
 aws-credential-types = "1.2"
 
 # Azure SDK for cloud security scanning
-azure_core = "0.30"
+azure_core = "0.31"
 azure_identity = "0.30"
 azure_mgmt_storage = "0.21"
 azure_mgmt_compute = "0.21"
