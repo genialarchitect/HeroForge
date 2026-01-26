@@ -91,7 +91,7 @@ native-tls = "0.2"
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "postgres", "mysql", "chrono", "uuid"] }
 
 # SQLCipher for database encryption (overrides sqlx's libsqlite3-sys)
-libsqlite3-sys = { version = "0.30", features = ["bundled-sqlcipher"] }
+libsqlite3-sys = { version = "0.36", features = ["bundled-sqlcipher"] }
 
 # Database enumeration
 mysql_async = "0.36"
